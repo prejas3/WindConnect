@@ -98,7 +98,7 @@ async fn hello_exchange_announces_routed_channels() {
     let _n = client_router.route(Channel::Notify, 1, 8);
     let mut server_router = Router::new();
     let _c = server_router.route(Channel::Clipboard, 1, 8);
-    let _i = server_router.route(Channel::Input, 1, 8);
+    let _i = server_router.route_input(8);
     let _f = server_router.route_files(1, 8);
     let p = sessions(client_router, server_router).await;
 

@@ -14,6 +14,7 @@ use tokio::sync::mpsc;
 use crate::protocol::{Capability, Channel, RawMessage};
 
 use super::framed::FramedRecv;
+use crate::input::InputEvent;
 
 /// A message for a module, in order within its channel (§3.1).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -56,6 +57,7 @@ pub fn is_uni(channel: Channel) -> bool {
 pub struct Router {
     pub(super) uni: BTreeMap<u8, (Channel, u64, mpsc::Sender<ChannelMessage>)>,
     pub(super) files: Option<(u64, mpsc::Sender<FileStream>)>,
+    pub(super) input: Option<mpsc::Sender<InputEvent>>,
 }
 
 impl Router {
@@ -67,8 +69,9 @@ impl Router {
     /// to the returned queue. A full queue holds back that channel's
     /// stream only (QUIC flow control), never other channels.
     ///
-    /// Panics for `control` (the session's own) and `files` (use
-    /// [`route_files`](Self::route_files)).
+    /// Panics for `control` (the session's own), `files` (use
+    /// [`route_files`](Self::route_files)) and `input` (use
+    /// [`route_input`](Self::route_input)).
     pub fn route(
         &mut self,
         channel: Channel,
@@ -76,6 +79,10 @@ impl Router {
         queue: usize,
     ) -> mpsc::Receiver<ChannelMessage> {
         assert!(is_uni(channel), "{channel:?} is not a uni channel");
+        assert!(
+            channel != Channel::Input,
+            "input is routed with route_input"
+        );
         let (tx, rx) = mpsc::channel(queue.max(1));
         self.uni.insert(channel.byte(), (channel, version, tx));
         rx
@@ -88,6 +95,16 @@ impl Router {
         rx
     }
 
+    /// Accepts input (`input/1`, §8): the session runs the receiver state
+    /// machine over the `input` stream and datagrams, and the returned queue
+    /// gets what should reach the system, late and stale state already
+    /// dropped.
+    pub fn route_input(&mut self, queue: usize) -> mpsc::Receiver<InputEvent> {
+        let (tx, rx) = mpsc::channel(queue.max(1));
+        self.input = Some(tx);
+        rx
+    }
+
     /// What the session announces: one capability per routed channel.
     pub fn capabilities(&self) -> Vec<Capability> {
         let mut caps: Vec<Capability> = self
@@ -95,6 +112,7 @@ impl Router {
             .values()
             .map(|(ch, v, _)| (*ch, *v))
             .chain(self.files.as_ref().map(|(v, _)| (Channel::Files, *v)))
+            .chain(self.input.as_ref().map(|_| (Channel::Input, 1)))
             .filter_map(|(ch, v)| Capability::new(capability_name(ch)?, v))
             .collect();
         caps.sort_by_key(|c| c.to_string());

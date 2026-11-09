@@ -42,9 +42,27 @@ pub const CONNECT_ATTEMPT_TIMEOUT: Duration = Duration::from_secs(3);
 /// TLS sessions remembered per peer, for resumption and 0-RTT.
 const SESSIONS_PER_PEER: usize = 4;
 
+/// Endpoint settings that may differ between devices.
+#[derive(Debug, Clone, Copy)]
+pub struct EndpointOptions {
+    /// Accept QUIC datagrams (RFC 9221) and advertise
+    /// `max_datagram_frame_size` (PROTOCOL.md §2: SHOULD, with `input/1`).
+    /// Without them, input motion goes on the `input` stream (§8.7).
+    pub datagrams: bool,
+}
+
+impl Default for EndpointOptions {
+    fn default() -> Self {
+        EndpointOptions { datagrams: true }
+    }
+}
+
 /// Transport settings both sides use.
-fn transport_config() -> Arc<quinn::TransportConfig> {
+fn transport_config(options: EndpointOptions) -> Arc<quinn::TransportConfig> {
     let mut t = quinn::TransportConfig::default();
+    if !options.datagrams {
+        t.datagram_receive_buffer_size(None);
+    }
     t.keep_alive_interval(Some(KEEP_ALIVE_INTERVAL));
     t.max_idle_timeout(Some(
         quinn::IdleTimeout::try_from(IDLE_TIMEOUT).expect("45 s fits a QUIC idle timeout"),
@@ -389,6 +407,7 @@ pub struct Endpoint {
     /// (all peers share one server name, which keeps the name in the
     /// ClientHello free of any device identifier).
     clients: Arc<Mutex<HashMap<PublicKey, quinn::ClientConfig>>>,
+    options: EndpointOptions,
 }
 
 impl fmt::Debug for Endpoint {
@@ -407,6 +426,16 @@ impl Endpoint {
         addr: SocketAddr,
         identity: &DeviceIdentity,
         trust: Arc<dyn PeerTrust>,
+    ) -> Result<Self, EndpointError> {
+        Self::bind_with(addr, identity, trust, EndpointOptions::default())
+    }
+
+    /// [`bind`](Self::bind) with explicit options.
+    pub fn bind_with(
+        addr: SocketAddr,
+        identity: &DeviceIdentity,
+        trust: Arc<dyn PeerTrust>,
+        options: EndpointOptions,
     ) -> Result<Self, EndpointError> {
         let provider = Arc::new(rustls::crypto::ring::default_provider());
         let certs = vec![identity.certificate_der()];
@@ -430,7 +459,7 @@ impl Endpoint {
         let quic = QuicServerConfig::try_from(tls)
             .map_err(|e| EndpointError::Tls(rustls::Error::General(e.to_string())))?;
         let mut server = quinn::ServerConfig::with_crypto(Arc::new(quic));
-        server.transport_config(transport_config());
+        server.transport_config(transport_config(options));
         // A peer whose address changes (network switch) keeps its connection.
         server.migration(true);
 
@@ -442,6 +471,7 @@ impl Endpoint {
             key: Arc::new(key),
             provider,
             clients: Arc::new(Mutex::new(HashMap::new())),
+            options,
         })
     }
 
@@ -472,7 +502,7 @@ impl Endpoint {
         tls.enable_early_data = true;
         let quic = QuicClientConfig::try_from(tls).expect("TLS 1.3 with an initial suite");
         let mut config = quinn::ClientConfig::new(Arc::new(quic));
-        config.transport_config(transport_config());
+        config.transport_config(transport_config(self.options));
         clients.insert(peer, config.clone());
         Ok(config)
     }

@@ -9,8 +9,9 @@ klucz Ed25519, certyfikat TLS, odcisk; na Windows klucz chroni DPAPI,
 na Androidzie klucz z Android Keystore),
 połączenie QUIC z przypiętymi kluczami, keep-alive, migracją ścieżki
 i wznawianiem 0-RTT (`wind_core::transport`)
-oraz sesję protokołu ze strumieniami kanałów i routerem do modułów
-(`wind_core::session`).
+sesję protokołu ze strumieniami kanałów i routerem do modułów
+(`wind_core::session`) oraz kanał wejścia z datagramami QUIC
+(`wind_core::input`).
 
 ## Struktura
 
