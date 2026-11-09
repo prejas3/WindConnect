@@ -12,6 +12,9 @@ mdns-sd = "0.21.7"
 quinn = { version = "0.11", default-features = false, features = ["runtime-tokio", "rustls", "ring"] }
 rand_core = { version = "0.6", features = ["getrandom"] }
 rcgen = { version = "0.13", default-features = false, features = ["ring", "pem"] }
+# Already in the tree through rustls and quinn: HMAC with constant-time
+# verification for pairing (PROTOCOL.md §12).
+ring = "0.17"
 rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
 rustls-pki-types = "1"
 rustls-webpki = { version = "0.103", default-features = false, features = ["ring", "std"] }

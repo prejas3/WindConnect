@@ -28,7 +28,7 @@ use rustls::{CertificateError, DigitallySignedStruct, DistinguishedName, Signatu
 use rustls_pki_types::{CertificateDer, ServerName, UnixTime};
 
 use crate::identity::{DeviceIdentity, IdentityError, PublicKey, CERT_SERVER_NAME};
-use crate::protocol::{ErrorCode, ALPN};
+use crate::protocol::{ErrorCode, ALPN, PAIR_ALPN};
 
 /// QUIC keep-alive: an idle connection sends a PING this often, so NAT
 /// bindings stay open and a dead path is noticed (WC-12). Battery tuning is
@@ -358,6 +358,105 @@ impl fmt::Display for EndpointError {
 
 impl std::error::Error for EndpointError {}
 
+/// The Ed25519 key of the certificate the peer presented in this
+/// connection's TLS handshake (the verifier checked its signature).
+pub(crate) fn handshake_peer_key(conn: &quinn::Connection) -> Option<PublicKey> {
+    conn.peer_identity()
+        .and_then(|id| id.downcast::<Vec<CertificateDer<'static>>>().ok())
+        .and_then(|certs| certs.first().and_then(certificate_key))
+}
+
+/// Trusts every Ed25519 key. Only for pairing connections (PROTOCOL.md
+/// §12), where the pairing protocol, not the pin list, decides about the
+/// peer's key.
+struct AnyKey;
+
+impl PeerTrust for AnyKey {
+    fn is_trusted(&self, _key: &PublicKey) -> bool {
+        true
+    }
+}
+
+/// Transport settings of a pairing connection: one bidi stream from the
+/// client, nothing else, small windows (frames are at most 1 KiB).
+fn pairing_transport() -> Arc<quinn::TransportConfig> {
+    let mut t = quinn::TransportConfig::default();
+    t.max_concurrent_bidi_streams(quinn::VarInt::from_u32(1));
+    t.max_concurrent_uni_streams(quinn::VarInt::from_u32(0));
+    t.stream_receive_window(quinn::VarInt::from_u32(16 * 1024));
+    t.receive_window(quinn::VarInt::from_u32(32 * 1024));
+    t.datagram_receive_buffer_size(None);
+    t.max_idle_timeout(Some(
+        quinn::IdleTimeout::try_from(IDLE_TIMEOUT).expect("45 s fits a QUIC idle timeout"),
+    ));
+    Arc::new(t)
+}
+
+/// Server side of a pairing endpoint (PROTOCOL.md §12.1): ALPN
+/// `windconnect-pair/1` only, a client certificate required (any Ed25519
+/// key), and every handshake a full one: no session tickets, no session
+/// cache, no 0-RTT. Shares nothing with the main endpoint's TLS.
+pub(crate) fn pairing_server_config(
+    identity: &DeviceIdentity,
+) -> Result<quinn::ServerConfig, EndpointError> {
+    let provider = Arc::new(rustls::crypto::ring::default_provider());
+    let verifier = Arc::new(PinnedVerifier {
+        trust: Arc::new(AnyKey),
+        expected: None,
+    });
+    let key = identity
+        .private_key_der()
+        .map_err(EndpointError::Identity)?;
+    let mut tls = rustls::ServerConfig::builder_with_provider(provider)
+        .with_protocol_versions(&[&rustls::version::TLS13])
+        .map_err(EndpointError::Tls)?
+        .with_client_cert_verifier(verifier)
+        .with_single_cert(vec![identity.certificate_der()], key)
+        .map_err(EndpointError::Tls)?;
+    tls.alpn_protocols = vec![PAIR_ALPN.to_vec()];
+    tls.max_early_data_size = 0;
+    tls.send_tls13_tickets = 0;
+    tls.session_storage = Arc::new(rustls::server::NoServerSessionStorage {});
+    let quic = QuicServerConfig::try_from(tls)
+        .map_err(|e| EndpointError::Tls(rustls::Error::General(e.to_string())))?;
+    let mut server = quinn::ServerConfig::with_crypto(Arc::new(quic));
+    server.transport_config(pairing_transport());
+    server.migration(false);
+    Ok(server)
+}
+
+/// Client side of a pairing connection: our device certificate, the
+/// server's key checked against `expected` when the pairing link named it
+/// (any Ed25519 key otherwise), no resumption and no early data.
+pub(crate) fn pairing_client_config(
+    identity: &DeviceIdentity,
+    expected: Option<PublicKey>,
+) -> Result<quinn::ClientConfig, EndpointError> {
+    let provider = Arc::new(rustls::crypto::ring::default_provider());
+    let verifier = Arc::new(PinnedVerifier {
+        trust: Arc::new(AnyKey),
+        expected,
+    });
+    let key = identity
+        .private_key_der()
+        .map_err(EndpointError::Identity)?;
+    let mut tls = rustls::ClientConfig::builder_with_provider(provider)
+        .with_protocol_versions(&[&rustls::version::TLS13])
+        .map_err(EndpointError::Tls)?
+        .dangerous()
+        .with_custom_certificate_verifier(verifier)
+        .with_client_auth_cert(vec![identity.certificate_der()], key)
+        .map_err(EndpointError::Tls)?;
+    tls.alpn_protocols = vec![PAIR_ALPN.to_vec()];
+    tls.resumption = rustls::client::Resumption::disabled();
+    tls.enable_early_data = false;
+    let quic = QuicClientConfig::try_from(tls)
+        .map_err(|e| EndpointError::Tls(rustls::Error::General(e.to_string())))?;
+    let mut config = quinn::ClientConfig::new(Arc::new(quic));
+    config.transport_config(pairing_transport());
+    Ok(config)
+}
+
 /// A QUIC connection to a device whose key is pinned.
 #[derive(Debug, Clone)]
 pub struct Connection {
@@ -385,11 +484,7 @@ impl Connection {
     /// TLS session skips the certificate verifier, so a key unpinned since
     /// the ticket was issued is caught here (closed with `UNTRUSTED_PEER`).
     fn from_quinn(inner: quinn::Connection, trust: &dyn PeerTrust) -> Result<Self, ConnectError> {
-        let peer = inner
-            .peer_identity()
-            .and_then(|id| id.downcast::<Vec<CertificateDer<'static>>>().ok())
-            .and_then(|certs| certs.first().and_then(certificate_key))
-            .ok_or(ConnectError::NoPeerKey)?;
+        let peer = handshake_peer_key(&inner).ok_or(ConnectError::NoPeerKey)?;
         if !trust.is_trusted(&peer) {
             inner.close(
                 quinn::VarInt::from_u32(ErrorCode::UntrustedPeer.code() as u32),

@@ -36,8 +36,8 @@ QUIC v1 (RFC 9000) + TLS 1.3, ALPN "windconnect/1"
 - ALPN: `windconnect/1`, gdzie `1` to **główna** wersja protokołu (sekcja 5).
   Ustanowienie połączenia bez zgodnego ALPN kończy się alertem TLS
   `no_application_protocol`.
-- ALPN `windconnect-pair/1` jest zarezerwowany dla protokołu parowania (WC-19)
-  i nie jest opisany tutaj.
+- ALPN `windconnect-pair/1` należy do protokołu parowania (sekcja 12), na
+  osobnym endpoincie; główny endpoint go nie przyjmuje.
 - Uwierzytelnienie jest wzajemne (mTLS): każda strona przedstawia certyfikat
   self-signed z kluczem Ed25519 urządzenia (WC-07). Strona MUSI zaakceptować
   certyfikat drugiej strony wyłącznie wtedy, gdy jego klucz publiczny jest
@@ -992,3 +992,236 @@ ten strumień (`STOP_SENDING` po stronie odbiorcy), nie połączenie.
 
 Przykłady są wektorami testowymi kodera ramek (WC-06): koder MUSI
 produkować dokładnie te bajty, a dekoder odtwarzać z nich te wiadomości.
+
+## 12. Parowanie (`windconnect-pair/1`, WC-19)
+
+Parowanie to jedyna chwila, w której strona przyjmuje klucz, którego
+jeszcze nie przypięła. Po udanym parowaniu obie strony zapisują i
+przypinają klucz drugiej, a dalej łączą się wyłącznie przez §2.
+
+Dwie ścieżki:
+
+- **QR**: urządzenie z ekranem (zwykle PC) pokazuje kod QR z linkiem
+  (§12.4), który niesie jego klucz i jednorazowy sekret 128 bit. Drugie
+  urządzenie dowodzi znajomości sekretu (§12.5).
+- **SAS**: bez aparatu. Obie strony pokazują ten sam 6-cyfrowy kod, a
+  ludzie potwierdzają, że kody się zgadzają (§12.6).
+
+Strona pokazująca QR albo czekająca na porównanie kodu to **serwer
+parowania**, a druga to **klient**.
+
+### 12.1 Transport
+
+1. Serwer parowania nasłuchuje na **osobnym** endpoincie QUIC (port
+   efemeryczny, ogłaszany w linku albo przez mDNS, §12.4), z ALPN
+   wyłącznie `windconnect-pair/1`. Główny endpoint (§2) nigdy nie przyjmuje
+   tego ALPN i nadal odrzuca nieprzypięte klucze w uzgadnianiu TLS.
+2. TLS 1.3 z wzajemnym uwierzytelnieniem, jak w §2: każda strona
+   przedstawia certyfikat urządzenia z kluczem Ed25519, a podpisy
+   uzgadniania są wyłącznie Ed25519. Klient bez certyfikatu zostaje
+   odrzucony w uzgadnianiu TLS. Serwer parowania przyjmuje dowolny klucz
+   Ed25519. Klient w ścieżce QR przyjmuje wyłącznie klucz z linku i
+   odrzuca każdy inny w TLS (alert `access_denied`); w ścieżce SAS
+   przyjmuje dowolny klucz.
+3. **Klucze tylko z uzgadniania.** `K_s` (serwera) i `K_c` (klienta) w
+   każdym wzorze niżej oraz w zapisie sparowanego urządzenia to klucze z
+   certyfikatów zweryfikowanych w **tym** połączeniu. Żadna wiadomość
+   parowania nie niesie klucza.
+4. Połączenie parowania to zawsze **pełne** uzgadnianie 1-RTT: serwer nie
+   wydaje biletów sesji i nie prowadzi pamięci sesji, klient nie oferuje
+   wznowienia, a 0-RTT jest zabronione w obie strony. Konfiguracja TLS
+   endpointu parowania nie jest współdzielona z głównym.
+5. Sesję TLS wiąże wartość eksportera (RFC 8446 §7.5):
+   `E = TLS-Exporter("EXPORTER-windconnect-pair", "", 32)`. Obie strony
+   liczą ją po uzgadnianiu; dwie różne sesje TLS (np. po obu stronach
+   pośrednika) mają różne `E`.
+6. Klient otwiera dokładnie jeden strumień bidi. Strumień **nie** ma
+   nagłówka z §3 (protokół wyznacza ALPN); od razu niesie ramki §4.
+   Endpoint parowania nie przyjmuje strumieni uni ani datagramów.
+
+### 12.2 Okno parowania
+
+Serwer odpowiada tylko wtedy, gdy ma otwarte **okno**: QR (z nowym
+sekretem) albo SAS. Otwarcie nowego okna zamyka poprzednie.
+
+1. Okno trwa najwyżej 5 min. Po upływie czasu zamyka się samo, a sekret
+   jest kasowany od razu, bez czekania na połączenie.
+2. Okno obsługuje **jedną próbę naraz**. Udana próba zamyka okno, a sekret
+   jest zużyty: ten sam link nie zadziała drugi raz, także dla tego samego
+   klienta.
+3. **Nieudaną próbą** jest każde zakończenie po uzgadnianiu TLS bez
+   sukcesu: zły dowód MAC, commit niezgodny z ujawnieniem, wiadomość poza
+   kolejnością lub zły tryb, zła lub za duża ramka, rozłączenie albo reset
+   przed wynikiem, upływ limitu czasu kroku (10 s) oraz odrzucony lub
+   nierozstrzygnięty kod SAS (60 s na decyzję). Po **3** nieudanych
+   próbach okno się zamyka, sekret jest kasowany, a kolejne połączenia
+   dostają `RATE_LIMITED` do otwarcia nowego okna.
+4. Połączenie, które przychodzi, gdy trwa inna próba, dostaje
+   `RATE_LIMITED` i nie liczy się jako próba.
+5. Stan okna serwer sprawdza **przed** odczytaniem jakiejkolwiek ramki i
+   przed jakimkolwiek obliczeniem poza TLS: brak okna lub okno wygasłe to
+   `GOING_AWAY`, okno zablokowane lub zajęte to `RATE_LIMITED`.
+
+Uzgadnianie TLS nie liczy się jako próba (nieudane uzgadnianie nie
+dochodzi do okna). Napastnik w sieci lokalnej może więc najwyżej zamknąć
+okno trzema próbami; aplikacja pokazuje to i pozwala otworzyć nowe.
+
+### 12.3 Wiadomości
+
+Ramki jak w §4 (długość, potem CBOR `[type, body]`), z limitem
+**1 024 B** ładunku. Dłuższa ramka to `FRAME_TOO_LARGE`, ramka o długości
+0 to `MALFORMED_FRAME`; obie strona odrzuca po samej długości, przed
+buforowaniem. Pola nieznane są pomijane (§4.3); znane muszą mieć swój typ.
+
+| typ | nazwa | kierunek | pola |
+|---|---|---|---|
+| 0 | `PairHello` | klient → serwer | `0`: tryb (`0` QR, `1` SAS), `1`: nazwa (opcjonalnie), `2`: dowód (32 B) |
+| 1 | `PairNonce` | serwer → klient (SAS) | `0`: `N_s` (32 B), `1`: nazwa (opcjonalnie) |
+| 2 | `PairReveal` | klient → serwer (SAS) | `0`: `N_c` (32 B) |
+| 3 | `PairResult` | serwer → klient (QR) | `0`: `mac_s` (32 B), `1`: nazwa (opcjonalnie) |
+| 4 | `PairConfirm` | obie strony (SAS) | `0`: zgoda (bool) |
+
+**Nazwa urządzenia** służy tylko do wyświetlania. Ma najwyżej 64 B UTF-8
+(dłuższa to `MALFORMED_FRAME`). Przed pokazaniem i zapisem strona usuwa z
+niej znaki sterujące (kategoria Cc) oraz znaki zmieniające kierunek tekstu
+(U+061C, U+200E, U+200F, U+202A–U+202E, U+2066–U+2069), a następnie
+przycina białe znaki. Pusta nazwa liczy się jako brak nazwy. Te same
+zasady dotyczą nazwy w linku (§12.4).
+
+Przykłady:
+
+```text
+PairHello QR, nazwa "Pixel 9", dowód 11×32:
+31 82 00 a3 00 00 01 67 50 69 78 65 6c 20 39 02 58 20 11…11
+
+PairNonce N_s 22×32, nazwa "PC":
+2a 82 01 a2 00 58 20 22…22 01 62 50 43
+
+PairReveal N_c 33×32:   26 82 02 a1 00 58 20 33…33
+PairResult mac 44×32:   26 82 03 a1 00 58 20 44…44
+PairConfirm true:       05 82 04 a1 00 f5
+```
+
+### 12.4 Link parowania (QR)
+
+```text
+windconnect:pair?v=1&k=<K_s>&s=<sekret>&a=<host:port>[&a=…][&n=<nazwa>]
+```
+
+- `v`: wersja linku, `1`.
+- `k`: klucz publiczny serwera (32 B), base64url bez dopełnienia.
+- `s`: sekret (16 B z kryptograficznego generatora), base64url bez
+  dopełnienia.
+- `a`: adres endpointu parowania, 1–8 razy, w postaci `1.2.3.4:5` albo
+  `[fe80::1]:5`, z kodowaniem procentowym.
+- `n`: nazwa serwera, z kodowaniem procentowym (§12.3).
+
+Odbiorca odrzuca link dłuższy niż 1 024 znaki, z inną wersją, bez `k`,
+`s` lub `a`, z powtórzonym parametrem innym niż `a`, z niekanonicznym
+base64url albo z kluczem, który nie jest punktem Ed25519. Nieznane
+parametry pomija. Link to sekret: aplikacja nie zapisuje go ani nie
+loguje.
+
+Ścieżka SAS nie ma linku. Serwer z otwartym oknem SAS ogłasza port
+endpointu parowania w mDNS (§2.0) w polu TXT `pair=<port>` i usuwa je po
+zamknięciu okna (ogłaszanie wdraża WC-27; do tego czasu adres podaje
+aplikacja). Ogłoszenie jest niezaufaną wskazówką, jak całe mDNS.
+
+### 12.5 Ścieżka QR
+
+```text
+mac_c = HMAC-SHA256(s, "wc-pair-v1 client" ‖ K_s ‖ K_c ‖ E)
+mac_s = HMAC-SHA256(s, "wc-pair-v1 server" ‖ K_s ‖ K_c ‖ E)
+```
+
+1. Klient łączy się (TLS sprawdza `K_s` z linku) i wysyła
+   `PairHello {0: 0, 1: nazwa, 2: mac_c}`.
+2. Serwer sprawdza `mac_c` w czasie stałym. Jeśli MAC jest zły: zamyka
+   połączenie kodem `UNTRUSTED_PEER` i liczy nieudaną próbę. Jeśli jest
+   dobry: zamyka okno (sekret zużyty), zapisuje i przypina `K_c`, po czym
+   wysyła `PairResult {0: mac_s, 1: nazwa}`.
+3. Klient sprawdza `mac_s` w czasie stałym (serwer też zna sekret),
+   zapisuje i przypina `K_s`, kończy strumień i zamyka połączenie kodem
+   `NO_ERROR`. Zły `mac_s`: zamknięcie kodem `UNTRUSTED_PEER`, nic nie
+   jest zapisane.
+
+Bez sekretu napastnik nie policzy `mac_c`. MAC wiąże `E`, więc dowód z
+innej sesji TLS (przekaźnik) nie pasuje. MAC wiąże też `K_c` z
+uzgadniania, więc nie da się dowodu jednego klienta użyć dla innego
+klucza. Podszycie się pod serwer kończy się już w TLS (§12.1, punkt 2).
+
+### 12.6 Ścieżka SAS
+
+```text
+C   = SHA-256("wc-pair-v1 commit" ‖ K_c ‖ K_s ‖ N_c)
+SAS = be_u32(SHA-256("wc-pair-v1 sas" ‖ E ‖ K_c ‖ K_s ‖ N_c ‖ N_s)[0..4]) mod 10^6
+```
+
+1. Klient losuje `N_c` (32 B) i wysyła `PairHello {0: 1, 1: nazwa, 2: C}`.
+2. Serwer losuje `N_s` (32 B) i dopiero wtedy wysyła
+   `PairNonce {0: N_s, 1: nazwa}`.
+3. Klient wysyła `PairReveal {0: N_c}` dopiero po otrzymaniu `N_s`. Serwer
+   sprawdza `C`; niezgodność to `PROTOCOL_VIOLATION` i nieudana próba.
+4. Obie strony liczą `SAS` i pokazują go jako sześć cyfr w dwóch grupach
+   (`020 627`) razem z nazwą drugiej strony.
+5. Każda strona wysyła `PairConfirm {0: zgoda}`, gdy jej użytkownik
+   zdecyduje. Odrzucenie wysyła `false` i zamyka połączenie kodem
+   `CANCELLED`, a druga strona traktuje takie zamknięcie jak odrzucenie.
+   Strona zapisuje i przypina klucz drugiej tylko wtedy, gdy zaakceptował
+   jej użytkownik **i** druga strona przysłała `true`.
+
+Kolejność jest wymuszona: wiadomość poza nią (np. `PairReveal` przed
+`PairHello`, `PairConfirm` w miejscu `PairReveal`, druga `PairNonce`) to
+`PROTOCOL_VIOLATION`. Napastnik pośrodku musi ustalić `N_c` (commitem)
+albo `N_s` (wysyłając je), zanim pozna wartość drugiej strony, więc nie
+dopasuje kodów po obu stronach inaczej niż z szansą 1 na 10^6 na próbę.
+Limit prób (§12.2) ogranicza liczbę podejść. Bez commitu napastnik mógłby
+po swojej stronie offline zmieniać udział klucza TLS, aż kody się zgodzą.
+
+### 12.7 Wektory
+
+Klucze to klucze publiczne Ed25519 z kluczy prywatnych `01×32`
+(`K_s`) i `02×32` (`K_c`); `s = 11×16`, `E = 33×32`, `N_c = 44×32`,
+`N_s = 55×32`.
+
+| wartość | wynik |
+|---|---|
+| `mac_c` | `34061136437d946a87b158b60bfb316f361cd3ad9ea721ef346fa3cf4dc67f6f` |
+| `mac_s` | `b434849080e57e61e837b556759352bf6d34d0e7d67f157a930f654fff8a37b3` |
+| `C` | `649b9a0ba332e1b048f68641303bd9b699ada816d3079976c542d7caf4edac10` |
+| `SAS` | `020 627` |
+
+### 12.8 Zapis sparowanych urządzeń
+
+Każda strona zapisuje sparowane urządzenie w pliku w folderze klucza
+tożsamości (Windows: `%LOCALAPPDATA%\WindConnect\paired.txt`; w Unix prawa
+`0600`). Do pliku tylko się dopisuje, jednym zapisem z synchronizacją,
+rekord `\n<klucz hex> <sekundy Unix>[ <nazwa z kodowaniem procentowym>]`.
+Każdy rekord **zaczyna się** od znaku nowej linii, więc rekord urwany przez
+awarię zostaje sam w swojej linii, a następny zaczyna się czysto. Dwa
+procesy dopisujące naraz nie gubią swoich rekordów. Późniejszy rekord
+tego samego klucza zmienia nazwę i czas. Odczyt pomija linie, których nie
+da się odczytać, zgłasza je i nigdy nie przepisuje pliku. Usuwanie i
+porządkowanie należą do listy urządzeń (WC-28).
+
+Serwer zapisuje klienta w kroku 2 (QR) albo po obu zgodach (SAS), zanim
+wyśle wynik. Jeśli połączenie zerwie się później, serwer ma zapisany klucz,
+a klient nie. Taki klucz nic nie otwiera (klient go nie przypiął), a
+ponowne parowanie lub rozparowanie (WC-28) porządkuje stan.
+
+### 12.9 Kody błędów
+
+Zamknięcie połączenia parowania niesie tylko kod z §10, z pustym powodem.
+Żadna wiadomość nie mówi, który krok zawiódł.
+
+| sytuacja | kod |
+|---|---|
+| brak okna, okno wygasłe | `GOING_AWAY` |
+| okno zablokowane po 3 próbach, trwa inna próba | `RATE_LIMITED` |
+| zły `mac_c` lub `mac_s` | `UNTRUSTED_PEER` |
+| zły tryb, kolejność, commit | `PROTOCOL_VIOLATION` |
+| zła lub za duża ramka | `MALFORMED_FRAME`, `FRAME_TOO_LARGE` |
+| brak kroku w 10 s | `HELLO_TIMEOUT` |
+| kod odrzucony, brak decyzji, rozłączenie | `CANCELLED` |
+| błąd zapisu po stronie serwera | `INTERNAL_ERROR` (nie liczy się jako próba) |
+| sukces (zamyka klient) | `NO_ERROR` |

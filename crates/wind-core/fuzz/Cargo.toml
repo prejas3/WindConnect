@@ -36,3 +36,24 @@ path = "fuzz_targets/cbor.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "pair_message"
+path = "fuzz_targets/pair_message.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "pair_uri"
+path = "fuzz_targets/pair_uri.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "paired_file"
+path = "fuzz_targets/paired_file.rs"
+test = false
+doc = false
+bench = false
