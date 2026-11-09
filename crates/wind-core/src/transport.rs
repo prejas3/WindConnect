@@ -39,6 +39,13 @@ pub const KEEP_ALIVE_INTERVAL: Duration = Duration::from_secs(15);
 pub const IDLE_TIMEOUT: Duration = Duration::from_secs(45);
 /// One reconnection attempt (`Session::reconnect`) gives up after this.
 pub const CONNECT_ATTEMPT_TIMEOUT: Duration = Duration::from_secs(3);
+/// The peer's uni streams this side takes at once (`initial_max_streams_uni`,
+/// PROTOCOL.md §3.1 rule 5). A stream counts until it is handled: read to
+/// its end with its messages handed over, reset, or stopped; only then does
+/// QUIC grant the peer a new one (`MAX_STREAMS`). A peer over the limit
+/// waits; nothing is refused or lost. Set explicitly so that the spec's
+/// value holds whatever quinn's default becomes.
+pub const MAX_UNI_STREAMS: u32 = 100;
 /// TLS sessions remembered per peer, for resumption and 0-RTT.
 const SESSIONS_PER_PEER: usize = 4;
 
@@ -63,6 +70,7 @@ fn transport_config(options: EndpointOptions) -> Arc<quinn::TransportConfig> {
     if !options.datagrams {
         t.datagram_receive_buffer_size(None);
     }
+    t.max_concurrent_uni_streams(quinn::VarInt::from_u32(MAX_UNI_STREAMS));
     t.keep_alive_interval(Some(KEEP_ALIVE_INTERVAL));
     t.max_idle_timeout(Some(
         quinn::IdleTimeout::try_from(IDLE_TIMEOUT).expect("45 s fits a QUIC idle timeout"),
