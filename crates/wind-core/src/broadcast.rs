@@ -147,7 +147,15 @@ impl BroadcastDiscovery {
         let mut bytes = [0; PACKET_SIZE + 1];
         let (length, source) = match self.socket.recv_from(&mut bytes).await {
             Ok(received) => received,
-            Err(error) if cfg!(windows) && error.raw_os_error() == Some(10040) => return Ok(None),
+            // Windows reports, on the next receive, two things that aren't
+            // this socket's failure: 10040 (WSAEMSGSIZE) for an oversized
+            // datagram, and 10054 (WSAECONNRESET) for an ICMP "port
+            // unreachable" caused by an earlier send to a peer that is gone
+            // (WN-85). Both are skipped; treating 10054 as an error would
+            // switch broadcast discovery off until the next network change.
+            Err(error) if cfg!(windows) && matches!(error.raw_os_error(), Some(10040 | 10054)) => {
+                return Ok(None)
+            }
             Err(error) => return Err(error),
         };
         let SocketAddr::V4(source) = source else {

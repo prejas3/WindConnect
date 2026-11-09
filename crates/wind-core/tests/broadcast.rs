@@ -234,3 +234,37 @@ async fn oversized_or_invalid_datagrams_do_not_disable_receiver() {
     assert_eq!(received, packet);
     assert_eq!(*source.ip(), Ipv4Addr::new(127, 0, 0, 2));
 }
+
+/// A query to a peer that is gone (nobody on its port) must not break the
+/// sender's receiver: on Windows the ICMP "port unreachable" comes back as
+/// WSAECONNRESET on the next receive (WN-85).
+#[tokio::test]
+async fn sending_to_a_gone_peer_does_not_disable_receiving() {
+    // One discovery port, as on a real network; three loopback addresses:
+    // A, B, and a peer that is gone (nobody bound there).
+    let port = free_port();
+    let at = |last: u8| SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, last), port);
+    let cfg = |listen: SocketAddrV4, to: SocketAddrV4| BroadcastConfig {
+        listen,
+        destinations: vec![to],
+        interval: Duration::from_secs(30),
+        expiry: Duration::from_secs(60),
+    };
+    let a = BroadcastDiscovery::bind([1; 32], cfg(at(1), at(3))).unwrap();
+    a.query(47820).await.unwrap();
+    // The bad news arrives first; it must be skipped, not returned.
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    let b = BroadcastDiscovery::bind([2; 32], cfg(at(2), at(1))).unwrap();
+    b.query(47821).await.unwrap();
+    let got = tokio::time::timeout(Duration::from_secs(2), async {
+        loop {
+            if let Some(found) = a.receive().await.expect("receiver still works") {
+                break found;
+            }
+        }
+    })
+    .await
+    .expect("the later query arrives");
+    assert_eq!(got.0.fingerprint, [2; 32]);
+    assert_eq!(got.0.port, 47821);
+}

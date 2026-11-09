@@ -30,6 +30,11 @@ jobs:
         run: cargo +stable fmt --all -- --check
       - name: Test core and UniFFI
         run: cargo +stable test --locked -p wind-core -p wind-ffi -p windctl --all-features
+      # The latency budgets measured under a saturating transfer (WC-11,
+      # WC-13) run alone, one test at a time, so that only the code is
+      # measured, not other tests loading the machine (WN-85).
+      - name: Latency budgets under load
+        run: cargo +stable test --locked -p wind-core --test latency -- --ignored --test-threads=1
       - name: Lint core and UniFFI
         run: cargo +stable clippy --locked -p wind-core -p wind-ffi -p windctl --all-targets --all-features -- -D warnings
       - name: Build core and UniFFI

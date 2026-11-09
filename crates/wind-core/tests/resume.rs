@@ -245,10 +245,12 @@ async fn resumption_does_not_bypass_unpinning() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn reconnect_backs_off_and_wakes_on_network_change() {
     let client = Device::new();
-    // A port with nobody on it for now.
+    // A port with nobody answering on it for now. The socket stays bound
+    // until the server takes the port, so that no other test running in
+    // parallel can be given it meanwhile (WN-85): a stranger's endpoint
+    // there would refuse our key and end the reconnect early.
     let probe = std::net::UdpSocket::bind(LOCALHOST).unwrap();
     let addr = probe.local_addr().unwrap();
-    drop(probe);
     let server_id = DeviceIdentity::generate().unwrap();
     client.pins.pin(server_id.public_key());
 
@@ -279,6 +281,7 @@ async fn reconnect_backs_off_and_wakes_on_network_change() {
     // The network is back: the peer listens again, and we are told.
     let server_pins = Arc::new(PinnedKeys::new());
     server_pins.pin(client.key());
+    drop(probe);
     let server = Device {
         endpoint: Endpoint::bind(addr, &server_id, server_pins.clone()).unwrap(),
         id: server_id,
@@ -528,11 +531,19 @@ async fn refused_0rtt_falls_back_to_a_working_session() {
     let endpoint = restarted.expect("address still taken");
     let ep = endpoint.clone();
     let served = tokio::spawn(async move {
-        let conn = ep.accept().await.unwrap().unwrap();
-        let mut router = Router::new();
-        let clip = router.route(Channel::Clipboard, 1, 8);
-        let (s, _e) = Session::accept(conn, info("server"), router).await.unwrap();
-        (s, clip)
+        // The dropped probe's handshake packets may still arrive once the
+        // peer listens again, as a connection that then dies (WN-85): skip
+        // whatever fails until the real session is up.
+        loop {
+            let Ok(conn) = ep.accept().await.expect("endpoint open") else {
+                continue;
+            };
+            let mut router = Router::new();
+            let clip = router.route(Channel::Clipboard, 1, 8);
+            if let Ok((s, _e)) = Session::accept(conn, info("server"), router).await {
+                break (s, clip);
+            }
+        }
     });
 
     let (session, _e) = Session::dial(&client.endpoint, addr, key, info("client"), Router::new())
@@ -555,9 +566,9 @@ async fn refused_0rtt_falls_back_to_a_working_session() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn network_change_during_an_attempt_retries_at_once() {
     let client = Device::new();
+    // Held until the server takes the port (see the test above).
     let probe = std::net::UdpSocket::bind(LOCALHOST).unwrap();
     let addr = probe.local_addr().unwrap();
-    drop(probe);
     let server_id = DeviceIdentity::generate().unwrap();
     client.pins.pin(server_id.public_key());
 
@@ -584,6 +595,7 @@ async fn network_change_during_an_attempt_retries_at_once() {
     tokio::time::sleep(Duration::from_millis(100)).await;
     let server_pins = Arc::new(PinnedKeys::new());
     server_pins.pin(client.key());
+    drop(probe);
     let server = Device {
         endpoint: Endpoint::bind(addr, &server_id, server_pins.clone()).unwrap(),
         id: server_id,
