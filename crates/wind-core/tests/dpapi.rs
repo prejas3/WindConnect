@@ -6,9 +6,12 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Barrier};
+use std::time::{Duration, Instant};
 
-use wind_core::identity::dpapi::{self, DpapiKeyStore, FORMAT_DPAPI_USER, MAGIC};
-use wind_core::identity::{DeviceIdentity, FileKeyStore, PublicKey};
+use wind_core::identity::dpapi::{
+    self, DpapiKeyStore, FORMAT_DPAPI_USER, MAGIC, MIGRATION_PAUSES, MIGRATION_ROUNDS,
+};
+use wind_core::identity::{DeviceIdentity, FileKeyStore, IdentityError, PublicKey, RETRY_DELAYS};
 
 fn header_ok(bytes: &[u8]) -> bool {
     bytes.starts_with(MAGIC) && bytes.get(MAGIC.len()) == Some(&FORMAT_DPAPI_USER)
@@ -92,6 +95,125 @@ fn concurrent_migration_converges_on_the_old_key() {
         assert!(header_ok(&fs::read(&path).unwrap()));
         assert_eq!(only_file(dir.path()), vec!["identity.key".to_string()]);
     }
+}
+
+/// Opens `path` for reading the way a virus scanner does: others may read
+/// it, but not write, rename or delete it, until the handle is dropped.
+fn hold_without_share_delete(path: &Path) -> fs::File {
+    use std::os::windows::fs::OpenOptionsExt;
+    const FILE_SHARE_READ: u32 = 0x1;
+    fs::OpenOptions::new()
+        .read(true)
+        .share_mode(FILE_SHARE_READ)
+        .open(path)
+        .unwrap()
+}
+
+/// Waits (up to 30 s) until nobody holds `path` open without
+/// `FILE_SHARE_DELETE`: until it can be opened for deletion.
+fn wait_until_replaceable(path: &Path) {
+    use std::os::windows::fs::OpenOptionsExt;
+    const DELETE: u32 = 0x0001_0000;
+    const SHARE_ALL: u32 = 0x7;
+    let started = Instant::now();
+    while fs::OpenOptions::new()
+        .access_mode(DELETE)
+        .share_mode(SHARE_ALL)
+        .open(path)
+        .is_err()
+    {
+        assert!(
+            started.elapsed() < Duration::from_secs(30),
+            "{} stayed locked",
+            path.display()
+        );
+        std::thread::sleep(Duration::from_millis(50));
+    }
+}
+
+/// A plain key file, as FileKeyStore wrote it before WC-08.
+fn plain_key_file(dir: &Path) -> (PathBuf, PublicKey, Vec<u8>) {
+    let path = dir.join("identity.key");
+    let key = DeviceIdentity::load_or_create(&FileKeyStore::new(&path))
+        .unwrap()
+        .public_key();
+    let plain = fs::read(&path).unwrap();
+    (path, key, plain)
+}
+
+#[test]
+fn migration_waits_out_a_brief_lock() {
+    let dir = tempfile::tempdir().unwrap();
+    let (path, old, _) = plain_key_file(dir.path());
+
+    let held = hold_without_share_delete(&path);
+    // The lock is real: a plain rename over the file is refused now.
+    let probe = dir.path().join("probe.tmp");
+    fs::write(&probe, b"x").unwrap();
+    let refused = fs::rename(&probe, &path).unwrap_err();
+    assert_eq!(refused.kind(), std::io::ErrorKind::PermissionDenied);
+    fs::remove_file(&probe).unwrap();
+
+    let started = Instant::now();
+    let release = std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(100));
+        drop(held);
+    });
+    let migrated = DeviceIdentity::load_or_create(&DpapiKeyStore::new(&path)).unwrap();
+    release.join().unwrap();
+
+    assert!(
+        started.elapsed() >= Duration::from_millis(100),
+        "it waited for the lock"
+    );
+    assert_eq!(migrated.public_key(), old);
+    assert!(header_ok(&fs::read(&path).unwrap()));
+    assert_eq!(only_file(dir.path()), vec!["identity.key".to_string()]);
+}
+
+#[test]
+fn migration_gives_up_on_a_lasting_lock_and_keeps_the_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let (path, old, plain) = plain_key_file(dir.path());
+
+    let held = hold_without_share_delete(&path);
+    let started = Instant::now();
+    let err = DeviceIdentity::load_or_create(&DpapiKeyStore::new(&path)).unwrap_err();
+    let took = started.elapsed();
+    drop(held);
+
+    match &err {
+        IdentityError::Io(e) => assert_eq!(e.kind(), std::io::ErrorKind::PermissionDenied),
+        other => panic!("expected an I/O error, got {other}"),
+    }
+    let per_round: Duration = RETRY_DELAYS.iter().sum();
+    let pauses: Duration = MIGRATION_PAUSES.iter().sum();
+    assert!(
+        took >= per_round * MIGRATION_ROUNDS as u32 + pauses,
+        "every round and attempt was made ({took:?})"
+    );
+    assert_eq!(fs::read(&path).unwrap(), plain, "file untouched");
+    assert_eq!(only_file(dir.path()), vec!["identity.key".to_string()]);
+
+    // Once the lock is gone, a later start migrates it. After this many
+    // refused renames Microsoft Defender sometimes keeps inspecting the file
+    // for seconds more (seen in about 1 run in 75 under load, past a 5 s
+    // budget too), so this allows a few starts, each once the file is free;
+    // every failed one must leave the file as it was.
+    let mut starts = 0;
+    let migrated = loop {
+        starts += 1;
+        wait_until_replaceable(&path);
+        match DeviceIdentity::load_or_create(&DpapiKeyStore::new(&path)) {
+            Ok(m) => break m,
+            Err(e) if starts < 5 => {
+                assert_eq!(fs::read(&path).unwrap(), plain, "start {starts}: {e}");
+            }
+            Err(e) => panic!("{starts} starts failed, the last with {e}"),
+        }
+    };
+    assert_eq!(migrated.public_key(), old);
+    assert!(header_ok(&fs::read(&path).unwrap()));
 }
 
 #[test]
