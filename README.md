@@ -13,6 +13,22 @@ sesję protokołu ze strumieniami kanałów i routerem do modułów
 (`wind_core::session`) oraz kanał wejścia z datagramami QUIC
 (`wind_core::input`).
 
+Odkrywanie LAN udostępnia `wind_core::discovery`: `Discovery::start` przyjmuje
+klucz publiczny urządzenia i rzeczywisty port z `Endpoint::local_addr()`.
+`next().await` zwraca rozwiązane adresy lub usunięcie usługi; `monitor()`
+udostępnia błędy demona. Właściciel usuwa `Discovery` przy wyłączeniu usługi
+(Drop wysyła goodbye i zatrzymuje wątek; może czekać do 2 s).
+
+Do ręcznego pomiaru na dwóch komputerach w tej samej sieci uruchom jednocześnie
+`cargo run --locked -p wind-core --example discover`. Przykład wiąże port QUIC,
+ogłasza tymczasową tożsamość, wypisuje zdarzenia i kończy po bezczynności 10 s
+lub po 30 s. Zapora musi przepuszczać multicast mDNS UDP 5353.
+Automatyczny lokalny pomiar dwóch instancji:
+`cargo test --locked -p wind-core --test discovery -- --ignored --nocapture`.
+Test wymaga multicastu i sprawdza wzajemne odkrycie poniżej 1 s; nie zastępuje
+pomiaru na dwóch fizycznych urządzeniach. Klienci aplikacji nie uruchamiają
+jeszcze tego modułu automatycznie.
+
 ## Struktura
 
 ```text
