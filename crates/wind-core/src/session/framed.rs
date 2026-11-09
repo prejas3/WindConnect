@@ -76,6 +76,11 @@ impl FramedRecv {
         self.recv.id()
     }
 
+    /// Payload length of the last frame read.
+    pub fn last_frame_len(&self) -> usize {
+        self.reader.last_frame_len()
+    }
+
     /// The next typed message (`control`, `input`); `None` at FIN. An
     /// unknown type is a non-fatal `FrameError::UnknownMessage`.
     pub async fn next_message(&mut self) -> Result<Option<Message>, RecvError> {

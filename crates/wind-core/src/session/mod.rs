@@ -15,12 +15,14 @@
 //! transfer holds back only its own channel.
 //!
 //! §3.1 rule 5: no stream is refused for how many of a channel are open.
-//! A stream waiting for its turn keeps its place in QUIC's stream limit
-//! ([`MAX_UNI_STREAMS`](crate::transport::MAX_UNI_STREAMS)) until it is read
-//! to its end and its messages are handed to the module, so a sender that
-//! opens streams without finishing them (against rule 1), or a fast one
-//! ahead of a slow module, waits for `MAX_STREAMS`; flow control bounds
-//! what is buffered, and nothing is lost.
+//! Each channel reads its streams ahead of its module, into a buffer of
+//! [`READ_AHEAD_BYTES`] (rule 5.6, WN-81): a finished stream read into it
+//! gives its place in QUIC's shared stream limit
+//! ([`MAX_UNI_STREAMS`](crate::transport::MAX_UNI_STREAMS)) back at once, so
+//! a slow module holds back no other channel while its backlog fits. Past
+//! the buffer, and for a sender that opens streams without finishing them
+//! (against rule 1), streams keep their place and the sender waits for
+//! `MAX_STREAMS`; nothing is lost.
 //!
 //! Reconnecting: [`Session::dial`] sends `Hello` as 0-RTT data when a TLS
 //! session with the peer is remembered; keep-alive, path migration and
@@ -1093,13 +1095,79 @@ fn admits(gate: &watch::Receiver<Gate>, withdrawals: u64) -> bool {
     g.enabled && g.withdrawals == withdrawals
 }
 
-/// Reads one channel's streams one after another, in order, and passes
-/// their messages to the module. A withdrawal (§6, rule 5) stops the
-/// stream being read and every stream queued before it, with `CANCELLED`.
+/// Bytes of one channel's messages read ahead of its module (§3.1, rule
+/// 5.6): finished streams are read into memory up to this budget, so they
+/// give their place in the shared stream limit back while the module is
+/// slow, and other channels keep flowing.
+pub const READ_AHEAD_BYTES: usize = 1024 * 1024;
+/// What each read-ahead message costs on top of its payload, so that many
+/// tiny messages are bounded too.
+const READ_AHEAD_OVERHEAD: usize = 64;
+
+/// A message read ahead of the module, holding its share of the budget.
+struct Ahead {
+    message: RawMessage,
+    withdrawals: u64,
+    _budget: tokio::sync::OwnedSemaphorePermit,
+}
+
+/// One channel's receiving side: a reader that takes the channel's streams
+/// in order and reads them ahead, within [`READ_AHEAD_BYTES`], and a
+/// delivery task that hands the messages to the module in the same order.
+/// A finished stream is let go as soon as it is read, so its place in the
+/// shared stream limit returns at once, whatever the module does.
 async fn channel_task(
     channel: Channel,
-    mut streams: mpsc::UnboundedReceiver<Tagged>,
+    streams: mpsc::UnboundedReceiver<Tagged>,
     out: mpsc::Sender<ChannelMessage>,
+    gate: watch::Receiver<Gate>,
+) {
+    let budget = Arc::new(tokio::sync::Semaphore::new(READ_AHEAD_BYTES));
+    let (ahead_tx, ahead_rx) = mpsc::unbounded_channel();
+    tokio::spawn(deliver(channel, ahead_rx, out, gate.clone()));
+    read_ahead(channel, streams, ahead_tx, budget, gate).await;
+}
+
+/// Hands read-ahead messages to the module in order. A message from before
+/// a withdrawal (§6, rule 5) is dropped, also while it waits on a full
+/// module queue.
+async fn deliver(
+    channel: Channel,
+    mut ahead: mpsc::UnboundedReceiver<Ahead>,
+    out: mpsc::Sender<ChannelMessage>,
+    mut gate: watch::Receiver<Gate>,
+) {
+    while let Some(Ahead {
+        message,
+        withdrawals,
+        _budget,
+    }) = ahead.recv().await
+    {
+        if !admits(&gate, withdrawals) {
+            continue;
+        }
+        let msg = ChannelMessage { channel, message };
+        tokio::select! {
+            r = out.send(msg) => {
+                if r.is_err() {
+                    // The module is gone: the reader stops the channel's
+                    // streams when it finds this task gone.
+                    return;
+                }
+            }
+            _ = gate.wait_for(|g| g.withdrawals != withdrawals) => {}
+        }
+    }
+}
+
+/// Reads one channel's streams one after another, in order, into the
+/// read-ahead queue. A withdrawal (§6, rule 5) stops the stream being read
+/// and every stream queued before it, with `CANCELLED`.
+async fn read_ahead(
+    channel: Channel,
+    mut streams: mpsc::UnboundedReceiver<Tagged>,
+    ahead: mpsc::UnboundedSender<Ahead>,
+    budget: Arc<tokio::sync::Semaphore>,
     mut gate: watch::Receiver<Gate>,
 ) {
     while let Some(Tagged {
@@ -1127,14 +1195,30 @@ async fn channel_task(
             };
             match next {
                 Ok(Some(message)) => {
-                    let msg = ChannelMessage { channel, message };
-                    let delivered = tokio::select! {
-                        r = out.send(msg) => r.map_err(|_| ()),
-                        // Withdrawn while the module's queue was full: the
-                        // message is dropped (§6, rule 5).
-                        _ = gate.wait_for(|g| g.withdrawals != withdrawals) => Err(()),
+                    // A message larger than the whole budget (frames go up
+                    // to 1 MiB) waits until the queue is empty, then goes.
+                    let cost =
+                        (recv.last_frame_len() + READ_AHEAD_OVERHEAD).min(READ_AHEAD_BYTES) as u32;
+                    // Out of budget, this stream waits here and keeps its
+                    // place in the stream limit (QUIC flow control holds the
+                    // sender), as before read-ahead.
+                    let permit = tokio::select! {
+                        p = budget.clone().acquire_many_owned(cost) => p,
+                        // Withdrawn while waiting: dropped (§6, rule 5).
+                        _ = gate.wait_for(|g| g.withdrawals != withdrawals) => {
+                            recv.stop(ErrorCode::Cancelled);
+                            break;
+                        }
                     };
-                    if delivered.is_err() || !admits(&gate, withdrawals) {
+                    let Ok(permit) = permit else {
+                        return;
+                    };
+                    let sent = ahead.send(Ahead {
+                        message,
+                        withdrawals,
+                        _budget: permit,
+                    });
+                    if sent.is_err() || !admits(&gate, withdrawals) {
                         // The module is gone, or the channel was withdrawn.
                         recv.stop(ErrorCode::Cancelled);
                         break;
