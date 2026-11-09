@@ -43,6 +43,15 @@ QUIC v1 (RFC 9000) + TLS 1.3, ALPN "windconnect/1"
   certyfikat drugiej strony wyłącznie wtedy, gdy jego klucz publiczny jest
   przypiętym kluczem sparowanego urządzenia (WC-10). Łańcuch, nazwa i daty
   certyfikatu nie są podstawą zaufania.
+- Odmowa następuje w uzgadnianiu TLS, zanim popłyną dane aplikacji: strona
+  odrzucająca kończy je alertem TLS `access_denied` (kod QUIC `0x131`).
+  Podpisy uzgadniania są wyłącznie Ed25519, więc certyfikat z innym kluczem
+  kończy się już brakiem wspólnego schematu podpisu. Klient TLS 1.3 wysyła
+  swój certyfikat w ostatnim locie, więc odrzucony klient może uznać
+  uzgadnianie za zakończone i dopiero potem dostać zamknięcie z tym
+  alertem; serwer takiego połączenia nie przyjmuje. Kod `UNTRUSTED_PEER`
+  (sekcja 10) służy do zamknięcia już zestawionego połączenia, gdy klucz
+  przestał być przypięty (np. rozparowanie).
 - Tożsamością urządzenia jest wyłącznie jego klucz TLS. Pola wiadomości
   (np. nazwa urządzenia w `Hello`) są danymi do wyświetlania, nie dowodem
   tożsamości.
