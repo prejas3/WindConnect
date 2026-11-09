@@ -390,7 +390,12 @@ Zasady:
      `STOP_SENDING` (`CANCELLED`) na jego strumieniach. Druga strona po
      odebraniu `Capabilities` przestaje wysyłać wiadomości tego kanału
      i kończy swój otwarty strumień przez `RESET_STREAM` (`CANCELLED`).
-     Wiadomości w drodze w chwili wycofania przepadają.
+     Wiadomości w drodze w chwili wycofania przepadają. Strumień, który
+     druga strona otworzy, zanim odbierze `Capabilities`, strona wycofująca
+     odrzuca kodem `CAPABILITY_MISSING` (sekcja 3, zasada 3). Strumienia
+     przyjętego przed wycofaniem nie dostarcza już nigdy, także gdy
+     możliwość zostanie ponownie włączona, zanim przyszła jego kolej
+     (sekcja 3.1, zasada 3).
    - **Ponowne włączenie:** druga strona po odebraniu `Capabilities` z tą
      możliwością otwiera **nowy** strumień kanału (sekcja 3.1); zakończony
      wcześniej strumień nie jest wznawiany.
