@@ -3,6 +3,7 @@ package io.github.prejas3.windconnect
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import android.app.Application
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -12,9 +13,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -31,6 +29,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import io.github.prejas3.windconnect.core.ConnectionState
 import io.github.prejas3.windconnect.core.WindCore
+import io.github.prejas3.windconnect.ui.WindApp
+import io.github.prejas3.windconnect.ui.WindButton
+import io.github.prejas3.windconnect.ui.WindField
+import io.github.prejas3.windconnect.ui.ButtonKind
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -46,12 +48,9 @@ import kotlinx.coroutines.sync.withLock
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
         setContent {
-            MaterialTheme {
-                Surface(modifier = Modifier.fillMaxSize()) {
-                    ConnectionScreen()
-                }
-            }
+            WindApp { ConnectionScreen() }
         }
     }
 }
@@ -144,24 +143,23 @@ private fun ConnectionScreen(model: ConnectionViewModel = viewModel()) {
         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Text("WindConnect", style = MaterialTheme.typography.headlineLarge)
         Text("Test połączenia z PC", style = MaterialTheme.typography.titleLarge)
         Text("Odcisk tego urządzenia")
         SelectionContainer { Text(ui.fingerprint) }
         Text("Klucz publiczny Androida — przekaż go do narzędzia testowego na PC")
         SelectionContainer { Text(ui.publicKey, modifier = Modifier.testTag("localKey")) }
-        OutlinedTextField(
-            value = address, onValueChange = { address = it }, label = { Text("Adres PC, np. 192.168.1.10:47820") },
+        WindField(
+            value = address, onValueChange = { address = it }, label = "Adres PC, np. 192.168.1.10:47820",
             modifier = Modifier.fillMaxWidth().testTag("peerAddress"), singleLine = true,
         )
-        OutlinedTextField(
-            value = key, onValueChange = { key = it.trim() }, label = { Text("Zweryfikowany klucz publiczny PC (64 hex)") },
+        WindField(
+            value = key, onValueChange = { key = it.trim() }, label = "Zweryfikowany klucz publiczny PC (64 hex)",
             modifier = Modifier.fillMaxWidth().testTag("peerKey"),
         )
         Text("Porównaj klucz z tym wyświetlonym na PC. To ręczny test zaufania przed wdrożeniem parowania.")
-        Button(onClick = { model.connect(address, key) }, enabled = ui.ready && !ui.busy,
-            modifier = Modifier.testTag("connect")) { Text("Połącz z podanym kluczem") }
-        OutlinedButton(onClick = model::disconnect, enabled = ui.ready && !ui.busy) { Text("Rozłącz") }
+        WindButton("Połącz z podanym kluczem", onClick = { model.connect(address, key) }, enabled = ui.ready && !ui.busy,
+            modifier = Modifier.testTag("connect"))
+        WindButton("Rozłącz", onClick = model::disconnect, enabled = ui.ready && !ui.busy, kind = ButtonKind.Secondary)
         Text(ui.status, modifier = Modifier.testTag("connectionStatus"))
     }
 }

@@ -1,0 +1,8 @@
+DM Sans variable font (unchanged), from the accepted WN-20 mockup.
+Copyright 2014 The DM Sans Project Authors
+https://github.com/googlefonts/dm-fonts
+SIL Open Font License 1.1; full text: DM-Sans-OFL.txt.
+SHA256 res/font/dm_sans.ttf: 8cd08d97e89c24d0aa92edd2f0f4c8ee6195eee9b7c9f154865a58b02f0c1c0d
+
+Icons and UI code: WindConnect contributors, project MIT licence.
+No external UI libraries, photos or remote fonts added by WN-22.

@@ -37,7 +37,7 @@ jobs:
       - name: Lint Android app
         run: ./gradlew --no-daemon :app:lintDebug
       - name: Build debug APK
-        run: ./gradlew --no-daemon :app:assembleDebug
+        run: ./gradlew --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest
       - name: Build reusable core AAR
         run: ./gradlew --no-daemon :wind-core:assembleRelease
       - name: Upload debug APK
