@@ -12,3 +12,4 @@ local.properties
 *.jks
 .DS_Store
 Thumbs.db
+apps/windows/src-tauri/gen/schemas/
