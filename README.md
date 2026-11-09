@@ -5,7 +5,8 @@ Projekt jest na etapie fundamentów: Windows ma szkielet Tauri 2,
 a Android — Kotlin / Jetpack Compose. Protokół jest opisany w
 [PROTOCOL.md](PROTOCOL.md); `wind-core` ma już koder ramek
 (`wind_core::protocol`) i tożsamość urządzenia (`wind_core::identity`:
-klucz Ed25519, certyfikat TLS, odcisk), a połączenia QUIC jeszcze nie.
+klucz Ed25519, certyfikat TLS, odcisk; na Windows klucz chroni DPAPI),
+a połączenia QUIC jeszcze nie.
 
 ## Struktura
 

@@ -22,7 +22,12 @@ use ed25519_dalek::{SigningKey, VerifyingKey};
 use rand_core::OsRng;
 use rustls_pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
 use sha2::{Digest, Sha256};
-use zeroize::Zeroizing;
+use zeroize::{Zeroize, Zeroizing};
+
+#[cfg(windows)]
+pub mod dpapi;
+#[cfg(windows)]
+pub use dpapi::DpapiKeyStore;
 
 /// Subject alternative name in every device certificate. It carries no
 /// trust (PROTOCOL.md §2); it only gives TLS a name to use.
@@ -67,8 +72,8 @@ impl From<io::Error> for IdentityError {
 /// Where the identity key lives between starts.
 ///
 /// The key crosses this boundary as PKCS#8 PEM. [`FileKeyStore`] keeps it
-/// in a file; platform stores (DPAPI on Windows, Android Keystore) plug in
-/// here.
+/// in a plain file; on Windows `DpapiKeyStore` keeps it encrypted for the
+/// user; the Android Keystore plugs in here too.
 pub trait KeyStore {
     /// The stored key, or `None` when nothing has been stored yet.
     fn load(&self) -> io::Result<Option<Zeroizing<String>>>;
@@ -86,7 +91,8 @@ pub trait KeyStore {
 /// a crashed write stays (it can't be told from another writer's) and
 /// blocks nothing. On Unix it is
 /// readable by its owner only; on Windows it relies on the folder's ACL
-/// (the user profile) until DPAPI protection replaces it.
+/// alone, so Windows uses `DpapiKeyStore`, which migrates a file written
+/// here.
 #[derive(Debug, Clone)]
 pub struct FileKeyStore {
     path: PathBuf,
@@ -104,82 +110,123 @@ impl FileKeyStore {
 
 impl KeyStore for FileKeyStore {
     fn load(&self) -> io::Result<Option<Zeroizing<String>>> {
-        match fs::read_to_string(&self.path) {
-            Ok(s) => Ok(Some(Zeroizing::new(s))),
-            Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
-            Err(e) => Err(e),
+        match read_key_file(&self.path)? {
+            None => Ok(None),
+            Some(bytes) => String::from_utf8(bytes.to_vec())
+                .map(|s| Some(Zeroizing::new(s)))
+                .map_err(|e| {
+                    let mut raw = e.into_bytes();
+                    raw.zeroize();
+                    io::Error::new(io::ErrorKind::InvalidData, "identity key is not text")
+                }),
         }
     }
 
     fn store_new(&self, pem: &str) -> io::Result<bool> {
-        let dir = self.dir();
-        fs::create_dir_all(&dir)?;
-        let name = self
-            .path
-            .file_name()
-            .ok_or_else(|| {
-                io::Error::new(io::ErrorKind::InvalidInput, "key path has no file name")
-            })?
-            .to_os_string();
-        let tmp_names = (0..TMP_ATTEMPTS).map(|_| {
-            let mut tmp = name.clone();
-            tmp.push(format!(".{}.tmp", unique_suffix()));
-            dir.join(tmp)
-        });
-        self.store_new_via(pem, tmp_names)
+        write_new_key_file(&self.path, pem.as_bytes())
     }
 }
 
 /// How many fresh temporary names one write tries before giving up.
 const TMP_ATTEMPTS: usize = 8;
 
+#[cfg(test)]
 impl FileKeyStore {
-    fn dir(&self) -> PathBuf {
-        match self.path.parent() {
-            Some(d) if !d.as_os_str().is_empty() => d.to_path_buf(),
-            _ => PathBuf::from("."),
-        }
-    }
-
-    /// Writes `pem` to the first of `tmp_names` it can create exclusively,
-    /// then links it into place. A name that already exists belongs to
-    /// someone else and is left alone.
     fn store_new_via(
         &self,
         pem: &str,
         tmp_names: impl IntoIterator<Item = PathBuf>,
     ) -> io::Result<bool> {
-        let mut tmp = None;
-        for name in tmp_names {
-            match OwnedTempFile::create(name) {
-                Ok(t) => {
-                    tmp = Some(t);
-                    break;
-                }
-                Err(e) if e.kind() == io::ErrorKind::AlreadyExists => continue,
-                Err(e) => return Err(e),
-            }
-        }
-        let mut tmp = tmp.ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::AlreadyExists,
-                "no free temporary name for the identity key",
-            )
-        })?;
-        tmp.write_synced(pem.as_bytes())?;
-        // A hard link fails if the target exists, so a key stored by another
-        // writer in the meantime is never replaced.
-        let stored = match fs::hard_link(&tmp.path, &self.path) {
-            Ok(()) => true,
-            Err(e) if e.kind() == io::ErrorKind::AlreadyExists => false,
-            Err(e) => return Err(e),
-        };
-        drop(tmp);
-        if stored {
-            sync_dir(&self.dir());
-        }
-        Ok(stored)
+        write_new_key_file_via(&self.path, pem.as_bytes(), tmp_names)
     }
+}
+
+/// The folder of a key file (`.` for a bare file name).
+fn parent_dir(path: &Path) -> PathBuf {
+    match path.parent() {
+        Some(d) if !d.as_os_str().is_empty() => d.to_path_buf(),
+        _ => PathBuf::from("."),
+    }
+}
+
+/// A key file's bytes, or `None` when it doesn't exist.
+pub(crate) fn read_key_file(path: &Path) -> io::Result<Option<Zeroizing<Vec<u8>>>> {
+    match fs::read(path) {
+        Ok(b) => Ok(Some(Zeroizing::new(b))),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(e),
+    }
+}
+
+/// Fresh, unique temporary names beside `path`.
+fn tmp_names(path: &Path) -> io::Result<impl Iterator<Item = PathBuf>> {
+    let dir = parent_dir(path);
+    let name = path
+        .file_name()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "key path has no file name"))?
+        .to_os_string();
+    Ok((0..TMP_ATTEMPTS).map(move |_| {
+        let mut tmp = name.clone();
+        tmp.push(format!(".{}.tmp", unique_suffix()));
+        dir.join(tmp)
+    }))
+}
+
+/// Writes `data` to `path` unless it exists: `false`, writing nothing, when
+/// it does. Atomic, and safe against concurrent writers.
+pub(crate) fn write_new_key_file(path: &Path, data: &[u8]) -> io::Result<bool> {
+    fs::create_dir_all(parent_dir(path))?;
+    write_new_key_file_via(path, data, tmp_names(path)?)
+}
+
+/// Replaces `path` with `data` atomically (a format migration): readers see
+/// the old file or the new one, never a mix.
+// Only platform stores migrate formats; none does off Windows yet.
+#[cfg_attr(not(windows), allow(dead_code))]
+pub(crate) fn replace_key_file(path: &Path, data: &[u8]) -> io::Result<()> {
+    let mut tmp = create_first_free(tmp_names(path)?)?;
+    tmp.write_synced(data)?;
+    tmp.persist_over(path)?;
+    sync_dir(&parent_dir(path));
+    Ok(())
+}
+
+fn create_first_free(names: impl IntoIterator<Item = PathBuf>) -> io::Result<OwnedTempFile> {
+    for name in names {
+        match OwnedTempFile::create(name) {
+            Ok(t) => return Ok(t),
+            Err(e) if e.kind() == io::ErrorKind::AlreadyExists => continue,
+            Err(e) => return Err(e),
+        }
+    }
+    Err(io::Error::new(
+        io::ErrorKind::AlreadyExists,
+        "no free temporary name for the identity key",
+    ))
+}
+
+/// Writes `data` to the first of `tmp_names` it can create exclusively, then
+/// links it into place. A name that already exists belongs to someone else
+/// and is left alone.
+fn write_new_key_file_via(
+    path: &Path,
+    data: &[u8],
+    tmp_names: impl IntoIterator<Item = PathBuf>,
+) -> io::Result<bool> {
+    let mut tmp = create_first_free(tmp_names)?;
+    tmp.write_synced(data)?;
+    // A hard link fails if the target exists, so a key stored by another
+    // writer in the meantime is never replaced.
+    let stored = match fs::hard_link(&tmp.path, path) {
+        Ok(()) => true,
+        Err(e) if e.kind() == io::ErrorKind::AlreadyExists => false,
+        Err(e) => return Err(e),
+    };
+    drop(tmp);
+    if stored {
+        sync_dir(&parent_dir(path));
+    }
+    Ok(stored)
 }
 
 /// A suffix no other write attempt uses: process, a per-process counter and
@@ -227,12 +274,24 @@ impl OwnedTempFile {
         file.write_all(data)?;
         file.sync_all()
     }
+
+    /// Renames the file over `target`, replacing it; it is no longer ours
+    /// to remove.
+    #[cfg_attr(not(windows), allow(dead_code))]
+    fn persist_over(mut self, target: &Path) -> io::Result<()> {
+        drop(self.file.take());
+        fs::rename(&self.path, target)?;
+        self.path = PathBuf::new();
+        Ok(())
+    }
 }
 
 impl Drop for OwnedTempFile {
     fn drop(&mut self) {
         drop(self.file.take());
-        let _ = fs::remove_file(&self.path);
+        if !self.path.as_os_str().is_empty() {
+            let _ = fs::remove_file(&self.path);
+        }
     }
 }
 
