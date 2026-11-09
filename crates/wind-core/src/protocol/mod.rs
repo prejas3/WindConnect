@@ -29,6 +29,8 @@ pub const PROTOCOL_MAJOR: u8 = 1;
 pub const PROTOCOL_MINOR: u64 = 0;
 /// ALPN of protocol v1.
 pub const ALPN: &[u8] = b"windconnect/1";
+/// ALPN of the pairing protocol (§12), on its own endpoint only.
+pub const PAIR_ALPN: &[u8] = b"windconnect-pair/1";
 /// Default UDP port of a server.
 pub const DEFAULT_PORT: u16 = 47820;
 
