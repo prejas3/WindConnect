@@ -13,5 +13,8 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = [] }
 wind-core = { path = "../../../crates/wind-core" }
 
+[target.'cfg(windows)'.dependencies]
+window-vibrancy = "0.8.1"
+
 [features]
 custom-protocol = ["tauri/custom-protocol"]
