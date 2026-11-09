@@ -18,6 +18,10 @@ Most Androida to `crates/wind-ffi` (UniFFI) i moduł Gradle
 łączy się z PC przez uwierzytelnioną sesję rdzenia; budowanie AAR i procedura
 testu są opisane w [instrukcji Androida](apps/android/README.md).
 
+Narzędzie [windctl](crates/windctl/README.md) uruchamia węzły testowe,
+odkrywa urządzenia, wysyła surowe wiadomości i mierzy RTT Ping/Pong z p50/p95.
+Budowanie: `cargo build --locked -p windctl`.
+
 Odkrywanie LAN udostępnia `wind_core::discovery`: `Discovery::start` przyjmuje
 klucz publiczny urządzenia i rzeczywisty port z `Endpoint::local_addr()`.
 `next().await` zwraca rozwiązane adresy lub usunięcie usługi; `monitor()`
