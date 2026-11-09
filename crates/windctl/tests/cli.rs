@@ -51,6 +51,10 @@ struct Server {
 
 impl Server {
     fn start(identity: &Path, trust: &str, advertise: bool) -> Self {
+        Self::start_mode(identity, trust, advertise, false)
+    }
+
+    fn start_mode(identity: &Path, trust: &str, advertise: bool, broadcast_only: bool) -> Self {
         let mut command = Command::new(env!("CARGO_BIN_EXE_windctl"));
         command.arg("--identity").arg(identity).args([
             "serve",
@@ -64,6 +68,9 @@ impl Server {
         ]);
         if advertise {
             command.arg("--advertise");
+        }
+        if broadcast_only {
+            command.arg("--broadcast-only");
         }
         let mut child = command
             .stdout(Stdio::piped())
@@ -314,5 +321,35 @@ fn discovery_reports_a_separate_advertising_process() {
     ));
     let port = server.address.split(':').next_back().unwrap();
     assert!(output.contains(&format!(":{port}")));
+    server.finish();
+}
+
+#[test]
+#[ignore = "requires IPv4 broadcast-capable host; no mDNS backend is started"]
+fn broadcast_discovers_a_separate_process_without_mdns() {
+    let temporary = tempfile::tempdir().unwrap();
+    let client = temporary.path().join("client.key");
+    let server_path = temporary.path().join("server.key");
+    let client_key = key(&client);
+    let server_key = key(&server_path);
+    let mut server = Server::start_mode(&server_path, &client_key, true, true);
+    let output = success(run(
+        &client,
+        &["discover", "--duration", "3", "--broadcast-only"],
+    ));
+    assert!(
+        output.contains("DISCOVERED service=\"broadcast-"),
+        "{output}"
+    );
+    assert!(output.contains(
+        &windctl::parse_key(&server_key)
+            .unwrap()
+            .fingerprint()
+            .to_hex()
+    ));
+    assert!(output.contains(&format!(
+        ":{}",
+        server.address.split(':').next_back().unwrap()
+    )));
     server.finish();
 }

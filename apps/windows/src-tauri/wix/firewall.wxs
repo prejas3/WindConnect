@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi"
+     xmlns:fire="http://schemas.microsoft.com/wix/FirewallExtension">
+  <Fragment>
+    <DirectoryRef Id="INSTALLDIR">
+      <Component Id="WindConnectLanFirewall" Guid="837a2b31-c189-478c-9067-5341c47e547a" Win64="yes">
+        <RegistryValue Root="HKLM" Key="Software\WindConnect\Installer"
+                       Name="LanUdpFirewall" Type="integer" Value="1" KeyPath="yes" />
+        <!-- CCS/1 SEC:installed program only, UDP, Private profile, local subnet; no Public/TCP exception. -->
+        <fire:FirewallException Id="WindConnectLanUdp" Name="WindConnect - LAN UDP (Private)"
+                                Description="WindConnect QUIC and local discovery"
+                                Program="[#Path]" Protocol="udp" Profile="private" Scope="localSubnet"
+                                IgnoreFailure="no" />
+      </Component>
+    </DirectoryRef>
+  </Fragment>
+</Wix>

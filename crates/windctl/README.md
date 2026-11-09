@@ -43,6 +43,14 @@ wcześniej. Obsługuje do 16 równoległych sesji. Na komputerze B zezwól w
 zaporze na testowy port UDP; mDNS wymaga UDP 5353 i sieci przepuszczającej
 multicast. Program nie zmienia reguł zapory.
 
+Fallback broadcast działa na UDP 47821. Aby sprawdzić sieć bez multicastu,
+uruchom B z `serve --advertise --broadcast-only` (pozostałe argumenty jak wyżej),
+a A z `discover --duration 5 --broadcast-only`. Ten tryb w ogóle nie uruchamia
+mDNS; znaleziony wpis `broadcast-<odcisk>` podaje IP nadawcy i jego rzeczywisty
+port QUIC. Sprawdź potem `connect` lub `ping` ze zweryfikowanym kluczem B.
+Nieodświeżone wpisy broadcast wygasają po 8 s. Fallback dotyczy lokalnego IPv4;
+odkrywanie IPv6 nadal używa mDNS.
+
 IPv6: `serve --bind [::]:47820`, po stronie klienta np.
 `--address [2001:db8::20]:47820`. Domyślny serwer `0.0.0.0` jest IPv4;
 wybór rodziny adresów nasłuchu jest jawny.

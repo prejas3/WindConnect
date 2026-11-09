@@ -94,6 +94,26 @@ QUIC v1 (RFC 9000) + TLS 1.3, ALPN "windconnect/1"
 - Aktualizacja rozwiązanego ogłoszenia zastępuje jego poprzednie adresy;
   goodbye lub wygaśnięcie rekordów usuwa usługę. Własny odcisk jest pomijany.
 
+### 2.0.1 Zapasowe odkrywanie IPv4 broadcast (WN-15)
+
+- Port odkrywania: UDP **47821**, niezależny od portu QUIC. Pakiet ma
+  dokładnie 39 bajtów: ASCII `WCD1` (4 B), rodzaj (1 B: `1` zapytanie,
+  `2` odpowiedź), rzeczywisty port QUIC (2 B big-endian, niezerowy),
+  pełny odcisk SHA-256 SPKI (32 B, jak w §2.1).
+- Zapytanie ogłasza nadawcę i prosi o odpowiedź. Jest wysyłane na adresy
+  broadcast interfejsów IPv4 co 2 s i bezpośrednio po zmianie sieci;
+  gdy brak takich adresów, używane jest `255.255.255.255:47821`.
+- Odpowiedź jest unicastem do źródła zapytania. Ma ten sam rozmiar i nie
+  wywołuje kolejnej odpowiedzi. Limit: jedna odpowiedź na IP źródłowe na
+  sekundę, maksymalnie 128 śledzonych źródeł.
+- Adres peera pochodzi z IP źródłowego datagramu, a port z jego treści.
+  Port źródłowy musi być portem odkrywania. Pakiety obce, niepoprawne,
+  nadmiarowe i własny odcisk są pomijane. Nieodświeżony wpis wygasa po 8 s;
+  bufor broadcastu mieści najwyżej 128 odcisków.
+- Broadcast działa równolegle z mDNS, również gdy multicast jest niedostępny.
+  Wyniki są łączone według odcisku, z usunięciem powtórzonych adresów.
+  To niezaufane wskazówki; NIE MOGĄ przypinać kluczy ani omijać TLS.
+
 ### 2.1 Klucz, certyfikat i odcisk
 
 - Klucz urządzenia to para Ed25519 (RFC 8032), tworzona przy pierwszym

@@ -30,7 +30,7 @@ Workflow **Windows MSI** buduje pakiet na `windows-latest` dla PR, push do
 `master` lub ręcznego uruchomienia. W zakładce Actions pobierz artefakt
 `WindConnect-windows-x64-msi`, rozpakuj ZIP i uruchom MSI.
 Po instalacji uruchom WindConnect: powinno pojawić się jedno okno ze statusem
-`wind-core 0.19.3 · gotowy`. Zamknij okno i sprawdź odinstalowanie w Ustawieniach.
+`wind-core 0.19.4 · gotowy`. Zamknij okno i sprawdź odinstalowanie w Ustawieniach.
 
 W pliku `tauri.conf.json` wartości `identifier` i
 `bundle.windows.wix.upgradeCode` muszą pozostać stałe między wersjami,
@@ -40,4 +40,32 @@ zasobem projektu udostępnianym na licencji MIT.
 
 Przebieg CI na GitHubie oraz ręczna instalacja i deinstalacja MSI wymagają
 potwierdzenia po opublikowaniu repozytorium.
+
+## Odkrywanie i reguła zapory (WN-15)
+
+Rdzeń uruchamia mDNS i IPv4 broadcast równolegle. Broadcast korzysta z portu
+UDP 47821, wysyła odcisk klucza i rzeczywisty port QUIC, a wynik pozostaje
+niezaufaną wskazówką do sesji z przypiętym kluczem. Fallback można sprawdzić
+przez `windctl discover --broadcast-only` oraz węzeł
+`windctl serve --advertise --broadcast-only` z osobnym kluczem.
+
+Fragment `src-tauri/wix/firewall.wxs` dodaje przy instalacji regułę
+**WindConnect - LAN UDP (Private)**. Reguła dotyczy wyłącznie pełnej ścieżki
+instalowanego `windconnect-windows.exe`, protokołu UDP, profilu Private i
+adresów LocalSubnet. Obejmuje mDNS 5353, broadcast 47821 i port QUIC wybrany
+przez aplikację, również po migracji gniazda. Nie otwiera TCP, profilu Public
+ani innych aplikacji (w tym osobnego `windctl.exe`).
+
+WiX FirewallExtension zarządza dodaniem, wycofaniem instalacji i usunięciem
+reguły razem z komponentem MSI. Błąd rejestracji reguły przerywa instalację
+i uruchamia rollback, zamiast po cichu pozostawić niekompletną konfigurację.
+Administrator może dodatkowo ograniczyć ruch polityką organizacji.
+
+Budowanie MSI kompiluje i łączy fragment przez standardowe narzędzia WiX;
+nie instaluje go i nie zmienia zapory komputera budującego. Test instalacji
+i deinstalacji wykonuj na przeznaczonym do tego Windows VM: po instalacji
+sprawdź `Get-NetFirewallRule -DisplayName 'WindConnect - LAN UDP (Private)'`
+oraz powiązane filtry aplikacji/adresów/protokołu, a po deinstalacji brak
+tej reguły. Test fallbacku w dwóch węzłach z wyłączonym mDNS jest niezależny
+od lokalnej polityki instalatora.
 
