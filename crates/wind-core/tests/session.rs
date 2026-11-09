@@ -564,3 +564,265 @@ async fn large_transfer_does_not_delay_control_by_more_than_10_ms() {
         loaded_p99 - idle_p50
     );
 }
+
+// ---------------------------------------------------------------------------
+// Changing what this side accepts mid-connection (§6, rule 5; WN-74).
+
+fn caps(v: &[&str]) -> Vec<Capability> {
+    v.iter().map(|s| Capability::parse(s).unwrap()).collect()
+}
+
+/// The next `Capabilities` the session reports.
+async fn next_caps(events: &mut mpsc::UnboundedReceiver<SessionEvent>) -> Vec<Capability> {
+    loop {
+        match tokio::time::timeout(T, events.recv())
+            .await
+            .unwrap()
+            .unwrap()
+        {
+            SessionEvent::Capabilities(c) => return c,
+            SessionEvent::Closed(why) => panic!("closed: {why}"),
+            _ => {}
+        }
+    }
+}
+
+async fn nothing_on(rx: &mut mpsc::Receiver<ChannelMessage>) {
+    if let Ok(Some(m)) = tokio::time::timeout(Duration::from_millis(300), rx.recv()).await {
+        panic!("delivered while withdrawn: {m:?}");
+    }
+}
+
+#[tokio::test]
+async fn withdrawn_channel_stops_delivery_and_reenabling_brings_it_back_in_order() {
+    let mut server_router = Router::new();
+    let mut clip = server_router.route(Channel::Clipboard, 1, 64);
+    let _notify = server_router.route(Channel::Notify, 1, 8);
+    let mut p = sessions(Router::new(), server_router).await;
+    assert_eq!(
+        p.server.accepted_capabilities(),
+        caps(&["clipboard/1", "notify/1"])
+    );
+
+    for n in 0..5 {
+        p.client.send(Channel::Clipboard, &msg(1, n)).await.unwrap();
+    }
+    for n in 0..5 {
+        assert_eq!(n_of(&recv(&mut clip).await), n);
+    }
+
+    // Withdraw: the peer hears the full new list.
+    assert!(p
+        .server
+        .set_accepted(Channel::Clipboard, false)
+        .await
+        .unwrap());
+    assert!(!p
+        .server
+        .set_accepted(Channel::Clipboard, false)
+        .await
+        .unwrap());
+    assert_eq!(p.server.accepted_capabilities(), caps(&["notify/1"]));
+    assert_eq!(next_caps(&mut p.client_events).await, caps(&["notify/1"]));
+    assert_eq!(p.client.peer_capabilities(), caps(&["notify/1"]));
+    // The sender's stream is reset and the next send is refused.
+    assert!(matches!(
+        p.client.send(Channel::Clipboard, &msg(1, 50)).await,
+        Err(SessionError::CapabilityMissing(Channel::Clipboard))
+    ));
+    nothing_on(&mut clip).await;
+
+    // Re-enable: a new stream, later messages in order, none from before.
+    assert!(p
+        .server
+        .set_accepted(Channel::Clipboard, true)
+        .await
+        .unwrap());
+    assert_eq!(
+        next_caps(&mut p.client_events).await,
+        caps(&["clipboard/1", "notify/1"])
+    );
+    for n in 100..120 {
+        p.client.send(Channel::Clipboard, &msg(1, n)).await.unwrap();
+    }
+    for n in 100..120 {
+        assert_eq!(n_of(&recv(&mut clip).await), n);
+    }
+    nothing_on(&mut clip).await;
+}
+
+#[tokio::test]
+async fn withdrawal_stops_open_streams_and_refuses_new_ones_until_reenabled() {
+    let mut server_router = Router::new();
+    let mut clip = server_router.route(Channel::Clipboard, 1, 8);
+    let p = sessions(Router::new(), server_router).await;
+    let q = p.client.connection().quinn().clone();
+
+    // A stream left open, as a sender keeps one per channel (§3.1).
+    let mut open = q.open_uni().await.unwrap();
+    let mut first = vec![1, 1];
+    first.extend(frame(&msg(1, 1)));
+    open.write_all(&first).await.unwrap();
+    assert_eq!(n_of(&recv(&mut clip).await), 1);
+
+    p.server
+        .set_accepted(Channel::Clipboard, false)
+        .await
+        .unwrap();
+    assert_eq!(
+        stopped_with(&mut open).await,
+        Some(ErrorCode::Cancelled.code()),
+        "its open stream is stopped with CANCELLED"
+    );
+    // A sender that hasn't heard yet opens a new stream: refused (§3 rule 3).
+    let mut late = q.open_uni().await.unwrap();
+    let mut data = vec![1, 1];
+    data.extend(frame(&msg(1, 2)));
+    late.write_all(&data).await.unwrap();
+    assert_eq!(
+        stopped_with(&mut late).await,
+        Some(ErrorCode::CapabilityMissing.code())
+    );
+    nothing_on(&mut clip).await;
+
+    p.server
+        .set_accepted(Channel::Clipboard, true)
+        .await
+        .unwrap();
+    let mut fresh = q.open_uni().await.unwrap();
+    let mut data = vec![1, 1];
+    data.extend(frame(&msg(1, 3)));
+    fresh.write_all(&data).await.unwrap();
+    fresh.finish().unwrap();
+    assert_eq!(n_of(&recv(&mut clip).await), 3);
+}
+
+#[tokio::test]
+async fn stream_queued_before_a_withdrawal_never_arrives_after_reenabling() {
+    // A holds the channel; B waits behind it (§3.1 rule 3). The channel is
+    // withdrawn and enabled again before B's turn: B belongs to the time
+    // before the withdrawal and must not be delivered.
+    let mut server_router = Router::new();
+    let mut clip = server_router.route(Channel::Clipboard, 1, 8);
+    let p = sessions(Router::new(), server_router).await;
+    let q = p.client.connection().quinn().clone();
+
+    let mut a = q.open_uni().await.unwrap();
+    let mut first = vec![1, 1];
+    first.extend(frame(&msg(1, 1)));
+    a.write_all(&first).await.unwrap();
+    assert_eq!(n_of(&recv(&mut clip).await), 1);
+    let mut b = q.open_uni().await.unwrap();
+    let mut second = vec![1, 1];
+    second.extend(frame(&msg(1, 2)));
+    b.write_all(&second).await.unwrap();
+    b.finish().unwrap();
+    // B is taken (header read) and queued behind A.
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
+    p.server
+        .set_accepted(Channel::Clipboard, false)
+        .await
+        .unwrap();
+    p.server
+        .set_accepted(Channel::Clipboard, true)
+        .await
+        .unwrap();
+    assert_eq!(
+        stopped_with(&mut a).await,
+        Some(ErrorCode::Cancelled.code())
+    );
+
+    let mut c = q.open_uni().await.unwrap();
+    let mut third = vec![1, 1];
+    third.extend(frame(&msg(1, 3)));
+    c.write_all(&third).await.unwrap();
+    c.finish().unwrap();
+    assert_eq!(n_of(&recv(&mut clip).await), 3, "B (2) was not delivered");
+    nothing_on(&mut clip).await;
+}
+
+async fn next_input_event(
+    rx: &mut mpsc::Receiver<wind_core::input::InputEvent>,
+) -> wind_core::input::InputEvent {
+    tokio::time::timeout(T, rx.recv()).await.unwrap().unwrap()
+}
+
+#[tokio::test]
+async fn withdrawing_input_releases_buttons_and_reenabling_starts_a_new_session() {
+    use wind_core::input::InputEvent;
+    use wind_core::protocol::Button;
+
+    let mut server_router = Router::new();
+    let mut input_rx = server_router.route_input(64);
+    let mut p = sessions(Router::new(), server_router).await;
+
+    let input = p.client.input().unwrap();
+    input.button(Button::Left, true).await.unwrap();
+    assert_eq!(
+        next_input_event(&mut input_rx).await,
+        InputEvent::Button {
+            button: Button::Left,
+            down: true
+        }
+    );
+
+    p.server.set_accepted(Channel::Input, false).await.unwrap();
+    // The pressed button is let go at once, on the receiving side.
+    assert_eq!(
+        next_input_event(&mut input_rx).await,
+        InputEvent::Button {
+            button: Button::Left,
+            down: false
+        }
+    );
+    assert_eq!(next_caps(&mut p.client_events).await, caps(&[]));
+    assert!(matches!(
+        p.client.input(),
+        Err(SessionError::CapabilityMissing(Channel::Input))
+    ));
+    // Events sent while withdrawn don't reach the system.
+    let _ = input.button(Button::Right, true).await;
+    let _ = input.pointer(5, 5).await;
+    if let Ok(Some(e)) = tokio::time::timeout(Duration::from_millis(300), input_rx.recv()).await {
+        panic!("input delivered while withdrawn: {e:?}");
+    }
+
+    p.server.set_accepted(Channel::Input, true).await.unwrap();
+    assert_eq!(next_caps(&mut p.client_events).await, caps(&["input/1"]));
+    let input = p.client.input().unwrap();
+    input.button(Button::Middle, true).await.unwrap();
+    assert_eq!(
+        next_input_event(&mut input_rx).await,
+        InputEvent::Button {
+            button: Button::Middle,
+            down: true
+        }
+    );
+}
+
+#[tokio::test]
+async fn only_routed_uni_channels_can_be_switched() {
+    let mut server_router = Router::new();
+    let _clip = server_router.route(Channel::Clipboard, 1, 8);
+    let _files = server_router.route_files(1, 8);
+    let p = sessions(Router::new(), server_router).await;
+    for channel in [
+        Channel::Control,
+        Channel::Files,
+        Channel::Notify,
+        Channel::Input,
+    ] {
+        assert!(
+            matches!(
+                p.server.set_accepted(channel, false).await,
+                Err(SessionError::WrongChannel(c)) if c == channel
+            ),
+            "{channel:?}"
+        );
+    }
+    assert_eq!(
+        p.server.accepted_capabilities(),
+        caps(&["clipboard/1", "files/1"])
+    );
+}

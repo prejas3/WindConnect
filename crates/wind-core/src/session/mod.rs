@@ -26,8 +26,14 @@
 //! session with the peer is remembered; keep-alive, path migration and
 //! retry backoff are the transport's (WC-12).
 //!
-//! Not here yet: sending `Capabilities` (changing what this side accepts
-//! mid-connection, WN-74), datagrams (WC-13).
+//! Changing what this side accepts mid-connection (§6, rule 5, WN-74):
+//! [`Session::set_accepted`] withdraws or re-enables a routed channel and
+//! sends `Capabilities` with the full new list. From then on a withdrawn
+//! channel takes nothing: its streams get `STOP_SENDING` (`CANCELLED`), and
+//! new ones `CAPABILITY_MISSING` (§3, rule 3); re-enabled, it takes the
+//! peer's next, new stream. Withdrawing `input` releases pressed buttons and
+//! ends its session (§8.2). `files` transfers are owned by their module, so
+//! `files` is not switched here (WC-38).
 
 mod framed;
 mod router;
@@ -40,7 +46,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, Instant};
 
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{mpsc, oneshot, watch};
 
 pub use framed::{write_raw, FramedRecv, RecvError};
 
@@ -207,6 +213,52 @@ struct Inner {
     peer_announcements: AtomicU64,
     peer_input_announcement: Mutex<Option<InputAnnouncement>>,
     input: std::sync::OnceLock<InputSender>,
+    /// What this side accepts: every routed channel, enabled or withdrawn
+    /// (§6, rule 5). Changed only with `control` locked, so each
+    /// `Capabilities` carries the list as it was when sent.
+    accepts: Mutex<Vec<Accept>>,
+    /// Our announcements so far: `Hello` / `HelloAck` is 0, each
+    /// `Capabilities` one more (§8.2).
+    local_announcements: AtomicU64,
+    /// The gate of each uni channel we route (and `input`).
+    gates: HashMap<u8, watch::Sender<Gate>>,
+    /// The input actor, when we route input.
+    input_cmds: Option<mpsc::Sender<InputCmd>>,
+}
+
+/// A channel this side routes, and whether it accepts it now.
+#[derive(Debug, Clone, Copy)]
+struct Accept {
+    channel: Channel,
+    version: u64,
+    enabled: bool,
+}
+
+/// What the readers of one channel go by: whether it is accepted, and how
+/// many times it has been withdrawn. A stream is tagged with the count when
+/// it is taken; once the count moves on, the stream is over, even if the
+/// channel was enabled again meanwhile.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Gate {
+    enabled: bool,
+    withdrawals: u64,
+}
+
+fn capabilities_of(accepts: &[Accept]) -> Vec<Capability> {
+    let mut caps: Vec<Capability> = accepts
+        .iter()
+        .filter(|a| a.enabled)
+        .filter_map(|a| Capability::new(capability_name(a.channel)?, a.version))
+        .collect();
+    caps.sort_by_key(|c| c.to_string());
+    caps
+}
+
+impl Inner {
+    /// The gate of `channel` now: open, and its withdrawal count.
+    fn gate(&self, channel: Channel) -> Option<Gate> {
+        self.gates.get(&channel.byte()).map(|g| *g.borrow())
+    }
 }
 
 /// A running session. Cheap to clone; every clone is the same session.
@@ -478,6 +530,33 @@ impl Session {
             last: 0,
             enabled: 0,
         });
+        let open = Gate {
+            enabled: true,
+            withdrawals: 0,
+        };
+        let mut accepts: Vec<Accept> = router
+            .uni
+            .values()
+            .map(|(ch, v, _)| (*ch, *v))
+            .chain(router.files.as_ref().map(|(v, _)| (Channel::Files, *v)))
+            .chain(router.input.as_ref().map(|_| (Channel::Input, 1)))
+            .map(|(channel, version)| Accept {
+                channel,
+                version,
+                enabled: true,
+            })
+            .collect();
+        accepts.sort_by_key(|a| a.channel.byte());
+        let gates = accepts
+            .iter()
+            .filter(|a| is_uni(a.channel))
+            .map(|a| (a.channel.byte(), watch::Sender::new(open)))
+            .collect();
+        let input = router.input.map(|out| {
+            let (tx, rx) = mpsc::channel(INPUT_COMMANDS);
+            tokio::spawn(input_actor(rx, out));
+            tx
+        });
         let inner = Arc::new(Inner {
             peer: PeerInfo {
                 key: conn.peer_key(),
@@ -494,11 +573,10 @@ impl Session {
             peer_announcements: AtomicU64::new(0),
             peer_input_announcement: Mutex::new(input_announced),
             input: std::sync::OnceLock::new(),
-        });
-        let input = router.input.map(|out| {
-            let (tx, rx) = mpsc::channel(INPUT_COMMANDS);
-            tokio::spawn(input_actor(rx, out));
-            tx
+            accepts: Mutex::new(accepts),
+            local_announcements: AtomicU64::new(0),
+            gates,
+            input_cmds: input.clone(),
         });
         if let Some(cmds) = &input {
             tokio::spawn(datagram_loop(inner.conn.quinn().clone(), cmds.clone()));
@@ -552,6 +630,81 @@ impl Session {
 
     pub fn connection(&self) -> &Connection {
         &self.inner.conn
+    }
+
+    /// What this side accepts now: what `Hello` / `HelloAck` announced,
+    /// changed by [`set_accepted`](Self::set_accepted).
+    pub fn accepted_capabilities(&self) -> Vec<Capability> {
+        capabilities_of(&self.inner.accepts.lock().unwrap_or_else(|e| e.into_inner()))
+    }
+
+    /// Withdraws (`accept = false`) or re-enables a channel this side routes
+    /// (§6, rule 5), and tells the peer with `Capabilities` carrying the full
+    /// new list. `Ok(false)` when it was already so; nothing is sent then.
+    ///
+    /// Withdrawn, the channel takes nothing from the moment `Capabilities`
+    /// goes out: its streams are stopped with `CANCELLED`, messages still
+    /// arriving on them are dropped, and new streams get
+    /// `CAPABILITY_MISSING`. For `input`, pressed buttons are released and
+    /// the session ends (§8.2). Re-enabled, the channel takes the peer's
+    /// next stream, which the peer opens anew.
+    ///
+    /// Only a channel routed when the session started can be re-enabled
+    /// (its module is the router's). `control` and `files` are not switched
+    /// here: `WrongChannel`.
+    pub async fn set_accepted(&self, channel: Channel, accept: bool) -> Result<bool, SessionError> {
+        let gate = self
+            .inner
+            .gates
+            .get(&channel.byte())
+            .ok_or(SessionError::WrongChannel(channel))?;
+        let mut control = self.inner.control.lock().await;
+        let caps = {
+            let mut accepts = self.inner.accepts.lock().unwrap_or_else(|e| e.into_inner());
+            let Some(entry) = accepts.iter_mut().find(|a| a.channel == channel) else {
+                return Err(SessionError::WrongChannel(channel));
+            };
+            if entry.enabled == accept {
+                return Ok(false);
+            }
+            entry.enabled = accept;
+            capabilities_of(&accepts)
+        };
+        let number = self
+            .inner
+            .local_announcements
+            .fetch_add(1, Ordering::SeqCst)
+            + 1;
+        if !accept {
+            // Closed before `Capabilities` leaves: from the moment it is
+            // sent, nothing more is taken.
+            if channel == Channel::Input {
+                if let Some(cmds) = &self.inner.input_cmds {
+                    let _ = cmds.send(InputCmd::Withdraw).await;
+                }
+            }
+            gate.send_modify(|g| {
+                g.enabled = false;
+                g.withdrawals += 1;
+            });
+        }
+        let frame = encode_frame(&Message::Control(ControlMessage::Capabilities { caps }))
+            .map_err(SessionError::Frame);
+        let sent = match frame {
+            Ok(frame) => control.write_all(&frame).await.map_err(SessionError::from),
+            Err(e) => Err(e),
+        };
+        if accept {
+            // The peer opens new streams only once it has this
+            // announcement, so opening the gate after writing it is in time.
+            if channel == Channel::Input {
+                if let Some(cmds) = &self.inner.input_cmds {
+                    let _ = cmds.send(InputCmd::Enable(number)).await;
+                }
+            }
+            gate.send_modify(|g| g.enabled = true);
+        }
+        sent.map(|()| true)
     }
 
     fn peer_accepts(&self, channel: Channel) -> bool {
@@ -830,15 +983,17 @@ async fn uni_loop(
     routes: std::collections::BTreeMap<u8, (Channel, u64, mpsc::Sender<ChannelMessage>)>,
     input: Option<mpsc::Sender<InputCmd>>,
 ) {
-    let mut channels: HashMap<u8, mpsc::UnboundedSender<quinn::RecvStream>> = HashMap::new();
+    let mut channels: HashMap<u8, mpsc::UnboundedSender<Tagged>> = HashMap::new();
     for (byte, (channel, _, out)) in routes {
         let (tx, rx) = mpsc::unbounded_channel();
-        tokio::spawn(channel_task(channel, rx, out));
+        let gate = inner.gates[&byte].subscribe();
+        tokio::spawn(channel_task(channel, rx, out, gate));
         channels.insert(byte, tx);
     }
     if let Some(cmds) = input {
         let (tx, rx) = mpsc::unbounded_channel();
-        tokio::spawn(input_stream_task(rx, cmds));
+        let gate = inner.gates[&Channel::Input.byte()].subscribe();
+        tokio::spawn(input_stream_task(rx, cmds, gate));
         channels.insert(Channel::Input.byte(), tx);
     }
 
@@ -903,31 +1058,84 @@ async fn uni_loop(
             );
             return;
         }
-        let Some(route) = channels.get(&channel.byte()) else {
+        // §3 rule 3: taken only while we announce the channel.
+        let (Some(route), Some(gate)) = (channels.get(&channel.byte()), inner.gate(channel)) else {
             let _ = stream.stop(varint_code(ErrorCode::CapabilityMissing));
             continue;
         };
-        if route.send(stream).is_err() {
+        if !gate.enabled {
+            let _ = stream.stop(varint_code(ErrorCode::CapabilityMissing));
+            continue;
+        }
+        if route
+            .send(Tagged {
+                stream,
+                withdrawals: gate.withdrawals,
+            })
+            .is_err()
+        {
             return;
         }
     }
 }
 
+/// A stream taken for a channel, with the channel's withdrawal count at
+/// that moment.
+struct Tagged {
+    stream: quinn::RecvStream,
+    withdrawals: u64,
+}
+
+/// Whether `gate` still admits a stream tagged `withdrawals`: no withdrawal
+/// since it was taken.
+fn admits(gate: &watch::Receiver<Gate>, withdrawals: u64) -> bool {
+    let g = *gate.borrow();
+    g.enabled && g.withdrawals == withdrawals
+}
+
 /// Reads one channel's streams one after another, in order, and passes
-/// their messages to the module.
+/// their messages to the module. A withdrawal (§6, rule 5) stops the
+/// stream being read and every stream queued before it, with `CANCELLED`.
 async fn channel_task(
     channel: Channel,
-    mut streams: mpsc::UnboundedReceiver<quinn::RecvStream>,
+    mut streams: mpsc::UnboundedReceiver<Tagged>,
     out: mpsc::Sender<ChannelMessage>,
+    mut gate: watch::Receiver<Gate>,
 ) {
-    while let Some(stream) = streams.recv().await {
+    while let Some(Tagged {
+        stream,
+        withdrawals,
+    }) = streams.recv().await
+    {
         let mut recv = FramedRecv::new(stream, channel);
+        if !admits(&gate, withdrawals) {
+            recv.stop(ErrorCode::Cancelled);
+            continue;
+        }
         let mut lost = false;
         loop {
-            match recv.next_raw().await {
+            // `next_raw` is cancel-safe: its only await is quinn's `read`.
+            let next = tokio::select! {
+                r = recv.next_raw() => r,
+                changed = gate.changed() => {
+                    if changed.is_err() || !admits(&gate, withdrawals) {
+                        recv.stop(ErrorCode::Cancelled);
+                        break;
+                    }
+                    continue;
+                }
+            };
+            match next {
                 Ok(Some(message)) => {
-                    if out.send(ChannelMessage { channel, message }).await.is_err() {
-                        // The module is gone: stop taking this channel.
+                    let msg = ChannelMessage { channel, message };
+                    let delivered = tokio::select! {
+                        r = out.send(msg) => r.map_err(|_| ()),
+                        // Withdrawn while the module's queue was full: the
+                        // message is dropped (§6, rule 5).
+                        _ = gate.wait_for(|g| g.withdrawals != withdrawals) => Err(()),
+                    };
+                    if delivered.is_err() || !admits(&gate, withdrawals) {
+                        // The module is gone, or the channel was withdrawn.
                         recv.stop(ErrorCode::Cancelled);
                         break;
                     }
@@ -1016,6 +1224,10 @@ enum InputCmd {
     StreamEnded,
     Datagram(InputMessage),
     ConnectionEnded,
+    /// This side withdrew `input/1`.
+    Withdraw,
+    /// This side enabled `input/1` again in its announcement number n.
+    Enable(u64),
 }
 
 /// Commands an input actor queues before its sources wait.
@@ -1039,6 +1251,8 @@ async fn input_actor(mut cmds: mpsc::Receiver<InputCmd>, out: mpsc::Sender<Input
             InputCmd::StreamEnded => receiver.stream_ended(&mut events),
             InputCmd::Datagram(msg) => receiver.datagram(&msg, &mut events),
             InputCmd::ConnectionEnded => receiver.connection_ended(&mut events),
+            InputCmd::Withdraw => receiver.withdraw(&mut events),
+            InputCmd::Enable(n) => receiver.enable(n),
         }
         for e in events {
             // A gone module still lets the state machine run to the end.
@@ -1050,17 +1264,38 @@ async fn input_actor(mut cmds: mpsc::Receiver<InputCmd>, out: mpsc::Sender<Input
 /// Reads the peer's `input` streams one after another (each is a session,
 /// §8.2) and queues their frames to the input actor.
 async fn input_stream_task(
-    mut streams: mpsc::UnboundedReceiver<quinn::RecvStream>,
+    mut streams: mpsc::UnboundedReceiver<Tagged>,
     cmds: mpsc::Sender<InputCmd>,
+    mut gate: watch::Receiver<Gate>,
 ) {
-    while let Some(stream) = streams.recv().await {
+    while let Some(Tagged {
+        stream,
+        withdrawals,
+    }) = streams.recv().await
+    {
         let mut recv = FramedRecv::new(stream, Channel::Input);
+        if !admits(&gate, withdrawals) {
+            recv.stop(ErrorCode::Cancelled);
+            continue;
+        }
         if cmds.send(InputCmd::StreamStarted).await.is_err() {
             return;
         }
         let mut lost = false;
         loop {
-            let stop = match recv.next_message().await {
+            // `next_message` is cancel-safe, like `next_raw`.
+            let next = tokio::select! {
+                r = recv.next_message() => r,
+                changed = gate.changed() => {
+                    if changed.is_err() || !admits(&gate, withdrawals) {
+                        // Withdrawn: the actor already ended the session.
+                        recv.stop(ErrorCode::Cancelled);
+                        break;
+                    }
+                    continue;
+                }
+            };
+            let stop = match next {
                 Ok(Some(Message::Input(msg))) => {
                     let (tx, rx) = oneshot::channel();
                     if cmds.send(InputCmd::StreamFrame(msg, tx)).await.is_err() {
