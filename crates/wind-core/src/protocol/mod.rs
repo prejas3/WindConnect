@@ -13,8 +13,9 @@ pub mod varint;
 use std::fmt;
 
 pub use frame::{
-    decode_datagram, decode_payload, encode_datagram, encode_frame, encode_payload, frame_limit,
-    FrameReader, MAX_CONTROL_FRAME, MAX_DATAGRAM, MAX_HELLO_FRAME, MAX_STREAM_FRAME,
+    decode_datagram, decode_payload, decode_raw_payload, encode_datagram, encode_frame,
+    encode_payload, encode_raw_frame, frame_limit, FrameReader, RawMessage, MAX_CONTROL_FRAME,
+    MAX_DATAGRAM, MAX_HELLO_FRAME, MAX_STREAM_FRAME,
 };
 pub use message::{
     Button, Capability, ControlMessage, DeviceKind, ErrorMessage, Goodbye, Hello, InputMessage,

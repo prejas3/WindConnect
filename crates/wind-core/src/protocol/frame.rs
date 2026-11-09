@@ -54,6 +54,88 @@ pub fn encode_frame(msg: &Message) -> Result<Vec<u8>> {
     Ok(out)
 }
 
+/// A message as `[type, body]`, not decoded further: what channels whose
+/// message types belong to feature modules carry (§4: the router picks the
+/// module by `(channel, type)`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RawMessage {
+    pub ty: u64,
+    /// A map with natural-number keys; empty for a message without fields.
+    pub body: cbor::Value,
+}
+
+impl RawMessage {
+    pub fn new(ty: u64, body: cbor::Value) -> Self {
+        Self { ty, body }
+    }
+}
+
+/// Reads one frame's payload as `[type, body]`: canonical CBOR (§4.1), a
+/// natural-number type and a map body with natural-number keys.
+pub fn decode_raw_payload(payload: &[u8]) -> Result<RawMessage> {
+    let value = cbor::decode(payload).map_err(FrameError::Malformed)?;
+    let cbor::Value::Array(items) = value else {
+        return Err(FrameError::Malformed("payload is not a [type, body] array"));
+    };
+    let [ty, body]: [cbor::Value; 2] = items
+        .try_into()
+        .map_err(|_| FrameError::Malformed("payload is not a [type, body] array"))?;
+    let ty = match ty {
+        cbor::Value::Int(n) if (0..=u64::MAX as i128).contains(&n) => n as u64,
+        _ => {
+            return Err(FrameError::Malformed(
+                "message type is not a natural number",
+            ))
+        }
+    };
+    check_body(&body)?;
+    Ok(RawMessage { ty, body })
+}
+
+fn check_body(body: &cbor::Value) -> Result<()> {
+    let cbor::Value::Map(pairs) = body else {
+        return Err(FrameError::Malformed("message body is not a map"));
+    };
+    if pairs
+        .iter()
+        .any(|(k, _)| !matches!(k, cbor::Value::Int(n) if (0..=i128::from(u64::MAX)).contains(n)))
+    {
+        return Err(FrameError::Malformed("body key is not a natural number"));
+    }
+    Ok(())
+}
+
+/// A whole frame of a raw message on `channel` (not `control`, whose
+/// messages are typed). The whole message is checked first (§4.1: integer
+/// range, nesting, unique map keys; natural-number body keys), so what is
+/// sent is exactly what the peer reads, and a bad value is an error, never
+/// a changed value or a panic.
+pub fn encode_raw_frame(channel: Channel, msg: &RawMessage) -> Result<Vec<u8>> {
+    if channel == Channel::Control {
+        return Err(FrameError::Malformed("control messages are typed"));
+    }
+    check_body(&msg.body)?;
+    // The body sits inside the [type, body] array: one level. Checked on
+    // the borrowed value, before anything recursive (clone, encode) touches
+    // it, so arbitrarily deep input is refused without deep recursion.
+    cbor::check_inside(&msg.body, 1).map_err(FrameError::Malformed)?;
+    // [type, body] written directly, without cloning the body.
+    let mut payload = vec![0x82]; // array of 2
+    cbor::encode(&cbor::Value::Int(msg.ty.into()), &mut payload);
+    cbor::encode(&msg.body, &mut payload);
+    let max = frame_limit(channel, false);
+    if payload.len() > max {
+        return Err(FrameError::FrameTooLarge {
+            len: payload.len() as u64,
+            max,
+        });
+    }
+    let mut out = Vec::with_capacity(payload.len() + 4);
+    varint::encode(payload.len() as u64, &mut out);
+    out.extend_from_slice(&payload);
+    Ok(out)
+}
+
 /// Reads one frame's payload as a message of `channel`.
 pub fn decode_payload(channel: Channel, payload: &[u8]) -> Result<Message> {
     let value = cbor::decode(payload).map_err(FrameError::Malformed)?;
@@ -276,6 +358,24 @@ impl FrameReader {
             Err(e) if !e.is_fatal() => Err(e),
             Err(e) => Err(self.fail(e)),
         }
+    }
+
+    /// Like [`next_message`](Self::next_message), but the frame as a
+    /// [`RawMessage`], for channels whose types belong to feature modules.
+    pub fn next_raw(&mut self) -> Result<Option<RawMessage>> {
+        if let Some(e) = &self.failed {
+            return Err(e.clone());
+        }
+        if !self.frame_complete() {
+            return Ok(None);
+        }
+        let payload = std::mem::take(&mut self.payload);
+        self.payload_len = None;
+        self.len_count = 0;
+        self.frames += 1;
+        decode_raw_payload(&payload)
+            .map(Some)
+            .map_err(|e| self.fail(e))
     }
 
     /// At the stream's FIN: a partly received frame is `MALFORMED_FRAME`.
