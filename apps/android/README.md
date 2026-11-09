@@ -196,7 +196,7 @@ nowego IP z listy urządzeń należy do integracji zarządzania urządzeniami.
 Moduł deklaruje normalne uprawnienia `ACCESS_NETWORK_STATE` i
 `CHANGE_WIFI_MULTICAST_STATE`. W czasie obserwacji utrzymuje `MulticastLock`,
 zwalniany razem z callbackiem, zadaniami i daemonem w `shutdown()`.
-Wersja aplikacji to 0.21.0, a Android `versionCode` to 26. Numery wydań rosną
+Wersja aplikacji to 0.21.0, a Android `versionCode` to 27. Numery wydań rosną
 niezależnie od kolejności kart, aby aktualizacja APK i MSI nie cofała wersji.
 
 Test na emulatorze/telefonie: `CoreApiTest#platformNetworkCallbackWakesDiscoveryWithoutPolling`

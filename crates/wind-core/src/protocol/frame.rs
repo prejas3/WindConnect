@@ -234,6 +234,8 @@ pub struct FrameReader {
     /// The current frame's checked length, once all its length bytes are in.
     payload_len: Option<usize>,
     payload: Vec<u8>,
+    /// Payload length of the last frame read.
+    last_len: usize,
     failed: Option<FrameError>,
 }
 
@@ -246,8 +248,15 @@ impl FrameReader {
             len_count: 0,
             payload_len: None,
             payload: Vec::new(),
+            last_len: 0,
             failed: None,
         }
+    }
+
+    /// Payload length of the last frame [`next_message`](Self::next_message)
+    /// or [`next_raw`](Self::next_raw) returned.
+    pub fn last_frame_len(&self) -> usize {
+        self.last_len
     }
 
     pub fn channel(&self) -> Channel {
@@ -347,6 +356,7 @@ impl FrameReader {
         self.payload_len = None;
         self.len_count = 0;
         self.frames += 1;
+        self.last_len = payload.len();
         match decode_payload(self.channel, &payload) {
             Ok(msg) if payload.len() > message_limit(&msg) => {
                 Err(self.fail(FrameError::FrameTooLarge {
@@ -373,6 +383,7 @@ impl FrameReader {
         self.payload_len = None;
         self.len_count = 0;
         self.frames += 1;
+        self.last_len = payload.len();
         decode_raw_payload(&payload)
             .map(Some)
             .map_err(|e| self.fail(e))
