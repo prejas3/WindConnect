@@ -1,0 +1,14 @@
+target/
+node_modules/
+dist/
+.gradle/
+build/
+local.properties
+.idea/
+*.iml
+*.apk
+*.aab
+*.keystore
+*.jks
+.DS_Store
+Thumbs.db
