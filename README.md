@@ -4,7 +4,8 @@ WindConnect łączy Windows 11 z Androidem 10+ (API 29+).
 Projekt jest na etapie fundamentów: Windows ma szkielet Tauri 2,
 a Android — Kotlin / Jetpack Compose. Protokół jest opisany w
 [PROTOCOL.md](PROTOCOL.md); `wind-core` ma już koder ramek
-(`wind_core::protocol`), a połączenia QUIC jeszcze nie.
+(`wind_core::protocol`) i tożsamość urządzenia (`wind_core::identity`:
+klucz Ed25519, certyfikat TLS, odcisk), a połączenia QUIC jeszcze nie.
 
 ## Struktura
 
