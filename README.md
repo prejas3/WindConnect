@@ -30,6 +30,11 @@ i wyrejestrowuje callback przy zamykaniu. `windctl discover` oraz
 rejestrację przez życie aplikacji i udostępnia diagnostyczne `network_generation`;
 uruchamianie sesji desktopu należy do dalszej integracji aplikacji.
 
+Odkrywanie ma również fallback IPv4 broadcast UDP 47821. `NetworkDiscovery`
+łączy go z mDNS i wygasza nieodświeżone wpisy. `windctl discover --broadcast-only`
+pozwala sprawdzić tę ścieżkę z całkowicie wyłączonym mDNS. MSI dodaje regułę
+prywatnej sieci LAN dla UDP instalowanej aplikacji (opis w instrukcji Windows).
+
 Odkrywanie LAN udostępnia `wind_core::discovery`: `Discovery::start` przyjmuje
 klucz publiczny urządzenia i rzeczywisty port z `Endpoint::local_addr()`.
 `next().await` zwraca rozwiązane adresy lub usunięcie usługi; `monitor()`

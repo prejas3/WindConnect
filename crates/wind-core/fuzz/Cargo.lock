@@ -947,9 +947,10 @@ dependencies = [
 
 [[package]]
 name = "wind-core"
-version = "0.19.2"
+version = "0.19.3"
 dependencies = [
  "ed25519-dalek",
+ "if-addrs",
  "mdns-sd",
  "quinn",
  "rand_core 0.6.4",
@@ -959,6 +960,7 @@ dependencies = [
  "rustls-pki-types",
  "rustls-webpki",
  "sha2",
+ "socket2",
  "tokio",
  "windows-sys 0.61.2",
  "zeroize",

@@ -3,7 +3,7 @@ use std::{error::Error, io, net::SocketAddr, path::PathBuf, sync::Arc, time::Dur
 use tokio::{sync::mpsc, task::JoinSet};
 use wind_core::{
     identity::{DeviceIdentity, PublicKey},
-    network::{NetworkChanges, NetworkDiscovery},
+    network::{DiscoveryOptions, NetworkChanges, NetworkDiscovery},
     protocol::{
         cbor::{self, Value},
         Channel, DeviceKind, ErrorCode, RawMessage, MAX_STREAM_FRAME,
@@ -38,6 +38,9 @@ enum Command {
     Discover {
         #[arg(long, default_value_t = 5, value_parser = clap::value_parser!(u64).range(1..=3600))]
         duration: u64,
+        /// Disable mDNS to test UDP broadcast discovery by itself.
+        #[arg(long)]
+        broadcast_only: bool,
     },
     /// Accept trusted peers, answer control pings, and log raw diagnostic messages.
     Serve {
@@ -50,6 +53,8 @@ enum Command {
         /// Advertise the bound QUIC port using mDNS.
         #[arg(long)]
         advertise: bool,
+        #[arg(long, requires = "advertise")]
+        broadcast_only: bool,
         /// Echo raw clipboard/notify/media messages back to the sender (test peers only).
         #[arg(long)]
         echo: bool,
@@ -233,11 +238,18 @@ async fn execute(
 ) -> Result<()> {
     match command {
         Command::Identity => unreachable!(),
-        Command::Discover { duration } => {
-            let mut discovery = NetworkDiscovery::start(
+        Command::Discover {
+            duration,
+            broadcast_only,
+        } => {
+            let mut discovery = NetworkDiscovery::start_with_options(
                 identity.public_key(),
                 endpoint.clone(),
                 Arc::new(NetworkChanges::default()),
+                DiscoveryOptions {
+                    mdns: !broadcast_only,
+                    ..Default::default()
+                },
             )?;
             let mut state = discovery.subscribe();
             let mut previous = std::collections::BTreeSet::new();
@@ -265,14 +277,19 @@ async fn execute(
         Command::Serve {
             duration,
             advertise,
+            broadcast_only,
             echo,
             ..
         } => {
             let mut discovery = if advertise {
-                Some(NetworkDiscovery::start(
+                Some(NetworkDiscovery::start_with_options(
                     identity.public_key(),
                     endpoint.clone(),
                     Arc::new(NetworkChanges::default()),
+                    DiscoveryOptions {
+                        mdns: !broadcast_only,
+                        ..Default::default()
+                    },
                 )?)
             } else {
                 None

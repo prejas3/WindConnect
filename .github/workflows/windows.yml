@@ -33,6 +33,12 @@ jobs:
       - name: Build MSI
         working-directory: apps/windows
         run: cargo +stable tauri build --bundles msi -- --locked
+      - name: Check firewall rule in MSI
+        shell: pwsh
+        run: |
+          Get-ChildItem target/release/bundle/msi/*.msi | ForEach-Object {
+            & ./apps/windows/scripts/check-firewall-msi.ps1 -MsiPath $_.FullName
+          }
       - name: Upload MSI
         uses: actions/upload-artifact@v4
         with:

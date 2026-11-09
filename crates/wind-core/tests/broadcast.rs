@@ -1,0 +1,236 @@
+use std::{
+    net::{Ipv4Addr, SocketAddrV4},
+    sync::Arc,
+    time::Duration,
+};
+use wind_core::{
+    broadcast::{BroadcastConfig, BroadcastDiscovery, Packet, PACKET_SIZE},
+    identity::DeviceIdentity,
+    network::{DiscoveryOptions, NetworkChanges, NetworkDiscovery},
+    transport::{Endpoint, PinnedKeys},
+};
+
+fn free_port() -> u16 {
+    std::net::UdpSocket::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port()
+}
+fn config(port: u16) -> BroadcastConfig {
+    BroadcastConfig {
+        listen: SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, port),
+        destinations: vec![SocketAddrV4::new(Ipv4Addr::new(127, 255, 255, 255), port)],
+        interval: Duration::from_millis(50),
+        expiry: Duration::from_millis(250),
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn two_nodes_discover_without_any_multicast_and_expire_stopped_peers() {
+    let a = DeviceIdentity::generate().unwrap();
+    let b = DeviceIdentity::generate().unwrap();
+    let pins_a = Arc::new(PinnedKeys::new());
+    let pins_b = Arc::new(PinnedKeys::new());
+    let first = Endpoint::bind("127.0.0.1:0".parse().unwrap(), &a, pins_a.clone()).unwrap();
+    let second = Endpoint::bind("127.0.0.1:0".parse().unwrap(), &b, pins_b.clone()).unwrap();
+    let port = free_port();
+    let options = DiscoveryOptions {
+        mdns: false,
+        broadcast: Some(config(port)),
+    };
+    let changes = Arc::new(NetworkChanges::default());
+    let mut one = NetworkDiscovery::start_with_options(
+        a.public_key(),
+        first.clone(),
+        changes.clone(),
+        options.clone(),
+    )
+    .unwrap();
+    let mut two =
+        NetworkDiscovery::start_with_options(b.public_key(), second.clone(), changes, options)
+            .unwrap();
+    let mut state_a = one.subscribe();
+    let mut state_b = two.subscribe();
+    async fn found(
+        state: &mut tokio::sync::watch::Receiver<wind_core::network::DiscoverySnapshot>,
+        fingerprint: [u8; 32],
+        port: u16,
+    ) {
+        loop {
+            state.changed().await.unwrap();
+            if let Some(peer) = state
+                .borrow_and_update()
+                .peers
+                .iter()
+                .find(|peer| peer.fingerprint == fingerprint)
+            {
+                assert!(peer.addresses.iter().all(|address| address.port() == port));
+                break;
+            }
+        }
+    }
+    tokio::time::timeout(Duration::from_secs(3), async {
+        tokio::join!(
+            found(
+                &mut state_a,
+                *b.fingerprint().as_bytes(),
+                second.local_addr().unwrap().port()
+            ),
+            found(
+                &mut state_b,
+                *a.fingerprint().as_bytes(),
+                first.local_addr().unwrap().port()
+            )
+        );
+    })
+    .await
+    .expect("broadcast must discover both nodes with mDNS entirely disabled");
+    assert_eq!(state_a.borrow().peers.len(), 1);
+    let discovered = state_a.borrow().peers[0].addresses[0];
+    assert!(
+        first.connect(discovered, b.public_key()).await.is_err(),
+        "discovery cannot pin a key"
+    );
+    pins_a.pin(b.public_key());
+    pins_b.pin(a.public_key());
+    let (client, server) = tokio::join!(first.connect(discovered, b.public_key()), second.accept());
+    let client = client.unwrap();
+    let server = server.unwrap().unwrap();
+    assert_eq!(client.peer_key(), b.public_key());
+    assert_eq!(server.peer_key(), a.public_key());
+    client.close(wind_core::protocol::ErrorCode::GoingAway, b"");
+    server.close(wind_core::protocol::ErrorCode::GoingAway, b"");
+    two.shutdown().await;
+    drop(two);
+    tokio::time::timeout(Duration::from_secs(2), async {
+        loop {
+            state_a.changed().await.unwrap();
+            if state_a.borrow_and_update().peers.is_empty() {
+                break;
+            }
+        }
+    })
+    .await
+    .expect("stopped broadcast peer must expire");
+    one.shutdown().await;
+    first.close();
+    second.close();
+    first.wait_idle().await;
+    second.wait_idle().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn network_change_sends_fresh_port_without_waiting_for_broadcast_interval() {
+    let a = DeviceIdentity::generate().unwrap();
+    let b = DeviceIdentity::generate().unwrap();
+    let first = Endpoint::bind(
+        "127.0.0.1:0".parse().unwrap(),
+        &a,
+        Arc::new(PinnedKeys::new()),
+    )
+    .unwrap();
+    let second = Endpoint::bind(
+        "127.0.0.2:0".parse().unwrap(),
+        &b,
+        Arc::new(PinnedKeys::new()),
+    )
+    .unwrap();
+    let port = free_port();
+    let mut cfg_a = config(port);
+    cfg_a.listen = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), port);
+    cfg_a.destinations = vec![SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 2), port)];
+    cfg_a.interval = Duration::from_secs(30);
+    cfg_a.expiry = Duration::from_secs(60);
+    let mut cfg_b = cfg_a.clone();
+    cfg_b.listen = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 2), port);
+    cfg_b.destinations = vec![cfg_a.listen];
+    let changes = Arc::new(NetworkChanges::default());
+    let mut one = NetworkDiscovery::start_with_options(
+        a.public_key(),
+        first.clone(),
+        changes.clone(),
+        DiscoveryOptions {
+            mdns: false,
+            broadcast: Some(cfg_a),
+        },
+    )
+    .unwrap();
+    let mut two = NetworkDiscovery::start_with_options(
+        b.public_key(),
+        second.clone(),
+        Arc::new(NetworkChanges::default()),
+        DiscoveryOptions {
+            mdns: false,
+            broadcast: Some(cfg_b),
+        },
+    )
+    .unwrap();
+    let mut state = two.subscribe();
+    tokio::time::timeout(Duration::from_secs(2), async {
+        while state.borrow_and_update().peers.is_empty() {
+            state.changed().await.unwrap();
+        }
+    })
+    .await
+    .unwrap();
+    let fresh = first.rebind("127.0.0.1:0".parse().unwrap()).unwrap();
+    changes.notify();
+    tokio::time::timeout(Duration::from_secs(1), async {
+        loop {
+            state.changed().await.unwrap();
+            if state.borrow_and_update().peers.iter().any(|peer| {
+                peer.fingerprint == *a.fingerprint().as_bytes()
+                    && peer
+                        .addresses
+                        .iter()
+                        .any(|addr| addr.port() == fresh.port())
+            }) {
+                break;
+            }
+        }
+    })
+    .await
+    .expect("network event must bypass the 30-second broadcast timer");
+    one.shutdown().await;
+    two.shutdown().await;
+    first.close();
+    second.close();
+    first.wait_idle().await;
+    second.wait_idle().await;
+}
+
+#[tokio::test]
+async fn oversized_or_invalid_datagrams_do_not_disable_receiver() {
+    let port = free_port();
+    let mut cfg = config(port);
+    cfg.listen = SocketAddrV4::new(Ipv4Addr::LOCALHOST, port);
+    let receiver = BroadcastDiscovery::bind([1; 32], cfg).unwrap();
+    let sender = tokio::net::UdpSocket::bind(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 2), port))
+        .await
+        .unwrap();
+    let destination = SocketAddrV4::new(Ipv4Addr::LOCALHOST, port);
+    for bytes in [vec![0; PACKET_SIZE + 50], vec![0; PACKET_SIZE], vec![0; 3]] {
+        sender.send_to(&bytes, destination).await.unwrap();
+        assert!(
+            tokio::time::timeout(Duration::from_secs(1), receiver.receive())
+                .await
+                .unwrap()
+                .unwrap()
+                .is_none()
+        );
+    }
+    let packet = Packet {
+        query: true,
+        port: 47820,
+        fingerprint: [2; 32],
+    };
+    sender.send_to(&packet.encode(), destination).await.unwrap();
+    let (received, source) = tokio::time::timeout(Duration::from_secs(1), receiver.receive())
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    assert_eq!(received, packet);
+    assert_eq!(*source.ip(), Ipv4Addr::new(127, 0, 0, 2));
+}
