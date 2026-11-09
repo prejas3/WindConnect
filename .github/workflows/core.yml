@@ -1,0 +1,36 @@
+name: Core CI
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+permissions:
+  contents: read
+
+jobs:
+  core:
+    name: wind-core (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Install stable Rust
+        run: rustup toolchain install stable --profile minimal --component rustfmt --component clippy
+      - name: Check formatting
+        run: cargo +stable fmt --all -- --check
+      - name: Test wind-core
+        run: cargo +stable test --locked -p wind-core --all-features
+      - name: Lint wind-core
+        run: cargo +stable clippy --locked -p wind-core --all-targets --all-features -- -D warnings
+      - name: Build wind-core
+        run: cargo +stable build --locked -p wind-core --all-targets --all-features
