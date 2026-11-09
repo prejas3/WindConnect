@@ -1,7 +1,8 @@
 # WindConnect
 
 WindConnect łączy Windows 11 z Androidem 10+ (API 29+).
-Projekt jest na etapie szkieletu monorepo; aplikacje i protokół nie są jeszcze zaimplementowane.
+Projekt jest na etapie fundamentów: Windows ma szkielet Tauri 2;
+aplikacja Android i protokół nie są jeszcze zaimplementowane.
 
 ## Struktura
 
@@ -9,7 +10,7 @@ Projekt jest na etapie szkieletu monorepo; aplikacje i protokół nie są jeszcz
 Cargo.toml                 workspace Rust
 Cargo.lock                 wersje zależności workspace
 crates/wind-core/          współdzielona biblioteka Rust
-apps/windows/              miejsce na aplikację Tauri 2
+apps/windows/              aplikacja Tauri 2 i konfiguracja MSI
 apps/android/              miejsce na aplikację Kotlin / Jetpack Compose
 LICENSE                    licencja MIT
 CONTRIBUTING.md            zasady współpracy
@@ -24,8 +25,10 @@ W katalogu głównym repozytorium uruchom:
 cargo build --locked
 ```
 
-Polecenie buduje `wind-core`. Katalogi aplikacji są obecnie placeholderami
-i nie należą do workspace Cargo. Szkielet nie ma zależności zewnętrznych.
+Polecenie buduje domyślny pakiet `wind-core`. Klient Windows również należy
+do workspace; jego wymagania i budowanie MSI opisano w
+[apps/windows/README.md](apps/windows/README.md).
+Android pozostaje placeholderem.
 
 ## Kierunek projektu
 

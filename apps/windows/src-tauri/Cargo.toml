@@ -1,0 +1,17 @@
+[package]
+name = "windconnect-windows"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "WindConnect Windows client"
+publish = false
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+wind-core = { path = "../../../crates/wind-core" }
+
+[features]
+custom-protocol = ["tauri/custom-protocol"]

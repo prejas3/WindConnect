@@ -1,0 +1,41 @@
+name: Windows MSI
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Install stable Rust
+        run: rustup toolchain install stable --profile minimal --component rustfmt --component clippy
+      - name: Check formatting
+        run: cargo +stable fmt --all -- --check
+      - name: Test Windows client
+        run: cargo +stable test --locked -p windconnect-windows
+      - name: Lint Windows client
+        run: cargo +stable clippy --locked -p windconnect-windows --all-targets -- -D warnings
+      - name: Install Tauri CLI
+        run: cargo +stable install tauri-cli --version 2.11.4 --locked
+      - name: Build MSI
+        working-directory: apps/windows
+        run: cargo +stable tauri build --bundles msi -- --locked
+      - name: Upload MSI
+        uses: actions/upload-artifact@v4
+        with:
+          name: WindConnect-windows-x64-msi
+          path: target/release/bundle/msi/*.msi
+          if-no-files-found: error
