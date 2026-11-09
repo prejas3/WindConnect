@@ -16,3 +16,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "WindConnect"
 include(":app")
+include(":wind-core")

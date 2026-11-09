@@ -1,10 +1,10 @@
 [workspace]
-members = ["crates/wind-core", "apps/windows/src-tauri"]
+members = ["crates/wind-core", "crates/wind-ffi", "apps/windows/src-tauri"]
 default-members = ["crates/wind-core"]
 resolver = "2"
 
 [workspace.package]
-version = "0.14.0"
+version = "0.17.0"
 edition = "2021"
 license = "MIT"
 

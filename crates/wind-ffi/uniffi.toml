@@ -1,0 +1,4 @@
+[bindings.kotlin]
+package_name = "io.github.prejas3.windconnect.bindings"
+cdylib_name = "wind_ffi"
+android = true
