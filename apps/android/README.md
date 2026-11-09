@@ -104,7 +104,7 @@ generator, a nie ręcznie edytowane wiązania lub binaria.
 
 AAR: `wind-core/build/outputs/aar/wind-core-release.aar`.
 Lokalne repozytorium Maven z AAR, źródłami, POM i metadanymi Gradle:
-`wind-core/build/repo/`. Współrzędne: `io.github.prejas3.windconnect:wind-core:0.21.0`.
+`wind-core/build/repo/`. Współrzędne: `io.github.prejas3.windconnect:wind-core:0.22.0`.
 Publikacja zapisuje pliki lokalnie; nie wysyła ich do zewnętrznego repozytorium.
 Konsument musi korzystać z POM/metadanych (JNA i korutyny są zależnościami
 przechodnimi); sama kopia pliku AAR nie dostarczy JNA.
@@ -117,7 +117,7 @@ Konsument spoza repozytorium dodaje lokalne repozytorium do
 maven { url = uri("/sciezka/do/wind-core/build/repo") }
 ```
 
-oraz `implementation("io.github.prejas3.windconnect:wind-core:0.21.0")`.
+oraz `implementation("io.github.prejas3.windconnect:wind-core:0.22.0")`.
 W aplikacji konsumenta ogranicz ABI do `arm64-v8a` i `x86_64`.
 
 ```kotlin
@@ -196,7 +196,7 @@ nowego IP z listy urządzeń należy do integracji zarządzania urządzeniami.
 Moduł deklaruje normalne uprawnienia `ACCESS_NETWORK_STATE` i
 `CHANGE_WIFI_MULTICAST_STATE`. W czasie obserwacji utrzymuje `MulticastLock`,
 zwalniany razem z callbackiem, zadaniami i daemonem w `shutdown()`.
-Wersja aplikacji to 0.21.0, a Android `versionCode` to 27. Numery wydań rosną
+Wersja aplikacji to 0.22.0, a Android `versionCode` to 28. Numery wydań rosną
 niezależnie od kolejności kart, aby aktualizacja APK i MSI nie cofała wersji.
 
 Test na emulatorze/telefonie: `CoreApiTest#platformNetworkCallbackWakesDiscoveryWithoutPolling`
@@ -208,3 +208,39 @@ Test ręczny: wprowadź zweryfikowany klucz i adres PC, spróbuj połączenia be
 zasięgu PC, a potem wejdź do Wi-Fi tego PC. Próba powinna ruszyć po zdarzeniu
 sieci. Sprawdzenie przejścia między fizycznymi sieciami na S25 Ultra pozostaje
 testem sprzętowym.
+
+## Motyw i komponenty (WN-22)
+
+`ui/Theme.kt` definiuje DM Sans i paletę z zaakceptowanego WN-20. Domyślnie
+Android 12+ pobiera Material You z tapety (`dynamicLightColorScheme` /
+`dynamicDarkColorScheme`); Android 10/11 zachowuje paletę morską/grafitową.
+Motyw System reaguje na konfigurację OS, a ręczny wybór jasny/ciemny i opcja
+koloru dynamicznego są zapamiętywane w prywatnych preferencjach aplikacji.
+Zmiana ustawień nie wymaga restartu. Treść respektuje safe drawing/IME insets,
+skalowanie czcionek i semantykę dostępności; ikony pasków systemu dopasowują
+się do motywu. Ikony i geometria kart/akcji pochodzą z makiety WN-20.
+
+`ui/Components.kt`: własne przyciski, karty, kafelki akcji, pola oparte na
+BasicTextField, przełącznik Canvas i wektorowe ikony. Brak domyślnych Button,
+Switch i OutlinedTextField. Role, opis pola, błąd i postęp są w semantyce Compose;
+elementy interaktywne mają co najmniej 48 dp. Ekran ręcznego połączenia nadal
+korzysta z rzeczywistego rdzenia i przypiętego klucza; jego tagi testowe zachowano.
+
+W debug naciśnij **Podgląd** w nagłówku. Ekran demonstruje oba motywy, paletę
+systemową/marki, kartę SZYMON-PC, cztery akcje, transfer, switch i walidację pola.
+To dane przykładowe: kliknięcie nie łączy, nie blokuje komputera i nie wysyła
+plików. **Połączenie** przywraca rzeczywisty ekran. Release nie pokazuje podglądu
+(`BuildConfig.DEBUG`); testy i stan przykładowego urządzenia nie trafiają do UX
+wydania. Nie dodano powiadomień/QS/widgetu — to odrębne funkcje z makiet.
+
+DM Sans jest tym samym niezmienionym fontem co w WN-21; kopia OFL i NOTICE
+są w `app/src/main/assets`, font w `res/font`. Nie dodano zależności ani fontów
+z sieci. Ikony i kod własny: MIT.
+
+Testy: `./gradlew :app:connectedDebugAndroidTest` na podłączonym urządzeniu.
+`ComponentsTest` sprawdza motywy, dynamiczny kolor, akcję, switch, walidację,
+odtworzenie Activity i powrót do prawdziwego ekranu; zapisuje zrzuty obu palet
+w cache debug aplikacji (`wn22-Light.png`, `wn22-Dark.png`). CI kompiluje APK
+instrumentacji; urządzeniowe uruchomienie jest lokalne. Docelowo sprawdź na S25
+Ultra / najnowszym One UI, także duży font i nawigację gestami. Emulator API 35
+nie zastępuje kontroli układu i koloru tapety na Samsungu.
