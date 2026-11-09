@@ -1,0 +1,38 @@
+[package]
+name = "wind-core-fuzz"
+version = "0.0.0"
+edition = "2021"
+license = "MIT"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+wind-core = { path = ".." }
+
+# Not part of the main workspace: it needs nightly and libFuzzer.
+[workspace]
+members = ["."]
+
+[[bin]]
+name = "frame_reader"
+path = "fuzz_targets/frame_reader.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "datagram"
+path = "fuzz_targets/datagram.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "cbor"
+path = "fuzz_targets/cbor.rs"
+test = false
+doc = false
+bench = false
