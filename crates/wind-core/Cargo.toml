@@ -1,0 +1,8 @@
+[package]
+name = "wind-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Shared core for WindConnect"
+publish = false
+
