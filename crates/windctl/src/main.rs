@@ -2,8 +2,8 @@ use clap::{Args, Parser, Subcommand, ValueEnum};
 use std::{error::Error, io, net::SocketAddr, path::PathBuf, sync::Arc, time::Duration};
 use tokio::{sync::mpsc, task::JoinSet};
 use wind_core::{
-    discovery::{Discovery, DiscoveryEvent},
     identity::{DeviceIdentity, PublicKey},
+    network::{NetworkChanges, NetworkDiscovery},
     protocol::{
         cbor::{self, Value},
         Channel, DeviceKind, ErrorCode, RawMessage, MAX_STREAM_FRAME,
@@ -234,19 +234,32 @@ async fn execute(
     match command {
         Command::Identity => unreachable!(),
         Command::Discover { duration } => {
-            let discovery =
-                Discovery::start(&identity.public_key(), endpoint.local_addr()?.port())?;
+            let mut discovery = NetworkDiscovery::start(
+                identity.public_key(),
+                endpoint.clone(),
+                Arc::new(NetworkChanges::default()),
+            )?;
+            let mut state = discovery.subscribe();
+            let mut previous = std::collections::BTreeSet::new();
             let deadline = tokio::time::Instant::now() + Duration::from_secs(duration);
             loop {
                 tokio::select! {
                     _ = tokio::time::sleep_until(deadline) => break,
-                    event = discovery.next() => match event? {
-                        DiscoveryEvent::Resolved(peer) => println!("DISCOVERED service={:?} fingerprint={} addresses={:?}", peer.service_name, encode_hex(&peer.fingerprint), peer.addresses),
-                        DiscoveryEvent::Removed(name) => println!("REMOVED service={name:?}"),
+                    changed = state.changed() => {
+                        changed?;
+                        let snapshot = state.borrow_and_update().clone();
+                        if let Some(error) = snapshot.error { eprintln!("mDNS: {error}"); }
+                        let mut current = std::collections::BTreeSet::new();
+                        for peer in snapshot.peers {
+                            current.insert(peer.service_name.clone());
+                            println!("DISCOVERED service={:?} fingerprint={} addresses={:?}", peer.service_name, encode_hex(&peer.fingerprint), peer.addresses);
+                        }
+                        for name in previous.difference(&current) { println!("REMOVED service={name:?}"); }
+                        previous = current;
                     },
-                    event = discovery.monitor().recv_async() => { eprintln!("mDNS: {:?}", event?); },
                 }
             }
+            discovery.shutdown().await;
             Ok(())
         }
         Command::Serve {
@@ -255,14 +268,16 @@ async fn execute(
             echo,
             ..
         } => {
-            let discovery = if advertise {
-                Some(Discovery::start(
-                    &identity.public_key(),
-                    endpoint.local_addr()?.port(),
+            let mut discovery = if advertise {
+                Some(NetworkDiscovery::start(
+                    identity.public_key(),
+                    endpoint.clone(),
+                    Arc::new(NetworkChanges::default()),
                 )?)
             } else {
                 None
             };
+            let mut discovery_state = discovery.as_ref().map(NetworkDiscovery::subscribe);
             println!("LISTENING address={}", endpoint.local_addr()?);
             let deadline = tokio::time::Instant::now() + Duration::from_secs(duration);
             let mut peers = JoinSet::new();
@@ -283,16 +298,24 @@ async fn execute(
                         if let Some(Err(error)) = result { eprintln!("peer task: {error}"); }
                     },
                     event = async {
-                        match &discovery {
-                            Some(discovery) => discovery.monitor().recv_async().await,
+                        match &mut discovery_state {
+                            Some(state) => state.changed().await,
                             None => std::future::pending().await,
                         }
-                    } => eprintln!("mDNS: {:?}", event?),
+                    } => {
+                        event?;
+                        if let Some(state) = &mut discovery_state {
+                            if let Some(error) = &state.borrow_and_update().error { eprintln!("mDNS: {error}"); }
+                        }
+                    },
                 }
             }
             endpoint.close();
             peers.abort_all();
             while peers.join_next().await.is_some() {}
+            if let Some(discovery) = &mut discovery {
+                discovery.shutdown().await;
+            }
             Ok(())
         }
         Command::Connect(peer) => {

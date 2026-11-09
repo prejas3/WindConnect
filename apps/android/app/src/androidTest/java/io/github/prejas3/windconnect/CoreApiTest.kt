@@ -11,12 +11,58 @@ import java.net.InetAddress
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.flow.first
+import android.os.Bundle
+import android.os.ParcelFileDescriptor
+import kotlinx.coroutines.delay
+import org.junit.Assume.assumeTrue
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
 
 class CoreApiTest {
+    /** CCS/1 RULE:opt-in only; changes Wi-Fi on the explicitly selected test device. */
+    @Test fun wifiReturnWakesNativeDiscovery() = runBlocking {
+        assumeTrue(InstrumentationRegistry.getArguments().getString("toggleWifi") == "true")
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        fun wifi(enabled: Boolean) {
+            val descriptor = instrumentation.uiAutomation.executeShellCommand(
+                "svc wifi ${if (enabled) "enable" else "disable"}")
+            ParcelFileDescriptor.AutoCloseInputStream(descriptor).use { it.readBytes() }
+        }
+        val core = WindCore.open(instrumentation.targetContext, "Android")
+        try {
+            withTimeout(5000) { core.network.first { it.generation > 0uL } }
+            delay(500)
+            val before = core.network.value.generation
+            wifi(false)
+            withTimeout(5000) { core.network.first { it.generation > before } }
+            val offline = core.network.value.generation
+            val started = System.nanoTime()
+            wifi(true)
+            val online = withTimeout(5000) { core.network.first { it.generation > offline } }
+            instrumentation.sendStatus(0, Bundle().apply {
+                putString("wifiReturnGeneration", online.generation.toString())
+                putString("wifiReturnWakeMs", ((System.nanoTime() - started) / 1_000_000).toString())
+            })
+        } finally {
+            wifi(true)
+            core.shutdown()
+        }
+    }
+
+    @Test fun platformNetworkCallbackWakesDiscoveryWithoutPolling() = runBlocking {
+        val core = WindCore.open(InstrumentationRegistry.getInstrumentation().targetContext, "Android")
+        try {
+            val state = withTimeout(5000) { core.network.first { it.generation > 0uL } }
+            assertTrue(state.generation > 0uL)
+            InstrumentationRegistry.getInstrumentation().sendStatus(0, Bundle().apply {
+                putString("networkGeneration", state.generation.toString())
+            })
+        } finally { core.shutdown() }
+    }
+
     @Test fun callbackFailureDoesNotCreateAnotherIdentity() = runBlocking {
         val storage = object : IdentityStorage {
             override fun load(): ByteArray? = throw CoreException.Storage("Keystore unavailable")

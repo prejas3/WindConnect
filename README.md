@@ -22,6 +22,14 @@ Narzędzie [windctl](crates/windctl/README.md) uruchamia węzły testowe,
 odkrywa urządzenia, wysyła surowe wiadomości i mierzy RTT Ping/Pong z p50/p95.
 Budowanie: `cargo build --locked -p windctl`.
 
+`wind_core::network::NetworkChanges` rozsyła sygnały zmiany sieci;
+`NetworkDiscovery` natychmiast odtwarza odkrywanie na aktualnych interfejsach.
+Na Windows właściciel automatycznie rejestruje `NotifyNetworkConnectivityHintChange`
+i wyrejestrowuje callback przy zamykaniu. `windctl discover` oraz
+`serve --advertise` korzystają z tego mechanizmu. Szkielet Tauri utrzymuje
+rejestrację przez życie aplikacji i udostępnia diagnostyczne `network_generation`;
+uruchamianie sesji desktopu należy do dalszej integracji aplikacji.
+
 Odkrywanie LAN udostępnia `wind_core::discovery`: `Discovery::start` przyjmuje
 klucz publiczny urządzenia i rzeczywisty port z `Endpoint::local_addr()`.
 `next().await` zwraca rozwiązane adresy lub usunięcie usługi; `monitor()`
