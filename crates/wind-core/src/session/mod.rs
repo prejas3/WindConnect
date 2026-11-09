@@ -42,6 +42,9 @@ use std::time::{Duration, Instant};
 use tokio::sync::{mpsc, oneshot};
 
 pub use framed::{write_raw, FramedRecv, RecvError};
+
+use crate::input::{InputAnnouncement, InputEvent, InputReceiver, InputSender};
+use crate::protocol::InputMessage;
 pub use router::{capability_name, is_uni, ChannelMessage, FileStream, Router};
 
 use crate::identity::PublicKey;
@@ -197,6 +200,12 @@ struct Inner {
     next_nonce: AtomicU64,
     goodbye_received: AtomicBool,
     events: mpsc::UnboundedSender<SessionEvent>,
+    /// The peer's announcements so far (`Hello` / `HelloAck` is 0, each
+    /// `Capabilities` one more) and, while it accepts input, the input
+    /// announcements (§8.2).
+    peer_announcements: AtomicU64,
+    peer_input_announcement: Mutex<Option<InputAnnouncement>>,
+    input: std::sync::OnceLock<InputSender>,
 }
 
 /// A running session. Cheap to clone; every clone is the same session.
@@ -460,15 +469,14 @@ impl Session {
         router: Router,
     ) -> (Session, mpsc::UnboundedReceiver<SessionEvent>) {
         let (events, events_rx) = mpsc::unbounded_channel();
-        let uni = [
-            Channel::Clipboard,
-            Channel::Notify,
-            Channel::Media,
-            Channel::Input,
-        ]
-        .into_iter()
-        .map(|ch| (ch.byte(), tokio::sync::Mutex::new(None)))
-        .collect();
+        let uni = [Channel::Clipboard, Channel::Notify, Channel::Media]
+            .into_iter()
+            .map(|ch| (ch.byte(), tokio::sync::Mutex::new(None)))
+            .collect();
+        let input_announced = has_input(&peer_hello.caps).then_some(InputAnnouncement {
+            last: 0,
+            enabled: 0,
+        });
         let inner = Arc::new(Inner {
             peer: PeerInfo {
                 key: conn.peer_key(),
@@ -482,15 +490,53 @@ impl Session {
             next_nonce: AtomicU64::new(1),
             goodbye_received: AtomicBool::new(false),
             events,
+            peer_announcements: AtomicU64::new(0),
+            peer_input_announcement: Mutex::new(input_announced),
+            input: std::sync::OnceLock::new(),
         });
+        let input = router.input.map(|out| {
+            let (tx, rx) = mpsc::channel(INPUT_COMMANDS);
+            tokio::spawn(input_actor(rx, out));
+            tx
+        });
+        if let Some(cmds) = &input {
+            tokio::spawn(datagram_loop(inner.conn.quinn().clone(), cmds.clone()));
+        }
         tokio::spawn(control_loop(inner.clone(), control_recv));
-        tokio::spawn(uni_loop(inner.clone(), router.uni));
+        tokio::spawn(uni_loop(inner.clone(), router.uni, input));
         tokio::spawn(bidi_loop(inner.clone(), router.files));
         (Session { inner }, events_rx)
     }
 
     pub fn peer(&self) -> &PeerInfo {
         &self.inner.peer
+    }
+
+    /// Sends input to the peer (§8): pointer and scroll as datagrams (or on
+    /// the stream when datagrams are off), buttons on the `input` stream.
+    /// Fails with `CapabilityMissing` while the peer doesn't accept input.
+    pub fn input(&self) -> Result<InputSender, SessionError> {
+        if !self.peer_accepts(Channel::Input) {
+            return Err(SessionError::CapabilityMissing(Channel::Input));
+        }
+        Ok(self
+            .inner
+            .input
+            .get_or_init(|| {
+                let inner = Arc::downgrade(&self.inner);
+                InputSender::new(
+                    self.inner.conn.quinn().clone(),
+                    Arc::new(move || {
+                        let inner = inner.upgrade()?;
+                        let a = *inner
+                            .peer_input_announcement
+                            .lock()
+                            .unwrap_or_else(|e| e.into_inner());
+                        a
+                    }),
+                )
+            })
+            .clone())
     }
 
     /// What the peer accepts now (from `HelloAck` / `Hello`, then
@@ -669,6 +715,19 @@ async fn control_loop(inner: Arc<Inner>, mut recv: FramedRecv) {
                     }
                 }
                 ControlMessage::Capabilities { caps } => {
+                    let number = inner.peer_announcements.fetch_add(1, Ordering::SeqCst) + 1;
+                    {
+                        let mut a = inner
+                            .peer_input_announcement
+                            .lock()
+                            .unwrap_or_else(|e| e.into_inner());
+                        *a = has_input(&caps).then(|| InputAnnouncement {
+                            last: number,
+                            // Still enabled: the session base stays; enabled
+                            // again: this announcement is the new base.
+                            enabled: a.map_or(number, |prev| prev.enabled),
+                        });
+                    }
                     *inner.peer_caps.write().unwrap_or_else(|e| e.into_inner()) = caps.clone();
                     withdraw_streams(&inner, &caps).await;
                     let _ = inner.events.send(SessionEvent::Capabilities(caps));
@@ -768,12 +827,18 @@ async fn withdraw_streams(inner: &Inner, caps: &[Capability]) {
 async fn uni_loop(
     inner: Arc<Inner>,
     routes: std::collections::BTreeMap<u8, (Channel, u64, mpsc::Sender<ChannelMessage>)>,
+    input: Option<mpsc::Sender<InputCmd>>,
 ) {
     let mut channels: HashMap<u8, mpsc::UnboundedSender<quinn::RecvStream>> = HashMap::new();
     for (byte, (channel, _, out)) in routes {
         let (tx, rx) = mpsc::unbounded_channel();
         tokio::spawn(channel_task(channel, rx, out));
         channels.insert(byte, tx);
+    }
+    if let Some(cmds) = input {
+        let (tx, rx) = mpsc::unbounded_channel();
+        tokio::spawn(input_stream_task(rx, cmds));
+        channels.insert(Channel::Input.byte(), tx);
     }
 
     let conn = inner.conn.quinn().clone();
@@ -935,4 +1000,107 @@ async fn bidi_loop(inner: Arc<Inner>, files: Option<(u64, mpsc::Sender<FileStrea
             }
         });
     }
+}
+
+fn has_input(caps: &[Capability]) -> bool {
+    caps.iter().any(|c| c.name() == "input" && c.version() == 1)
+}
+
+/// Commands queued to a session's input actor, in arrival order.
+enum InputCmd {
+    StreamStarted,
+    /// A stream frame; the reply says whether to stop the stream, and with
+    /// which code.
+    StreamFrame(InputMessage, oneshot::Sender<Option<ErrorCode>>),
+    StreamEnded,
+    Datagram(InputMessage),
+    ConnectionEnded,
+}
+
+/// Commands an input actor queues before its sources wait.
+const INPUT_COMMANDS: usize = 1024;
+
+/// Owns the session's input receiver: takes one command at a time and
+/// delivers that command's whole batch of events before taking the next, so
+/// the module sees events in exactly the order the state machine made them,
+/// however the stream and datagram sources interleave and however slowly
+/// the module reads.
+async fn input_actor(mut cmds: mpsc::Receiver<InputCmd>, out: mpsc::Sender<InputEvent>) {
+    let mut receiver = InputReceiver::new(true);
+    while let Some(cmd) = cmds.recv().await {
+        let mut events = Vec::new();
+        match cmd {
+            InputCmd::StreamStarted => receiver.stream_started(),
+            InputCmd::StreamFrame(msg, reply) => {
+                let stop = receiver.stream_frame(&msg, &mut events).err();
+                let _ = reply.send(stop);
+            }
+            InputCmd::StreamEnded => receiver.stream_ended(&mut events),
+            InputCmd::Datagram(msg) => receiver.datagram(&msg, &mut events),
+            InputCmd::ConnectionEnded => receiver.connection_ended(&mut events),
+        }
+        for e in events {
+            // A gone module still lets the state machine run to the end.
+            let _ = out.send(e).await;
+        }
+    }
+}
+
+/// Reads the peer's `input` streams one after another (each is a session,
+/// §8.2) and queues their frames to the input actor.
+async fn input_stream_task(
+    mut streams: mpsc::UnboundedReceiver<quinn::RecvStream>,
+    cmds: mpsc::Sender<InputCmd>,
+) {
+    while let Some(stream) = streams.recv().await {
+        let mut recv = FramedRecv::new(stream, Channel::Input);
+        if cmds.send(InputCmd::StreamStarted).await.is_err() {
+            return;
+        }
+        let mut lost = false;
+        loop {
+            let stop = match recv.next_message().await {
+                Ok(Some(Message::Input(msg))) => {
+                    let (tx, rx) = oneshot::channel();
+                    if cmds.send(InputCmd::StreamFrame(msg, tx)).await.is_err() {
+                        return;
+                    }
+                    rx.await.ok().flatten()
+                }
+                Ok(Some(_)) => None,
+                Ok(None) => break,
+                // §4.4: an unknown type is skipped.
+                Err(RecvError::Frame(FrameError::UnknownMessage { .. })) => None,
+                Err(RecvError::Frame(e)) => Some(e.code()),
+                Err(RecvError::Read(quinn::ReadError::Reset(_))) => break,
+                Err(RecvError::Read(_)) => {
+                    lost = true;
+                    break;
+                }
+            };
+            if let Some(code) = stop {
+                recv.stop(code);
+                break;
+            }
+        }
+        if cmds.send(InputCmd::StreamEnded).await.is_err() || lost {
+            return;
+        }
+    }
+}
+
+/// Reads the peer's datagrams (§8.1): a bad one is dropped silently.
+async fn datagram_loop(conn: quinn::Connection, cmds: mpsc::Sender<InputCmd>) {
+    while let Ok(bytes) = conn.read_datagram().await {
+        let Ok(msg) = crate::protocol::decode_datagram(&bytes, crate::protocol::MAX_DATAGRAM)
+        else {
+            continue;
+        };
+        if cmds.send(InputCmd::Datagram(msg)).await.is_err() {
+            return;
+        }
+    }
+    // The connection is gone: release whatever is still pressed, after
+    // everything queued before.
+    let _ = cmds.send(InputCmd::ConnectionEnded).await;
 }
