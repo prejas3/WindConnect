@@ -6,3 +6,15 @@ license.workspace = true
 description = "Shared core for WindConnect"
 publish = false
 
+[dependencies]
+ed25519-dalek = { version = "2", features = ["pkcs8", "pem", "rand_core", "zeroize"] }
+rand_core = { version = "0.6", features = ["getrandom"] }
+rcgen = { version = "0.13", default-features = false, features = ["ring", "pem"] }
+rustls-pki-types = "1"
+sha2 = "0.10"
+zeroize = "1"
+
+[dev-dependencies]
+rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
+tempfile = "3"
+

@@ -55,6 +55,28 @@ QUIC v1 (RFC 9000) + TLS 1.3, ALPN "windconnect/1"
   czekać na zakończenie uzgadniania 1-RTT. Obie wiadomości są odporne na
   powtórzenie (replay).
 
+### 2.1 Klucz, certyfikat i odcisk
+
+- Klucz urządzenia to para Ed25519 (RFC 8032), tworzona przy pierwszym
+  uruchomieniu i trwała między uruchomieniami. Nieczytelny zapisany klucz
+  jest błędem; implementacja NIE MOŻE wtedy po cichu utworzyć nowego, bo
+  nowy klucz oznacza utratę wszystkich parowań.
+- Certyfikat TLS to self-signed X.509 v3 podpisany tym kluczem, z
+  `subjectAltName` DNS `windconnect`. Pola certyfikatu poza kluczem
+  publicznym nie niosą znaczenia (sekcja 2).
+- **Odcisk** klucza to SHA-256 z DER `SubjectPublicKeyInfo` klucza
+  (RFC 8410), czyli `302a300506032b6570032100 ‖ klucz (32 B)`. Daje się go
+  policzyć standardowymi narzędziami, np.
+  `openssl pkey -pubout -outform DER | sha256sum`.
+- Postać do wyświetlania: pierwsze 160 bitów odcisku w base32 Crockforda
+  (alfabet `0123456789ABCDEFGHJKMNPQRSTVWXYZ`, bez `I L O U`), 32 znaki
+  w ośmiu grupach po cztery, rozdzielone spacją. Przykład dla klucza
+  publicznego z RFC 8032 §7.1, test 1
+  (`d75a9801…f707511a`): odcisk `06e3fd8f…1b792fa9`, wyświetlany jako
+  `0VHZ V3YT 56XP 1ATS ANYY C7PV 1BPD P8RH`.
+- Odcisk służy ludziom do porównania i do odkrywania; zaufanie opiera się
+  na pełnym kluczu publicznym (sekcja 2).
+
 ## 3. Strumienie i nagłówek strumienia
 
 Strona, która **otwiera** strumień, zaczyna go dwubajtowym nagłówkiem:
