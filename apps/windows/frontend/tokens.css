@@ -1,0 +1,24 @@
+/* CCS/1 DEP:WN-20 accepted mockup | RULE:DM Sans, local assets only. */
+@font-face { font-family: "DM Sans"; src: url("assets/dm-sans.ttf") format("truetype"); font-weight: 100 1000; font-style: normal; font-display: swap; }
+:root {
+  --font-ui: "DM Sans", sans-serif;
+  --text-caption: 11px; --text-body: 13px; --text-label: 12px; --text-heading: 20px; --text-title: 28px;
+  --weight-regular: 400; --weight-medium: 550; --weight-strong: 700;
+  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-5: 24px; --space-6: 32px;
+  --radius-small: 7px; --radius-control: 8px; --radius-tile: 10px; --radius-panel: 15px;
+  --duration-press: 90ms; --duration-hover: 120ms; --duration-enter: 160ms;
+  --ease-enter: cubic-bezier(.2,.8,.2,1); --ease-standard: ease-out;
+  --surface: #f8fbfb; --tile: #e8efef; --sink: #f1f6f6; --text: #15282f; --sub: #52686e; --border: #ccdadb;
+  --accent: #0d7f74; --accent-bg: #d7efeb; --accent-ink: #0b5e55; --on-accent: #fff;
+  --field: #f8fbfb; --focus: #0d7f74; --danger: #ad2838; --danger-bg: #fce5e8; --warning: #805015;
+  --success: #096a60; --disabled: #667b80; --mica-tint: #f8fbfbe8; --shadow: 0 22px 45px -20px #254e5566;
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  --surface: #16242b; --tile: #22343c; --sink: #132128; --text: #e9f1f1; --sub: #a1b2b6; --border: #34454b;
+  --accent: #43c9b8; --accent-bg: #1f5c55; --accent-ink: #dff7f2; --on-accent: #062e28;
+  --field: #16242b; --focus: #43c9b8; --danger: #ff9da9; --danger-bg: #4d2832; --warning: #efbc7c;
+  --success: #70dfba; --disabled: #82979d; --mica-tint: #16242be8; --shadow: 0 22px 45px -20px #03101599;
+  color-scheme: dark;
+}
+@media(prefers-reduced-motion:reduce) { :root { --duration-press: 0ms; --duration-hover: 0ms; --duration-enter: 0ms; } }

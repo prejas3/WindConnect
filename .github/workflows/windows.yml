@@ -28,6 +28,17 @@ jobs:
         run: cargo +stable test --locked -p windconnect-windows
       - name: Lint Windows client
         run: cargo +stable clippy --locked -p windconnect-windows --all-targets -- -D warnings
+      - name: Test Windows controls
+        shell: pwsh
+        run: |
+          $uiTools = Join-Path $env:RUNNER_TEMP 'windconnect-ui-tools'
+          npm install --prefix $uiTools --no-audit --no-fund playwright@1.61.1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & (Join-Path $uiTools 'node_modules/.bin/playwright.cmd') install chromium
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $env:PLAYWRIGHT_MODULE = Join-Path $uiTools 'node_modules/playwright'
+          node apps/windows/scripts/check-ui.cjs
+          exit $LASTEXITCODE
       - name: Install Tauri CLI
         run: cargo +stable install tauri-cli --version 2.11.4 --locked
       - name: Build MSI

@@ -947,7 +947,7 @@ dependencies = [
 
 [[package]]
 name = "wind-core"
-version = "0.19.5"
+version = "0.21.0"
 dependencies = [
  "ed25519-dalek",
  "if-addrs",

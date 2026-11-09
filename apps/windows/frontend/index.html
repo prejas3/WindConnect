@@ -1,17 +1,44 @@
 <!doctype html>
 <html lang="pl">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>WindConnect</title>
-    <link rel="stylesheet" href="style.css">
-    <script src="main.js" defer></script>
-  </head>
-  <body>
-    <main>
-      <h1>WindConnect</h1>
-      <p>Windows ⇄ Android</p>
-      <p id="status" role="status">Uruchamianie…</p>
-    </main>
-  </body>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>WindConnect</title>
+  <link rel="stylesheet" href="tokens.css">
+  <link rel="stylesheet" href="style.css">
+  <script src="main.js" type="module"></script>
+</head>
+<body>
+  <header class="titlebar" id="titlebar">
+    <span class="brand"><span class="brand-mark" aria-hidden="true">W</span>WindConnect</span>
+    <div class="window-actions" aria-label="Okno">
+      <button class="caption" data-window="minimize" aria-label="Minimalizuj"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 16h14"/></svg></button>
+      <button class="caption" data-window="maximize" aria-label="Maksymalizuj lub przywróć"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="1"/></svg></button>
+      <button class="caption close" data-window="close" aria-label="Zamknij"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
+    </div>
+  </header>
+  <main id="main">
+    <div class="page-heading"><div><p class="eyebrow">Windows ⇄ Android</p><h1>Twoje urządzenia</h1></div>
+      <div class="segmented" role="group" aria-label="Motyw">
+        <button data-theme-choice="system" aria-pressed="true">System</button><button data-theme-choice="light" aria-pressed="false">Jasny</button><button data-theme-choice="dark" aria-pressed="false">Ciemny</button>
+      </div>
+    </div>
+    <section id="home" aria-labelledby="empty-title" class="surface empty-state">
+      <span class="empty-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="6" y="2" width="12" height="20" rx="3"/><path d="M10 5h4M11 19h2"/></svg></span>
+      <h2 id="empty-title">Miejsce na Twój telefon</h2>
+      <p>Połącz urządzenia, aby mieć pliki, schowek i powiadomienia pod ręką.</p>
+      <p class="subtle">Parowanie urządzeń pojawi się w kolejnym etapie.</p>
+    </section>
+    <section id="gallery" aria-labelledby="gallery-title" hidden></section>
+    <footer class="app-footer"><span id="status" role="status">Uruchamianie…</span><button id="gallery-toggle" class="button quiet small" aria-pressed="false" hidden>Galeria kontrolek</button></footer>
+  </main>
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  <div id="overlay" class="overlay" hidden>
+    <section class="dialog surface" role="dialog" aria-modal="true" aria-labelledby="dialog-title" aria-describedby="dialog-description" tabindex="-1">
+      <h2 id="dialog-title">Przykład okna dialogowego</h2><p id="dialog-description">To podgląd kontrolki. Nie zmienia ustawień ani danych urządzenia.</p>
+      <div class="button-row"><button class="button" data-dismiss>Anuluj</button><button class="button primary" data-confirm>Potwierdź</button></div>
+    </section>
+  </div>
+</body>
 </html>

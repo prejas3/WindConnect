@@ -1,0 +1,14 @@
+WindConnect Windows UI assets (WN-21)
+
+DM Sans variable font, unchanged from the accepted WN-20 attachment:
+Copyright 2014 The DM Sans Project Authors
+https://github.com/googlefonts/dm-fonts
+SIL Open Font License 1.1; full text: DM-Sans-OFL.txt.
+SHA256 dm-sans.ttf: 8cd08d97e89c24d0aa92edd2f0f4c8ee6195eee9b7c9f154865a58b02f0c1c0d
+No remote font requests. No other fonts/photos from the mockup ship.
+
+window-vibrancy 0.8.1 (already a Tauri transitive dependency, now called directly):
+Copyright (c) 2020-2022 Tauri Programme within The Commons Conservancy
+Chosen licence: MIT; full text: window-vibrancy-MIT.txt.
+
+SVG icons and UI code: WindConnect contributors, project MIT licence.
