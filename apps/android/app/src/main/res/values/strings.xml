@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">WindConnect</string>
+    <string name="welcome_message">Windows ⇄ Android</string>
+</resources>
