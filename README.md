@@ -3,7 +3,8 @@
 WindConnect łączy Windows 11 z Androidem 10+ (API 29+).
 Projekt jest na etapie fundamentów: Windows ma szkielet Tauri 2,
 a Android — Kotlin / Jetpack Compose. Protokół jest opisany w
-[PROTOCOL.md](PROTOCOL.md), ale nie jest jeszcze zaimplementowany.
+[PROTOCOL.md](PROTOCOL.md); `wind-core` ma już koder ramek
+(`wind_core::protocol`), a połączenia QUIC jeszcze nie.
 
 ## Struktura
 
@@ -12,6 +13,7 @@ Cargo.toml                 workspace Rust
 Cargo.lock                 wersje zależności workspace
 PROTOCOL.md                specyfikacja protokołu v1
 crates/wind-core/          współdzielona biblioteka Rust
+crates/wind-core/fuzz/     cele cargo-fuzz dla kodera ramek
 apps/windows/              aplikacja Tauri 2 i konfiguracja MSI
 apps/android/              aplikacja Kotlin / Jetpack Compose
 LICENSE                    licencja MIT
