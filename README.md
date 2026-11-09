@@ -9,9 +9,9 @@ Projekt jest na etapie szkieletu monorepo; aplikacje i protokół nie są jeszcz
 Cargo.toml                 workspace Rust
 Cargo.lock                 wersje zależności workspace
 crates/wind-core/          współdzielona biblioteka Rust
-apps/windows/             miejsce na aplikację Tauri 2
-apps/android/             miejsce na aplikację Kotlin / Jetpack Compose
-LICENSE                   licencja MIT
+apps/windows/              miejsce na aplikację Tauri 2
+apps/android/              miejsce na aplikację Kotlin / Jetpack Compose
+LICENSE                    licencja MIT
 CONTRIBUTING.md            zasady współpracy
 ```
 
