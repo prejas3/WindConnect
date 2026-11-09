@@ -63,6 +63,22 @@ QUIC v1 (RFC 9000) + TLS 1.3, ALPN "windconnect/1"
   `control`, ramkę `Hello` i ramki `Ping`. Wszystkie pozostałe dane MUSZĄ
   czekać na zakończenie uzgadniania 1-RTT. Obie wiadomości są odporne na
   powtórzenie (replay).
+- Utrzymanie i zmiana sieci (WC-12): strona wysyła keep-alive QUIC (ramka
+  `PING`) co 15 s bezczynności i ogłasza `max_idle_timeout` 45 s. Migracja
+  ścieżki (RFC 9000 §9) jest dozwolona: strona NIE MOŻE ogłaszać
+  `disable_active_migration`, a po zmianie sieci klient przenosi istniejące
+  połączenie na nowe gniazdo zamiast zestawiać nowe.
+- Wznowienie TLS: klient pamięta bilety sesji osobno dla każdego urządzenia
+  i oferuje bilet tylko temu, które go wydało; nazwa serwera (SNI) jest dla
+  wszystkich urządzeń ta sama (`windconnect`), więc nie zdradza, z kim klient
+  się łączy. Wznowiona sesja pomija weryfikację certyfikatu, dlatego po
+  zakończeniu uzgadniania strona MUSI ponownie sprawdzić, że klucz drugiej
+  strony jest nadal przypięty, a jeśli nie jest, zamknąć połączenie kodem
+  `UNTRUSTED_PEER`.
+- Ponowne łączenie po utracie połączenia: odstępy rosnące wykładniczo
+  (od 100 ms do 30 s, z losowym rozrzutem 50–100 %), z natychmiastową próbą
+  po wykryciu zmiany sieci (WC-16). Odmowa z powodu przypięcia
+  (`access_denied`, `UNTRUSTED_PEER`) kończy ponawianie.
 
 ### 2.1 Klucz, certyfikat i odcisk
 
