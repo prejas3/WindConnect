@@ -6,8 +6,10 @@ a Android — Kotlin / Jetpack Compose. Protokół jest opisany w
 [PROTOCOL.md](PROTOCOL.md); `wind-core` ma już koder ramek
 (`wind_core::protocol`) i tożsamość urządzenia (`wind_core::identity`:
 klucz Ed25519, certyfikat TLS, odcisk; na Windows klucz chroni DPAPI,
-na Androidzie klucz z Android Keystore)
-oraz połączenie QUIC z przypiętymi kluczami (`wind_core::transport`).
+na Androidzie klucz z Android Keystore),
+połączenie QUIC z przypiętymi kluczami (`wind_core::transport`)
+oraz sesję protokołu ze strumieniami kanałów i routerem do modułów
+(`wind_core::session`).
 
 ## Struktura
 

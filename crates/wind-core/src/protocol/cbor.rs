@@ -47,7 +47,66 @@ pub fn decode(input: &[u8]) -> Result<Value, CborError> {
     Ok(value)
 }
 
-/// Encodes `value` deterministically, appending to `out`.
+/// Checks that `value` is in the accepted subset, so that [`encode`]
+/// writes exactly it and [`decode`] reads it back unchanged: integers in
+/// `i64::MIN..=u64::MAX`, at most [`MAX_DEPTH`] levels of arrays and maps,
+/// no repeated map keys. Call it on values built by hand before encoding.
+pub fn check(value: &Value) -> Result<(), CborError> {
+    check_at(value, 0)
+}
+
+/// [`check`] for a value that will sit inside `levels` levels of arrays or
+/// maps (it may nest `MAX_DEPTH - levels` levels itself). Recursion stops at
+/// the limit, so a value nested arbitrarily deep is refused, not followed.
+pub fn check_inside(value: &Value, levels: usize) -> Result<(), CborError> {
+    if levels > MAX_DEPTH {
+        return Err("nested too deep");
+    }
+    check_at(value, levels)
+}
+
+fn check_at(value: &Value, depth: usize) -> Result<(), CborError> {
+    match value {
+        Value::Int(v) => {
+            if *v < i128::from(i64::MIN) || *v > i128::from(u64::MAX) {
+                return Err("integer out of range");
+            }
+        }
+        Value::Array(items) => {
+            let depth = depth + 1;
+            if depth > MAX_DEPTH {
+                return Err("nested too deep");
+            }
+            for item in items {
+                check_at(item, depth)?;
+            }
+        }
+        Value::Map(pairs) => {
+            let depth = depth + 1;
+            if depth > MAX_DEPTH {
+                return Err("nested too deep");
+            }
+            let mut keys = Vec::with_capacity(pairs.len());
+            for (k, v) in pairs {
+                check_at(k, depth)?;
+                check_at(v, depth)?;
+                let mut kb = Vec::new();
+                encode(k, &mut kb);
+                keys.push(kb);
+            }
+            keys.sort();
+            if keys.windows(2).any(|w| w[0] == w[1]) {
+                return Err("map with repeated keys");
+            }
+        }
+        Value::Bytes(_) | Value::Text(_) | Value::Bool(_) | Value::Null => {}
+    }
+    Ok(())
+}
+
+/// Encodes `value` deterministically, appending to `out` (map pairs sorted
+/// by their encoded key). `value` must pass [`check`], as everything
+/// [`decode`] returns does.
 pub fn encode(value: &Value, out: &mut Vec<u8>) {
     match value {
         Value::Int(v) => {
