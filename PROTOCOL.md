@@ -80,6 +80,20 @@ QUIC v1 (RFC 9000) + TLS 1.3, ALPN "windconnect/1"
   po wykryciu zmiany sieci (WC-16). Odmowa z powodu przypięcia
   (`access_denied`, `UNTRUSTED_PEER`) kończy ponawianie.
 
+### 2.0 Odkrywanie mDNS (WN-14)
+
+- Usługa DNS-SD: `_windconnect._udp.local.`. SRV ogłasza rzeczywisty,
+  niezerowy port nasłuchu QUIC, a A/AAAA adresy urządzenia.
+- TXT `fingerprint` zawiera pełny SHA-256 SPKI z §2.1: 64 znaki hex.
+  Nadawca używa małych liter; odbiorca akceptuje obie wielkości liter.
+  Brak lub błędny odcisk oznacza pominięcie ogłoszenia.
+- Nazwy instancji i hosta mają postać `wc-<pierwsze 40 znaków odcisku>`
+  (host z `.local.`); mDNS może zmienić nazwę przy konflikcie.
+- Ogłoszenie jest niezaufaną wskazówką adresową. Odcisk TXT NIE MOŻE
+  przypinać klucza ani omijać uwierzytelnienia TLS z §2.
+- Aktualizacja rozwiązanego ogłoszenia zastępuje jego poprzednie adresy;
+  goodbye lub wygaśnięcie rekordów usuwa usługę. Własny odcisk jest pomijany.
+
 ### 2.1 Klucz, certyfikat i odcisk
 
 - Klucz urządzenia to para Ed25519 (RFC 8032), tworzona przy pierwszym

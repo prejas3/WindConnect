@@ -8,6 +8,7 @@ publish = false
 
 [dependencies]
 ed25519-dalek = { version = "2", features = ["pkcs8", "pem", "rand_core", "zeroize"] }
+mdns-sd = "0.21.7"
 quinn = { version = "0.11", default-features = false, features = ["runtime-tokio", "rustls", "ring"] }
 rand_core = { version = "0.6", features = ["getrandom"] }
 rcgen = { version = "0.13", default-features = false, features = ["ring", "pem"] }
