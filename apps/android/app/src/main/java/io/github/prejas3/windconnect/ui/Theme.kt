@@ -17,6 +17,8 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.font.FontVariation
+import androidx.compose.ui.text.ExperimentalTextApi
 import androidx.compose.ui.unit.sp
 import io.github.prejas3.windconnect.R
 
@@ -45,11 +47,15 @@ val BrandDark = darkColorScheme(
     surfaceVariant = Color(0xFF22343C), onSurfaceVariant = Color(0xFFA1B2B6),
     outline = Color(0xFF34454B), error = Color(0xFFFF9DA9),
 )
+// CCS/1 RULE:FontWeight metadata alone does not instantiate a variable font's wght axis.
+@OptIn(ExperimentalTextApi::class)
+private fun dmFont(weight: FontWeight) = Font(
+    R.font.dm_sans, weight,
+    variationSettings = FontVariation.Settings(FontVariation.weight(weight.weight)),
+)
 private val DmSans = FontFamily(
-    Font(R.font.dm_sans, FontWeight.Normal),
-    Font(R.font.dm_sans, FontWeight.Medium),
-    Font(R.font.dm_sans, FontWeight.SemiBold),
-    Font(R.font.dm_sans, FontWeight.Bold),
+    dmFont(FontWeight.Normal), dmFont(FontWeight.Medium),
+    dmFont(FontWeight.SemiBold), dmFont(FontWeight.Bold),
 )
 private fun type(size: Int, line: Int, weight: FontWeight = FontWeight.Normal) = TextStyle(
     fontFamily = DmSans, fontWeight = weight, fontSize = size.sp, lineHeight = line.sp,

@@ -13,9 +13,29 @@ import io.github.prejas3.windconnect.ui.BrandDark
 import io.github.prejas3.windconnect.ui.BrandLight
 import androidx.core.view.WindowCompat
 import org.junit.Assert.assertTrue
+import androidx.compose.ui.text.TextMeasurer
+import androidx.compose.ui.text.font.createFontFamilyResolver
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.sp
+import io.github.prejas3.windconnect.ui.WindTypography
 
 class ComponentsTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
+
+    @Test fun variableFontWeightsHaveDifferentRealGlyphMetrics() {
+        compose.runOnIdle {
+            val measurer = TextMeasurer(createFontFamilyResolver(compose.activity), Density(compose.activity), LayoutDirection.Ltr)
+            val base = WindTypography.bodyLarge.copy(fontSize = 24.sp, lineHeight = 32.sp)
+            val text = "WindConnect SZYMON-PC Zażółć 0123456789"
+            val regular = measurer.measure(text, style = base.copy(fontWeight = FontWeight.Normal), softWrap = false).size.width
+            val medium = measurer.measure(text, style = base.copy(fontWeight = FontWeight.Medium), softWrap = false).size.width
+            val semibold = measurer.measure(text, style = base.copy(fontWeight = FontWeight.SemiBold), softWrap = false).size.width
+            val bold = measurer.measure(text, style = base.copy(fontWeight = FontWeight.Bold), softWrap = false).size.width
+            assertTrue("Actual glyph metrics must grow with wght: $regular/$medium/$semibold/$bold", regular < medium && medium < semibold && semibold < bold)
+        }
+    }
 
     @Test fun previewSupportsThemesDynamicColorActionsAndValidation() {
         compose.onNodeWithTag("previewToggle").performClick()
