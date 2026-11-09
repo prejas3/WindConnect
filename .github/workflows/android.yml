@@ -29,16 +29,26 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
       - name: Install Android platform
-        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "ndk;27.0.12077973"
+      - name: Set up Rust for Android
+        run: rustup target add aarch64-linux-android x86_64-linux-android
       - name: Set up Gradle and validate wrapper
         uses: gradle/actions/setup-gradle@v4
       - name: Lint Android app
         run: ./gradlew --no-daemon :app:lintDebug
       - name: Build debug APK
         run: ./gradlew --no-daemon :app:assembleDebug
+      - name: Build reusable core AAR
+        run: ./gradlew --no-daemon :wind-core:assembleRelease
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
           name: WindConnect-android-debug-apk
           path: apps/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+      - name: Upload core AAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: WindConnect-wind-core-aar
+          path: apps/android/wind-core/build/outputs/aar/wind-core-release.aar
           if-no-files-found: error

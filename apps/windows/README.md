@@ -30,7 +30,7 @@ Workflow **Windows MSI** buduje pakiet na `windows-latest` dla PR, push do
 `master` lub ręcznego uruchomienia. W zakładce Actions pobierz artefakt
 `WindConnect-windows-x64-msi`, rozpakuj ZIP i uruchom MSI.
 Po instalacji uruchom WindConnect: powinno pojawić się jedno okno ze statusem
-`wind-core 0.14.0 · gotowy`. Zamknij okno i sprawdź odinstalowanie w Ustawieniach.
+`wind-core 0.17.0 · gotowy`. Zamknij okno i sprawdź odinstalowanie w Ustawieniach.
 
 W pliku `tauri.conf.json` wartości `identifier` i
 `bundle.windows.wix.upgradeCode` muszą pozostać stałe między wersjami,

@@ -13,6 +13,11 @@ sesję protokołu ze strumieniami kanałów i routerem do modułów
 (`wind_core::session`) oraz kanał wejścia z datagramami QUIC
 (`wind_core::input`).
 
+Most Androida to `crates/wind-ffi` (UniFFI) i moduł Gradle
+`apps/android/wind-core` z korutynami oraz `StateFlow`. Ekran testowy klienta
+łączy się z PC przez uwierzytelnioną sesję rdzenia; budowanie AAR i procedura
+testu są opisane w [instrukcji Androida](apps/android/README.md).
+
 Odkrywanie LAN udostępnia `wind_core::discovery`: `Discovery::start` przyjmuje
 klucz publiczny urządzenia i rzeczywisty port z `Endpoint::local_addr()`.
 `next().await` zwraca rozwiązane adresy lub usunięcie usługi; `monitor()`
