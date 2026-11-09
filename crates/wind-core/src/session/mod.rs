@@ -21,14 +21,19 @@
 //! limit (`MAX_STREAMS`) and flow control bound what a peer can open and
 //! buffer; a sender over them waits instead of losing data.
 //!
+//! Reconnecting: [`Session::dial`] sends `Hello` as 0-RTT data when a TLS
+//! session with the peer is remembered; keep-alive, path migration and
+//! retry backoff are the transport's (WC-12).
+//!
 //! Not here yet: sending `Capabilities` (changing what this side accepts
-//! mid-connection), datagrams (WC-13), keep-alive and resumption (WC-12).
+//! mid-connection, WN-74), datagrams (WC-13).
 
 mod framed;
 mod router;
 
 use std::collections::HashMap;
 use std::fmt;
+use std::net::SocketAddr;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
@@ -45,7 +50,9 @@ use crate::protocol::{
     DeviceKind, ErrorCode, ErrorMessage, FrameError, Goodbye, Hello, Message, RawMessage, Version,
     PROTOCOL_MAJOR, PROTOCOL_MINOR,
 };
-use crate::transport::Connection;
+use crate::transport::{
+    is_untrusted_close, Backoff, Connection, Endpoint, CONNECT_ATTEMPT_TIMEOUT,
+};
 
 /// Wait for `Hello` / `HelloAck` (§7.1, rule 4).
 pub const HELLO_TIMEOUT: Duration = Duration::from_secs(5);
@@ -119,6 +126,8 @@ pub enum SessionError {
     WrongChannel(Channel),
     /// The peer stopped our stream (`STOP_SENDING`) with this code.
     Stopped(u64),
+    /// Dialing failed (see [`crate::transport::ConnectError`]).
+    Connect(crate::transport::ConnectError),
     Timeout,
 }
 
@@ -133,7 +142,19 @@ impl fmt::Display for SessionError {
             SessionError::CapabilityMissing(ch) => write!(f, "peer doesn't accept {ch:?}"),
             SessionError::WrongChannel(ch) => write!(f, "{ch:?} is not sent this way"),
             SessionError::Stopped(code) => write!(f, "peer stopped the stream ({code})"),
+            SessionError::Connect(e) => write!(f, "{e}"),
             SessionError::Timeout => f.write_str("timed out"),
+        }
+    }
+}
+
+impl SessionError {
+    /// Failed because a key isn't pinned, on our side or the peer's.
+    pub fn is_untrusted_peer(&self) -> bool {
+        match self {
+            SessionError::Connect(e) => e.is_untrusted_peer(),
+            SessionError::Connection(e) => is_untrusted_close(e),
+            _ => false,
         }
     }
 }
@@ -197,6 +218,24 @@ fn close(conn: &Connection, code: ErrorCode, why: &'static str) -> SessionError 
     SessionError::Protocol(code, why)
 }
 
+/// Opens `control` and sends the header and `Hello` (§7.1).
+async fn open_control(
+    conn: &quinn::Connection,
+    local: &LocalInfo,
+    router: &Router,
+) -> Result<(quinn::SendStream, quinn::RecvStream), SessionError> {
+    let (mut send, recv) = conn.open_bi().await?;
+    let _ = send.set_priority(send_priority(Channel::Control));
+    let frame = encode_frame(&Message::Control(ControlMessage::Hello(hello_for(
+        local, router,
+    ))))
+    .map_err(SessionError::Frame)?;
+    let mut out = stream_header(Channel::Control).to_vec();
+    out.extend_from_slice(&frame);
+    send.write_all(&out).await?;
+    Ok((send, recv))
+}
+
 fn hello_for(local: &LocalInfo, router: &Router) -> Hello {
     Hello {
         version: Version {
@@ -251,16 +290,96 @@ impl Session {
         router: Router,
     ) -> Result<(Session, mpsc::UnboundedReceiver<SessionEvent>), SessionError> {
         let deadline = Instant::now() + HELLO_TIMEOUT;
-        let (mut send, recv) = conn.quinn().open_bi().await?;
-        let _ = send.set_priority(send_priority(Channel::Control));
-        let frame = encode_frame(&Message::Control(ControlMessage::Hello(hello_for(
-            &local, &router,
-        ))))
-        .map_err(SessionError::Frame)?;
-        let mut out = stream_header(Channel::Control).to_vec();
-        out.extend_from_slice(&frame);
-        send.write_all(&out).await?;
+        let control = open_control(conn.quinn(), &local, &router).await?;
+        Self::finish_client(conn, control, router, deadline).await
+    }
 
+    /// Dials `peer` at `addr` and starts a session as the client. With a
+    /// remembered TLS session (a reconnect) `Hello` goes out as 0-RTT data,
+    /// in the first flight (PROTOCOL.md §2, WC-12); if the peer refuses the
+    /// 0-RTT data, `Hello` is sent again after the handshake.
+    pub async fn dial(
+        endpoint: &Endpoint,
+        addr: SocketAddr,
+        peer: PublicKey,
+        local: LocalInfo,
+        router: Router,
+    ) -> Result<(Session, mpsc::UnboundedReceiver<SessionEvent>), SessionError> {
+        let deadline = Instant::now() + HELLO_TIMEOUT;
+        let dialing = endpoint.dial(addr, peer).map_err(SessionError::Connect)?;
+        let early = match dialing.early() {
+            Some(conn) => open_control(conn, &local, &router).await.ok(),
+            None => None,
+        };
+        let (conn, accepted) = dialing.established().await.map_err(SessionError::Connect)?;
+        let control = match (early, accepted) {
+            (Some(control), true) => control,
+            (rejected, _) => {
+                // The refused 0-RTT streams are gone with their data. Their
+                // handles are released before the new control stream is
+                // opened; quinn already ignores handles of refused 0-RTT
+                // streams, so this is only tidy cleanup.
+                drop(rejected);
+                open_control(conn.quinn(), &local, &router).await?
+            }
+        };
+        Self::finish_client(conn, control, router, deadline).await
+    }
+
+    /// Dials until a session is up, retrying with `backoff` (WC-12): after
+    /// a failed attempt it waits for the next delay, or less if
+    /// `network_changed` is notified (then it resets the backoff and tries
+    /// at once). Each attempt gets a fresh router from `make_router`. Gives
+    /// up only when the peer isn't (or is no longer) paired on either side,
+    /// which only the session can tell: TLS 1.3 lets a refused client finish
+    /// its handshake, and `HelloAck` is the peer's acceptance.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn reconnect(
+        endpoint: &Endpoint,
+        addr: SocketAddr,
+        peer: PublicKey,
+        local: &LocalInfo,
+        mut make_router: impl FnMut() -> Router,
+        backoff: &mut Backoff,
+        network_changed: &tokio::sync::Notify,
+    ) -> Result<(Session, mpsc::UnboundedReceiver<SessionEvent>), SessionError> {
+        loop {
+            let attempt = tokio::time::timeout(
+                CONNECT_ATTEMPT_TIMEOUT,
+                Self::dial(endpoint, addr, peer, local.clone(), make_router()),
+            );
+            // A network change during an attempt drops it (its connection
+            // closes with it) and starts a fresh one at once.
+            let outcome = tokio::select! {
+                r = attempt => Some(r),
+                _ = network_changed.notified() => None,
+            };
+            match outcome {
+                None => {
+                    backoff.reset();
+                    continue;
+                }
+                Some(Ok(Ok(session))) => {
+                    backoff.reset();
+                    return Ok(session);
+                }
+                Some(Ok(Err(e))) if e.is_untrusted_peer() => return Err(e),
+                Some(Ok(Err(_))) | Some(Err(_)) => {}
+            }
+            let delay = backoff.next_delay();
+            tokio::select! {
+                _ = tokio::time::sleep(delay) => {}
+                _ = network_changed.notified() => backoff.reset(),
+            }
+        }
+    }
+
+    async fn finish_client(
+        conn: Connection,
+        (send, recv): (quinn::SendStream, quinn::RecvStream),
+        router: Router,
+        deadline: Instant,
+    ) -> Result<(Session, mpsc::UnboundedReceiver<SessionEvent>), SessionError> {
         let mut recv = FramedRecv::new(recv, Channel::Control);
         let peer_hello = match first_message(&conn, &mut recv, deadline).await? {
             ControlMessage::HelloAck(h) => h,
