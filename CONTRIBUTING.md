@@ -19,4 +19,4 @@ Aktualizuj `Cargo.lock` przy zmianach zależności i dołącz go do commita.
 ## Aplikacje
 
 Instrukcje klienta Windows: [apps/windows/README.md](apps/windows/README.md).
-`apps/android` rezerwuje miejsce dla klienta Android.
+Instrukcje klienta Android: [apps/android/README.md](apps/android/README.md).
