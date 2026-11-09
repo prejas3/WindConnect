@@ -947,7 +947,7 @@ dependencies = [
 
 [[package]]
 name = "wind-core"
-version = "0.18.0"
+version = "0.18.1"
 dependencies = [
  "ed25519-dalek",
  "mdns-sd",

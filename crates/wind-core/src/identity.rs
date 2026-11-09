@@ -15,6 +15,7 @@ use std::fmt;
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use ed25519_dalek::pkcs8::spki::der::pem::LineEnding;
 use ed25519_dalek::pkcs8::{DecodePrivateKey, EncodePrivateKey};
@@ -89,7 +90,10 @@ pub trait KeyStore {
 /// concurrent first starts, in one process or several, all end up with the
 /// same key. A write removes only the temporary file it created; one left by
 /// a crashed write stays (it can't be told from another writer's) and
-/// blocks nothing. On Unix it is
+/// blocks nothing. On Windows a read, link or rename the system briefly
+/// refuses (another process holding the file open without
+/// `FILE_SHARE_DELETE`, such as a virus scanner, or a concurrent replace) is
+/// retried a few times; see [`RETRY_DELAYS`]. On Unix it is
 /// readable by its owner only; on Windows it relies on the folder's ACL
 /// alone, so Windows uses `DpapiKeyStore`, which migrates a file written
 /// here.
@@ -149,9 +153,81 @@ fn parent_dir(path: &Path) -> PathBuf {
     }
 }
 
+/// Pauses between attempts of a key file operation Windows briefly refused
+/// (five attempts, about 300 ms in all). Each pause is lengthened by a
+/// random jitter of up to half of it, so that concurrent writers don't keep
+/// colliding in step.
+///
+/// Windows refuses to read, link or replace a file while another process
+/// holds it open without `FILE_SHARE_DELETE` (Microsoft Defender scanning a
+/// freshly written file, the search indexer), and while another thread is
+/// replacing it: `ERROR_ACCESS_DENIED` or a sharing violation, gone a moment
+/// later. A first start after an update migrates the key file, so without a
+/// retry the app could fail to start. Retrying never removes the key file:
+/// once the attempts run out the error is returned and the file is as it was.
+pub const RETRY_DELAYS: [Duration; 4] = [
+    Duration::from_millis(20),
+    Duration::from_millis(40),
+    Duration::from_millis(80),
+    Duration::from_millis(160),
+];
+
+/// Whether `e` may be a brief refusal by the system rather than a lasting
+/// one. Only on Windows: on Unix a permission error is the file's mode.
+pub(crate) fn is_transient(e: &io::Error) -> bool {
+    #[cfg(windows)]
+    {
+        const ERROR_SHARING_VIOLATION: i32 = 32;
+        const ERROR_LOCK_VIOLATION: i32 = 33;
+        e.kind() == io::ErrorKind::PermissionDenied
+            || matches!(
+                e.raw_os_error(),
+                Some(ERROR_SHARING_VIOLATION | ERROR_LOCK_VIOLATION)
+            )
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = e;
+        false
+    }
+}
+
+/// `op`, tried again after each of [`RETRY_DELAYS`] while it fails with a
+/// transient error; the last error once they run out.
+fn retry_transient<T>(op: impl FnMut() -> io::Result<T>) -> io::Result<T> {
+    retry_with(&RETRY_DELAYS, is_transient, op)
+}
+
+/// `d` plus a random jitter of up to half of it.
+pub(crate) fn jittered(d: Duration) -> Duration {
+    use rand_core::RngCore;
+    let half = u64::try_from(d.as_micros() / 2).unwrap_or(u64::MAX);
+    if half == 0 {
+        return d;
+    }
+    d + Duration::from_micros(OsRng.next_u64() % (half + 1))
+}
+
+fn retry_with<T>(
+    delays: &[Duration],
+    transient: impl Fn(&io::Error) -> bool,
+    mut op: impl FnMut() -> io::Result<T>,
+) -> io::Result<T> {
+    let mut delays = delays.iter();
+    loop {
+        match op() {
+            Err(e) if transient(&e) => match delays.next() {
+                Some(d) => std::thread::sleep(jittered(*d)),
+                None => return Err(e),
+            },
+            result => return result,
+        }
+    }
+}
+
 /// A key file's bytes, or `None` when it doesn't exist.
 pub(crate) fn read_key_file(path: &Path) -> io::Result<Option<Zeroizing<Vec<u8>>>> {
-    match fs::read(path) {
+    match retry_transient(|| fs::read(path)) {
         Ok(b) => Ok(Some(Zeroizing::new(b))),
         Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
         Err(e) => Err(e),
@@ -180,7 +256,8 @@ pub(crate) fn write_new_key_file(path: &Path, data: &[u8]) -> io::Result<bool> {
 }
 
 /// Replaces `path` with `data` atomically (a format migration): readers see
-/// the old file or the new one, never a mix.
+/// the old file or the new one, never a mix. A rename Windows briefly
+/// refuses is retried ([`RETRY_DELAYS`]); on failure `path` is untouched.
 // Only platform stores migrate formats; none does off Windows yet.
 #[cfg_attr(not(windows), allow(dead_code))]
 pub(crate) fn replace_key_file(path: &Path, data: &[u8]) -> io::Result<()> {
@@ -217,7 +294,7 @@ fn write_new_key_file_via(
     tmp.write_synced(data)?;
     // A hard link fails if the target exists, so a key stored by another
     // writer in the meantime is never replaced.
-    let stored = match fs::hard_link(&tmp.path, path) {
+    let stored = match retry_transient(|| fs::hard_link(&tmp.path, path)) {
         Ok(()) => true,
         Err(e) if e.kind() == io::ErrorKind::AlreadyExists => false,
         Err(e) => return Err(e),
@@ -280,7 +357,7 @@ impl OwnedTempFile {
     #[cfg_attr(not(windows), allow(dead_code))]
     fn persist_over(mut self, target: &Path) -> io::Result<()> {
         drop(self.file.take());
-        fs::rename(&self.path, target)?;
+        retry_transient(|| fs::rename(&self.path, target))?;
         self.path = PathBuf::new();
         Ok(())
     }
@@ -577,6 +654,62 @@ mod tests {
         let mine = dir.path().join("identity.pem.loser.tmp");
         assert!(!store.store_new_via(&pem(), [mine.clone()]).unwrap());
         assert!(!mine.exists());
+    }
+
+    #[test]
+    fn retry_stops_at_success_or_lasting_error() {
+        let zero = [Duration::ZERO; 4];
+        let busy = || io::Error::from(io::ErrorKind::PermissionDenied);
+        let transient = |e: &io::Error| e.kind() == io::ErrorKind::PermissionDenied;
+
+        let mut calls = 0;
+        let r = retry_with(&zero, transient, || {
+            calls += 1;
+            if calls < 3 {
+                Err(busy())
+            } else {
+                Ok(calls)
+            }
+        });
+        assert_eq!(r.unwrap(), 3);
+
+        let mut calls = 0;
+        let r: io::Result<()> = retry_with(&zero, transient, || {
+            calls += 1;
+            Err(busy())
+        });
+        assert_eq!(r.unwrap_err().kind(), io::ErrorKind::PermissionDenied);
+        assert_eq!(calls, 5, "one try and one per delay");
+
+        let mut calls = 0;
+        let r: io::Result<()> = retry_with(&zero, transient, || {
+            calls += 1;
+            Err(io::Error::from(io::ErrorKind::NotFound))
+        });
+        assert_eq!(r.unwrap_err().kind(), io::ErrorKind::NotFound);
+        assert_eq!(calls, 1, "a lasting error is not retried");
+    }
+
+    #[test]
+    fn jitter_adds_at_most_half() {
+        assert_eq!(jittered(Duration::ZERO), Duration::ZERO);
+        let d = Duration::from_millis(40);
+        for _ in 0..200 {
+            let j = jittered(d);
+            assert!(j >= d && j <= d + d / 2, "{j:?}");
+        }
+    }
+
+    #[test]
+    fn transient_errors_are_windows_refusals_only() {
+        let denied = io::Error::from(io::ErrorKind::PermissionDenied);
+        let sharing = io::Error::from_raw_os_error(32);
+        assert_eq!(is_transient(&denied), cfg!(windows));
+        assert_eq!(is_transient(&sharing), cfg!(windows));
+        assert!(!is_transient(&io::Error::from(io::ErrorKind::NotFound)));
+        assert!(!is_transient(&io::Error::from(
+            io::ErrorKind::AlreadyExists
+        )));
     }
 
     #[test]

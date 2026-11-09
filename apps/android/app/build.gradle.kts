@@ -12,8 +12,8 @@ android {
         applicationId = "io.github.prejas3.windconnect"
         minSdk = 29
         targetSdk = 35
-        versionCode = 18
-        versionName = "0.18.0"
+        versionCode = 19
+        versionName = "0.18.1"
         ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
