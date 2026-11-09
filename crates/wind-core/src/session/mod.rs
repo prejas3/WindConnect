@@ -14,12 +14,13 @@
 //! Each channel is read by its own task, so a slow module or a large
 //! transfer holds back only its own channel.
 //!
-//! §3.1 rule 5 (a receiver MAY refuse a fifth unfinished stream of a
-//! channel) is not applied: a receiver can't tell a sender that broke rule
-//! 1 from a fast, correct one whose finished streams a slow module hasn't
-//! read yet, and refusing the latter loses messages. QUIC's own stream
-//! limit (`MAX_STREAMS`) and flow control bound what a peer can open and
-//! buffer; a sender over them waits instead of losing data.
+//! §3.1 rule 5: no stream is refused for how many of a channel are open.
+//! A stream waiting for its turn keeps its place in QUIC's stream limit
+//! ([`MAX_UNI_STREAMS`](crate::transport::MAX_UNI_STREAMS)) until it is read
+//! to its end and its messages are handed to the module, so a sender that
+//! opens streams without finishing them (against rule 1), or a fast one
+//! ahead of a slow module, waits for `MAX_STREAMS`; flow control bounds
+//! what is buffered, and nothing is lost.
 //!
 //! Reconnecting: [`Session::dial`] sends `Hello` as 0-RTT data when a TLS
 //! session with the peer is remembered; keep-alive, path migration and

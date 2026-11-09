@@ -14,7 +14,7 @@ use wind_core::protocol::{
 use wind_core::session::{
     write_raw, ChannelMessage, LocalInfo, Router, Session, SessionError, SessionEvent,
 };
-use wind_core::transport::{Connection, Endpoint, PinnedKeys};
+use wind_core::transport::{Connection, Endpoint, PinnedKeys, MAX_UNI_STREAMS};
 
 const LOCALHOST: SocketAddr = SocketAddr::new(std::net::IpAddr::V4(Ipv4Addr::LOCALHOST), 0);
 const T: Duration = Duration::from_secs(10);
@@ -149,6 +149,98 @@ async fn messages_reach_their_module_in_order_across_streams() {
         assert_eq!((m.channel, m.message.ty, n_of(&m)), (Channel::Notify, 2, n));
     }
     send.await.unwrap();
+}
+
+#[tokio::test]
+async fn fast_sender_waits_for_a_slow_module_and_loses_nothing() {
+    // §3.1 rule 5: one finished stream per message, far more than the
+    // stream limit, and a module that doesn't read yet. The sender must
+    // wait for MAX_STREAMS, not be refused, and every message must arrive.
+    let total = u64::from(MAX_UNI_STREAMS) + 50;
+    let mut server_router = Router::new();
+    let mut clip = server_router.route(Channel::Clipboard, 1, 1);
+    let p = sessions(Router::new(), server_router).await;
+
+    let sent = Arc::new(AtomicU64::new(0));
+    let (sender, counter) = (p.client.clone(), sent.clone());
+    let send = tokio::spawn(async move {
+        for n in 0..total {
+            sender.send(Channel::Clipboard, &msg(1, n)).await.unwrap();
+            sender.finish(Channel::Clipboard).await.unwrap();
+            counter.fetch_add(1, Ordering::SeqCst);
+        }
+    });
+
+    // The sender runs into the limit and waits there.
+    let mut last = u64::MAX;
+    loop {
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        let now = sent.load(Ordering::SeqCst);
+        if now == last {
+            break;
+        }
+        last = now;
+    }
+    assert!(last < total, "the sender never waited ({last} of {total})");
+    assert!(!send.is_finished());
+
+    for n in 0..total {
+        assert_eq!(n_of(&recv(&mut clip).await), n);
+    }
+    tokio::time::timeout(T, send).await.unwrap().unwrap();
+}
+
+#[tokio::test]
+async fn streams_opened_without_fin_are_held_by_the_stream_limit() {
+    // A sender breaking §3.1 rule 1 (streams left open) is held back by
+    // MAX_STREAMS: none of its streams is refused, the next open waits,
+    // and finishing one lets it go on.
+    let mut server_router = Router::new();
+    let mut clip = server_router.route(Channel::Clipboard, 1, 8);
+    let p = sessions(Router::new(), server_router).await;
+    let q = p.client.connection().quinn().clone();
+
+    let mut open = Vec::new();
+    for n in 0..u64::from(MAX_UNI_STREAMS) {
+        let mut s = tokio::time::timeout(T, q.open_uni())
+            .await
+            .unwrap()
+            .unwrap();
+        let mut data = vec![1, 1];
+        data.extend(frame(&msg(1, n)));
+        s.write_all(&data).await.unwrap();
+        open.push(s);
+    }
+    // The first stream's message arrives; the rest wait for it to end.
+    assert_eq!(n_of(&recv(&mut clip).await), 0);
+
+    assert!(
+        tokio::time::timeout(Duration::from_millis(500), q.open_uni())
+            .await
+            .is_err(),
+        "a stream past the limit was granted"
+    );
+    let last = open.len() - 1;
+    for i in [0, 1, last] {
+        assert!(
+            tokio::time::timeout(Duration::from_millis(100), open[i].stopped())
+                .await
+                .is_err(),
+            "stream {i} was refused"
+        );
+    }
+
+    // Finishing streams frees their places: the next open goes on. quinn
+    // grants new streams in batches, once over 1/8 of the limit is free.
+    let freed = MAX_UNI_STREAMS as usize / 8 + 1;
+    for (n, s) in open.iter_mut().enumerate().take(freed) {
+        s.finish().unwrap();
+        assert_eq!(n_of(&recv(&mut clip).await), n as u64 + 1);
+    }
+    tokio::time::timeout(T, q.open_uni())
+        .await
+        .unwrap()
+        .unwrap();
 }
 
 #[tokio::test]

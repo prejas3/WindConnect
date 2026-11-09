@@ -195,9 +195,30 @@ Kanały `clipboard`, `notify`, `media` i `input` mają w każdym kierunku
 4. Strumień uni, którego nagłówek nie doszedł w 2 s od dojścia strumienia
    o wyższym numerze od tego samego nadawcy, odbiorca odrzuca
    (`STOP_SENDING`, `PROTOCOL_VIOLATION`) i traktuje jako zakończony.
-5. Odbiorca MOŻE mieć najwyżej 4 niezakończone strumienie jednego kanału od
-   jednego nadawcy (stary, który jeszcze dochodzi, i nowe). Kolejny odrzuca
-   przez `STOP_SENDING` z kodem `RATE_LIMITED`.
+5. **Limit strumieni.** Przed nadawcą, który otwiera strumienie wbrew
+   zasadzie 1, odbiorcę chroni limit strumieni QUIC i kontrola przepływu,
+   nie odrzucanie:
+   1. Strona ogłasza `initial_max_streams_uni` = **100** (zalecane; nie
+      mniej niż 16). Limit jest wspólny dla wszystkich kanałów uni.
+   2. Nowe strumienie (ramka `MAX_STREAMS`) strona przyznaje dopiero wtedy,
+      gdy strumień uni drugiej strony jest u niej **obsłużony**: przeczytany
+      do FIN, a jego wiadomości przekazane modułowi, albo porzucony
+      (`RESET_STREAM`), albo odrzucony (`STOP_SENDING`). Strumień, który
+      nadawca już zakończył, a którego wiadomości czekają na wolny moduł,
+      nadal zajmuje limit. Strona MOŻE przyznawać strumienie partiami
+      (np. gdy zwolni się ponad 1/8 limitu).
+   3. Nadawca, który wyczerpał limit, czeka na `MAX_STREAMS`; żadna
+      wiadomość nie przepada. Ilość danych buforowanych przez odbiorcę
+      ograniczają okna kontroli przepływu QUIC (strumieni i połączenia).
+   4. Odbiorca NIE MOŻE odrzucić strumienia (np. kodem `RATE_LIMITED`)
+      tylko z powodu liczby otwartych lub nieobsłużonych strumieni kanału:
+      nie odróżni nadawcy łamiącego zasadę 1 od szybkiego, poprawnego
+      nadawcy, którego zakończone strumienie czekają na wolny moduł.
+   5. Ponieważ limit jest wspólny, nadawca POWINIEN wysyłać kolejne
+      wiadomości kanału tym samym strumieniem i kończyć go dopiero w
+      przerwie albo przy wycofaniu możliwości, a nie otwierać strumienia
+      na każdą wiadomość; inaczej wolny moduł jednego kanału może na
+      chwilę wstrzymać strumienie innych.
 6. Wiadomości z porzuconego strumienia (`RESET_STREAM`) mogą przepaść;
    kanały, w których to szkodzi, opisują w swojej specyfikacji ponowienie.
 
@@ -941,7 +962,7 @@ kody aplikacji QUIC w `CONNECTION_CLOSE`, `RESET_STREAM` i `STOP_SENDING`.
 | `08` | `UNTRUSTED_PEER` | klucz nie jest przypięty | połączenie |
 | `09` | `HELLO_TIMEOUT` | brak `Hello` / `HelloAck` w czasie | połączenie |
 | `0a` | `INTERNAL_ERROR` | błąd implementacji | dowolne |
-| `0b` | `RATE_LIMITED` | zbyt wiele wiadomości lub strumieni | strumień, `Error` |
+| `0b` | `RATE_LIMITED` | zbyt wiele wiadomości (nie liczba strumieni uni, §3.1 zasada 5) | strumień, `Error` |
 | `0c` | `CANCELLED` | anulowane przez użytkownika lub stronę | strumień |
 | `0d` | `GOING_AWAY` | wyjście, uśpienie, rozparowanie | `Goodbye`, połączenie |
 
