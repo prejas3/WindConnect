@@ -7,6 +7,7 @@ import io.github.prejas3.windconnect.bindings.CoreException
 import io.github.prejas3.windconnect.bindings.IdentityInfo
 import io.github.prejas3.windconnect.bindings.IdentityStorage
 import io.github.prejas3.windconnect.bindings.openClient
+import io.github.prejas3.windconnect.bindings.NetworkSnapshot
 import io.github.prejas3.windconnect.identity.KeystoreIdentityStore
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -43,11 +44,58 @@ class WindCore private constructor(private val client: CoreClient) {
     private var connection: CoreConnection? = null
     private var watcher: Job? = null
     private var stopped = false
+    private var observer: NetworkObserver? = null
+    private var desiredPeer: Pair<String, ByteArray>? = null
+    private var networkRetry: Job? = null
+    private val mutableNetwork = MutableStateFlow(NetworkSnapshot(0uL, emptyList(), null))
+    val network: StateFlow<NetworkSnapshot> = mutableNetwork.asStateFlow()
+
+    private suspend fun observeNetwork(context: Context) {
+        client.startDiscovery()
+        val observer = NetworkObserver(context)
+        this.observer = observer
+        scope.launch {
+            try {
+                while (true) { mutableNetwork.value = client.nextNetworkSnapshot() }
+            } catch (error: Exception) {
+                if (error is CancellationException) throw error
+                if (!stopped) mutableNetwork.value = mutableNetwork.value.copy(error = error.message)
+            }
+        }
+        scope.launch {
+            for (event in observer.events) {
+                try {
+                    // CCS/1 RULE:outside gate; wakes a connect currently holding gate immediately.
+                    client.networkChanged()
+                    if (mutableState.value !is ConnectionState.Connecting &&
+                        mutableState.value !is ConnectionState.Connected && networkRetry?.isActive != true) {
+                        networkRetry = scope.launch {
+                            gate.withLock {
+                                val peer = if (stopped) null else desiredPeer
+                                if (peer != null) {
+                                    try { connectLocked(peer.first, peer.second) } catch (error: Exception) {
+                                        if (error is CancellationException) throw error
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } catch (error: Exception) {
+                    if (error is CancellationException) throw error
+                    mutableNetwork.value = mutableNetwork.value.copy(error = error.message)
+                }
+            }
+        }
+    }
 
     /** SEC:caller explicitly supplies the verified peer key; discovery cannot authorize it. */
     suspend fun connect(address: String, verifiedPeerKey: ByteArray) = withContext(Dispatchers.IO) {
-        gate.withLock {
+        gate.withLock { connectLocked(address, verifiedPeerKey) }
+    }
+
+    private suspend fun connectLocked(address: String, verifiedPeerKey: ByteArray) {
             check(!stopped) { "core is stopped" }
+            desiredPeer = address to verifiedPeerKey.copyOf()
             releaseConnection()
             mutableState.value = ConnectionState.Connecting
             var opened: CoreConnection? = null
@@ -72,18 +120,21 @@ class WindCore private constructor(private val client: CoreClient) {
             } catch (error: Exception) {
                 opened?.destroy()
                 if (error is CancellationException) {
+                    desiredPeer = null
                     mutableState.value = ConnectionState.Disconnected("cancelled")
                     throw error
                 }
+                if (error is CoreException.UntrustedPeer || error is CoreException.InvalidInput) desiredPeer = null
                 mutableState.value = ConnectionState.Failed(error.message ?: error.javaClass.simpleName)
                 throw error
             }
-        }
     }
 
     suspend fun disconnect() = withContext(Dispatchers.IO) {
         gate.withLock {
             if (!stopped) {
+                desiredPeer = null
+                networkRetry?.cancel()
                 releaseConnection()
                 mutableState.value = ConnectionState.Disconnected("disconnected locally")
             }
@@ -95,7 +146,11 @@ class WindCore private constructor(private val client: CoreClient) {
         gate.withLock {
             if (!stopped) {
                 stopped = true
+                desiredPeer = null
+                networkRetry?.cancel()
                 try {
+                    observer?.close()
+                    observer = null
                     releaseConnection()
                     client.shutdown()
                 } finally {
@@ -141,7 +196,10 @@ class WindCore private constructor(private val client: CoreClient) {
                     }
                     val client = openClient(storage, name, bindAddress)
                     native = client
-                    WindCore(client).also { opened = it }
+                    WindCore(client).also {
+                        opened = it
+                        it.observeNetwork(context.applicationContext)
+                    }
                 }
             } catch (error: Throwable) {
                 // CCS/1 RULE:withContext prompt cancellation must not lose a returned native owner.

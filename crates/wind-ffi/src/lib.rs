@@ -4,6 +4,7 @@
 use std::{fmt, io, sync::Arc, time::Duration};
 use wind_core::{
     identity::{DeviceIdentity, KeyStore, PublicKey},
+    network::{DiscoverySnapshot, NetworkChanges, NetworkDiscovery},
     protocol::{DeviceKind, ErrorCode},
     session::{LocalInfo, Router, Session},
     transport::{Endpoint, PinnedKeys},
@@ -111,6 +112,23 @@ pub struct CoreClient {
     trust: Arc<PinnedKeys>,
     identity: IdentityInfo,
     local: LocalInfo,
+    bind_ip: std::net::IpAddr,
+    network: Arc<NetworkChanges>,
+    discovery: tokio::sync::Mutex<Option<NetworkDiscovery>>,
+    discovered: tokio::sync::Mutex<Option<tokio::sync::watch::Receiver<DiscoverySnapshot>>>,
+}
+
+#[derive(uniffi::Record, Clone, Debug)]
+pub struct DiscoveredDevice {
+    pub fingerprint: String,
+    pub addresses: Vec<String>,
+}
+
+#[derive(uniffi::Record, Clone, Debug)]
+pub struct NetworkSnapshot {
+    pub generation: u64,
+    pub peers: Vec<DiscoveredDevice>,
+    pub error: Option<String>,
 }
 
 /// CCS/1 FLOW:Kotlin IO coroutine -> load/create identity -> Tokio QUIC endpoint
@@ -126,9 +144,10 @@ pub async fn open_client(
             reason: "device name must be 1–64 UTF-8 bytes".into(),
         });
     }
-    let address = bind_address.parse().map_err(|_| CoreError::InvalidInput {
-        reason: "bind address must be an IP address and port".into(),
-    })?;
+    let address: std::net::SocketAddr =
+        bind_address.parse().map_err(|_| CoreError::InvalidInput {
+            reason: "bind address must be an IP address and port".into(),
+        })?;
     let identity = DeviceIdentity::load_or_create(&PlatformStore(storage)).map_err(|e| {
         CoreError::Storage {
             reason: e.to_string(),
@@ -142,6 +161,10 @@ pub async fn open_client(
     Ok(Arc::new(CoreClient {
         endpoint,
         trust,
+        bind_ip: address.ip(),
+        network: Arc::new(NetworkChanges::default()),
+        discovery: tokio::sync::Mutex::new(None),
+        discovered: tokio::sync::Mutex::new(None),
         identity: IdentityInfo {
             public_key: identity.public_key().as_bytes().to_vec(),
             fingerprint: identity.fingerprint().to_hex(),
@@ -157,6 +180,57 @@ pub async fn open_client(
 
 #[uniffi::export(async_runtime = "tokio")]
 impl CoreClient {
+    pub async fn start_discovery(&self) -> Result<(), CoreError> {
+        let mut discovery = self.discovery.lock().await;
+        if discovery.is_none() {
+            let key = public_key(&self.identity.public_key)?;
+            let watcher = NetworkDiscovery::start(key, self.endpoint.clone(), self.network.clone())
+                .map_err(|error| CoreError::Transport {
+                    reason: error.to_string(),
+                })?;
+            *self.discovered.lock().await = Some(watcher.subscribe());
+            *discovery = Some(watcher);
+        }
+        Ok(())
+    }
+
+    /// Platform callbacks call this off their callback thread. Does not acquire discovery locks.
+    pub async fn network_changed(&self) -> Result<(), CoreError> {
+        let result = self
+            .endpoint
+            .rebind(std::net::SocketAddr::new(self.bind_ip, 0));
+        self.network.notify();
+        result.map(|_| ()).map_err(|e| CoreError::Transport {
+            reason: e.to_string(),
+        })
+    }
+
+    pub async fn next_network_snapshot(&self) -> Result<NetworkSnapshot, CoreError> {
+        let mut receiver = self.discovered.lock().await;
+        let receiver = receiver.as_mut().ok_or_else(|| CoreError::Transport {
+            reason: "discovery is not started".into(),
+        })?;
+        receiver.changed().await.map_err(|e| CoreError::Transport {
+            reason: e.to_string(),
+        })?;
+        let state = receiver.borrow_and_update().clone();
+        Ok(NetworkSnapshot {
+            generation: state.generation,
+            error: state.error,
+            peers: state
+                .peers
+                .into_iter()
+                .map(|peer| DiscoveredDevice {
+                    fingerprint: peer
+                        .fingerprint
+                        .iter()
+                        .map(|b| format!("{b:02x}"))
+                        .collect(),
+                    addresses: peer.addresses.into_iter().map(|a| a.to_string()).collect(),
+                })
+                .collect(),
+        })
+    }
     pub fn identity(&self) -> IdentityInfo {
         self.identity.clone()
     }
@@ -184,7 +258,9 @@ impl CoreClient {
         let address = address.parse().map_err(|_| CoreError::InvalidInput {
             reason: "peer address must be an IP address and port".into(),
         })?;
-        let (session, _) = tokio::time::timeout(
+        let mut changes = self.network.subscribe();
+        let (session, _) = loop {
+            let attempt = tokio::time::timeout(
             Duration::from_secs(10),
             Session::dial(
                 &self.endpoint,
@@ -193,8 +269,14 @@ impl CoreClient {
                 self.local.clone(),
                 Router::new(),
             ),
-        )
-        .await
+        );
+            tokio::select! {
+                result = attempt => break result,
+                changed = changes.changed() => {
+                    if changed.is_err() { return Err(CoreError::Transport { reason: "network observer stopped".into() }); }
+                }
+            }
+        }
         .map_err(|_| CoreError::Transport {
             reason: "connection timed out".into(),
         })?
@@ -203,6 +285,9 @@ impl CoreClient {
     }
 
     pub async fn shutdown(&self) {
+        if let Some(mut discovery) = self.discovery.lock().await.take() {
+            discovery.shutdown().await;
+        }
         self.endpoint.close();
         self.endpoint.wait_idle().await;
     }

@@ -162,3 +162,69 @@ async fn platform_storage_failure_is_returned_without_creating_a_key() {
         Err(CoreError::Storage { .. })
     ));
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn network_callback_restarts_an_inflight_connection_without_waiting_for_timeout() {
+    let client = open_client(
+        Box::new(MemoryStorage::default()),
+        "Phone".into(),
+        "127.0.0.1:0".into(),
+    )
+    .await
+    .unwrap();
+    let identity = DeviceIdentity::generate().unwrap();
+    client
+        .pin_peer(identity.public_key().as_bytes().to_vec())
+        .unwrap();
+    let silent = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
+    let address = silent.local_addr().unwrap();
+    let dialing_client = client.clone();
+    let key = identity.public_key().as_bytes().to_vec();
+    let dialing =
+        tokio::spawn(async move { dialing_client.connect(address.to_string(), key).await });
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert!(!dialing.is_finished());
+    drop(silent);
+    let trust = Arc::new(PinnedKeys::new());
+    trust.pin(PublicKey::from_bytes(&client.identity().public_key.try_into().unwrap()).unwrap());
+    let server = Endpoint::bind(address, &identity, trust).unwrap();
+    let accepted = tokio::spawn(async move {
+        let session = loop {
+            let Ok(conn) = server.accept().await.unwrap() else {
+                continue;
+            };
+            // CCS/1 RULE:the pre-change handshake can arrive and then be cancelled; accept the fresh one.
+            if let Ok((session, _)) = Session::accept(
+                conn,
+                LocalInfo {
+                    name: "PC".into(),
+                    kind: DeviceKind::Computer,
+                    app: None,
+                },
+                Router::new(),
+            )
+            .await
+            {
+                break session;
+            }
+        };
+        session.closed().await;
+        server.close();
+        server.wait_idle().await;
+    });
+    let start = std::time::Instant::now();
+    client.network_changed().await.unwrap();
+    let connection = tokio::time::timeout(Duration::from_millis(500), dialing)
+        .await
+        .expect("network signal must not wait for the 10 s attempt timeout")
+        .unwrap()
+        .unwrap();
+    println!(
+        "session established {:?} after network change",
+        start.elapsed()
+    );
+    connection.ping().await.unwrap();
+    connection.disconnect().await;
+    accepted.await.unwrap();
+    client.shutdown().await;
+}

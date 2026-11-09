@@ -3,6 +3,7 @@
 pub mod discovery;
 pub mod identity;
 pub mod input;
+pub mod network;
 pub mod protocol;
 pub mod session;
 pub mod transport;

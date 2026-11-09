@@ -104,7 +104,7 @@ generator, a nie ręcznie edytowane wiązania lub binaria.
 
 AAR: `wind-core/build/outputs/aar/wind-core-release.aar`.
 Lokalne repozytorium Maven z AAR, źródłami, POM i metadanymi Gradle:
-`wind-core/build/repo/`. Współrzędne: `io.github.prejas3.windconnect:wind-core:0.18.2`.
+`wind-core/build/repo/`. Współrzędne: `io.github.prejas3.windconnect:wind-core:0.19.1`.
 Publikacja zapisuje pliki lokalnie; nie wysyła ich do zewnętrznego repozytorium.
 Konsument musi korzystać z POM/metadanych (JNA i korutyny są zależnościami
 przechodnimi); sama kopia pliku AAR nie dostarczy JNA.
@@ -117,7 +117,7 @@ Konsument spoza repozytorium dodaje lokalne repozytorium do
 maven { url = uri("/sciezka/do/wind-core/build/repo") }
 ```
 
-oraz `implementation("io.github.prejas3.windconnect:wind-core:0.18.2")`.
+oraz `implementation("io.github.prejas3.windconnect:wind-core:0.19.1")`.
 W aplikacji konsumenta ogranicz ABI do `arm64-v8a` i `x86_64`.
 
 ```kotlin
@@ -136,8 +136,9 @@ Wywołania sieciowe są zawieszalne, a inicjalizacja Keystore działa na
 i udany Ping/Pong. Zamykanie właściciela zatrzymuje obserwację połączenia,
 zamyka endpoint i zwalnia uchwyty UniFFI; `shutdown` jest odporne na anulowanie.
 Stan sesji nie jest trwałym zapisem parowań. Moduł udostępnia w tej karcie
-łączenie wychodzące i diagnostykę sesji; moduły funkcji oraz automatyczne
-odkrywanie i ponowne łączenie nie są jeszcze spięte z aplikacją.
+łączenie wychodzące i diagnostykę sesji; moduły funkcji nie są jeszcze spięte
+z aplikacją. Zmiany sieci budzą odkrywanie i próbę ostatnio wskazanego peera
+zgodnie z opisem WN-16 poniżej.
 
 ## Rzeczywisty test Android → PC
 
@@ -168,3 +169,42 @@ drugi prawdziwą sesję między Androidem a PC; trzeci błędy callbacku oraz
 anulowanie korutyny połączenia. Bez parametrów PC test sieciowy jest pomijany.
 Sprawdzenie S25 Ultra / StrongBox i sieci fizycznej wymaga telefonu; emulator
 potwierdza x86_64 i Keystore programowy. arm64-v8a jest kompilowane do AAR/APK.
+
+## Zmiany sieci (WN-16)
+
+Właściciel `WindCore` rejestruje `ConnectivityManager.NetworkCallback` dla
+sieci niewymagających ograniczonych uprawnień, również Wi-Fi bez Internetu.
+`onAvailable`, `onLost` i zmiany `LinkProperties` trafiają do kanału
+`CONFLATED`; callback nie wykonuje operacji sieciowych. Obsługa na IO wywołuje
+zawieszalne `CoreClient.networkChanged()` w kontekście Tokio: zmienia gniazdo
+QUIC, sygnalizuje nową generację i budzi bieżącą próbę połączenia.
+
+`core.network` jest `StateFlow<NetworkSnapshot>` z generacją, aktualnymi
+odciskami/adresami i ewentualnym błędem. Każda generacja usuwa stary widok
+adresów i tworzy nowy daemon mDNS z aktualnymi interfejsami i portem endpointu,
+bez czekania na okresowy timer. Brak sieci lub błąd mDNS pozostaje widoczny
+w stanie; kolejna zmiana sieci ponawia odkrywanie.
+
+Jeśli poprzednia próba wskazanego ręcznie peera się nie powiodła albo sesja
+już się zamknęła, zdarzenie sieci uruchamia nową próbę. Trwająca próba jest
+budzona bez oczekiwania na jej limit 10 s. Aktywna sesja korzysta z migracji
+QUIC. Ręczne rozłączenie, anulowanie próby i odmowa zaufania usuwają zamiar
+automatycznego łączenia. Zaufanie nie jest nigdy tworzone z mDNS.
+Adres ostatniego peera pozostaje ręcznie wybranym adresem; automatyczny wybór
+nowego IP z listy urządzeń należy do integracji zarządzania urządzeniami.
+
+Moduł deklaruje normalne uprawnienia `ACCESS_NETWORK_STATE` i
+`CHANGE_WIFI_MULTICAST_STATE`. W czasie obserwacji utrzymuje `MulticastLock`,
+zwalniany razem z callbackiem, zadaniami i daemonem w `shutdown()`.
+Wersja aplikacji to 0.19.1, a Android `versionCode` to 22. Numery wydań rosną
+niezależnie od kolejności kart, aby aktualizacja APK i MSI nie cofała wersji.
+
+Test na emulatorze/telefonie: `CoreApiTest#platformNetworkCallbackWakesDiscoveryWithoutPolling`
+potwierdza rzeczywisty callback systemu i generację z natywnego odkrywania.
+Opt-in `CoreApiTest#wifiReturnWakesNativeDiscovery` z argumentem instrumentacji
+`-e toggleWifi true` wyłącza i przywraca Wi-Fi na wskazanym urządzeniu testowym,
+a następnie potwierdza nową generację odkrywania; domyślnie ten test jest pomijany.
+Test ręczny: wprowadź zweryfikowany klucz i adres PC, spróbuj połączenia bez
+zasięgu PC, a potem wejdź do Wi-Fi tego PC. Próba powinna ruszyć po zdarzeniu
+sieci. Sprawdzenie przejścia między fizycznymi sieciami na S25 Ultra pozostaje
+testem sprzętowym.
