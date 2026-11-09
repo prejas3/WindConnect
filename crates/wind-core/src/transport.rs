@@ -41,7 +41,8 @@ pub const IDLE_TIMEOUT: Duration = Duration::from_secs(45);
 pub const CONNECT_ATTEMPT_TIMEOUT: Duration = Duration::from_secs(3);
 /// The peer's uni streams this side takes at once (`initial_max_streams_uni`,
 /// PROTOCOL.md §3.1 rule 5). A stream counts until it is handled: read to
-/// its end with its messages handed over, reset, or stopped; only then does
+/// its end with its messages handed over or read ahead (rule 5.6), reset,
+/// or stopped; only then does
 /// QUIC grant the peer a new one (`MAX_STREAMS`). A peer over the limit
 /// waits; nothing is refused or lost. Set explicitly so that the spec's
 /// value holds whatever quinn's default becomes.

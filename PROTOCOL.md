@@ -222,11 +222,12 @@ Kanały `clipboard`, `notify`, `media` i `input` mają w każdym kierunku
       mniej niż 16). Limit jest wspólny dla wszystkich kanałów uni.
    2. Nowe strumienie (ramka `MAX_STREAMS`) strona przyznaje dopiero wtedy,
       gdy strumień uni drugiej strony jest u niej **obsłużony**: przeczytany
-      do FIN, a jego wiadomości przekazane modułowi, albo porzucony
-      (`RESET_STREAM`), albo odrzucony (`STOP_SENDING`). Strumień, który
-      nadawca już zakończył, a którego wiadomości czekają na wolny moduł,
-      nadal zajmuje limit. Strona MOŻE przyznawać strumienie partiami
-      (np. gdy zwolni się ponad 1/8 limitu).
+      do FIN, a jego wiadomości przekazane modułowi albo przyjęte do bufora
+      odczytu z wyprzedzeniem (punkt 6), albo porzucony (`RESET_STREAM`),
+      albo odrzucony (`STOP_SENDING`). Strumień, którego wiadomości nie
+      zmieściły się ani w kolejce modułu, ani w buforze, nadal zajmuje
+      limit. Strona MOŻE przyznawać strumienie partiami (np. gdy zwolni się
+      ponad 1/8 limitu).
    3. Nadawca, który wyczerpał limit, czeka na `MAX_STREAMS`; żadna
       wiadomość nie przepada. Ilość danych buforowanych przez odbiorcę
       ograniczają okna kontroli przepływu QUIC (strumieni i połączenia).
@@ -237,8 +238,27 @@ Kanały `clipboard`, `notify`, `media` i `input` mają w każdym kierunku
    5. Ponieważ limit jest wspólny, nadawca POWINIEN wysyłać kolejne
       wiadomości kanału tym samym strumieniem i kończyć go dopiero w
       przerwie albo przy wycofaniu możliwości, a nie otwierać strumienia
-      na każdą wiadomość; inaczej wolny moduł jednego kanału może na
-      chwilę wstrzymać strumienie innych.
+      na każdą wiadomość.
+   6. **Odczyt z wyprzedzeniem (WN-81).** Odbiorca czyta strumienie kanału
+      dalej, niż jego moduł odbiera: wiadomości trafiają do bufora kanału,
+      w kolejności, a strumień przeczytany do FIN jest od razu obsłużony
+      (punkt 2), choć moduł jeszcze ich nie dostał. Bufor MUSI być
+      ograniczony; zalecane **1 MiB na kanał**, licząc ładunek każdej
+      wiadomości plus stały narzut (w `wind-core` 64 B), tak by ograniczać
+      też wiele drobnych wiadomości. Pełny bufor zatrzymuje czytanie
+      bieżącego strumienia (kontrola przepływu wstrzymuje nadawcę); ten i
+      dalsze strumienie kanału zajmują wtedy limit jak w punkcie 2.
+      Wiadomość większa niż cały bufor czeka, aż bufor się opróżni, i
+      wchodzi sama. Wycofanie możliwości (sekcja 6, zasada 5) usuwa z bufora
+      wiadomości sprzed wycofania.
+
+   Skutek: wolny moduł jednego kanału **nie wstrzymuje** innych kanałów,
+   dopóki jego zaległość mieści się w buforze. Inne kanały mogą czekać tylko
+   wtedy, gdy (a) zaległość kanału przekracza bufor i nadawca dalej otwiera
+   nowe strumienie tego kanału, aż wyczerpie limit, albo (b) nadawca łamie
+   zasadę 1 i trzyma strumienie bez FIN. Oba przypadki dotyczą
+   sparowanego urządzenia i są błędem nadawcy, nie utratą danych: nic nie
+   przepada, a nadawca czeka na `MAX_STREAMS`.
 6. Wiadomości z porzuconego strumienia (`RESET_STREAM`) mogą przepaść;
    kanały, w których to szkodzi, opisują w swojej specyfikacji ponowienie.
 

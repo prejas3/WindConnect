@@ -151,11 +151,24 @@ async fn messages_reach_their_module_in_order_across_streams() {
     send.await.unwrap();
 }
 
+/// A message numbered `n` with `bytes` of payload.
+fn big_msg(ty: u64, n: u64, bytes: usize) -> RawMessage {
+    RawMessage::new(
+        ty,
+        Value::Map(vec![
+            (Value::Int(0), Value::Int(n.into())),
+            (Value::Int(1), Value::Bytes(vec![0x5a; bytes])),
+        ]),
+    )
+}
+
 #[tokio::test]
 async fn fast_sender_waits_for_a_slow_module_and_loses_nothing() {
     // §3.1 rule 5: one finished stream per message, far more than the
-    // stream limit, and a module that doesn't read yet. The sender must
-    // wait for MAX_STREAMS, not be refused, and every message must arrive.
+    // stream limit plus what the read-ahead budget holds (64 KiB messages:
+    // about 16 fit in 1 MiB), and a module that doesn't read yet. The
+    // sender must wait for MAX_STREAMS, not be refused, and every message
+    // must arrive.
     let total = u64::from(MAX_UNI_STREAMS) + 50;
     let mut server_router = Router::new();
     let mut clip = server_router.route(Channel::Clipboard, 1, 1);
@@ -165,7 +178,10 @@ async fn fast_sender_waits_for_a_slow_module_and_loses_nothing() {
     let (sender, counter) = (p.client.clone(), sent.clone());
     let send = tokio::spawn(async move {
         for n in 0..total {
-            sender.send(Channel::Clipboard, &msg(1, n)).await.unwrap();
+            sender
+                .send(Channel::Clipboard, &big_msg(1, n, 64 * 1024))
+                .await
+                .unwrap();
             sender.finish(Channel::Clipboard).await.unwrap();
             counter.fetch_add(1, Ordering::SeqCst);
         }
@@ -188,6 +204,40 @@ async fn fast_sender_waits_for_a_slow_module_and_loses_nothing() {
         assert_eq!(n_of(&recv(&mut clip).await), n);
     }
     tokio::time::timeout(T, send).await.unwrap().unwrap();
+}
+
+#[tokio::test]
+async fn slow_module_of_one_channel_does_not_hold_back_another() {
+    // WN-81, §3.1 rule 5.6: more finished clipboard streams than the whole
+    // stream limit wait on a module that doesn't read, yet a notify message
+    // still gets through, and no clipboard message is lost or reordered.
+    let total = u64::from(MAX_UNI_STREAMS) + 50;
+    let mut server_router = Router::new();
+    let mut clip = server_router.route(Channel::Clipboard, 1, 1);
+    let mut notify = server_router.route(Channel::Notify, 1, 8);
+    let p = sessions(Router::new(), server_router).await;
+
+    let sender = p.client.clone();
+    let clipboard_done = tokio::spawn(async move {
+        for n in 0..total {
+            sender.send(Channel::Clipboard, &msg(1, n)).await.unwrap();
+            sender.finish(Channel::Clipboard).await.unwrap();
+        }
+    });
+    // Every clipboard stream got a place: the sender never waited.
+    tokio::time::timeout(T, clipboard_done)
+        .await
+        .expect("clipboard streams were held by the stream limit")
+        .unwrap();
+
+    p.client.send(Channel::Notify, &msg(2, 7)).await.unwrap();
+    p.client.finish(Channel::Notify).await.unwrap();
+    let m = recv(&mut notify).await;
+    assert_eq!((m.channel, n_of(&m)), (Channel::Notify, 7));
+
+    for n in 0..total {
+        assert_eq!(n_of(&recv(&mut clip).await), n);
+    }
 }
 
 #[tokio::test]
