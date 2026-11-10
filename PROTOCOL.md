@@ -1276,3 +1276,85 @@ Zamknięcie połączenia parowania niesie tylko kod z §10, z pustym powodem.
 | kod odrzucony, brak decyzji, rozłączenie | `CANCELLED` |
 | błąd zapisu po stronie serwera | `INTERNAL_ERROR` (nie liczy się jako próba) |
 | sukces (zamyka klient) | `NO_ERROR` |
+
+## 13. Przekaźnik poza domem (`/v1/relay`, WN-59)
+
+Przekaźnik pozwala dwóm sparowanym urządzeniom w różnych sieciach rozmawiać
+tym samym QUIC co w LAN (§2). Przenosi pakiety UDP sesji w ramkach
+WebSocket i nie zna żadnego klucza sesji ani klucza urządzenia, więc nie
+może odczytać ani zmienić treści: szyfrowanie i uwierzytelnienie końców
+pozostają w TLS 1.3 z przypiętymi kluczami. Przekaźnik jest opcją wyłączoną
+domyślnie (decyzja D3); klient włącza go w ustawieniach (WC-60). Serwer to
+Cloudflare Worker z Durable Object w katalogu `relay/`.
+
+### 13.1 Połączenie
+
+- Urządzenie otwiera `wss://<host>/v1/relay?me=<klucz>&peer=<klucz>`, gdzie
+  oba klucze to 64 małe znaki hex kluczy Ed25519 (§2.1): własny i
+  sparowanego urządzenia. Inne kształty kończą się HTTP 400; brak
+  nagłówka `Upgrade: websocket` daje 426; przekroczony limit nowych
+  połączeń z jednego IP (30 na minutę) daje 429.
+- Miejsce spotkania pary to
+  `SHA-256("wc-relay-v1 pair" ‖ niższy klucz ‖ wyższy klucz)`, gdzie
+  „niższy” oznacza mniejszy w porządku bajtów. Oba urządzenia muszą wskazać
+  siebie nawzajem; urządzenie, które nikogo nie wskazało, jest dla innych
+  nieosiągalne.
+- Para trzyma najwyżej 4 gniazda przed uwierzytelnieniem. Nowe gniazdo przy
+  pełnej puli zamyka najstarsze nieuwierzytelnione kodem 4004, zamiast być
+  odrzucone, więc ktoś, kto zna oba klucze publiczne, nie zablokuje pary
+  niepodpisanymi gniazdami. Gniazda uwierzytelnione się nie liczą: każde
+  urządzenie ma najwyżej jedno (§13.2).
+
+### 13.2 Uwierzytelnienie
+
+Ramki tekstowe są obiektami JSON z polem `t`. Przekaźnik zaczyna od
+`{"t":"challenge","nonce":"<64 hex>"}` z losowymi 32 bajtami. Urządzenie
+odpowiada `{"t":"auth","sig":"<128 hex>"}`, podpisem Ed25519 swoim kluczem
+urządzenia nad
+
+```text
+"wc-relay-v1 auth" ‖ nonce ‖ własny klucz ‖ klucz peera
+```
+
+Kontekst oddziela ten podpis od podpisów TLS tym samym kluczem. Podpis z
+innym nonce, dla innego peera, złym kluczem albo spóźniony ponad 10 s
+zamyka gniazdo kodem 4001. Po sukcesie przekaźnik wysyła
+`{"t":"ready","peer":<bool>}` (czy peer już czeka), a później
+`{"t":"peer","present":<bool>}`, gdy peer dołącza lub odchodzi. Podpis
+dowodzi tylko, które urządzenie się łączy; zaufanie do peera daje wyłącznie
+przypięty klucz w TLS.
+
+Jedno urządzenie ma w parze najwyżej jedno uwierzytelnione gniazdo: nowe
+zamyka poprzednie kodem 4003, a peer nie dostaje wtedy `present:false`.
+
+### 13.3 Dane
+
+- Po uwierzytelnieniu ramki binarne niosą po jednym pakiecie UDP QUIC i
+  trafiają bez zmian do drugiego urządzenia, jeśli jest obecne. Bez peera
+  ramka przepada jak zgubiony pakiet UDP.
+- Ramka binarna ponad 2048 B zamyka gniazdo kodem 1009. Ramka binarna
+  przed uwierzytelnieniem i ramka tekstowa po nim (poza pingiem) zamykają
+  kodem 4002.
+- `{"t":"ping"}` dostaje `{"t":"pong"}` (podtrzymanie bez budzenia obiektu).
+- Każde urządzenie ma kubeł tokenów: 1 MiB/s, chwilowo do 4 MiB
+  (zmienne `RATE_BYTES_PER_SEC`, `BURST_BYTES`). Ramka ponad limit przepada
+  bez zamykania gniazda; QUIC dostosowuje tempo.
+- Przekaźnik nie zapisuje ani nie loguje treści ramek.
+
+| kod zamknięcia | znaczenie |
+|---|---|
+| 4001 | uwierzytelnienie nieudane lub spóźnione |
+| 4002 | ramka niedozwolona w tym stanie |
+| 4003 | zastąpione nowszym połączeniem tego urządzenia |
+| 4004 | gniazdo nieuwierzytelnione wyparte przez nowsze (pełna pula) |
+| 1009 | ramka danych ponad 2048 B |
+
+### 13.4 Co widzi przekaźnik
+
+Operator przekaźnika (Cloudflare i właściciel konta) widzi adresy IP obu
+urządzeń, oba klucze publiczne i identyfikator pary w chwili łączenia, czas
+połączeń oraz liczbę i rozmiar ramek. Nie widzi treści, nazw urządzeń ani
+typów wiadomości: to wszystko jest wewnątrz QUIC. Worker nie zapisuje tych
+metadanych: Workers Logs są wyłączone (`observability.enabled: false`), a kod
+niczego nie loguje. Włączenie przekaźnika (D3) oznacza zgodę na to, że
+operator może te metadane zobaczyć.

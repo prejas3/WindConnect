@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "io.github.prejas3.windconnect"
-version = "0.25.1"
+version = "0.26.0"
 
 val repositoryRoot = rootProject.projectDir.resolve("../..").canonicalFile
 val rustTarget = layout.buildDirectory.dir("rust")

@@ -1,0 +1,21 @@
+{
+  // WindConnect relay (WN-59, PROTOCOL.md §13). Deployed only by the owner: see README.md.
+  "name": "windconnect-relay",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "workers_dev": true,
+  "durable_objects": {
+    "bindings": [{ "name": "PAIRS", "class_name": "RelayPair" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["RelayPair"] }],
+  // New connections per client IP; a missing binding (e.g. tests) skips the check.
+  "ratelimits": [
+    { "name": "CONNECT_LIMIT", "namespace_id": "47820", "simple": { "limit": 30, "period": 60 } }
+  ],
+  "vars": {
+    "RATE_BYTES_PER_SEC": "1048576",
+    "BURST_BYTES": "4194304"
+  },
+  // No Workers Logs: request URLs carry both keys and logs would add client IPs (PROTOCOL.md §13.4).
+  "observability": { "enabled": false }
+}

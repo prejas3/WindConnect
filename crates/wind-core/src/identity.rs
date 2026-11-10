@@ -535,13 +535,21 @@ impl DeviceIdentity {
             .map_err(|e| IdentityError::Corrupt(e.to_string()))
     }
 
-    fn from_key(key: SigningKey) -> Result<Self, IdentityError> {
+    pub(crate) fn from_key(key: SigningKey) -> Result<Self, IdentityError> {
         let cert = self_signed_certificate(&key)?;
         Ok(DeviceIdentity { key, cert })
     }
 
     pub fn public_key(&self) -> PublicKey {
         PublicKey(self.key.verifying_key().to_bytes())
+    }
+
+    /// An Ed25519 signature by this device's key. Callers prefix `message`
+    /// with their own context (e.g. [`crate::relay::auth_message`]) so it can
+    /// never pass for a TLS signature.
+    pub(crate) fn sign(&self, message: &[u8]) -> [u8; 64] {
+        use ed25519_dalek::Signer;
+        self.key.sign(message).to_bytes()
     }
 
     pub fn fingerprint(&self) -> Fingerprint {
