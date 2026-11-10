@@ -86,6 +86,7 @@ fun PairingScreen(model: PairingViewModel, diagnostic: @Composable () -> Unit) {
                 Text("Urządzenia sparowane", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.testTag("pairingSuccess"))
                 Text(state.name, style = MaterialTheme.typography.titleLarge)
                 Text("Klucz komputera został bezpiecznie zapamiętany na tym telefonie.")
+                Text(state.message, modifier = Modifier.testTag("pairedConnectionStatus"))
                 WindButton("Gotowe", model::cancel, Modifier.testTag("pairingDone"))
             }
             else -> {

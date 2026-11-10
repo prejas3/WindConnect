@@ -59,7 +59,7 @@ SEC: Skan/intent używają tego samego parsera Rust: limit 1024 bajty, wersja, k
 STATE: Oferta żyje w obiekcie Rust, wymazującym sekret przy zwolnieniu. Anulowanie zwalnia ofertę; równoległe intenty nie zastępują trwającego parowania. Próba trwa maksymalnie 30 s; po błędzie wymagany nowy kod. Sekret jest konsumowany przez FFI jednokrotnie. Potwierdzone klucze: noBackupFilesDir/paired.txt, ładowane przy otwieraniu WindCore; klucz prywatny pozostaje w istniejącym KeystoreIdentityStore.
 RULE: Uszkodzone linie paired.txt są pomijane zgodnie z WN-19. load_paired zwraca poprawne devices i osobne skipped_records; poprawne klucze pozostają przypięte. Liczba pominiętych wpisów przechodzi przez WindCore do nieblokującego komunikatu na ekranie głównym. Błąd odczytu pliku nadal jest błędem magazynu; zła linia nie blokuje startu ani nie powoduje wyczyszczenia pliku.
 RULE: Aparat tylko na ekranie skanera i w stanie resumed; sesja/obrazy zamykane po wyjściu lub onPause. Brak zapisu zdjęć, wysyłania klatek i usługi aparatu w tle. Odmowa zgody ma własny komunikat i przejście do ustawień; link systemowy działa bez zgody CAMERA. Brak aparatu nie blokuje instalacji.
-LIMIT: WN-26 paruje i zapisuje zaufanie; ekran urządzeń/usługa i automatyczne łączenie sesji należą do kolejnych kart lane. PC pokaże QR w WN-25. Fizyczne zachowanie Samsung Camera na S25 Ultra/One UI wymaga sprawdzenia: aparat musi zaoferować otwarcie custom URI `windconnect:pair`. Obsługa VIEW potwierdzona testem Androida nie zastępuje tego testu aparatu.
+LIMIT: Ekran urządzeń i usługa należą do kolejnych kart lane. WN-25 dodaje QR na PC i automatyczne połączenie po parowaniu: adres z odkrywania, klucz wyłącznie z zapisanego zaufania, limit 7 s. Brak połączenia nie cofa parowania; status UI śledzi sesję. Fizyczne zachowanie Samsung Camera na S25 Ultra/One UI wymaga sprawdzenia: aparat musi zaoferować otwarcie custom URI `windconnect:pair`. Obsługa VIEW potwierdzona testem Androida nie zastępuje tego testu aparatu.
 
 Testy:
 
@@ -137,7 +137,7 @@ generator, a nie ręcznie edytowane wiązania lub binaria.
 
 AAR: `wind-core/build/outputs/aar/wind-core-release.aar`.
 Lokalne repozytorium Maven z AAR, źródłami, POM i metadanymi Gradle:
-`wind-core/build/repo/`. Współrzędne: `io.github.prejas3.windconnect:wind-core:0.29.0`.
+`wind-core/build/repo/`. Współrzędne: `io.github.prejas3.windconnect:wind-core:0.30.0`.
 Publikacja zapisuje pliki lokalnie; nie wysyła ich do zewnętrznego repozytorium.
 Konsument musi korzystać z POM/metadanych (JNA i korutyny są zależnościami
 przechodnimi); sama kopia pliku AAR nie dostarczy JNA.
@@ -150,7 +150,7 @@ Konsument spoza repozytorium dodaje lokalne repozytorium do
 maven { url = uri("/sciezka/do/wind-core/build/repo") }
 ```
 
-oraz `implementation("io.github.prejas3.windconnect:wind-core:0.29.0")`.
+oraz `implementation("io.github.prejas3.windconnect:wind-core:0.30.0")`.
 W aplikacji konsumenta ogranicz ABI do `arm64-v8a` i `x86_64`.
 
 ```kotlin
@@ -247,7 +247,7 @@ toggleWifi true` dodaje prawdziwą zmianę sieci):
 ```powershell
 adb shell am instrument -w -r -e class io.github.prejas3.windconnect.MulticastLockTest -e pcAddress 10.0.2.2:47820 -e pcKey <PC_PUBLIC_KEY> -e toggleWifi true $runner
 ```
-Wersja aplikacji to 0.29.0, a Android `versionCode` to 38. Numery wydań rosną
+Wersja aplikacji to 0.30.0, a Android `versionCode` to 39. Numery wydań rosną
 niezależnie od kolejności kart, aby aktualizacja APK i MSI nie cofała wersji.
 
 Test na emulatorze/telefonie: `CoreApiTest#platformNetworkCallbackWakesDiscoveryWithoutPolling`

@@ -2811,6 +2811,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "qrcode"
+version = "0.14.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d68782463e408eb1e668cf6152704bd856c78c5b6417adaee3203d8f4c1fc9ec"
+
+[[package]]
 name = "quick-xml"
 version = "0.42.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4885,7 +4891,7 @@ checksum = "712e227841d057c1ee1cd2fb22fa7e5a5461ae8e48fa2ca79ec42cfc1931183f"
 
 [[package]]
 name = "wind-core"
-version = "0.29.0"
+version = "0.30.0"
 dependencies = [
  "ed25519-dalek",
  "futures-util",
@@ -4910,7 +4916,7 @@ dependencies = [
 
 [[package]]
 name = "wind-ffi"
-version = "0.29.0"
+version = "0.30.0"
 dependencies = [
  "tokio",
  "uniffi",
@@ -4920,8 +4926,10 @@ dependencies = [
 
 [[package]]
 name = "windconnect-windows"
-version = "0.29.0"
+version = "0.30.0"
 dependencies = [
+ "if-addrs",
+ "qrcode",
  "serde",
  "tauri",
  "tauri-build",
@@ -4933,7 +4941,7 @@ dependencies = [
 
 [[package]]
 name = "windctl"
-version = "0.29.0"
+version = "0.30.0"
 dependencies = [
  "clap",
  "tempfile",

@@ -82,6 +82,9 @@ impl Indicator {
     pub fn attempt_failed(&self, generation: u64) {
         self.transition(generation, Phase::Unavailable);
     }
+    pub fn connected(&self, generation: u64) {
+        self.transition(generation, Phase::Connected);
+    }
     fn transition(&self, generation: u64, phase: Phase) {
         let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         if generation == inner.generation {

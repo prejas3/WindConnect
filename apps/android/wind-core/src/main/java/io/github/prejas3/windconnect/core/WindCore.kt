@@ -19,6 +19,9 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -53,6 +56,28 @@ class WindCore private constructor(
         gate.withLock {
             check(!stopped) { "core is stopped" }
             client.pairQr(offer, pairedDirectory)
+        }
+    }
+    /** CCS/1 SEC:discovery supplies addresses only; the key must already be in the durable paired store. */
+    suspend fun connectPaired(peer: io.github.prejas3.windconnect.bindings.PeerInfo) = withContext(Dispatchers.IO) {
+        withTimeout(7_000) {
+            gate.withLock {
+                check(!stopped) { "core is stopped" }
+                val trusted = client.loadPaired(pairedDirectory).devices.firstOrNull { it.publicKey.contentEquals(peer.publicKey) }
+                    ?: error("device is not paired")
+                refreshDiscovery()
+                client.networkChanged()
+                val snapshot = network.first { snapshot -> snapshot.peers.any { it.fingerprint == trusted.fingerprint && it.addresses.isNotEmpty() } }
+                val addresses = snapshot.peers.first { it.fingerprint == trusted.fingerprint }.addresses.sortedBy { it.startsWith("[") }
+                for (address in addresses) {
+                    val connected = withTimeoutOrNull(2_000) {
+                        try { connectLocked(address, trusted.publicKey); true }
+                        catch (error: Exception) { if (error is CancellationException) throw error; false }
+                    }
+                    if (connected == true) return@withLock
+                }
+                error("paired computer is not reachable")
+            }
         }
     }
     val identity: IdentityInfo = client.identity()

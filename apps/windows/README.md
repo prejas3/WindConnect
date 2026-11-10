@@ -1,7 +1,7 @@
 # Windows
 
-Szkielet Tauri 2: jedno okno, statyczny frontend bez Node.js i komenda
-`core_version`, która odczytuje wersję z `wind-core`.
+Klient Tauri 2 ze wstępnie wyrenderowanym panelem telefonu i statycznym frontendem
+bez Node.js. Parowanie i uwierzytelniona sesja działają w `wind-core`.
 
 ## Wymagania
 
@@ -29,8 +29,9 @@ pierwsza instalacja wymaga wtedy połączenia z Internetem. MSI nie jest podpisa
 Workflow **Windows MSI** buduje pakiet na `windows-latest` dla PR, push do
 `master` lub ręcznego uruchomienia. W zakładce Actions pobierz artefakt
 `WindConnect-windows-x64-msi`, rozpakuj ZIP i uruchom MSI.
-Po instalacji uruchom WindConnect: powinno pojawić się jedno okno ze statusem
-`wind-core 0.29.0 · gotowy`. Zamknij okno i sprawdź odinstalowanie w Ustawieniach.
+Po instalacji uruchom WindConnect: panel pokazuje QR do sparowania telefonu.
+Po sparowaniu i zestawieniu sesji pokazuje „Połączono” i nazwę telefonu.
+Zamknij panel i sprawdź odinstalowanie w Ustawieniach.
 
 W pliku `tauri.conf.json` wartości `identifier` i
 `bundle.windows.wix.upgradeCode` muszą pozostać stałe między wersjami,
@@ -63,8 +64,8 @@ z ustawieniami dostępności/energii. Nie emulujemy Mica obrazem ani rozmyciem C
 Galeria: `cargo tauri dev` i przycisk **Galeria kontrolek** w stopce.
 Opcjonalnie `?gallery` otwiera ją od razu. Natywny `ui_dev_mode` zwraca false
 w release, niezależnie od URL. Dane i akcje galerii są demonstracyjne,
-bez dostępu do transportu, zaufania czy urządzeń. Wydanie pokazuje pusty stan;
-parowanie/panel urządzenia należą do dalszych kart.
+bez dostępu do transportu, zaufania czy urządzeń. Wydanie udostępnia rzeczywisty
+panel parowania WN-25, a galeria pozostaje tylko w debug.
 
 Test UI: zainstaluj Playwright 1.61.1 poza repozytorium i jego Chromium,
 ustaw `PLAYWRIGHT_MODULE` na katalog modułu `playwright`, następnie:
@@ -100,9 +101,9 @@ Integracja koordynatora sesji Windows (kolejne karty parowania): pobierz
 `attempt_failed(generation)` po błędzie lub uruchom `track_session(generation,
 &session)` dla uwierzytelnionej sesji. Jej zamknięcie przełącza ikonę na brak
 połączenia. Generacja chroni przed spóźnionym zdarzeniem poprzedniej sesji.
-Obecny panel nie zawiera jeszcze parowania/koordynatora Windows: bez sesji
-produkcyjna ikona uczciwie pokazuje brak połączenia. WN-23 dostarcza odbiornik
-zdarzeń i adapter prawdziwej `Session`, nie przypina kluczy z odkrywania.
+Koordynator WN-25 publikuje te zdarzenia dla rzeczywistych sesji. Bez sesji ikona
+pokazuje brak połączenia, także po samym zapisaniu parowania. Klucze z odkrywania
+nie są przypinane; zaufanie pochodzi z protokołu parowania i zapisanego magazynu.
 
 **Uruchamiaj po zalogowaniu** jest domyślnie wyłączone. Jawny wybór użytkownika
 zapisuje REG_SZ w HKCU `Software\Microsoft\Windows\CurrentVersion\Run`, wartość
@@ -151,6 +152,41 @@ CCS/1
 DEP: PLAYWRIGHT_MODULE jak dla check-ui.cjs.
 IO: 20 pomiarów <80 ms; preloading bez flash, Escape, utrata fokusu, otwarcie aplikacji, motywy, DM Sans, reduced-motion. Raport i PNG: %TEMP%/windconnect-wn24 (lub PANEL_ARTIFACTS). Runner zamyka własny proces i przeglądarkę.
 LIMIT: Przy zajętym Win+Shift+W raport jawnie zapisuje shortcut=false i komunikat OS; pozostałe sprawdzenia działają. Pełny test fizycznego skrótu wymaga wolnego skrótu. Zmiana krawędzi paska/monitora/DPI i rzeczywisty klik ikony pozostają do ręcznej walidacji powłoki; runner nie zmienia konfiguracji pulpitu.
+
+## QR i połączenie telefonu (WN-25)
+
+CCS/1
+FLOW: normalny start -> ukryty panel gotowy -> QR przy pierwszym uruchomieniu -> skan/potwierdzenie na Androidzie -> parowanie WN-19 -> zapis klucza -> uwierzytelniona Session -> „Połączono” + prawdziwa nazwa telefonu i ikona zasobnika.
+SEC: DPAPI i paired.txt w profilu użytkownika jak w rdzeniu. Uszkodzone rekordy pomijane i liczone; błąd odczytu/tożsamości nie generuje zastępczych kluczy. Zaufane klucze ładowane przed nasłuchem głównej sesji. Samo odkrywanie lub sukces parowania nie jest stanem „Połączono”.
+RULE: QR ma jednorazowy sekret i 5 min ważności. Nowy kod, anulowanie lub zmiana sieci unieważnia poprzednie okno; po wygaśnięciu/3 nieudanych próbach obraz znika. Brak adresu LAN daje opis i ponowienie. Po sparowaniu czekamy na Session; po 10 s bez niej pokazujemy zachowane sparowanie i brak połączenia. Rozłączenie usuwa stan „Połączono”, klucz pozostaje.
+IO: Adresy QR: IPv4 interfejsów LAN, najpierw interfejs domyślnej trasy (maks. 8); osobny port parowania, główny endpoint dla sesji. Odkrywanie równolegle mDNS + broadcast WN-15. Wi-Fi/Ethernet w tej samej sieci; relay nie jest tu automatycznie włączany.
+RULE: Kod renderowany w Rust do macierzy modułów, w canvas: czarny/biały w każdym motywie, całkowita skala, quiet zone 4 moduły. Surowy link nie trafia do DOM, localStorage ani logów. Cztery akcje telefonu pozostają nieaktywne do swoich kart; brak fikcyjnych baterii/zdjęć.
+FLOW: Android po parowaniu wyszukuje adres tylko dla zapisanego klucza, następnie łączy się z tym przypiętym kluczem; limit 7 s. Nieosiągalny komputer nie usuwa udanego parowania. Ekran telefonu śledzi rzeczywisty stan sesji.
+
+Sprawdzenia natywne (zewnętrzny Playwright jak wyżej; JDK 17 w JAVA_HOME,
+ZXING_CORE_JAR wskazuje na `core-3.5.4.jar` pobrany przez Gradle):
+
+```powershell
+cargo build --locked -p windconnect-windows
+cargo build --locked -p wind-ffi --example desktop_pairing_peer
+node apps/windows/scripts/check-pairing-native.cjs
+node apps/windows/scripts/check-pairing-android.cjs
+```
+
+CCS/1
+STATE: Native test dekoduje rzeczywisty canvas ZXingiem, używa prawdziwego protokołu parowania i Session, sprawdza nazwę, ikonę, zniknięcie QR, restart, anulowanie i odmowę starego kodu. Peery mają efemeryczne tożsamości; DPAPI/trust w unikalnym TEMP. Komenda dev_pairing_address i zmienne WINDCONNECT_TEST_DATA_DIR/WINDCONNECT_TEST_PAIR_IP działają wyłącznie w debug; release nie pozwala tymi zmiennymi przekierować tożsamości.
+STATE: Android test wymaga emulatora-5556 (lub ANDROID_SERIAL), APK i APK testowego. Dekoduje obraz canvas w Androidzie, potwierdza w UI i wymaga „Połączono” <10 s. Emulator NAT wymaga przekierowania UDP 47823 -> 47821; test wysyła wyłącznie publiczny pakiet odkrywania z odciskiem i portem, nie przypina kluczy. Pełne parowanie/TLS/Session to kod produkcyjny. Port/timer/procesy test kończy; testowy surowy link jest usuwany. PNG i run.json: TEMP/windconnect-wn25-*.
+LIMIT: Budżet jest mierzony od rozpoznania QR, z automatycznym potwierdzeniem testu, do prawdziwej sesji. Czas człowieka i fizycznego ustawiania ostrości nie jest ograniczany. Fizyczny S25 Ultra i rzeczywiste Wi-Fi/Private firewall trzeba potwierdzić na telefonie. MSI/APK do pierwszego testu są budowane lokalnie; MSI nie jest instalowany przez test.
+
+Audyt nowej zależności dostarczanej w EXE/MSI:
+
+| Komponent | Wersja | Licencja z pakietu | Gdzie trafia | Wynik |
+| --- | --- | --- | --- | --- |
+| qrcode | 0.14.1 | MIT OR Apache-2.0; wybrana MIT, LICENSE-MIT.txt | Natywny EXE; pełny tekst frontend/assets/qrcode-MIT.txt | Permisywna; bez domyślnych funkcji i zależności image/SVG/PIC. |
+| if-addrs | 0.15.0 | Dotychczasowa zależność wind-core | Ten sam EXE, bez nowej biblioteki runtime | Nowe bezpośrednie wywołanie istniejącego komponentu. |
+
+CCS/1
+EXT: qrcode upstream https://github.com/kennytm/qrcode-rust (pakiet 0.14.1, niezmieniony); NOTICE w frontend/assets. Brak zewnętrznego generatora QR, zdjęć ani nowych fontów.
 
 ## Odkrywanie i reguła zapory (WN-15)
 

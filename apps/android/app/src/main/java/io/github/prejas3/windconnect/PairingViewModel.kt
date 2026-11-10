@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import io.github.prejas3.windconnect.bindings.QrOffer
 import io.github.prejas3.windconnect.bindings.inspectQrLink
 import io.github.prejas3.windconnect.core.WindCore
+import io.github.prejas3.windconnect.core.ConnectionState
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -35,6 +36,17 @@ class PairingViewModel(application: Application) : AndroidViewModel(application)
                 val opened = WindCore.open(application, android.os.Build.MODEL.take(64))
                 core = opened
                 mutableUi.update { it.copy(ready = true, skippedRecords = opened.skippedPairingRecords) }
+                viewModelScope.launch {
+                    opened.state.collect { state ->
+                        val message = when (state) {
+                            is ConnectionState.Connected -> "Połączono z komputerem"
+                            is ConnectionState.Disconnected -> "Komputer rozłączony · sparowanie zachowane"
+                            is ConnectionState.Failed -> "Komputer chwilowo nieosiągalny · sparowanie zachowane"
+                            else -> null
+                        }
+                        if (message != null) mutableUi.update { current -> if (current.screen in listOf("home", "paired")) current.copy(message = message) else current }
+                    }
+                }
             } catch (error: Exception) {
                 if (error is CancellationException) throw error
                 mutableUi.update { it.copy(message = "Nie udało się odczytać tożsamości urządzenia. Uruchom aplikację ponownie.") }
@@ -43,7 +55,7 @@ class PairingViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun scan() { if (ui.value.screen != "pairing") { clearOffer(); mutableUi.update { it.copy(screen = "scanner", message = "") } } }
-    fun cancel() { if (ui.value.screen != "pairing") { clearOffer(); mutableUi.update { it.copy(screen = "home", name = "", fingerprint = "", message = "") } } }
+    fun cancel() { if (ui.value.screen != "pairing") { clearOffer(); mutableUi.update { it.copy(screen = "home", name = "", fingerprint = "", message = if (core?.state?.value is ConnectionState.Connected) "Połączono z komputerem" else "") } } }
     fun cameraError() { mutableUi.update { it.copy(screen = "error", message = "Nie udało się otworzyć aparatu. Zamknij inne aplikacje korzystające z aparatu i spróbuj ponownie.") } }
 
     fun offerLink(link: String?) {
@@ -71,7 +83,14 @@ class PairingViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             try {
                 val peer = owner.pairQr(active)
-                mutableUi.update { it.copy(screen = "paired", name = peer.name, fingerprint = peer.fingerprint) }
+                mutableUi.update { it.copy(screen = "paired", name = peer.name, fingerprint = peer.fingerprint, message = "Sparowano · Łączenie z komputerem…") }
+                try {
+                    owner.connectPaired(peer)
+                    mutableUi.update { it.copy(message = "Połączono z komputerem") }
+                } catch (error: Exception) {
+                    if (error is CancellationException && error !is kotlinx.coroutines.TimeoutCancellationException) throw error
+                    mutableUi.update { it.copy(message = "Sparowano. Komputer jest chwilowo nieosiągalny — sprawdź wspólną sieć Wi-Fi.") }
+                }
             } catch (error: Exception) {
                 if (error is CancellationException) throw error
                 mutableUi.update { it.copy(screen = "error", message = "Nie udało się sparować. Sprawdź wspólną sieć Wi-Fi i zeskanuj nowy kod na komputerze.") }

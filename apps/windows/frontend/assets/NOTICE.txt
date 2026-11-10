@@ -26,3 +26,8 @@ chosen licence: MIT; full text: tungstenite-MIT.txt.
 webpki-roots 1.0.11 (Mozilla root certificates for wss:// TLS), from
 https://github.com/rustls/webpki-roots; Community Data License Agreement -
 Permissive 2.0; full text: webpki-roots-CDLA-Permissive-2.0.txt.
+
+qrcode 0.14.1 (WN-25, unchanged Rust encoder): Copyright (c) 2016 kennytm.
+Chosen licence: MIT; full text: qrcode-MIT.txt.
+Default features disabled: no image/SVG/PIC dependencies; only its module matrix is sent to the local canvas.
+if-addrs 0.15.0 was already shipped by wind-core; WN-25 calls it directly for the QR's LAN addresses.

@@ -6,6 +6,7 @@ mod autostart;
 mod hotkey;
 pub mod indicator;
 mod instance;
+mod pairing;
 mod panel;
 mod tray;
 
@@ -176,9 +177,14 @@ fn main() {
     };
     tauri::Builder::default()
         .manage(panel::Runtime::default())
+        .manage(pairing::Runtime::default())
         .setup(|app| {
             app.manage(NetworkState::new()?);
             app.manage(tray::install(app.handle())?);
+            pairing::start(
+                app.handle().clone(),
+                app.state::<NetworkState>().changes.clone(),
+            );
             #[cfg(windows)]
             match hotkey::install(app.handle().clone()) {
                 Ok(hotkey) => {
@@ -194,7 +200,7 @@ fn main() {
                 }
             }
             if !std::env::args().any(|arg| arg == "--autostart") {
-                tray::show_main(app.handle())?;
+                panel::show(app.handle())?;
             }
             Ok(())
         })
@@ -224,7 +230,10 @@ fn main() {
             panel::panel_ready,
             panel::panel_painted,
             panel::panel_action,
-            panel::panel_snapshot
+            panel::panel_snapshot,
+            pairing::pairing_snapshot,
+            pairing::pairing_action,
+            pairing::dev_pairing_address
         ])
         .run(tauri::generate_context!())
         .expect("failed to run WindConnect");
