@@ -38,6 +38,8 @@ jobs:
         run: ./gradlew --no-daemon :app:lintDebug
       - name: Build debug APK
         run: ./gradlew --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest
+      - name: Core unit tests (JVM)
+        run: ./gradlew --no-daemon :wind-core:testDebugUnitTest
       - name: Build reusable core AAR
         run: ./gradlew --no-daemon :wind-core:assembleRelease
       - name: Upload debug APK
