@@ -113,6 +113,8 @@ pub struct CoreClient {
     identity: IdentityInfo,
     local: LocalInfo,
     bind_ip: std::net::IpAddr,
+    /// The port the platform asked for; 0 lets the system pick.
+    bind_port: u16,
     network: Arc<NetworkChanges>,
     discovery: tokio::sync::Mutex<Option<NetworkDiscovery>>,
     discovered: tokio::sync::Mutex<Option<tokio::sync::watch::Receiver<DiscoverySnapshot>>>,
@@ -162,6 +164,7 @@ pub async fn open_client(
         endpoint,
         trust,
         bind_ip: address.ip(),
+        bind_port: address.port(),
         network: Arc::new(NetworkChanges::default()),
         discovery: tokio::sync::Mutex::new(None),
         discovered: tokio::sync::Mutex::new(None),
@@ -195,10 +198,14 @@ impl CoreClient {
     }
 
     /// Platform callbacks call this off their callback thread. Does not acquire discovery locks.
+    /// CCS/1 DEC:a fixed port (firewall rules, a known address) survives: the socket stays, connections still probe the new path.
     pub async fn network_changed(&self) -> Result<(), CoreError> {
-        let result = self
-            .endpoint
-            .rebind(std::net::SocketAddr::new(self.bind_ip, 0));
+        let result = if self.bind_port == 0 {
+            self.endpoint
+                .rebind(std::net::SocketAddr::new(self.bind_ip, 0))
+        } else {
+            self.endpoint.refresh_path()
+        };
         self.network.notify();
         result.map(|_| ()).map_err(|e| CoreError::Transport {
             reason: e.to_string(),

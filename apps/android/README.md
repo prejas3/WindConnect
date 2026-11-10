@@ -104,7 +104,7 @@ generator, a nie ręcznie edytowane wiązania lub binaria.
 
 AAR: `wind-core/build/outputs/aar/wind-core-release.aar`.
 Lokalne repozytorium Maven z AAR, źródłami, POM i metadanymi Gradle:
-`wind-core/build/repo/`. Współrzędne: `io.github.prejas3.windconnect:wind-core:0.23.0`.
+`wind-core/build/repo/`. Współrzędne: `io.github.prejas3.windconnect:wind-core:0.23.1`.
 Publikacja zapisuje pliki lokalnie; nie wysyła ich do zewnętrznego repozytorium.
 Konsument musi korzystać z POM/metadanych (JNA i korutyny są zależnościami
 przechodnimi); sama kopia pliku AAR nie dostarczy JNA.
@@ -117,7 +117,7 @@ Konsument spoza repozytorium dodaje lokalne repozytorium do
 maven { url = uri("/sciezka/do/wind-core/build/repo") }
 ```
 
-oraz `implementation("io.github.prejas3.windconnect:wind-core:0.23.0")`.
+oraz `implementation("io.github.prejas3.windconnect:wind-core:0.23.1")`.
 W aplikacji konsumenta ogranicz ABI do `arm64-v8a` i `x86_64`.
 
 ```kotlin
@@ -196,7 +196,7 @@ nowego IP z listy urządzeń należy do integracji zarządzania urządzeniami.
 Moduł deklaruje normalne uprawnienia `ACCESS_NETWORK_STATE` i
 `CHANGE_WIFI_MULTICAST_STATE`. W czasie obserwacji utrzymuje `MulticastLock`,
 zwalniany razem z callbackiem, zadaniami i daemonem w `shutdown()`.
-Wersja aplikacji to 0.23.0, a Android `versionCode` to 30. Numery wydań rosną
+Wersja aplikacji to 0.23.1, a Android `versionCode` to 31. Numery wydań rosną
 niezależnie od kolejności kart, aby aktualizacja APK i MSI nie cofała wersji.
 
 Test na emulatorze/telefonie: `CoreApiTest#platformNetworkCallbackWakesDiscoveryWithoutPolling`

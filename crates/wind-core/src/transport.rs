@@ -512,6 +512,10 @@ pub struct Endpoint {
     /// ClientHello free of any device identifier).
     clients: Arc<Mutex<HashMap<PublicKey, quinn::ClientConfig>>>,
     options: EndpointOptions,
+    runtime: Arc<dyn quinn::Runtime>,
+    /// The socket quinn sends on now, kept so [`Endpoint::refresh_path`]
+    /// can hand it back to quinn without binding a new one.
+    socket: Arc<Mutex<Arc<dyn quinn::AsyncUdpSocket>>>,
 }
 
 impl fmt::Debug for Endpoint {
@@ -567,7 +571,17 @@ impl Endpoint {
         // A peer whose address changes (network switch) keeps its connection.
         server.migration(true);
 
-        let inner = quinn::Endpoint::server(server, addr).map_err(EndpointError::Io)?;
+        let runtime: Arc<dyn quinn::Runtime> = Arc::new(quinn::TokioRuntime);
+        let socket = runtime
+            .wrap_udp_socket(std::net::UdpSocket::bind(addr).map_err(EndpointError::Io)?)
+            .map_err(EndpointError::Io)?;
+        let inner = quinn::Endpoint::new_with_abstract_socket(
+            quinn::EndpointConfig::default(),
+            Some(server),
+            socket.clone(),
+            runtime.clone(),
+        )
+        .map_err(EndpointError::Io)?;
         Ok(Endpoint {
             inner,
             trust,
@@ -576,6 +590,8 @@ impl Endpoint {
             provider,
             clients: Arc::new(Mutex::new(HashMap::new())),
             options,
+            runtime,
+            socket: Arc::new(Mutex::new(socket)),
         })
     }
 
@@ -648,8 +664,24 @@ impl Endpoint {
     /// e.g. after the network changed. Every connection migrates to the new
     /// path (RFC 9000 §9) without a new handshake. Returns the new address.
     pub fn rebind(&self, addr: SocketAddr) -> std::io::Result<SocketAddr> {
-        let socket = std::net::UdpSocket::bind(addr)?;
-        self.inner.rebind(socket)?;
+        let socket = self
+            .runtime
+            .wrap_udp_socket(std::net::UdpSocket::bind(addr)?)?;
+        let mut current = self.socket.lock().unwrap_or_else(|e| e.into_inner());
+        self.inner.rebind_abstract(socket.clone())?;
+        *current = socket;
+        self.inner.local_addr()
+    }
+
+    /// After the network changed, keeps the socket and its port but tells
+    /// every connection its local path changed: each moves to a fresh
+    /// connection ID and probes the peer at once, so the peer validates the
+    /// new path (RFC 9000 §9) as with [`rebind`](Self::rebind). For an
+    /// endpoint on a fixed port, where binding a second socket on that port
+    /// while quinn still holds the first fails with `EADDRINUSE`.
+    pub fn refresh_path(&self) -> std::io::Result<SocketAddr> {
+        let current = self.socket.lock().unwrap_or_else(|e| e.into_inner());
+        self.inner.rebind_abstract(current.clone())?;
         self.inner.local_addr()
     }
 

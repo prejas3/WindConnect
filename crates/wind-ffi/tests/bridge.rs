@@ -228,3 +228,79 @@ async fn network_callback_restarts_an_inflight_connection_without_waiting_for_ti
     accepted.await.unwrap();
     client.shutdown().await;
 }
+
+/// WN-84: a fixed listening port survives `network_changed` (firewall rules
+/// and known addresses keep matching); port 0 still moves to a fresh one
+/// (WN-16). In both cases an open session keeps working.
+#[tokio::test(flavor = "multi_thread")]
+async fn network_change_keeps_a_fixed_port_and_the_session() {
+    async fn port_across_network_change(bind: String) -> (u16, u16) {
+        let client = open_client(Box::new(MemoryStorage::default()), "Phone".into(), bind)
+            .await
+            .unwrap();
+        let server_identity = DeviceIdentity::generate().unwrap();
+        client
+            .pin_peer(server_identity.public_key().as_bytes().to_vec())
+            .unwrap();
+        let trust = Arc::new(PinnedKeys::new());
+        trust
+            .pin(PublicKey::from_bytes(&client.identity().public_key.try_into().unwrap()).unwrap());
+        let server =
+            Endpoint::bind("127.0.0.1:0".parse().unwrap(), &server_identity, trust).unwrap();
+        let address = server.local_addr().unwrap().to_string();
+        let server_task = tokio::spawn(async move {
+            let connection = server.accept().await.unwrap().unwrap();
+            let (session, _) = Session::accept(
+                connection,
+                LocalInfo {
+                    name: "PC".into(),
+                    kind: DeviceKind::Computer,
+                    app: None,
+                },
+                Router::new(),
+            )
+            .await
+            .unwrap();
+            session.closed().await;
+            server.close();
+            server.wait_idle().await;
+        });
+        let connection = client
+            .connect(address, server_identity.public_key().as_bytes().to_vec())
+            .await
+            .unwrap();
+        connection.ping().await.unwrap();
+        let port = |client: &wind_ffi::CoreClient| {
+            client
+                .local_address()
+                .unwrap()
+                .parse::<std::net::SocketAddr>()
+                .unwrap()
+                .port()
+        };
+        let before = port(&client);
+        client.network_changed().await.unwrap();
+        let after = port(&client);
+        tokio::time::timeout(Duration::from_secs(2), connection.ping())
+            .await
+            .expect("the session must survive the network change")
+            .unwrap();
+        connection.disconnect().await;
+        tokio::time::timeout(Duration::from_secs(5), server_task)
+            .await
+            .unwrap()
+            .unwrap();
+        client.shutdown().await;
+        (before, after)
+    }
+
+    let free = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
+    let fixed = free.local_addr().unwrap().port();
+    drop(free);
+    assert_eq!(
+        port_across_network_change(format!("127.0.0.1:{fixed}")).await,
+        (fixed, fixed)
+    );
+    let (before, after) = port_across_network_change("127.0.0.1:0".into()).await;
+    assert_ne!(before, after, "port 0 keeps WN-16: a fresh socket");
+}
