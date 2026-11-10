@@ -7,6 +7,8 @@ use crate::protocol::{
     encode_raw_frame, Channel, ErrorCode, FrameError, FrameReader, Message, RawMessage,
 };
 
+use tokio::sync::watch;
+
 use super::varint_code;
 
 /// Reading a stream failed: its bytes broke the protocol, or the stream or
@@ -15,6 +17,9 @@ use super::varint_code;
 pub enum RecvError {
     Frame(FrameError),
     Read(quinn::ReadError),
+    /// This side withdrew the stream's channel (§6, rule 5) after the
+    /// stream was taken; it has been stopped with `CANCELLED`.
+    Withdrawn,
 }
 
 impl fmt::Display for RecvError {
@@ -22,6 +27,7 @@ impl fmt::Display for RecvError {
         match self {
             RecvError::Frame(e) => write!(f, "{e:?}"),
             RecvError::Read(e) => write!(f, "{e}"),
+            RecvError::Withdrawn => f.write_str("channel withdrawn by this side"),
         }
     }
 }
@@ -50,6 +56,9 @@ pub struct FramedRecv {
     buf: Box<[u8]>,
     start: usize,
     end: usize,
+    /// For a stream of a switchable channel: its gate and the withdrawal
+    /// count when it was taken (WN-86).
+    gate: Option<(watch::Receiver<super::Gate>, u64)>,
 }
 
 impl fmt::Debug for FramedRecv {
@@ -69,7 +78,21 @@ impl FramedRecv {
             buf: vec![0; READ_BUF].into_boxed_slice(),
             start: 0,
             end: 0,
+            gate: None,
         }
+    }
+
+    /// Ties the stream to its channel's gate: once the channel is withdrawn
+    /// (its count moves past `at`), reading stops the stream with
+    /// `CANCELLED` and fails with [`RecvError::Withdrawn`].
+    pub(super) fn with_gate(mut self, gate: watch::Receiver<super::Gate>, at: u64) -> Self {
+        self.gate = Some((gate, at));
+        self
+    }
+
+    fn withdrawn(&mut self) -> RecvError {
+        let _ = self.recv.stop(varint_code(ErrorCode::Cancelled));
+        RecvError::Withdrawn
     }
 
     pub fn id(&self) -> quinn::StreamId {
@@ -109,8 +132,34 @@ impl FramedRecv {
     /// Pushes buffered bytes into the reader, reading more when none are
     /// left. `false` at a clean FIN.
     async fn fill(&mut self) -> Result<bool, RecvError> {
+        if let Some((gate, at)) = &self.gate {
+            if gate.borrow().withdrawals > *at {
+                return Err(self.withdrawn());
+            }
+        }
         if self.start == self.end {
-            match self.recv.read(&mut self.buf).await? {
+            let read = match &mut self.gate {
+                None => self.recv.read(&mut self.buf).await?,
+                Some((gate, at)) => {
+                    let at = *at;
+                    // A gate whose session is gone never fires.
+                    let withdrawn = async {
+                        if gate.wait_for(|g| g.withdrawals > at).await.is_err() {
+                            std::future::pending::<()>().await;
+                        }
+                    };
+                    let read = tokio::select! {
+                        biased;
+                        () = withdrawn => None,
+                        r = self.recv.read(&mut self.buf) => Some(r),
+                    };
+                    match read {
+                        None => return Err(self.withdrawn()),
+                        Some(r) => r?,
+                    }
+                }
+            };
+            match read {
                 None => {
                     self.reader.finish()?;
                     return Ok(false);

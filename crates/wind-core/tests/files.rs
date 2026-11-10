@@ -625,3 +625,104 @@ async fn throughput_is_at_least_80_percent_of_raw_quic() {
     );
     assert!(ratio >= 0.8, "engine at {ratio:.2} of raw QUIC");
 }
+
+/// WN-86: withdrawing `files/1` (§6 rule 5) stops a running transfer with
+/// `CANCELLED`, refuses new `files` streams with `CAPABILITY_MISSING`, and
+/// after re-enabling a new transfer goes through.
+#[tokio::test(flavor = "multi_thread")]
+async fn withdrawing_files_cancels_transfers_and_reenabling_works() {
+    let dir = tempfile::tempdir().unwrap();
+    let src = dir.path().join("src");
+    std::fs::create_dir_all(&src).unwrap();
+    let big = random_file(&src, "big.bin", 48 * 1024 * 1024, 21);
+    let small = random_file(&src, "after.bin", 700_000, 22);
+    let inbox_b = dir.path().join("b");
+    let (ea, eb) = (engine(&dir.path().join("a")), engine(&inbox_b));
+    let net = Net::new();
+    let (sa, sb) = net.attach(&ea, &eb).await;
+    let (mut ra, mut rb) = (ea.subscribe(), eb.subscribe());
+    let big_id = ea.send(net.b_fp, &big).unwrap()[0];
+    until(&mut rb, "running", |l| {
+        l.first().is_some_and(|t| t.done > 0)
+    })
+    .await;
+
+    // B stops accepting files mid-transfer.
+    assert!(sb.set_accepted(Channel::Files, false).await.unwrap());
+    // The sender sees its streams stopped with CANCELLED.
+    until(&mut ra, "sender stopped", |l| {
+        l[0].state == TransferState::Cancelled { by_peer: true }
+    })
+    .await;
+    until(&mut rb, "receiver withdrawn", |l| {
+        l[0].state == TransferState::Failed(FailReason::Withdrawn)
+    })
+    .await;
+    assert!(no_partials(&inbox_b));
+    assert!(!inbox_b.join("big.bin").exists());
+
+    // A stream opened while withdrawn (as by a sender that hasn't seen the
+    // Capabilities yet) is refused with CAPABILITY_MISSING.
+    let (mut send, mut recv) = sa.connection().quinn().open_bi().await.unwrap();
+    send.write_all(&[0x01, 0x05]).await.unwrap();
+    let mut byte = [0u8; 1];
+    let refused = tokio::time::timeout(T, recv.read(&mut byte)).await.unwrap();
+    match refused {
+        Err(quinn::ReadError::Reset(code)) => {
+            assert_eq!(code.into_inner(), ErrorCode::CapabilityMissing.code())
+        }
+        other => panic!("expected CAPABILITY_MISSING, got {other:?}"),
+    }
+    // Once A has the new list, the engine doesn't even try.
+    tokio::time::timeout(T, async {
+        while sa.peer_capabilities().iter().any(|c| c.name() == "files") {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    let refused_id = ea.send(net.b_fp, &small).unwrap()[0];
+    until(&mut ra, "refused locally", |l| {
+        l.iter().any(|t| {
+            t.id == refused_id
+                && t.state
+                    == TransferState::Failed(FailReason::Refused(ErrorCode::CapabilityMissing))
+        })
+    })
+    .await;
+
+    // Re-enabled: a new transfer goes through.
+    assert!(sb.set_accepted(Channel::Files, true).await.unwrap());
+    tokio::time::timeout(T, async {
+        while !sa.peer_capabilities().iter().any(|c| c.name() == "files") {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    let id = ea.send(net.b_fp, &small).unwrap()[0];
+    let got = until(&mut rb, "after re-enable", |l| {
+        l.iter()
+            .any(|t| t.id == id && t.state == TransferState::Done)
+    })
+    .await;
+    let t = got.iter().find(|t| t.id == id).unwrap();
+    assert_eq!(sha(t.saved_as.as_ref().unwrap()), sha(&small));
+    // And the earlier refused one can simply be retried.
+    ea.retry(&refused_id).unwrap();
+    until(&mut ra, "retried", |l| {
+        l.iter()
+            .any(|t| t.id == refused_id && t.state == TransferState::Done)
+    })
+    .await;
+    // The withdrawn transfer itself, retried with its id, is taken too
+    // (a withdrawal is not a user's cancel, §9.1 point 7).
+    ea.retry(&big_id).unwrap();
+    let got = until(&mut rb, "withdrawn one retried", |l| {
+        l.iter()
+            .any(|t| t.id == big_id && t.state == TransferState::Done)
+    })
+    .await;
+    let t = got.iter().find(|t| t.id == big_id).unwrap();
+    assert_eq!(sha(t.saved_as.as_ref().unwrap()), sha(&big));
+}

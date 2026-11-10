@@ -23,7 +23,9 @@ pub struct ChannelMessage {
     pub message: RawMessage,
 }
 
-/// A `files` stream opened by the peer (1–8 per transfer, §9.1): its frames in
+/// A `files` stream opened by the peer (1–8 per transfer, §9.1). Withdrawing
+/// `files` (`Session::set_accepted`) makes its next read fail with
+/// `RecvError::Withdrawn`, the stream stopped with `CANCELLED`: its frames in
 /// `recv`, the replies in `send`. The header has been read.
 #[derive(Debug)]
 pub struct FileStream {

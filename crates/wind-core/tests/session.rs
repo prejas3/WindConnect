@@ -764,17 +764,17 @@ async fn withdrawing_input_releases_buttons_and_reenabling_starts_a_new_session(
 }
 
 #[tokio::test]
-async fn only_routed_uni_channels_can_be_switched() {
+async fn only_routed_channels_can_be_switched() {
     let mut server_router = Router::new();
     let _clip = server_router.route(Channel::Clipboard, 1, 8);
     let _files = server_router.route_files(1, 8);
     let p = sessions(Router::new(), server_router).await;
-    for channel in [
-        Channel::Control,
-        Channel::Files,
-        Channel::Notify,
-        Channel::Input,
-    ] {
+    // The client routes nothing, `files` included.
+    assert!(matches!(
+        p.client.set_accepted(Channel::Files, false).await,
+        Err(SessionError::WrongChannel(Channel::Files))
+    ));
+    for channel in [Channel::Control, Channel::Notify, Channel::Input] {
         assert!(
             matches!(
                 p.server.set_accepted(channel, false).await,
@@ -787,4 +787,92 @@ async fn only_routed_uni_channels_can_be_switched() {
         p.server.accepted_capabilities(),
         caps(&["clipboard/1", "files/1"])
     );
+}
+
+/// WN-86: `files` can be withdrawn too. A stream its module already holds
+/// fails its next read with `Withdrawn` and is stopped with `CANCELLED`
+/// (the sender sees it), also when `files` is enabled again before the
+/// module reads; while withdrawn, new streams get `CAPABILITY_MISSING`.
+#[tokio::test]
+async fn withdrawing_files_stops_taken_streams_and_refuses_new_ones() {
+    use wind_core::session::RecvError;
+    let mut server_router = Router::new();
+    let mut files = server_router.route_files(1, 8);
+    let p = sessions(Router::new(), server_router).await;
+    let body = |n: u64| RawMessage::new(0, Value::Map(vec![(Value::Int(0), Value::Int(n.into()))]));
+
+    // Two streams taken before the withdrawal.
+    let mut a = p.client.open_files().await.unwrap();
+    write_raw(&mut a.send, Channel::Files, &body(1))
+        .await
+        .unwrap();
+    let mut b = p.client.open_files().await.unwrap();
+    write_raw(&mut b.send, Channel::Files, &body(2))
+        .await
+        .unwrap();
+    let mut taken_a = tokio::time::timeout(T, files.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    let mut taken_b = tokio::time::timeout(T, files.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(taken_a.recv.next_raw().await.unwrap().is_some());
+
+    assert!(p.server.set_accepted(Channel::Files, false).await.unwrap());
+    assert!(matches!(
+        taken_a.recv.next_raw().await,
+        Err(RecvError::Withdrawn)
+    ));
+    // The sender's stream is stopped with CANCELLED.
+    let stopped = tokio::time::timeout(T, a.send.stopped())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        stopped.map(|c| c.into_inner()),
+        Some(ErrorCode::Cancelled.code())
+    );
+
+    // New stream while withdrawn: CAPABILITY_MISSING.
+    let (mut send, mut recv) = p.client.connection().quinn().open_bi().await.unwrap();
+    send.write_all(&[0x01, 0x05]).await.unwrap();
+    let mut byte = [0u8; 1];
+    match tokio::time::timeout(T, recv.read(&mut byte)).await.unwrap() {
+        Err(quinn::ReadError::Reset(code)) => {
+            assert_eq!(code.into_inner(), ErrorCode::CapabilityMissing.code())
+        }
+        other => panic!("expected CAPABILITY_MISSING, got {other:?}"),
+    }
+
+    // Enabled again: the stream taken before stays over; a new one works.
+    assert!(p.server.set_accepted(Channel::Files, true).await.unwrap());
+    assert!(matches!(
+        taken_b.recv.next_raw().await,
+        Err(RecvError::Withdrawn)
+    ));
+    // The client opens a new stream once it has the new list (§6, rule 5).
+    tokio::time::timeout(T, async {
+        while !p
+            .client
+            .peer_capabilities()
+            .iter()
+            .any(|c| c.name() == "files")
+        {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .unwrap();
+    let mut c = p.client.open_files().await.unwrap();
+    write_raw(&mut c.send, Channel::Files, &body(3))
+        .await
+        .unwrap();
+    let mut taken_c = tokio::time::timeout(T, files.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    let got = taken_c.recv.next_raw().await.unwrap().unwrap();
+    assert_eq!(got, body(3));
 }
