@@ -193,6 +193,18 @@ async fn run(
     let trust = Arc::new(PinnedKeys::new());
     let loaded = store.load()?;
     loaded.pin_all(&trust);
+    if let Some(dir) = key_store.path().parent() {
+        if let Err(error) = crate::files::init(&app, dir) {
+            eprintln!("file sending unavailable: {error}");
+        }
+    }
+    if let Some(device) = loaded.devices.last() {
+        crate::files::set_target(
+            &app,
+            *device.key.fingerprint().as_bytes(),
+            device.name.clone(),
+        );
+    }
     let endpoint = Endpoint::bind("0.0.0.0:0".parse()?, &identity, trust.clone())?;
     *app.state::<Runtime>().main_address.lock().unwrap() = Some(endpoint.local_addr()?);
     let mut discovery =
@@ -220,6 +232,7 @@ async fn run(
                 )
                 .await
                 {
+                    crate::files::attach(&actions_app, session.0.clone());
                     crate::actions::serve(
                         &actions_app,
                         actions_trust.clone(),
@@ -286,6 +299,7 @@ async fn run(
             },
             event = listener.next_event() => match event {
                 Some(PairingEvent::Paired(device)) => {
+                    crate::files::set_target(&app, *device.key.fingerprint().as_bytes(), device.name.clone());
                     paired_at = Some(Instant::now()); snapshot.qr = None;
                     if active.as_ref().is_none_or(|(session, _)| session.peer().key != device.key) { snapshot.phase = "connecting".into(); snapshot.phone = device.name; snapshot.message = "Sparowano · czekam na bezpieczne połączenie telefonu".into(); }
                 }
