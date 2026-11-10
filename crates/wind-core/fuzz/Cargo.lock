@@ -1094,11 +1094,12 @@ dependencies = [
 
 [[package]]
 name = "wind-core"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "ed25519-dalek",
  "futures-util",
  "if-addrs",
+ "libc",
  "mdns-sd",
  "quinn",
  "rand_core 0.6.4",

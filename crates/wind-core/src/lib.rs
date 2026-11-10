@@ -2,6 +2,7 @@
 
 pub mod broadcast;
 pub mod discovery;
+pub mod files;
 pub mod identity;
 pub mod input;
 pub mod network;

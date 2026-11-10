@@ -4,7 +4,8 @@
 //! hands each channel's messages to its feature module.
 //!
 //! Sending: [`Session::send`] keeps at most one open uni stream per channel
-//! (§3.1, rule 1) and [`Session::open_files`] one bidi stream per transfer.
+//! (§3.1, rule 1) and [`Session::open_files`] opens the bidi streams of a
+//! transfer (one or more each, §9.1; see [`crate::files`]).
 //! Every stream gets the §3 priority, so `control` and `input` are sent
 //! before bulk channels, and `files` streams share what is left.
 //!
@@ -771,7 +772,7 @@ impl Session {
         Ok(())
     }
 
-    /// Opens a `files` stream for one transfer (lowest priority; transfers
+    /// Opens a `files` stream of a transfer (lowest priority; transfers
     /// share the link equally).
     pub async fn open_files(&self) -> Result<FileStream, SessionError> {
         if !self.peer_accepts(Channel::Files) {
