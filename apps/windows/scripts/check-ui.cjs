@@ -95,6 +95,19 @@ const server = http.createServer(async (request, response) => {
     assert.equal(await release.locator('#gallery').textContent(), '');
     assert.equal(await release.locator('#home').isVisible(), true);
     assert.deepEqual(errors, []);
+    const menu = await browser.newPage({ viewport: { width: 280, height: 250 } });
+    await menu.addInitScript(() => { window.menuCalls = []; window.__TAURI__ = { core: { invoke: async (command,args) => { window.menuCalls.push([command,args]); if (command === 'tray_snapshot') return { phase:'searching' }; if (command === 'autostart_enabled') return false; if (command === 'set_autostart') return args.enabled; } } }; });
+    await menu.goto(url.replace('/?gallery','/tray-menu.html'));
+    await menu.waitForFunction(() => document.querySelector('#tray-state').textContent === 'Szukam urządzenia');
+    await menu.locator('[data-action="open"]').focus(); await menu.keyboard.press('ArrowDown');
+    assert.equal(await menu.locator('#autostart').evaluate(e => e === document.activeElement),true);
+    await menu.keyboard.press('Space');
+    await menu.waitForFunction(() => document.querySelector('#autostart').getAttribute('aria-checked') === 'true');
+    await menu.keyboard.press('Escape');
+    assert.equal(await menu.evaluate(() => window.menuCalls.some(([command,args]) => command === 'tray_action' && args.action === 'hide')),true);
+    await menu.locator('[data-action="quit"]').click();
+    assert.equal(await menu.evaluate(() => window.menuCalls.some(([command,args]) => command === 'tray_action' && args.action === 'quit')),true);
+    await menu.screenshot({path:path.join(artifacts,'tray-menu.png')});
     console.log(`PASS: themes, 6 layouts, DM Sans, keyboard, validation, list, dialog focus, reduced motion, release gate; screenshots: ${artifacts}`);
   } finally {
     if (browser) await browser.close();

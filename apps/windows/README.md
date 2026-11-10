@@ -30,7 +30,7 @@ Workflow **Windows MSI** buduje pakiet na `windows-latest` dla PR, push do
 `master` lub ręcznego uruchomienia. W zakładce Actions pobierz artefakt
 `WindConnect-windows-x64-msi`, rozpakuj ZIP i uruchom MSI.
 Po instalacji uruchom WindConnect: powinno pojawić się jedno okno ze statusem
-`wind-core 0.22.1 · gotowy`. Zamknij okno i sprawdź odinstalowanie w Ustawieniach.
+`wind-core 0.23.0 · gotowy`. Zamknij okno i sprawdź odinstalowanie w Ustawieniach.
 
 W pliku `tauri.conf.json` wartości `identifier` i
 `bundle.windows.wix.upgradeCode` muszą pozostać stałe między wersjami,
@@ -79,6 +79,56 @@ i bramkę release przy wstrzykniętym IPC. PNG trafiają do `%TEMP%/windconnect-
 (lub `UI_ARTIFACTS`). CI Windows wykonuje ten sam test. Dodatkowo na Windows 11
 sprawdź natywnie przeciąganie/resize, przyciski okna, Alt+F4, Mica na tle pulpitu
 i tryb wyłączonej przezroczystości; Chromium headless nie potwierdza efektu DWM.
+
+## Zasobnik i autostart (WN-23)
+
+Lewy klik ikony przywraca okno, prawy otwiera własne menu (DM Sans, motyw
+aplikacji, strzałki/Home/End/Tab, Enter/Spacja, Escape). Menu jest też dostępne
+przez **Opcje zasobnika** w oknie. Utrata fokusu chowa menu. X/Alt+F4 chowa
+okno do zasobnika; **Zakończ** kończy proces i usuwa ikonę. Kolejne uruchomienie
+przywraca istniejące okno, zamiast dodawać drugą ikonę (mutex sesji logowania).
+
+Trzy własne ikony 32 px mają odrębny kształt i kolor: znacznik/teal połączenia,
+trzy kropki/amber wyszukiwania i przekreślony okrąg/gray braku połączenia.
+Tooltip i nagłówek menu zawierają opis słowny. `indicator.rs` publikuje zdarzenia
+przez watch, bez timerów. Natywny odbiorca wymienia ikonę i tooltip na wątku UI;
+`tray_snapshot` podaje czas od publikacji do zakończenia wywołań natywnych.
+To pomiar API, nie momentu odmalowania przez Explorer.
+
+Integracja koordynatora sesji Windows (kolejne karty parowania): pobierz
+`app.state::<TrayRuntime>().indicator`, wywołaj `searching()` przed próbą,
+`attempt_failed(generation)` po błędzie lub uruchom `track_session(generation,
+&session)` dla uwierzytelnionej sesji. Jej zamknięcie przełącza ikonę na brak
+połączenia. Generacja chroni przed spóźnionym zdarzeniem poprzedniej sesji.
+Obecny panel nie zawiera jeszcze parowania/koordynatora Windows: bez sesji
+produkcyjna ikona uczciwie pokazuje brak połączenia. WN-23 dostarcza odbiornik
+zdarzeń i adapter prawdziwej `Session`, nie przypina kluczy z odkrywania.
+
+**Uruchamiaj po zalogowaniu** jest domyślnie wyłączone. Jawny wybór użytkownika
+zapisuje REG_SZ w HKCU `Software\Microsoft\Windows\CurrentVersion\Run`, wartość
+`WindConnect`, z cytowaną ścieżką bieżącego EXE i `--autostart`. Bez powłoki
+i uprawnień administratora. Uruchomienie z tym argumentem tworzy tylko ikonę.
+MSI nie włącza autostartu; próbuje usunąć wpis przy deinstalacji w kontekście bieżącego
+użytkownika. Sprzątanie jest nieblokujące: brak lub blokada EXE albo błąd rejestru
+nie zatrzymuje deinstalacji; wpis Run może wtedy pozostać. Wpisy innych profili nie są usuwane. Po zmianie lokalizacji EXE
+włącz opcję ponownie. Task Manager/polityka Windows może wyłączyć start niezależnie
+od obecności Run. Nie ma usługi ani zadania Harmonogramu.
+
+Testy: `cargo test -p windconnect-windows` (stara generacja, cytowanie, odczyt/
+zapis/usunięcie w prywatnym kluczu HKCU testu, nigdy w Run). `check-ui.cjs`
+sprawdza też własne menu i checkbox autostartu z atrapą IPC. Test natywny:
+
+```powershell
+node apps/windows/scripts/check-tray-native.cjs target/debug/windconnect-windows.exe
+node apps/windows/scripts/check-tray-native.cjs target/release/windconnect-windows.exe --release
+```
+
+Ustaw `PLAYWRIGHT_MODULE` jak dla testu UI. Runner startuje i zamyka własną
+aplikację/WebView2, sprawdza cichy start, zamknięcie do zasobnika, drugą instancję
+i klawiaturę menu. W debug `dev_tray_probe` tworzy dwa lokalne uwierzytelnione
+węzły QUIC/Session, mierzy 15 przejść ikony i wymaga każdego <100 ms; release
+odmawia tej operacji. Pozostają ręczne testy powłoki (prawy/lewy klik rzeczywistej
+ikony, restart Explorera, logowanie i deinstalacja na VM, różne DPI/monitory).
 
 ## Odkrywanie i reguła zapory (WN-15)
 

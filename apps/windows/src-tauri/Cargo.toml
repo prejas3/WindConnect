@@ -10,11 +10,14 @@ publish = false
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = [] }
+tauri = { version = "2", features = ["tray-icon"] }
 wind-core = { path = "../../../crates/wind-core" }
+serde = { version = "1", features = ["derive"] }
+tokio = { version = "1", features = ["sync", "rt", "macros", "time"] }
 
 [target.'cfg(windows)'.dependencies]
 window-vibrancy = "0.8.1"
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Registry", "Win32_System_Threading", "Win32_UI_WindowsAndMessaging"] }
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]
