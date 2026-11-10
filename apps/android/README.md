@@ -137,7 +137,7 @@ generator, a nie ręcznie edytowane wiązania lub binaria.
 
 AAR: `wind-core/build/outputs/aar/wind-core-release.aar`.
 Lokalne repozytorium Maven z AAR, źródłami, POM i metadanymi Gradle:
-`wind-core/build/repo/`. Współrzędne: `io.github.prejas3.windconnect:wind-core:0.27.0`.
+`wind-core/build/repo/`. Współrzędne: `io.github.prejas3.windconnect:wind-core:0.28.0`.
 Publikacja zapisuje pliki lokalnie; nie wysyła ich do zewnętrznego repozytorium.
 Konsument musi korzystać z POM/metadanych (JNA i korutyny są zależnościami
 przechodnimi); sama kopia pliku AAR nie dostarczy JNA.
@@ -150,7 +150,7 @@ Konsument spoza repozytorium dodaje lokalne repozytorium do
 maven { url = uri("/sciezka/do/wind-core/build/repo") }
 ```
 
-oraz `implementation("io.github.prejas3.windconnect:wind-core:0.27.0")`.
+oraz `implementation("io.github.prejas3.windconnect:wind-core:0.28.0")`.
 W aplikacji konsumenta ogranicz ABI do `arm64-v8a` i `x86_64`.
 
 ```kotlin
@@ -247,7 +247,7 @@ toggleWifi true` dodaje prawdziwą zmianę sieci):
 ```powershell
 adb shell am instrument -w -r -e class io.github.prejas3.windconnect.MulticastLockTest -e pcAddress 10.0.2.2:47820 -e pcKey <PC_PUBLIC_KEY> -e toggleWifi true $runner
 ```
-Wersja aplikacji to 0.27.0, a Android `versionCode` to 36. Numery wydań rosną
+Wersja aplikacji to 0.28.0, a Android `versionCode` to 37. Numery wydań rosną
 niezależnie od kolejności kart, aby aktualizacja APK i MSI nie cofała wersji.
 
 Test na emulatorze/telefonie: `CoreApiTest#platformNetworkCallbackWakesDiscoveryWithoutPolling`
@@ -259,6 +259,31 @@ Test ręczny: wprowadź zweryfikowany klucz i adres PC, spróbuj połączenia be
 zasięgu PC, a potem wejdź do Wi-Fi tego PC. Próba powinna ruszyć po zdarzeniu
 sieci. Sprawdzenie przejścia między fizycznymi sieciami na S25 Ultra pozostaje
 testem sprzętowym.
+
+## Przekaźnik poza domem (WN-60)
+
+`WindCore.setRelay(url)` włącza przekaźnik E2E (PROTOCOL.md §13) z adresem
+`wss://…`, a `setRelay(null)` go wyłącza. `relayUrl: StateFlow<String?>`
+pokazuje stan. Ustawienie jest zapisane w SharedPreferences
+(`windconnect.core`) i wraca po restarcie. Domyślnie przekaźnik jest
+wyłączony (D3); przełącznik w ustawieniach to karta WN-92. Z włączonym
+przekaźnikiem `connect` próbuje adresu PC przez 2 s, potem łączy przez
+przekaźnik. `ConnectionState.Connected.route` to `"lan"` albo `"relay"`. Po
+zmianie sieci w czasie sesji przez przekaźnik rdzeń próbuje adresu w LAN, a
+jeśli odpowiada, przechodzi na LAN.
+
+Test na emulatorze (Wi-Fi wyłączone przez test, tylko sieć komórkowa): przy
+`npm run dev` w `relay/` i `windctl serve --relay ws://127.0.0.1:8787 --trust
+<klucz Androida> --bind 127.0.0.1:47821`:
+
+```powershell
+adb shell am instrument -w -r -e class io.github.prejas3.windconnect.RelayRouteTest -e pcKey <PC_PUBLIC_KEY> -e relayUrl ws://10.0.2.2:8787 -e awayAddress 10.0.2.2:47999 $runner
+```
+
+`awayAddress` to adres, który nie odpowiada (dom poza zasięgiem). Wynik z
+2026-11-10, emulator API 35: `network=cellular only`, `route=relay`,
+połączenie po 2057 ms (w tym 2 s próby LAN), ping 6 ms. Prawdziwa sieć
+komórkowa wymaga wdrożonego przekaźnika (relay/README.md) i telefonu.
 
 ## Bateria (WC-30)
 

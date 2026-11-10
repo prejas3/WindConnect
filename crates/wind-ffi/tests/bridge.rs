@@ -304,3 +304,120 @@ async fn network_change_keeps_a_fixed_port_and_the_session() {
     let (before, after) = port_across_network_change("127.0.0.1:0".into()).await;
     assert_ne!(before, after, "port 0 keeps WN-16: a fresh socket");
 }
+
+/// WN-60 (D3): the relay is off until set; a URL the core refuses changes nothing.
+#[tokio::test(flavor = "multi_thread")]
+async fn relay_is_off_by_default_and_checked_when_set() {
+    let client = open_client(
+        Box::new(MemoryStorage::default()),
+        "Phone".into(),
+        "127.0.0.1:0".into(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(client.relay_url(), None);
+    for bad in [
+        "http://relay.example",
+        "ws://relay.example.com",
+        "wss://x/v1/relay",
+    ] {
+        assert!(matches!(
+            client.set_relay(Some(bad.into())),
+            Err(CoreError::InvalidInput { .. })
+        ));
+    }
+    assert_eq!(client.relay_url(), None);
+    client
+        .set_relay(Some("wss://windconnect-relay.example.workers.dev".into()))
+        .unwrap();
+    assert_eq!(
+        client.relay_url().as_deref(),
+        Some("wss://windconnect-relay.example.workers.dev")
+    );
+    client.set_relay(None).unwrap();
+    assert_eq!(client.relay_url(), None);
+    // Off: an unreachable address fails without any relay attempt.
+    let identity = DeviceIdentity::generate().unwrap();
+    let key = identity.public_key().as_bytes().to_vec();
+    client.pin_peer(key.clone()).unwrap();
+    let silent = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
+    let error = client
+        .connect(silent.local_addr().unwrap().to_string(), key)
+        .await
+        .err()
+        .unwrap();
+    assert!(matches!(error, CoreError::Transport { .. }), "{error:?}");
+    client.shutdown().await;
+}
+
+/// WN-60: away from home (the LAN address does not answer) the phone falls
+/// back to the relay; back home, `connect_direct` reaches the PC again.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs the relay Worker running locally (wrangler dev) and RELAY_URL"]
+async fn falls_back_to_the_relay_and_returns_to_lan() {
+    let url = std::env::var("RELAY_URL").unwrap_or_else(|_| "ws://127.0.0.1:8787".into());
+    let client = open_client(
+        Box::new(MemoryStorage::default()),
+        "Phone".into(),
+        "127.0.0.1:0".into(),
+    )
+    .await
+    .unwrap();
+    let phone_key =
+        PublicKey::from_bytes(&client.identity().public_key.try_into().unwrap()).unwrap();
+    let pc = DeviceIdentity::generate().unwrap();
+    let trust = Arc::new(PinnedKeys::new());
+    trust.pin(phone_key);
+    let server = Endpoint::bind("127.0.0.1:0".parse().unwrap(), &pc, trust).unwrap();
+    let waiting = wind_core::relay::RelayLink::connect(&url, &pc, phone_key, server.clone())
+        .await
+        .unwrap();
+    let acceptor = server.clone();
+    let accepted = tokio::spawn(async move {
+        let mut sessions = Vec::new();
+        for _ in 0..2 {
+            let conn = acceptor.accept().await.unwrap().unwrap();
+            let (session, _) = Session::accept(
+                conn,
+                LocalInfo {
+                    name: "PC".into(),
+                    kind: DeviceKind::Computer,
+                    app: None,
+                },
+                Router::new(),
+            )
+            .await
+            .unwrap();
+            sessions.push(session);
+        }
+        sessions
+    });
+    let key = pc.public_key().as_bytes().to_vec();
+    client.pin_peer(key.clone()).unwrap();
+    client.set_relay(Some(url)).unwrap();
+
+    // The PC's home address does not answer from here.
+    let away = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
+    let start = std::time::Instant::now();
+    let relayed = client
+        .connect(away.local_addr().unwrap().to_string(), key.clone())
+        .await
+        .unwrap();
+    println!("relay fallback after {:?}", start.elapsed());
+    assert_eq!(relayed.route(), "relay");
+    assert_eq!(relayed.peer().name, "PC");
+    relayed.ping().await.unwrap();
+
+    let home = client
+        .connect_direct(server.local_addr().unwrap().to_string(), key)
+        .await
+        .unwrap();
+    assert_eq!(home.route(), "lan");
+    home.ping().await.unwrap();
+    relayed.disconnect().await;
+    home.disconnect().await;
+    drop(accepted.await.unwrap());
+    drop(waiting);
+    server.close();
+    client.shutdown().await;
+}

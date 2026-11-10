@@ -4121,6 +4121,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "tokio-rustls"
+version = "0.26.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c9cc2678c2cdd569ef8215e2afd7954ada2ae20b4fdd2c5fe6139a3b02d105db"
+dependencies = [
+ "rustls",
+ "tokio",
+]
+
+[[package]]
 name = "tokio-tungstenite"
 version = "0.30.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4128,8 +4138,12 @@ checksum = "17a073bfed563fa236697a068031408a93cd9522e08abf9933ead3e73411bd71"
 dependencies = [
  "futures-util",
  "log",
+ "rustls",
+ "rustls-pki-types",
  "tokio",
+ "tokio-rustls",
  "tungstenite",
+ "webpki-roots 0.26.11",
 ]
 
 [[package]]
@@ -4345,6 +4359,8 @@ dependencies = [
  "httparse",
  "log",
  "rand",
+ "rustls",
+ "rustls-pki-types",
  "sha1",
  "thiserror 2.0.21",
 ]
@@ -4776,6 +4792,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "webpki-roots"
+version = "0.26.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "521bc38abb08001b01866da9f51eb7c5d647a19260e00054a8c7fd5f9e57f7a9"
+dependencies = [
+ "webpki-roots 1.0.11",
+]
+
+[[package]]
+name = "webpki-roots"
+version = "1.0.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f5f280bbb2b287bc8e7de7e3852945a0ff50d1bbcb5ed42b6c7a568c546df171"
+dependencies = [
+ "rustls-pki-types",
+]
+
+[[package]]
 name = "webview2-com"
 version = "0.39.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4851,7 +4885,7 @@ checksum = "712e227841d057c1ee1cd2fb22fa7e5a5461ae8e48fa2ca79ec42cfc1931183f"
 
 [[package]]
 name = "wind-core"
-version = "0.27.0"
+version = "0.28.0"
 dependencies = [
  "ed25519-dalek",
  "futures-util",
@@ -4869,13 +4903,14 @@ dependencies = [
  "tempfile",
  "tokio",
  "tokio-tungstenite",
+ "webpki-roots 1.0.11",
  "windows-sys 0.61.2",
  "zeroize",
 ]
 
 [[package]]
 name = "wind-ffi"
-version = "0.27.0"
+version = "0.28.0"
 dependencies = [
  "tokio",
  "uniffi",
@@ -4885,7 +4920,7 @@ dependencies = [
 
 [[package]]
 name = "windconnect-windows"
-version = "0.27.0"
+version = "0.28.0"
 dependencies = [
  "serde",
  "tauri",
@@ -4898,7 +4933,7 @@ dependencies = [
 
 [[package]]
 name = "windctl"
-version = "0.27.0"
+version = "0.28.0"
 dependencies = [
  "clap",
  "tempfile",

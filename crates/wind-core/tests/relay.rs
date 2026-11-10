@@ -218,3 +218,104 @@ async fn session_through_the_relay_shows_it_only_ciphertext() {
         }
     }
 }
+
+/// WN-60: the client's own link ([`relay::RelayLink`]) on both sides: a
+/// session over the relay, presence, and the link's end when the peer's
+/// side goes (dropped link, closed WebSocket).
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "needs the relay Worker running locally (wrangler dev) and RELAY_URL"]
+async fn relay_links_carry_a_session_and_report_presence() {
+    let url = std::env::var("RELAY_URL").unwrap_or_else(|_| "ws://127.0.0.1:8787".into());
+    let (phone, pc) = (Device::new(), Device::new());
+    phone.pins.pin(pc.id.public_key());
+    pc.pins.pin(phone.id.public_key());
+
+    // The PC waits on the relay for its paired phone.
+    let pc_link =
+        relay::RelayLink::connect(&url, &pc.id, phone.id.public_key(), pc.endpoint.clone())
+            .await
+            .unwrap();
+    let mut pc_sees = pc_link.presence();
+    assert!(!*pc_sees.borrow());
+    let endpoint = pc.endpoint.clone();
+    let accepted = tokio::spawn(async move {
+        let conn = endpoint.accept().await.unwrap().unwrap();
+        let mut router = Router::new();
+        let clip = router.route(Channel::Clipboard, 1, 8);
+        let (session, _events) = Session::accept(conn, info(NAMES[0]), router).await.unwrap();
+        (session, clip)
+    });
+
+    let phone_link =
+        relay::RelayLink::connect(&url, &phone.id, pc.id.public_key(), phone.endpoint.clone())
+            .await
+            .unwrap();
+    assert!(
+        *phone_link.presence().borrow(),
+        "the PC was already waiting"
+    );
+    tokio::time::timeout(T, pc_sees.wait_for(|present| *present))
+        .await
+        .unwrap()
+        .unwrap();
+    let start = std::time::Instant::now();
+    let (session, _events) = tokio::time::timeout(
+        T,
+        Session::dial(
+            &phone.endpoint,
+            phone_link.addr(),
+            pc.id.public_key(),
+            info(NAMES[1]),
+            Router::new(),
+        ),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    let up = start.elapsed();
+    let (_pc_session, mut clip) = accepted.await.unwrap();
+    let message = RawMessage::new(
+        1,
+        Value::Map(vec![(Value::Int(0), Value::Text(SECRET.into()))]),
+    );
+    session.send(Channel::Clipboard, &message).await.unwrap();
+    let got = tokio::time::timeout(T, clip.recv()).await.unwrap().unwrap();
+    assert_eq!(got.message, message);
+    let rtt = session.ping().await.unwrap();
+    println!("session through RelayLink in {up:?}, RTT {rtt:?}");
+
+    drop(pc_link);
+    let mut phone_sees = phone_link.presence();
+    tokio::time::timeout(T, phone_sees.wait_for(|present| !*present))
+        .await
+        .expect("the relay tells the phone the PC left")
+        .unwrap();
+}
+
+/// A refused link reports why: a stranger's key is not refused by the relay
+/// (it cannot know pairings), but a wrong URL and a non-relay server are.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "needs the relay Worker running locally (wrangler dev) and RELAY_URL"]
+async fn relay_link_errors_are_reported() {
+    let url = std::env::var("RELAY_URL").unwrap_or_else(|_| "ws://127.0.0.1:8787".into());
+    let device = Device::new();
+    let other = DeviceIdentity::generate().unwrap().public_key();
+    for bad in ["ws://example.com", "http://127.0.0.1:8787"] {
+        let error = relay::RelayLink::connect(bad, &device.id, other, device.endpoint.clone())
+            .await
+            .unwrap_err();
+        assert!(matches!(error, relay::RelayError::Url(_)), "{bad}: {error}");
+    }
+    let error = relay::RelayLink::connect(
+        &format!("{url}/"),
+        &device.id,
+        device.id.public_key(),
+        device.endpoint.clone(),
+    )
+    .await
+    .unwrap_err();
+    assert!(
+        matches!(error, relay::RelayError::Connect(_)),
+        "own key as peer: {error}"
+    );
+}

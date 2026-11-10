@@ -23,13 +23,15 @@ rustls-webpki = { version = "0.103", default-features = false, features = ["ring
 sha2 = "0.10"
 tokio = { version = "1", features = ["rt", "sync", "time", "macros", "net"] }
 zeroize = "1"
+# Relay client (PROTOCOL.md §13, WN-60): WebSocket over rustls with ring and
+# the Mozilla roots (webpki-roots, CDLA-Permissive-2.0), same on Android.
+futures-util = { version = "0.3", default-features = false, features = ["sink"] }
+tokio-tungstenite = { version = "0.30", default-features = false, features = ["connect", "rustls-tls-webpki-roots"] }
+webpki-roots = "1"
 
 [dev-dependencies]
-# tests/relay.rs only: a WebSocket client for the local relay (relay/, WN-59).
-futures-util = { version = "0.3", default-features = false, features = ["sink"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
 tempfile = "3"
-tokio-tungstenite = "0.30"
 tokio = { version = "1", features = ["rt", "macros", "time", "rt-multi-thread", "sync"] }
 
 [target."cfg(windows)".dependencies]

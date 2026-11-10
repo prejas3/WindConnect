@@ -8,6 +8,7 @@ use wind_core::{
         cbor::{self, Value},
         Channel, DeviceKind, ErrorCode, RawMessage, MAX_STREAM_FRAME,
     },
+    relay::RelayLink,
     session::{ChannelMessage, LocalInfo, Router, Session},
     transport::{Endpoint, PinnedKeys},
 };
@@ -58,6 +59,10 @@ enum Command {
         /// Echo raw clipboard/notify/media messages back to the sender (test peers only).
         #[arg(long)]
         echo: bool,
+        /// Also wait on this relay (PROTOCOL.md §13) for each --trust device, e.g.
+        /// wss://windconnect-relay.<subdomain>.workers.dev. Off unless given (D3).
+        #[arg(long)]
+        relay: Option<String>,
     },
     /// Authenticate, exchange Hello/HelloAck, perform one Ping/Pong, then disconnect.
     Connect(PeerArgs),
@@ -105,7 +110,23 @@ struct PeerArgs {
     peer_key: PublicKey,
     #[arg(long, default_value_t = 10000, value_parser = clap::value_parser!(u64).range(1..=120000))]
     timeout_ms: u64,
+    /// Relay to fall back to when the address does not answer (PROTOCOL.md §13). Off unless given.
+    #[arg(long)]
+    relay: Option<String>,
+    /// auto: the address first, then the relay; lan: only the address; relay: only the relay.
+    #[arg(long, value_enum, default_value_t = Route::Auto)]
+    route: Route,
 }
+
+#[derive(Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum Route {
+    Auto,
+    Lan,
+    Relay,
+}
+
+/// With a relay to fall back to, the address gets this long (a LAN answers in milliseconds).
+const LAN_FIRST: Duration = Duration::from_millis(2000);
 
 #[derive(Clone, Copy, ValueEnum)]
 enum DiagnosticChannel {
@@ -144,11 +165,11 @@ async fn run(cli: Cli) -> Result<()> {
     if cli.name.is_empty() || cli.name.len() > 64 {
         return Err("name must contain 1–64 UTF-8 bytes".into());
     }
-    let identity = load_identity(
+    let identity = Arc::new(load_identity(
         cli.identity
             .as_deref()
             .ok_or("--identity PATH is required")?,
-    )?;
+    )?);
     println!(
         "IDENTITY public_key={} fingerprint={}",
         encode_hex(identity.public_key().as_bytes()),
@@ -194,9 +215,13 @@ async fn run(cli: Cli) -> Result<()> {
 }
 
 fn routes() -> (Router, mpsc::Receiver<ChannelMessage>) {
+    let (tx, rx) = mpsc::channel(64);
+    (routes_to(&tx), rx)
+}
+
+fn routes_to(tx: &mpsc::Sender<ChannelMessage>) -> Router {
     // CCS/1 DEC:one bounded queue per diagnostic channel; no production feature handlers.
     let mut router = Router::new();
-    let (tx, rx) = mpsc::channel(64);
     for channel in [Channel::Clipboard, Channel::Notify, Channel::Media] {
         let mut messages = router.route(channel, 1, 16);
         let tx = tx.clone();
@@ -208,31 +233,106 @@ fn routes() -> (Router, mpsc::Receiver<ChannelMessage>) {
             }
         });
     }
-    (router, rx)
+    router
 }
 
+/// A session and, when it runs through the relay, the link it needs.
+type Dialed = (Session, Option<RelayLink>);
+
+/// CCS/1 FLOW:--route auto: the address (LAN_FIRST when a relay is given) -> the relay (§13)
 async fn dial(
     endpoint: &Endpoint,
+    identity: &DeviceIdentity,
     peer: &PeerArgs,
     local: LocalInfo,
-    router: Router,
-) -> Result<Session> {
+    mut router: impl FnMut() -> Router,
+) -> Result<Dialed> {
+    let timeout = Duration::from_millis(peer.timeout_ms);
+    let relay = match (&peer.relay, peer.route) {
+        (None, Route::Relay) => return Err("--route relay needs --relay URL".into()),
+        (relay, Route::Lan) | (relay @ None, _) => {
+            let _ = relay;
+            None
+        }
+        (Some(relay), _) => Some(relay),
+    };
+    let mut direct_error = None;
+    if peer.route != Route::Relay {
+        let wait = if relay.is_some() {
+            timeout.min(LAN_FIRST)
+        } else {
+            timeout
+        };
+        match tokio::time::timeout(
+            wait,
+            Session::dial(
+                endpoint,
+                peer.address,
+                peer.peer_key,
+                local.clone(),
+                router(),
+            ),
+        )
+        .await
+        {
+            Ok(Ok((session, _))) => return Ok(connected(session, None, "lan")),
+            Ok(Err(e)) if e.is_untrusted_peer() || relay.is_none() => return Err(e.into()),
+            Ok(Err(e)) => direct_error = Some(e.to_string()),
+            Err(_) if relay.is_none() => return Err("connection timed out".into()),
+            Err(_) => direct_error = Some("no answer".into()),
+        }
+    }
+    let relay = relay.expect("a relay route has a relay");
+    if let Some(error) = direct_error {
+        eprintln!("ROUTE lan failed ({error}); trying the relay");
+    }
+    let link = RelayLink::connect(relay, identity, peer.peer_key, endpoint.clone()).await?;
     let (session, _) = tokio::time::timeout(
-        Duration::from_millis(peer.timeout_ms),
-        Session::dial(endpoint, peer.address, peer.peer_key, local, router),
+        timeout,
+        Session::dial(endpoint, link.addr(), peer.peer_key, local, router()),
     )
-    .await??;
+    .await
+    .map_err(|_| "the peer did not answer through the relay (is it waiting there?)")??;
+    Ok(connected(session, Some(link), "relay"))
+}
+
+fn connected(session: Session, link: Option<RelayLink>, route: &str) -> Dialed {
     println!(
-        "CONNECTED name={:?} public_key={}",
+        "CONNECTED name={:?} public_key={} route={route}",
         session.peer().hello.name,
         encode_hex(session.peer().key.as_bytes())
     );
-    Ok(session)
+    (session, link)
+}
+
+/// Keeps the PC reachable through the relay by `peer`: reconnects with
+/// backoff whenever the link ends (§13; the relay closes idle sockets only
+/// on redeploys or errors).
+async fn wait_on_relay(
+    url: String,
+    identity: Arc<DeviceIdentity>,
+    peer: PublicKey,
+    endpoint: Endpoint,
+) {
+    let mut backoff =
+        wind_core::transport::Backoff::new(Duration::from_secs(1), Duration::from_secs(60));
+    loop {
+        match RelayLink::connect(&url, &identity, peer, endpoint.clone()).await {
+            Ok(link) => {
+                backoff.reset();
+                println!("RELAY waiting peer={}", encode_hex(peer.as_bytes()));
+                let reason = link.closed().await;
+                eprintln!("relay link ended: {reason}");
+            }
+            Err(error) => eprintln!("relay: {error}"),
+        }
+        tokio::time::sleep(backoff.next_delay()).await;
+    }
 }
 
 async fn execute(
     command: Command,
-    identity: &DeviceIdentity,
+    identity: &Arc<DeviceIdentity>,
     endpoint: &Endpoint,
     local: LocalInfo,
 ) -> Result<()> {
@@ -279,8 +379,22 @@ async fn execute(
             advertise,
             broadcast_only,
             echo,
+            relay,
+            trust,
             ..
         } => {
+            let mut keepers = JoinSet::new();
+            if let Some(url) = relay {
+                wind_core::relay::check_url(&url)?;
+                for peer in trust {
+                    keepers.spawn(wait_on_relay(
+                        url.clone(),
+                        identity.clone(),
+                        peer,
+                        endpoint.clone(),
+                    ));
+                }
+            }
             let mut discovery = if advertise {
                 Some(NetworkDiscovery::start_with_options(
                     identity.public_key(),
@@ -336,7 +450,7 @@ async fn execute(
             Ok(())
         }
         Command::Connect(peer) => {
-            let session = dial(endpoint, &peer, local, Router::new()).await?;
+            let (session, _link) = dial(endpoint, identity, &peer, local, Router::new).await?;
             let result = session.ping().await;
             session.goodbye(ErrorCode::GoingAway, None).await;
             println!("READY rtt_ms={:.3}", result?.as_secs_f64() * 1000.0);
@@ -348,7 +462,7 @@ async fn execute(
             warmup,
             interval_ms,
         } => {
-            let session = dial(endpoint, &peer, local, Router::new()).await?;
+            let (session, _link) = dial(endpoint, identity, &peer, local, Router::new).await?;
             let result = measure(&session, count, warmup, interval_ms).await;
             session.goodbye(ErrorCode::GoingAway, None).await;
             result
@@ -376,8 +490,9 @@ async fn execute(
             };
             let message = RawMessage::new(message_type, body);
             wind_core::protocol::encode_raw_frame(channel, &message)?;
-            let (router, mut incoming) = routes();
-            let session = dial(endpoint, &peer, local, router).await?;
+            let (tx, mut incoming) = mpsc::channel(64);
+            let (session, _link) =
+                dial(endpoint, identity, &peer, local, || routes_to(&tx)).await?;
             let result = async {
                 session.send(channel, &message).await?;
                 session.finish(channel).await?;
