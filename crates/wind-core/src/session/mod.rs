@@ -56,7 +56,9 @@ pub use framed::{write_raw, FramedRecv, RecvError};
 
 use crate::input::{InputAnnouncement, InputEvent, InputReceiver, InputSender};
 use crate::protocol::InputMessage;
-pub use router::{capability_name, is_uni, ChannelMessage, FileStream, Router};
+pub use router::{
+    capability_name, is_uni, ActionStream, BidiStream, ChannelMessage, FileStream, Router,
+};
 
 use crate::identity::PublicKey;
 use crate::protocol::{
@@ -86,6 +88,7 @@ pub fn send_priority(channel: Channel) -> i32 {
         Channel::Clipboard => 2,
         Channel::Notify => 3,
         Channel::Media => 4,
+        Channel::Actions => 5,
         Channel::Files => 7,
     }
 }
@@ -543,6 +546,7 @@ impl Session {
             .values()
             .map(|(ch, v, _)| (*ch, *v))
             .chain(router.files.as_ref().map(|(v, _)| (Channel::Files, *v)))
+            .chain(router.actions.as_ref().map(|(v, _)| (Channel::Actions, *v)))
             .chain(router.input.as_ref().map(|_| (Channel::Input, 1)))
             .map(|(channel, version)| Accept {
                 channel,
@@ -553,7 +557,7 @@ impl Session {
         accepts.sort_by_key(|a| a.channel.byte());
         let gates = accepts
             .iter()
-            .filter(|a| is_uni(a.channel) || a.channel == Channel::Files)
+            .filter(|a| a.channel != Channel::Control)
             .map(|a| (a.channel.byte(), watch::Sender::new(open)))
             .collect();
         let input = router.input.map(|out| {
@@ -587,7 +591,11 @@ impl Session {
         }
         tokio::spawn(control_loop(inner.clone(), control_recv));
         tokio::spawn(uni_loop(inner.clone(), router.uni, input));
-        tokio::spawn(bidi_loop(inner.clone(), router.files));
+        tokio::spawn(bidi_loop(
+            inner.clone(),
+            router.files.map(|(_, tx)| tx),
+            router.actions.map(|(_, tx)| tx),
+        ));
         (Session { inner }, events_rx)
     }
 
@@ -787,6 +795,21 @@ impl Session {
         Ok(FileStream {
             send,
             recv: FramedRecv::new(recv, Channel::Files),
+        })
+    }
+
+    /// Opens an `actions` stream for one request (§9.2); see
+    /// [`crate::actions::request`].
+    pub async fn open_actions(&self) -> Result<ActionStream, SessionError> {
+        if !self.peer_accepts(Channel::Actions) {
+            return Err(SessionError::CapabilityMissing(Channel::Actions));
+        }
+        let (mut send, recv) = self.inner.conn.quinn().open_bi().await?;
+        let _ = send.set_priority(send_priority(Channel::Actions));
+        send.write_all(&stream_header(Channel::Actions)).await?;
+        Ok(ActionStream {
+            send,
+            recv: FramedRecv::new(recv, Channel::Actions),
         })
     }
 
@@ -1249,11 +1272,14 @@ async fn read_ahead(
     }
 }
 
-/// Takes the peer's bidi streams after `control`: `files` goes to its
-/// module; anything else breaks §3.
-async fn bidi_loop(inner: Arc<Inner>, files: Option<(u64, mpsc::Sender<FileStream>)>) {
+/// Takes the peer's bidi streams after `control`: `files` and `actions` go
+/// to their modules; anything else breaks §3.
+async fn bidi_loop(
+    inner: Arc<Inner>,
+    files: Option<mpsc::Sender<FileStream>>,
+    actions: Option<mpsc::Sender<ActionStream>>,
+) {
     let conn = inner.conn.quinn().clone();
-    let files = files.map(|(_, tx)| tx);
     loop {
         let (mut send, mut recv) = match conn.accept_bi().await {
             Ok(s) => s,
@@ -1261,6 +1287,7 @@ async fn bidi_loop(inner: Arc<Inner>, files: Option<(u64, mpsc::Sender<FileStrea
         };
         let inner = inner.clone();
         let files = files.clone();
+        let actions = actions.clone();
         // Each stream on its own, so a slow header holds back nothing else.
         tokio::spawn(async move {
             let mut header = [0u8; 2];
@@ -1268,42 +1295,40 @@ async fn bidi_loop(inner: Arc<Inner>, files: Option<(u64, mpsc::Sender<FileStrea
                 let _ = recv.stop(varint_code(ErrorCode::MalformedFrame));
                 return;
             }
-            match decode_stream_header(header) {
+            let (channel, route) = match decode_stream_header(header) {
                 Err(e) => {
                     let _ = recv.stop(varint_code(e.code()));
                     let _ = send.reset(varint_code(e.code()));
+                    return;
                 }
-                Ok(Channel::Files) => match files {
-                    // Withdrawn (§6, rule 5): new streams are refused.
-                    Some(_) if inner.gate(Channel::Files).is_some_and(|g| !g.enabled) => {
-                        let _ = recv.stop(varint_code(ErrorCode::CapabilityMissing));
-                        let _ = send.reset(varint_code(ErrorCode::CapabilityMissing));
-                    }
-                    Some(tx) => {
-                        let _ = send.set_priority(send_priority(Channel::Files));
-                        let mut framed = FramedRecv::new(recv, Channel::Files);
-                        if let Some(gate) = inner.gates.get(&Channel::Files.byte()) {
-                            let at = gate.borrow().withdrawals;
-                            framed = framed.with_gate(gate.subscribe(), at);
-                        }
-                        let stream = FileStream { send, recv: framed };
-                        if let Err(mpsc::error::SendError(mut s)) = tx.send(stream).await {
-                            s.recv.stop(ErrorCode::Cancelled);
-                            let _ = s.send.reset(varint_code(ErrorCode::Cancelled));
-                        }
-                    }
-                    None => {
-                        let _ = recv.stop(varint_code(ErrorCode::CapabilityMissing));
-                        let _ = send.reset(varint_code(ErrorCode::CapabilityMissing));
-                    }
-                },
+                Ok(Channel::Files) => (Channel::Files, files),
+                Ok(Channel::Actions) => (Channel::Actions, actions),
                 Ok(_) => {
                     close(
                         &inner.conn,
                         ErrorCode::ProtocolViolation,
                         "second control or a uni channel on a bidi stream",
                     );
+                    return;
                 }
+            };
+            // §3 rule 3: taken only while we announce the channel; withdrawn
+            // (§6, rule 5), new streams are refused.
+            let Some(tx) = route.filter(|_| inner.gate(channel).is_some_and(|g| g.enabled)) else {
+                let _ = recv.stop(varint_code(ErrorCode::CapabilityMissing));
+                let _ = send.reset(varint_code(ErrorCode::CapabilityMissing));
+                return;
+            };
+            let _ = send.set_priority(send_priority(channel));
+            let mut framed = FramedRecv::new(recv, channel);
+            if let Some(gate) = inner.gates.get(&channel.byte()) {
+                let at = gate.borrow().withdrawals;
+                framed = framed.with_gate(gate.subscribe(), at);
+            }
+            let stream = BidiStream { send, recv: framed };
+            if let Err(mpsc::error::SendError(mut s)) = tx.send(stream).await {
+                s.recv.stop(ErrorCode::Cancelled);
+                let _ = s.send.reset(varint_code(ErrorCode::Cancelled));
             }
         });
     }

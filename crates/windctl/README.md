@@ -123,6 +123,24 @@ przyjmuje `auto` (domyślnie: adres przez 2 s, potem przekaźnik), `lan` albo
 `relay`. Wypisywana linia `CONNECTED … route=lan|relay` mówi, którą drogą
 poszła sesja.
 
+## Akcje zdalne (WN-54)
+
+`action` prosi drugą stronę o akcję z jej listy dozwolonych (PROTOCOL.md
+§9.2): samym identyfikatorem, bez poleceń. `serve --dry-run-actions` przyjmuje
+akcje wbudowane i wypisuje `ACTION_REQUEST`, niczego nie wykonując.
+
+```text
+windctl --identity <plik_B> serve --bind 0.0.0.0:47820 --trust <public_key_A> --dry-run-actions
+windctl --identity <plik_A> action --address 192.168.1.20:47820 --peer-key <public_key_B> --list
+windctl --identity <plik_A> action --address 192.168.1.20:47820 --peer-key <public_key_B> lock
+windctl --identity <plik_A> action --address 192.168.1.20:47820 --peer-key <public_key_B> open-url --url https://example.com/
+```
+
+Wynik: `ACTION id=lock status=Done` (albo `Refused`, `BadArgument`,
+`Failed`, `Busy`). Ten sam `action` wobec aplikacji WindConnect na PC
+naprawdę blokuje ekran, usypia komputer albo otwiera link, jeśli PC ma
+klucz `windctl` przypięty jako sparowany telefon i akcja jest włączona.
+
 ## Testy
 
 ```text

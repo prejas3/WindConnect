@@ -20,6 +20,8 @@ pub fn frame_limit(channel: Channel, first: bool) -> usize {
     match channel {
         Channel::Control if first => MAX_HELLO_FRAME,
         Channel::Control => MAX_CONTROL_FRAME,
+        // One small request or reply per stream (§9.2).
+        Channel::Actions => MAX_CONTROL_FRAME,
         _ => MAX_STREAM_FRAME,
     }
 }

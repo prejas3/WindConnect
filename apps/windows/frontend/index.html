@@ -30,6 +30,15 @@
       <p>Połącz urządzenia, aby mieć pliki, schowek i powiadomienia pod ręką.</p>
       <button id="open-pairing" class="button primary">Otwórz panel telefonu</button>
     </section>
+    <section id="actions" aria-labelledby="actions-title" class="surface settings" hidden>
+      <div class="settings-head"><div><h2 id="actions-title">Akcje zdalne</h2><p>Co sparowany telefon może zrobić na tym komputerze. Telefon wybiera akcję z tej listy, nigdy nie wysyła poleceń.</p></div></div>
+      <p id="actions-error" class="notice danger" role="alert" hidden></p>
+      <div id="actions-builtins" role="group" aria-label="Akcje wbudowane"></div>
+      <h3 class="settings-sub">Własne akcje</h3>
+      <div id="actions-custom" role="group" aria-label="Własne akcje"></div>
+      <p id="actions-empty" class="subtle" hidden>Brak własnych akcji. Dodaj program .exe w pliku akcji: identyfikator „x-…”, nazwę, pełną ścieżkę i stałe argumenty.</p>
+      <div class="settings-foot"><span id="actions-last" class="subtle" role="status"></span><button id="actions-edit" class="button small">Edytuj własne akcje</button></div>
+    </section>
     <section id="gallery" aria-labelledby="gallery-title" hidden></section>
     <footer class="app-footer"><span id="status" role="status">Uruchamianie…</span><button id="gallery-toggle" class="button quiet small" aria-pressed="false" hidden>Galeria kontrolek</button><button id="tray-options" class="button quiet small">Opcje zasobnika</button><button id="quit-app" class="button quiet small">Zakończ aplikację</button><span class="subtle">Zamknięcie okna pozostawia WindConnect w zasobniku.</span></footer>
   </main>

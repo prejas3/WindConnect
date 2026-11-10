@@ -23,15 +23,22 @@ pub struct ChannelMessage {
     pub message: RawMessage,
 }
 
-/// A `files` stream opened by the peer (1–8 per transfer, §9.1). Withdrawing
-/// `files` (`Session::set_accepted`) makes its next read fail with
-/// `RecvError::Withdrawn`, the stream stopped with `CANCELLED`: its frames in
-/// `recv`, the replies in `send`. The header has been read.
+/// A bidi stream of a feature channel, its header read (or written, for
+/// one this side opened): the peer's frames in `recv`, ours in `send`.
+/// Withdrawing its channel (`Session::set_accepted`) makes the next read of
+/// a stream the peer opened fail with `RecvError::Withdrawn`, the stream
+/// stopped with `CANCELLED`.
 #[derive(Debug)]
-pub struct FileStream {
+pub struct BidiStream {
     pub send: quinn::SendStream,
     pub recv: FramedRecv,
 }
+
+/// A `files` stream (1–8 per transfer, §9.1).
+pub type FileStream = BidiStream;
+
+/// An `actions` stream: one request and its reply (§9.2, WN-54).
+pub type ActionStream = BidiStream;
 
 /// The capability name of a channel (§6); `control` has none.
 pub fn capability_name(channel: Channel) -> Option<&'static str> {
@@ -42,11 +49,12 @@ pub fn capability_name(channel: Channel) -> Option<&'static str> {
         Channel::Media => "media",
         Channel::Input => "input",
         Channel::Files => "files",
+        Channel::Actions => "actions",
     })
 }
 
-/// Whether a channel's streams are uni (message queues, §3.1); `files` and
-/// `control` are bidi.
+/// Whether a channel's streams are uni (message queues, §3.1); `files`,
+/// `actions` and `control` are bidi.
 pub fn is_uni(channel: Channel) -> bool {
     matches!(
         channel,
@@ -59,6 +67,7 @@ pub fn is_uni(channel: Channel) -> bool {
 pub struct Router {
     pub(super) uni: BTreeMap<u8, (Channel, u64, mpsc::Sender<ChannelMessage>)>,
     pub(super) files: Option<(u64, mpsc::Sender<FileStream>)>,
+    pub(super) actions: Option<(u64, mpsc::Sender<ActionStream>)>,
     pub(super) input: Option<mpsc::Sender<InputEvent>>,
 }
 
@@ -97,6 +106,14 @@ impl Router {
         rx
     }
 
+    /// Routes incoming `actions` streams (requests to run an action here,
+    /// §9.2) to the returned queue; see [`crate::actions::ActionHost`].
+    pub fn route_actions(&mut self, queue: usize) -> mpsc::Receiver<ActionStream> {
+        let (tx, rx) = mpsc::channel(queue.max(1));
+        self.actions = Some((1, tx));
+        rx
+    }
+
     /// Accepts input (`input/1`, §8): the session runs the receiver state
     /// machine over the `input` stream and datagrams, and the returned queue
     /// gets what should reach the system, late and stale state already
@@ -114,6 +131,7 @@ impl Router {
             .values()
             .map(|(ch, v, _)| (*ch, *v))
             .chain(self.files.as_ref().map(|(v, _)| (Channel::Files, *v)))
+            .chain(self.actions.as_ref().map(|(v, _)| (Channel::Actions, *v)))
             .chain(self.input.as_ref().map(|_| (Channel::Input, 1)))
             .filter_map(|(ch, v)| Capability::new(capability_name(ch)?, v))
             .collect();

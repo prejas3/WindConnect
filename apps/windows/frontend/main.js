@@ -70,6 +70,62 @@ async function start() {
   }
 }
 start();
+
+// CCS/1 FLOW:actions.json (Rust) -> snapshot -> switches; a switch writes back and redraws from the result.
+const actionsSection = document.querySelector('#actions');
+const statusText = { done: 'wykonano', refused: 'odrzucono, nie ma jej na liście', 'bad-argument': 'odrzucono, zły adres', failed: 'nie udało się', busy: 'odrzucono, za dużo próśb naraz' };
+function actionRow(item) {
+  const row = document.createElement('div');
+  row.className = 'control-row';
+  const text = document.createElement('div');
+  const label = document.createElement('span');
+  label.id = `action-${item.id}`;
+  label.textContent = item.label;
+  const detail = document.createElement('small');
+  detail.textContent = item.problem || item.detail;
+  if (item.problem) detail.className = 'problem';
+  text.append(label, detail);
+  const toggle = document.createElement('button');
+  toggle.className = 'switch';
+  toggle.setAttribute('role', 'switch');
+  toggle.setAttribute('aria-checked', String(item.enabled && !item.problem));
+  toggle.setAttribute('aria-labelledby', label.id);
+  toggle.disabled = Boolean(item.problem) || Boolean(actionsSection.dataset.broken);
+  toggle.addEventListener('click', async () => {
+    const enabled = toggle.getAttribute('aria-checked') !== 'true';
+    toggle.disabled = true;
+    try { renderActions(await invoke('set_action_enabled', { id: item.id, enabled })); }
+    catch (error) { console.error(error); toast(typeof error === 'string' ? error : 'Nie udało się zapisać ustawienia.'); toggle.disabled = false; }
+  });
+  row.append(text, toggle);
+  return row;
+}
+function renderLast(last) {
+  const element = document.querySelector('#actions-last');
+  if (!last) { element.textContent = 'Telefon nie uruchomił jeszcze żadnej akcji.'; return; }
+  const time = new Date(last.atMs).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
+  element.textContent = `Ostatnio: ${last.peer || 'telefon'} · ${last.label} · ${statusText[last.status] || last.status} · ${time}`;
+}
+function renderActions(snapshot) {
+  const error = document.querySelector('#actions-error');
+  actionsSection.dataset.broken = snapshot.error ? 'true' : '';
+  error.hidden = !snapshot.error;
+  error.textContent = snapshot.error ? 'Plik akcji jest uszkodzony, więc telefon nie może teraz uruchomić żadnej akcji. Popraw go w edytorze albo usuń.' : '';
+  document.querySelector('#actions-builtins').replaceChildren(...snapshot.builtins.map(actionRow));
+  document.querySelector('#actions-custom').replaceChildren(...snapshot.custom.map(actionRow));
+  document.querySelector('#actions-empty').hidden = snapshot.custom.length > 0;
+  renderLast(snapshot.last);
+  actionsSection.hidden = false;
+}
+async function refreshActions() {
+  if (!invoke) return;
+  try { renderActions(await invoke('actions_snapshot')); }
+  catch (error) { console.error(error); }
+}
+refreshActions();
+window.addEventListener('focus', refreshActions);
+window.__TAURI__?.event?.listen('actions-handled', event => renderLast(event.payload));
+document.querySelector('#actions-edit').addEventListener('click', () => invoke?.('edit_custom_actions').catch(error => { console.error(error); toast('Nie udało się otworzyć pliku akcji.'); }));
 document.querySelector('#open-pairing').addEventListener('click', () => invoke?.('panel_action', { action: 'show' }).catch(error => { console.error(error); toast('Nie udało się otworzyć panelu telefonu.'); }));
 document.querySelector('#tray-options').addEventListener('click', () => invoke?.('tray_action', { action: 'menu' }).catch(error => { console.error(error); toast('Nie udało się otworzyć menu.'); }));
 document.querySelector('#quit-app').addEventListener('click', () => invoke?.('tray_action', { action: 'quit' }).catch(error => { console.error(error); toast('Nie udało się zakończyć aplikacji.'); }));

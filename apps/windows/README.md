@@ -216,3 +216,40 @@ oraz powiązane filtry aplikacji/adresów/protokołu, a po deinstalacji brak
 tej reguły. Test fallbacku w dwóch węzłach z wyłączonym mDNS jest niezależny
 od lokalnej polityki instalatora.
 
+## Akcje zdalne (WN-54)
+
+Sparowany telefon może poprosić komputer o akcję z jego listy dozwolonych
+(PROTOCOL.md §9.2): zablokowanie ekranu (`LockWorkStation`), uśpienie
+(`SetSuspendState`, po wysłaniu odpowiedzi), otwarcie linku `http`/`https` w
+domyślnej przeglądarce (`ShellExecuteW`) albo własną akcję. Telefon wysyła
+tylko identyfikator (i adres dla linku), nigdy polecenia.
+
+Lista to `%LOCALAPPDATA%\WindConnect\actions.json`, obok tożsamości i
+`paired.txt`. Okno główne pokazuje ją w sekcji „Akcje zdalne”: przełączniki
+zapisują plik, a „Edytuj własne akcje” otwiera go w Notatniku. Plik jest
+czytany przy każdej prośbie, więc wyłączenie działa od razu. Brak pliku:
+akcje wbudowane włączone, bez własnych. Plik, którego nie da się odczytać:
+nic się nie wykona, dopóki go nie poprawisz lub nie usuniesz.
+
+```json
+{
+  "lock": true,
+  "sleep": true,
+  "openUrl": true,
+  "custom": [
+    { "id": "x-kopia", "label": "Kopia zapasowa", "enabled": true,
+      "program": "C:\\Program Files\\Backup\\backup.exe", "args": ["--teraz"] }
+  ]
+}
+```
+
+Własna akcja: `id` zaczyna się od `x-` (małe litery, cyfry, `-`), `program`
+to pełna ścieżka do pliku `.exe` (bez `.bat`/`.cmd` i bez powłoki), `args`
+są stałe. Błędny wpis jest pominięty i opisany w oknie. Ostatnia wykonana
+lub odrzucona prośba jest widoczna pod listą.
+
+Test sekcji (Playwright jak dla `check-ui.cjs`, IPC podstawione):
+`node apps/windows/scripts/check-actions-ui.cjs`.
+
+Sprawdzenie bez telefonu: przypnij klucz `windctl` jak telefon (parowanie)
+i użyj `windctl action` (crates/windctl/README.md).

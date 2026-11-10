@@ -55,6 +55,16 @@ impl Server {
     }
 
     fn start_mode(identity: &Path, trust: &str, advertise: bool, broadcast_only: bool) -> Self {
+        Self::start_with(identity, trust, advertise, broadcast_only, &[])
+    }
+
+    fn start_with(
+        identity: &Path,
+        trust: &str,
+        advertise: bool,
+        broadcast_only: bool,
+        extra: &[&str],
+    ) -> Self {
         let mut command = Command::new(env!("CARGO_BIN_EXE_windctl"));
         command.arg("--identity").arg(identity).args([
             "serve",
@@ -72,6 +82,7 @@ impl Server {
         if broadcast_only {
             command.arg("--broadcast-only");
         }
+        command.args(extra);
         let mut child = command
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())
@@ -352,4 +363,46 @@ fn broadcast_discovers_a_separate_process_without_mdns() {
         server.address.split(':').next_back().unwrap()
     )));
     server.finish();
+}
+
+#[test]
+fn remote_actions_run_by_id_on_a_dry_run_peer() {
+    let temporary = tempfile::tempdir().unwrap();
+    let client_path = temporary.path().join("client.key");
+    let server_path = temporary.path().join("server.key");
+    let client_key = key(&client_path);
+    let server_key = key(&server_path);
+    let mut server = Server::start_with(
+        &server_path,
+        &client_key,
+        false,
+        false,
+        &["--dry-run-actions"],
+    );
+    let address = server.address.clone();
+    let action = |extra: &[&str]| {
+        let mut args = vec![
+            "action",
+            "--address",
+            address.as_str(),
+            "--peer-key",
+            server_key.as_str(),
+        ];
+        args.extend(extra);
+        run(&client_path, &args)
+    };
+    assert!(success(action(&["lock"])).contains("ACTION id=lock status=Done"));
+    assert!(success(action(&[
+        "open-url",
+        "--url",
+        "file:///C:/Windows/System32/calc.exe"
+    ]))
+    .contains("status=BadArgument"));
+    assert!(success(action(&["x-not-allowed"])).contains("status=Refused"));
+    let listed = success(action(&["--list"]));
+    assert!(listed.contains("ACTIONS id=lock") && listed.contains("ACTIONS id=open-url"));
+    assert!(!action(&["cmd /c calc"]).status.success());
+    let out = server.finish();
+    assert!(out.contains("ACTION_REQUEST id=lock"), "{out}");
+    assert!(!out.contains("calc"), "{out}");
 }

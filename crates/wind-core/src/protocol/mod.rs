@@ -44,6 +44,8 @@ pub enum Channel {
     Media = 3,
     Input = 4,
     Files = 5,
+    /// Remote actions (§9.2, WN-54).
+    Actions = 6,
 }
 
 impl Channel {
@@ -62,6 +64,7 @@ impl Channel {
             3 => Self::Media,
             4 => Self::Input,
             5 => Self::Files,
+            6 => Self::Actions,
             _ => return Err(FrameError::UnknownChannel(b)),
         })
     }
@@ -208,7 +211,7 @@ mod tests {
     fn stream_headers() {
         assert_eq!(stream_header(Channel::Control), [0x01, 0x00]);
         assert_eq!(stream_header(Channel::Input), [0x01, 0x04]);
-        for b in 0..=5 {
+        for b in 0..=6 {
             let c = Channel::from_byte(b).unwrap();
             assert_eq!(decode_stream_header(stream_header(c)), Ok(c));
         }
@@ -224,7 +227,7 @@ mod tests {
             decode_stream_header([0x00, 0xff]),
             Err(FrameError::UnsupportedVersion(0))
         );
-        for b in [0x06, 0x3f, 0x40, 0xff] {
+        for b in [0x07, 0x3f, 0x40, 0xff] {
             assert_eq!(
                 decode_stream_header([0x01, b]),
                 Err(FrameError::UnknownChannel(b))

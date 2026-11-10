@@ -12,6 +12,7 @@ i libFuzzera, więc nie wchodzi do `cargo build` ani CI.
 | `pair_message` | ramki parowania (§12.3) od nieuwierzytelnionej strony | brak paniki; limit 1 KiB; round-trip; nazwy już oczyszczone |
 | `pair_uri` | link parowania (§12.4) | brak paniki; przyjęty link zapisuje się i czyta z powrotem tak samo; nazwa oczyszczona |
 | `paired_file` | plik sparowanych urządzeń (§12.8), np. uszkodzony | brak paniki; każda linia to urządzenie albo zgłoszone pominięcie; nazwy oczyszczone; klucz raz |
+| `actions` | ładunek kanału `actions` (§9.2) i adres `open-url` | brak paniki; przyjęta prośba/odpowiedź robi round-trip; identyfikator akcji poprawny; przyjęty adres to tylko http(s) w drukowalnym ASCII |
 
 Uruchomienie (Linux lub WSL; z katalogu `crates/wind-core/fuzz`):
 

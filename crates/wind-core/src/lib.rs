@@ -1,5 +1,6 @@
 //! Shared core for WindConnect's Windows and Android applications.
 
+pub mod actions;
 pub mod broadcast;
 pub mod discovery;
 pub mod files;
