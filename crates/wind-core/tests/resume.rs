@@ -150,6 +150,41 @@ async fn path_migration_brings_the_session_back_within_300_ms() {
     );
 }
 
+/// WN-84: an endpoint on a fixed port keeps that port after a network
+/// change. `refresh_path` binds nothing new (a second socket on the port
+/// would fail with `EADDRINUSE`), yet every connection probes its path at
+/// once and the session goes on.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn refresh_path_keeps_a_fixed_port_and_probes_the_peer() {
+    let client = Device::new();
+    let server = Device::new();
+    pair(&client, &server);
+    serve(&server);
+    let (session, _events) = Session::dial(
+        &client.endpoint,
+        server.addr(),
+        server.key(),
+        info("client"),
+        Router::new(),
+    )
+    .await
+    .unwrap();
+    session.ping().await.unwrap();
+    let before = client.addr();
+    let pings = session.connection().quinn().stats().frame_tx.ping;
+
+    assert_eq!(client.endpoint.refresh_path().unwrap(), before);
+    let probe = Instant::now();
+    while session.connection().quinn().stats().frame_tx.ping == pings {
+        assert!(probe.elapsed() < BUDGET, "no path probe after refresh_path");
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+    let start = Instant::now();
+    session.ping().await.unwrap();
+    assert!(start.elapsed() < BUDGET, "back after {:?}", start.elapsed());
+    assert_eq!(client.addr(), before);
+}
+
 /// After the connection is gone (sleep, the other side restarted its
 /// network), a new one resumes the TLS session: `Hello` rides in 0-RTT and
 /// the session is up within 300 ms.
