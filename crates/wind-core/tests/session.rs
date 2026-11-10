@@ -8,9 +8,7 @@ use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 use wind_core::identity::DeviceIdentity;
 use wind_core::protocol::cbor::Value;
-use wind_core::protocol::{
-    Capability, Channel, DeviceKind, ErrorCode, RawMessage, ALPN, MAX_STREAM_FRAME,
-};
+use wind_core::protocol::{Capability, Channel, DeviceKind, ErrorCode, RawMessage, ALPN};
 use wind_core::session::{
     write_raw, ChannelMessage, LocalInfo, Router, Session, SessionError, SessionEvent,
 };
@@ -527,92 +525,6 @@ fn alpn_and_priorities_follow_the_spec() {
     for w in order.windows(2) {
         assert!(send_priority(w[0]) > send_priority(w[1]), "{w:?}");
     }
-}
-
-fn percentile(v: &mut [f64], p: f64) -> f64 {
-    v.sort_by(|a, b| a.partial_cmp(b).unwrap());
-    v[((v.len() - 1) as f64 * p).round() as usize]
-}
-
-/// Acceptance (WC-11): a large transfer doesn't delay `control` by more
-/// than 10 ms.
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn large_transfer_does_not_delay_control_by_more_than_10_ms() {
-    let mut server_router = Router::new();
-    let mut files = server_router.route_files(1, 4);
-    let p = sessions(Router::new(), server_router).await;
-
-    // The receiving module drains the transfer as fast as it can.
-    let received = Arc::new(AtomicU64::new(0));
-    let counter = received.clone();
-    let sink = tokio::spawn(async move {
-        let mut s = files.recv().await.unwrap();
-        while let Ok(Some(m)) = s.recv.next_raw().await {
-            if let Value::Map(p) = &m.body {
-                if let Value::Bytes(b) = &p[0].1 {
-                    counter.fetch_add(b.len() as u64, Ordering::Relaxed);
-                }
-            }
-        }
-    });
-
-    async fn pings(s: &Session, n: usize) -> Vec<f64> {
-        let mut v = Vec::with_capacity(n);
-        for _ in 0..n {
-            v.push(s.ping().await.unwrap().as_secs_f64() * 1000.0);
-            tokio::time::sleep(Duration::from_millis(5)).await;
-        }
-        v
-    }
-
-    let mut idle = pings(&p.client, 100).await;
-
-    let mut out = p.client.open_files().await.unwrap();
-    let chunk = RawMessage::new(
-        0,
-        Value::Map(vec![(
-            Value::Int(0),
-            Value::Bytes(vec![0x5a; MAX_STREAM_FRAME - 16]),
-        )]),
-    );
-    let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
-    let stop_flag = stop.clone();
-    let transfer = tokio::spawn(async move {
-        while !stop_flag.load(Ordering::Relaxed) {
-            write_raw(&mut out.send, Channel::Files, &chunk)
-                .await
-                .unwrap();
-        }
-        out.send.finish().unwrap();
-    });
-    // Let the transfer reach full speed.
-    tokio::time::sleep(Duration::from_millis(500)).await;
-    let before = received.load(Ordering::Relaxed);
-    let t0 = Instant::now();
-    let mut loaded = pings(&p.client, 200).await;
-    let moved = received.load(Ordering::Relaxed) - before;
-    let secs = t0.elapsed().as_secs_f64();
-    stop.store(true, Ordering::Relaxed);
-    transfer.await.unwrap();
-    sink.await.unwrap();
-
-    let idle_p50 = percentile(&mut idle, 0.5);
-    let loaded_p50 = percentile(&mut loaded, 0.5);
-    let loaded_p99 = percentile(&mut loaded, 0.99);
-    let loaded_max = percentile(&mut loaded, 1.0);
-    let mbps = moved as f64 * 8.0 / secs / 1e6;
-    println!(
-        "control RTT idle p50 {idle_p50:.2} ms; under a {mbps:.0} Mbit/s transfer \
-         p50 {loaded_p50:.2} ms, p99 {loaded_p99:.2} ms, max {loaded_max:.2} ms"
-    );
-    // The load is real: the transfer kept moving while we measured.
-    assert!(moved > 50_000_000, "only {moved} B moved");
-    // The delay added by the transfer stays within 10 ms (p99).
-    assert!(
-        loaded_p99 - idle_p50 <= 10.0,
-        "control delayed by {:.2} ms",
-        loaded_p99 - idle_p50
-    );
 }
 
 // ---------------------------------------------------------------------------

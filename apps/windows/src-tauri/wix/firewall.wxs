@@ -13,8 +13,8 @@
                                 IgnoreFailure="no" />
       </Component>
     </DirectoryRef>
-    <!-- CCS/1 RULE:current-user cleanup on full uninstall only; upgrades preserve the user's Run choice. -->
-    <CustomAction Id="WindConnectRemoveAutostart" FileKey="Path" ExeCommand="--remove-autostart" Execute="immediate" Return="check" />
+    <!-- CCS/1 RULE:best-effort current-user cleanup; failures must not block uninstall; upgrades preserve Run. -->
+    <CustomAction Id="WindConnectRemoveAutostart" FileKey="Path" ExeCommand="--remove-autostart" Execute="immediate" Return="ignore" />
     <InstallExecuteSequence>
       <Custom Action="WindConnectRemoveAutostart" Before="RemoveFiles">REMOVE="ALL" AND NOT UPGRADINGPRODUCTCODE</Custom>
     </InstallExecuteSequence>

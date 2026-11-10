@@ -108,8 +108,9 @@ zdarzeń i adapter prawdziwej `Session`, nie przypina kluczy z odkrywania.
 zapisuje REG_SZ w HKCU `Software\Microsoft\Windows\CurrentVersion\Run`, wartość
 `WindConnect`, z cytowaną ścieżką bieżącego EXE i `--autostart`. Bez powłoki
 i uprawnień administratora. Uruchomienie z tym argumentem tworzy tylko ikonę.
-MSI nie włącza autostartu; usuwa wpis przy deinstalacji w kontekście bieżącego
-użytkownika. Wpisy innych profili nie są usuwane. Po zmianie lokalizacji EXE
+MSI nie włącza autostartu; próbuje usunąć wpis przy deinstalacji w kontekście bieżącego
+użytkownika. Sprzątanie jest nieblokujące: brak lub blokada EXE albo błąd rejestru
+nie zatrzymuje deinstalacji; wpis Run może wtedy pozostać. Wpisy innych profili nie są usuwane. Po zmianie lokalizacji EXE
 włącz opcję ponownie. Task Manager/polityka Windows może wyłączyć start niezależnie
 od obecności Run. Nie ma usługi ani zadania Harmonogramu.
 

@@ -198,16 +198,20 @@ fn migration_gives_up_on_a_lasting_lock_and_keeps_the_file() {
     // Once the lock is gone, a later start migrates it. After this many
     // refused renames Microsoft Defender sometimes keeps inspecting the file
     // for seconds more (seen in about 1 run in 75 under load, past a 5 s
-    // budget too), so this allows a few starts, each once the file is free;
-    // every failed one must leave the file as it was.
+    // budget too; once in a full `cargo test` past 5 back-to-back starts,
+    // WN-85), so this allows up to 10 starts, each once the file is free and
+    // a growing pause after the last one, as later starts of the app would
+    // be. Every failed one must leave the file as it was.
+    const STARTS: u32 = 10;
     let mut starts = 0;
     let migrated = loop {
         starts += 1;
         wait_until_replaceable(&path);
         match DeviceIdentity::load_or_create(&DpapiKeyStore::new(&path)) {
             Ok(m) => break m,
-            Err(e) if starts < 5 => {
+            Err(e) if starts < STARTS => {
                 assert_eq!(fs::read(&path).unwrap(), plain, "start {starts}: {e}");
+                std::thread::sleep(Duration::from_millis(250) * starts);
             }
             Err(e) => panic!("{starts} starts failed, the last with {e}"),
         }
