@@ -7,7 +7,8 @@ const os = require('node:os');
 const crypto = require('node:crypto');
 const dgram = require('node:dgram');
 const assert = require('node:assert/strict');
-const root = path.join(os.tmpdir(), 'windconnect-wn29-' + crypto.randomUUID());
+const homeProof = process.env.HOME_SCREEN_PROOF === '1';
+const root = path.join(os.tmpdir(), (homeProof ? 'windconnect-wn31-' : 'windconnect-wn29-') + crypto.randomUUID());
 const adb = path.join(process.env.ANDROID_HOME, 'platform-tools/adb.exe');
 const serial = process.env.ANDROID_SERIAL || 'emulator-5556';
 const pkg = 'io.github.prejas3.windconnect';
@@ -47,7 +48,7 @@ let peer, instrument, socket, timer, redirected = false, output = '', wasExempt 
     device('push',imageFile,'/data/local/tmp/windconnect-wn29-qr.png');
     device('shell','run-as',pkg,'mkdir','-p','cache');
     device('shell',`cat /data/local/tmp/windconnect-wn29-qr.png | run-as ${pkg} tee cache/desktop-qr.png >/dev/null`);
-    instrument=spawn(adb,['-s',serial,'shell','am','instrument','-w','-r','-e','class',pkg+'.PairingTest#qrConnectsRealDesktop','-e','desktopQr','true','-e','backgroundService','true','-e','backgroundBoot','true','-e','soakSeconds',String(soakSeconds),'-e','batteryExempt',String(batteryExempt),pkg+'.test/androidx.test.runner.AndroidJUnitRunner'],{windowsHide:true,stdio:['ignore','pipe','pipe']});
+    instrument=spawn(adb,['-s',serial,'shell','am','instrument','-w','-r','-e','class',pkg+'.PairingTest#qrConnectsRealDesktop','-e','desktopQr','true','-e','backgroundService',String(!homeProof),'-e','homeScreenProof',String(homeProof),'-e','backgroundBoot','true','-e','soakSeconds',String(soakSeconds),'-e','batteryExempt',String(batteryExempt),pkg+'.test/androidx.test.runner.AndroidJUnitRunner'],{windowsHide:true,stdio:['ignore','pipe','pipe']});
     instrument.stdout.on('data',data=>{output+=data; for(const line of data.toString().split('\n'))if(line.includes('soakProgress='))console.log(line.trim()); if(output.includes('backgroundDozeComplete=true') && !timer)timer=setInterval(()=>socket.send(packet,redirectPort,'127.0.0.1'),150);}); instrument.stderr.on('data',data=>{output+=data;});
     let connectedSamples=0;
     for(let attempt=0;attempt<(soakSeconds+180)*2 && instrument.exitCode===null;attempt++) {
@@ -56,6 +57,16 @@ let peer, instrument, socket, timer, redirected = false, output = '', wasExempt 
     }
     await fs.writeFile(path.join(root,'instrumentation.log'),output);
     assert(output.includes('OK (1 test)'),output);
+    if (homeProof) {
+      assert(output.includes('homeScreenProof=true'),output);
+      assert.equal(await fs.readFile(path.join(root,'connected.txt'),'utf8'),'true','home recreation retains real Session');
+      for (const theme of ['Light','Dark']) {
+        const result=spawnSync(adb,['-s',serial,'exec-out','run-as',pkg,'cat',`cache/wn31-${theme}.png`],{windowsHide:true,timeout:10000});
+        assert.equal(result.status,0);await fs.writeFile(path.join(root,`home-${theme}.png`),result.stdout);
+      }
+      const report={realHome:true,actualSession:true,themes:['Light','Dark'],recreation:true,disabledUnimplementedActions:true,artifacts:root};
+      await fs.writeFile(path.join(root,'run.json'),JSON.stringify(report,null,2));console.log(JSON.stringify(report));return;
+    }
     assert(output.includes('backgroundDozeSeconds='+soakSeconds) && output.includes('stopReleasesService=true'),output);
     assert(!batteryExempt || connectedSamples>=soakSeconds*1.8,`real PC session sampled ${connectedSamples} times`);
     const beforeBoot = Number(await fs.readFile(path.join(root,'sessions.txt'),'utf8'));

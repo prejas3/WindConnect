@@ -145,7 +145,7 @@ generator, a nie ręcznie edytowane wiązania lub binaria.
 
 AAR: `wind-core/build/outputs/aar/wind-core-release.aar`.
 Lokalne repozytorium Maven z AAR, źródłami, POM i metadanymi Gradle:
-`wind-core/build/repo/`. Współrzędne: `io.github.prejas3.windconnect:wind-core:0.35.0`.
+`wind-core/build/repo/`. Współrzędne: `io.github.prejas3.windconnect:wind-core:0.36.0`.
 Publikacja zapisuje pliki lokalnie; nie wysyła ich do zewnętrznego repozytorium.
 Konsument musi korzystać z POM/metadanych (JNA i korutyny są zależnościami
 przechodnimi); sama kopia pliku AAR nie dostarczy JNA.
@@ -158,7 +158,7 @@ Konsument spoza repozytorium dodaje lokalne repozytorium do
 maven { url = uri("/sciezka/do/wind-core/build/repo") }
 ```
 
-oraz `implementation("io.github.prejas3.windconnect:wind-core:0.35.0")`.
+oraz `implementation("io.github.prejas3.windconnect:wind-core:0.36.0")`.
 W aplikacji konsumenta ogranicz ABI do `arm64-v8a` i `x86_64`.
 
 ```kotlin
@@ -255,8 +255,30 @@ toggleWifi true` dodaje prawdziwą zmianę sieci):
 ```powershell
 adb shell am instrument -w -r -e class io.github.prejas3.windconnect.MulticastLockTest -e pcAddress 10.0.2.2:47820 -e pcKey <PC_PUBLIC_KEY> -e toggleWifi true $runner
 ```
-Wersja aplikacji to 0.35.0, a Android `versionCode` to 44. Numery wydań rosną
+Wersja aplikacji to 0.36.0, a Android `versionCode` to 45. Numery wydań rosną
 niezależnie od kolejności kart, aby aktualizacja APK i MSI nie cofała wersji.
+
+## Ekran główny (WN-31)
+
+CCS/1
+FLOW: wspólny WindCore -> PairingViewModel -> rzeczywista nazwa sparowanego PC, stan sesji, ostatni RTT i trasa LAN/relay. Rozłączenie usuwa RTT; nazwa pozostaje. Bez dodatkowego pollingu i blokad CPU.
+DEC: cztery kafelki z makiety są nieaktywne do podłączenia ich kanałów; historia transferów pokazuje jawny stan pusty, bez demonstracyjnych plików. Ustawienia pod kołem zębatym zachowują parowanie i opcje usługi w tle.
+PERF: release używa R8 i shrinkera zasobów. Reguły konsumenckie zachowują refleksję UniFFI/JNA; wyciszone są wyłącznie cztery klasy AWT, których Android nie posiada. `ReportDrawnWhen` czeka na lokalną tożsamość i magazyn, nie na dostępność zdalnego PC.
+
+Pomiar: zainstaluj podpisany APK **release**, ustaw `ANDROID_HOME`, `ANDROID_SERIAL`,
+uruchom `cw-progress --title "Android: pomiar startu release" -- node apps/windows/scripts/check-startup-android.cjs` z katalogu głównego.
+Skrypt zachowuje dane aplikacji, kończy jej proces po pomiarze i zapisuje 10 zimnych
+TTID/TTFD oraz `WaitTime` 10 powrotów z Home do `%TEMP%/windconnect-startup-*`.
+`WaitTime` powrotu jest czasem komendy systemowej, nie pomiarem TTID.
+Domyślne `STARTUP_COMPILATION=verify` wyłącza AOT; osobne `speed` wymusza AOT
+i musi być raportowane oddzielnie. Próg <400 ms należy sprawdzić na docelowym
+telefonie; wynik emulatora nie jest dowodem wydajności S25 Ultra.
+
+Test rzeczywistej sesji i zrzuty obu motywów: po zbudowaniu debug/androidTest oraz
+`cargo build --locked -p windconnect-windows --example background_peer`, ustaw
+`HOME_SCREEN_PROOF=1` i uruchom `apps/windows/scripts/check-background-android.cjs`.
+Ten test wymaga jednorazowego emulatora i czyści wyłącznie jego dane WindConnect;
+sprawdza prawdziwy QR/TLS, odtworzenie Activity, ustawienia i stan kafelków.
 
 ## Połączenie w tle (WN-29)
 

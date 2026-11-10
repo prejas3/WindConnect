@@ -2,6 +2,9 @@ package io.github.prejas3.windconnect.ui
 
 import android.os.Build
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -18,7 +21,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import io.github.prejas3.windconnect.BuildConfig
 
 @Composable
-fun WindApp(forceContent: Boolean = false, connection: @Composable () -> Unit) {
+fun WindApp(forceContent: Boolean = false, onSettings: (() -> Unit)? = null, connection: @Composable () -> Unit) {
     val preferences = LocalContext.current.getSharedPreferences("appearance", 0)
     var modeName by rememberSaveable { mutableStateOf(preferences.getString("theme", ThemeMode.System.name) ?: ThemeMode.System.name) }
     var dynamic by rememberSaveable { mutableStateOf(preferences.getBoolean("dynamic", true)) }
@@ -27,9 +30,11 @@ fun WindApp(forceContent: Boolean = false, connection: @Composable () -> Unit) {
     val mode = ThemeMode.entries.firstOrNull { it.name == modeName } ?: ThemeMode.System
     WindConnectTheme(mode, dynamic) {
         Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).safeDrawingPadding().imePadding()) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                 Text("WindConnect", modifier = Modifier.weight(1f).padding(end = 12.dp, top = 10.dp, bottom = 10.dp), style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 if (BuildConfig.DEBUG && !forceContent) WindButton(if (preview) "Połączenie" else "Podgląd", onClick = { preview = !preview }, modifier = Modifier.testTag("previewToggle"), kind = ButtonKind.Quiet)
+                if (!forceContent && onSettings != null) Box(Modifier.size(48.dp).clip(RoundedCornerShape(12.dp)).clickable(role = Role.Button, onClick = onSettings)
+                    .semantics { contentDescription = "Ustawienia" }.testTag("openSettings"), contentAlignment = androidx.compose.ui.Alignment.Center) { WindIcon("gear") }
             }
             Box(Modifier.weight(1f)) {
                 if (BuildConfig.DEBUG && preview && !forceContent) ComponentPreview(
