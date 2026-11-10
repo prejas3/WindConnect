@@ -40,6 +40,8 @@ jobs:
           node apps/windows/scripts/check-ui.cjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node apps/windows/scripts/check-actions-ui.cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node apps/windows/scripts/check-send-ui.cjs
           exit $LASTEXITCODE
       - name: Install Tauri CLI
         run: cargo +stable install tauri-cli --version 2.11.4 --locked

@@ -253,3 +253,42 @@ Test sekcji (Playwright jak dla `check-ui.cjs`, IPC podstawione):
 
 Sprawdzenie bez telefonu: przypnij klucz `windctl` jak telefon (parowanie)
 i użyj `windctl action` (crates/windctl/README.md).
+
+## Wysyłanie plików (WN-39)
+
+Pliki i foldery idą na telefon silnikiem WN-38 (PROTOCOL.md §9.1), do
+połączonego telefonu, a gdy żaden nie jest połączony, do ostatnio
+sparowanego: transfery czekają w kolejce i ruszają po połączeniu. Folder to
+osobny transfer dla każdego pliku, ze ścieżką względną.
+
+Skąd:
+
+- **Menu Eksploratora**: „Wyślij na telefon” dla plików i folderów
+  (`HKCU\Software\Classes\*\shell` i `Directory\shell`, klucz
+  `WindConnect.SendToPhone`, bez uprawnień administratora). Aplikacja
+  zapisuje wpis przy każdym starcie (ścieżka exe może się zmienić), a
+  odinstalowanie usuwa go (`--remove-shell-menu`). W Windows 11 wpis jest w
+  klasycznym menu („Pokaż więcej opcji”, Shift+F10); górne menu Windows 11
+  wymaga pakietu z tożsamością (MSIX), czego MSI nie ma.
+  Eksplorator uruchamia `WindConnect.exe --send "<element>"` dla każdego
+  zaznaczonego elementu; taki proces przekazuje ścieżkę działającej
+  aplikacji przez potok `\\.\pipe\io.github.prejas3.windconnect.send-<sesja>`
+  (tylko ta sesja logowania, bez klientów zdalnych) i kończy się. Gdy
+  aplikacja nie działa, pierwszy taki proces ją uruchamia.
+- **Przeciągnięcie** na panel albo na okno główne. Panel nie chowa się,
+  gdy przeciągany element jest nad nim; można go otworzyć w trakcie
+  przeciągania skrótem Win + Shift + W.
+- **Kafelek „Wyślij”** w panelu: systemowe okno wyboru wielu plików.
+
+Ikona w zasobniku nie przyjmuje upuszczanych plików: obszar powiadomień
+Windows nie przekazuje aplikacjom przeciągania (brak celu OLE dla ikon),
+dlatego celem jest panel.
+
+Panel pokazuje wysyłanie: łączny postęp, do czterech pozycji (anuluj,
+ponów) i „Wyczyść” dla zakończonych. Telefon, który jeszcze nie przyjmuje
+plików (`files/1`, WN-40), daje „Telefon nie przyjmuje teraz plików”.
+Komputer nie ogłasza jeszcze `files/1` (odbiór to WN-40); folder
+`Pobrane\WindConnect` jest przygotowany pod odbiór.
+
+Test panelu (Playwright jak dla `check-ui.cjs`, IPC podstawione):
+`node apps/windows/scripts/check-send-ui.cjs`.

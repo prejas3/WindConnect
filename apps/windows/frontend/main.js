@@ -125,6 +125,9 @@ async function refreshActions() {
 refreshActions();
 window.addEventListener('focus', refreshActions);
 window.__TAURI__?.event?.listen('actions-handled', event => renderLast(event.payload));
+// Files dropped on this window go to the phone (WN-39); the result shows as a toast.
+window.__TAURI__?.event?.listen('files-notice', event => toast(event.payload.message));
+window.__TAURI__?.event?.listen('files-drag', event => document.body.classList.toggle('dropping', event.payload));
 document.querySelector('#actions-edit').addEventListener('click', () => invoke?.('edit_custom_actions').catch(error => { console.error(error); toast('Nie udało się otworzyć pliku akcji.'); }));
 document.querySelector('#open-pairing').addEventListener('click', () => invoke?.('panel_action', { action: 'show' }).catch(error => { console.error(error); toast('Nie udało się otworzyć panelu telefonu.'); }));
 document.querySelector('#tray-options').addEventListener('click', () => invoke?.('tray_action', { action: 'menu' }).catch(error => { console.error(error); toast('Nie udało się otworzyć menu.'); }));

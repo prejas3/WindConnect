@@ -40,6 +40,64 @@ function renderPairing(state) {
     dark.forEach((value, index) => { if (value) context.fillRect((index % width + 4) * scale, (Math.floor(index / width) + 4) * scale, scale, scale); });
   } else { canvas.width = canvas.height = 0; }
 }
+// CCS/1 FLOW:files-state (engine, <=10/s) -> summary + newest rows; files-drag -> drop zone; files-notice -> status line.
+const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+function bytes(value) { let i = 0; while (value >= 1024 && i < units.length - 1) { value /= 1024; i++; } return `${value.toFixed(i && value < 10 ? 1 : 0)} ${units[i]}`; }
+const stateText = { queued: 'W kolejce', running: 'Wysyłanie', waiting: 'Czeka na telefon', done: 'Wysłano', failed: 'Nie wysłano', cancelled: 'Anulowano' };
+function fileRow(row) {
+  const item = document.createElement('li');
+  const text = document.createElement('div');
+  const name = document.createElement('span');
+  name.className = 'name'; name.textContent = row.name; name.title = row.name;
+  const detail = document.createElement('small');
+  const percent = row.size ? Math.floor(row.done * 100 / row.size) : 100;
+  detail.textContent = row.reason || (row.state === 'running' ? `${percent}% · ${bytes(row.size)}` : `${stateText[row.state] || row.state} · ${bytes(row.size)}`);
+  if (row.state === 'failed') detail.className = 'problem';
+  text.append(name, detail);
+  item.append(text);
+  const action = ['queued', 'running', 'waiting'].includes(row.state) ? 'cancel' : ['failed', 'cancelled'].includes(row.state) ? 'retry' : null;
+  if (action) {
+    const button = document.createElement('button');
+    button.className = 'button quiet small';
+    button.textContent = action === 'cancel' ? 'Anuluj' : 'Ponów';
+    button.setAttribute('aria-label', `${button.textContent}: ${row.name}`);
+    button.addEventListener('click', () => invoke?.('files_action', { action, id: row.id }).catch(error));
+    item.append(button);
+  }
+  return item;
+}
+function renderFiles(state) {
+  const section = document.querySelector('#transfers');
+  section.hidden = state.rows.length === 0;
+  if (section.hidden) return;
+  const finished = state.rows.filter(r => ['done', 'failed', 'cancelled'].includes(r.state)).length;
+  const percent = state.activeSize ? Math.floor(state.activeDone * 100 / state.activeSize) : 100;
+  document.querySelector('#transfers-title').textContent = state.active ? `Wysyłanie na ${state.phone || 'telefon'}` : 'Wysłane pliki';
+  document.querySelector('#transfers-summary').textContent = state.active ? `${state.active} w toku · ${bytes(state.activeDone)} z ${bytes(state.activeSize)}` : `${finished} zakończone`;
+  const total = document.querySelector('#transfers-total');
+  total.hidden = !state.active;
+  total.setAttribute('aria-valuenow', String(percent));
+  total.style.setProperty('--done', `${percent}%`);
+  const rows = [...state.rows].sort((a, b) => (a.state === 'running' ? -1 : 0) - (b.state === 'running' ? -1 : 0)).slice(0, 4);
+  document.querySelector('#transfers-list').replaceChildren(...rows.map(fileRow));
+  document.querySelector('#transfers-clear').hidden = finished === 0;
+}
+let noticeTimer;
+function renderNotice(notice) {
+  const element = document.querySelector('#files-notice');
+  clearTimeout(noticeTimer);
+  element.textContent = notice.message;
+  element.classList.toggle('error', notice.error);
+  element.hidden = false;
+  noticeTimer = setTimeout(() => { element.hidden = true; }, 6000);
+}
+function renderDrag(over) {
+  const phone = document.querySelector('#phone-name').textContent;
+  document.querySelector('#drop-title').textContent = `Upuść, aby wysłać na ${phone}`;
+  document.querySelector('#drop-zone').hidden = !over;
+}
+document.querySelector('#send-files').addEventListener('click', () => invoke?.('files_action', { action: 'pick' }).catch(error));
+document.querySelector('#transfers-clear').addEventListener('click', () => invoke?.('files_action', { action: 'clear' }).catch(error));
 document.querySelectorAll('#pairing-refresh,#pairing-cancel').forEach(button => button.addEventListener('click', () => invoke?.('pairing_action', { action: button.id === 'pairing-refresh' ? 'refresh' : 'close' }).catch(error)));
 // CCS/1 PERF:preload font/layout before ready; two frames acknowledge content submission, not physical display scanout.
 async function refreshShortcut() {
@@ -51,6 +109,10 @@ async function start() {
   if (!invoke) return;
   await window.__TAURI__.event.listen('pairing-state', event => renderPairing(event.payload));
   renderPairing(await invoke('pairing_snapshot'));
+  await window.__TAURI__.event.listen('files-state', event => renderFiles(event.payload));
+  await window.__TAURI__.event.listen('files-notice', event => renderNotice(event.payload));
+  await window.__TAURI__.event.listen('files-drag', event => renderDrag(event.payload));
+  renderFiles(await invoke('files_snapshot'));
   await window.__TAURI__.event.listen('panel-opened', async event => {
     theme();
     await refreshShortcut();

@@ -15,8 +15,11 @@
     </DirectoryRef>
     <!-- CCS/1 RULE:best-effort current-user cleanup; failures must not block uninstall; upgrades preserve Run. -->
     <CustomAction Id="WindConnectRemoveAutostart" FileKey="Path" ExeCommand="--remove-autostart" Execute="immediate" Return="ignore" />
+    <!-- CCS/1 RULE:the Explorer "Wyślij na telefon" verb (WN-39) is per user too; same best-effort cleanup. -->
+    <CustomAction Id="WindConnectRemoveShellMenu" FileKey="Path" ExeCommand="--remove-shell-menu" Execute="immediate" Return="ignore" />
     <InstallExecuteSequence>
       <Custom Action="WindConnectRemoveAutostart" Before="RemoveFiles">REMOVE="ALL" AND NOT UPGRADINGPRODUCTCODE</Custom>
+      <Custom Action="WindConnectRemoveShellMenu" Before="RemoveFiles">REMOVE="ALL" AND NOT UPGRADINGPRODUCTCODE</Custom>
     </InstallExecuteSequence>
   </Fragment>
 </Wix>

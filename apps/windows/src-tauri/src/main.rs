@@ -1,14 +1,17 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 use std::sync::Arc;
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 use wind_core::network::NetworkChanges;
 mod actions;
 mod autostart;
+mod files;
 mod hotkey;
 pub mod indicator;
 mod instance;
 mod pairing;
 mod panel;
+mod send_pipe;
+mod shell_menu;
 mod tray;
 
 #[tauri::command]
@@ -159,6 +162,17 @@ fn apply_window_theme(window: tauri::WebviewWindow, theme: &str) -> Result<bool,
     Ok(false)
 }
 
+/// The items after `--send` (Explorer passes one; more are accepted).
+fn sent_paths(args: impl Iterator<Item = std::ffi::OsString>) -> Vec<std::path::PathBuf> {
+    let mut args = args.skip_while(|a| a != "--send");
+    if args.next().is_none() {
+        return Vec::new();
+    }
+    args.map(std::path::PathBuf::from)
+        .filter(|p| p.is_absolute())
+        .collect()
+}
+
 fn main() {
     if std::env::args().any(|arg| arg == "--remove-autostart") {
         if let Err(error) = autostart::set(false) {
@@ -167,10 +181,27 @@ fn main() {
         }
         return;
     }
-    let activate = !std::env::args().any(|arg| arg == "--autostart");
+    if std::env::args().any(|arg| arg == "--remove-shell-menu") {
+        if let Err(error) = shell_menu::remove() {
+            eprintln!("shell menu cleanup: {error}");
+            std::process::exit(1);
+        }
+        return;
+    }
+    // CCS/1 FLOW:Explorer "Wyślij na telefon" runs `--send <item>`: a running app gets the paths over the pipe.
+    let sending = sent_paths(std::env::args_os().skip(1));
+    let activate = sending.is_empty() && !std::env::args().any(|arg| arg == "--autostart");
     let _instance = match instance::claim(activate) {
         Ok(Some(instance)) => instance,
-        Ok(None) => return,
+        Ok(None) => {
+            if !sending.is_empty() {
+                if let Err(error) = send_pipe::forward(&sending) {
+                    eprintln!("send to running app: {error}");
+                    std::process::exit(1);
+                }
+            }
+            return;
+        }
         Err(error) => {
             eprintln!("single instance: {error}");
             return;
@@ -180,7 +211,29 @@ fn main() {
         .manage(panel::Runtime::default())
         .manage(pairing::Runtime::default())
         .manage(actions::Runtime::default())
-        .setup(|app| {
+        .manage(files::Runtime::default())
+        .setup(move |app| {
+            if let Err(error) = shell_menu::install() {
+                eprintln!("Explorer menu unavailable: {error}");
+            }
+            #[cfg(windows)]
+            {
+                let handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    let shown = handle.clone();
+                    let served = send_pipe::serve(move |paths| {
+                        files::queue(&shown, paths);
+                        let _ = panel::show(&shown);
+                    });
+                    if let Err(error) = served.await {
+                        eprintln!("send pipe: {error}");
+                    }
+                    drop(handle);
+                });
+            }
+            if !sending.is_empty() {
+                files::queue(app.handle(), sending.clone());
+            }
             app.manage(NetworkState::new()?);
             app.manage(tray::install(app.handle())?);
             pairing::start(
@@ -201,7 +254,7 @@ fn main() {
                         .shortcut_error = Some(error.to_string());
                 }
             }
-            if !std::env::args().any(|arg| arg == "--autostart") {
+            if !std::env::args().any(|arg| arg == "--autostart") || !sending.is_empty() {
                 panel::show(app.handle())?;
             }
             Ok(())
@@ -212,9 +265,30 @@ fn main() {
                 let _ = window.hide();
             }
             tauri::WindowEvent::Focused(false)
-                if matches!(window.label(), "tray-menu" | "panel") =>
+                if window.label() == "tray-menu"
+                    || (window.label() == "panel"
+                        && !window
+                            .state::<files::Runtime>()
+                            .dragging
+                            .load(std::sync::atomic::Ordering::Relaxed)) =>
             {
                 let _ = window.hide();
+            }
+            // CCS/1 FLOW:files dropped on the panel or the main window go to the phone (WN-39).
+            tauri::WindowEvent::DragDrop(event) if matches!(window.label(), "panel" | "main") => {
+                let runtime = window.state::<files::Runtime>();
+                let over = match event {
+                    tauri::DragDropEvent::Enter { .. } | tauri::DragDropEvent::Over { .. } => true,
+                    tauri::DragDropEvent::Drop { paths, .. } => {
+                        files::queue(window.app_handle(), paths.clone());
+                        false
+                    }
+                    _ => false,
+                };
+                runtime
+                    .dragging
+                    .store(over, std::sync::atomic::Ordering::Relaxed);
+                let _ = window.emit_to(window.label(), "files-drag", over);
             }
             _ => {}
         })
@@ -238,8 +312,26 @@ fn main() {
             pairing::dev_pairing_address,
             actions::actions_snapshot,
             actions::set_action_enabled,
-            actions::edit_custom_actions
+            actions::edit_custom_actions,
+            files::files_snapshot,
+            files::files_action
         ])
         .run(tauri::generate_context!())
         .expect("failed to run WindConnect");
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn send_arguments() {
+        let args = |v: &[&str]| v.iter().map(std::ffi::OsString::from).collect::<Vec<_>>();
+        assert!(super::sent_paths(args(&["--autostart"]).into_iter()).is_empty());
+        assert_eq!(
+            super::sent_paths(args(&["--send", r"C:\a b\c.txt", "relative", r"D:\x"]).into_iter()),
+            vec![
+                std::path::PathBuf::from(r"C:\a b\c.txt"),
+                std::path::PathBuf::from(r"D:\x")
+            ]
+        );
+    }
 }
