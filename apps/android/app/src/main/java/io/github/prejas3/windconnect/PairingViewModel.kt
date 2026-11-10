@@ -22,6 +22,7 @@ data class PairingUi(
     val fingerprint: String = "",
     val message: String = "",
     val skippedRecords: ULong = 0uL,
+    val hasPairedDevice: Boolean = false,
 )
 
 class PairingViewModel(application: Application) : AndroidViewModel(application) {
@@ -33,9 +34,10 @@ class PairingViewModel(application: Application) : AndroidViewModel(application)
     init {
         viewModelScope.launch {
             try {
-                val opened = WindCore.open(application, android.os.Build.MODEL.take(64))
+                val opened = (application as WindApplication).connections.acquire()
                 core = opened
-                mutableUi.update { it.copy(ready = true, skippedRecords = opened.skippedPairingRecords) }
+                val paired = opened.pairedDevices()
+                mutableUi.update { it.copy(ready = true, skippedRecords = opened.skippedPairingRecords, hasPairedDevice = paired.isNotEmpty()) }
                 viewModelScope.launch {
                     opened.state.collect { state ->
                         val message = when (state) {
@@ -83,7 +85,7 @@ class PairingViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             try {
                 val peer = owner.pairQr(active)
-                mutableUi.update { it.copy(screen = "paired", name = peer.name, fingerprint = peer.fingerprint, message = "Sparowano · Łączenie z komputerem…") }
+                mutableUi.update { it.copy(screen = "paired", name = peer.name, fingerprint = peer.fingerprint, hasPairedDevice = true, message = "Sparowano · Łączenie z komputerem…") }
                 try {
                     owner.connectPaired(peer)
                     mutableUi.update { it.copy(message = "Połączono z komputerem") }
@@ -91,6 +93,7 @@ class PairingViewModel(application: Application) : AndroidViewModel(application)
                     if (error is CancellationException && error !is kotlinx.coroutines.TimeoutCancellationException) throw error
                     mutableUi.update { it.copy(message = "Sparowano. Komputer jest chwilowo nieosiągalny — sprawdź wspólną sieć Wi-Fi.") }
                 }
+                ConnectionService.start(getApplication(), enable = true)
             } catch (error: Exception) {
                 if (error is CancellationException) throw error
                 mutableUi.update { it.copy(screen = "error", message = "Nie udało się sparować. Sprawdź wspólną sieć Wi-Fi i zeskanuj nowy kod na komputerze.") }
@@ -102,6 +105,6 @@ class PairingViewModel(application: Application) : AndroidViewModel(application)
     override fun onCleared() {
         clearOffer()
         val owner = core
-        if (owner != null) CoroutineScope(Dispatchers.IO).launch { owner.shutdown() }
+        if (owner != null) CoroutineScope(Dispatchers.IO).launch { (getApplication<Application>() as WindApplication).connections.release(owner) }
     }
 }

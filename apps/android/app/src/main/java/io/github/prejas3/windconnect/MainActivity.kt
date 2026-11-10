@@ -62,6 +62,10 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         receiveLink(intent)
     }
+    override fun onStart() {
+        super.onStart()
+        ConnectionService.start(this)
+    }
     private fun receiveLink(incoming: Intent) {
         // CCS/1 SEC:never retain the QR secret in Activity intent/saved state; every VIEW is validated in Rust.
         if (incoming.action == Intent.ACTION_VIEW) {
@@ -91,7 +95,7 @@ class ConnectionViewModel(application: Application) : AndroidViewModel(applicati
         owner.launch {
             gate.withLock {
                 try {
-                    val opened = WindCore.open(application, "Android")
+                    val opened = (application as WindApplication).connections.acquire()
                     core = opened
                     mutableUi.value = ConnectionUiState(
                         publicKey = opened.identity.publicKey.joinToString("") { "%02x".format(it) },
@@ -145,7 +149,7 @@ class ConnectionViewModel(application: Application) : AndroidViewModel(applicati
     override fun onCleared() {
         owner.launch {
             gate.withLock {
-                try { core?.shutdown() } finally { owner.cancel() }
+                try { core?.let { (getApplication<Application>() as WindApplication).connections.release(it) } } finally { owner.cancel() }
             }
         }
     }

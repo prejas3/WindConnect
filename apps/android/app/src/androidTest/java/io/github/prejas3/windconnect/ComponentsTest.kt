@@ -64,7 +64,7 @@ class ComponentsTest {
         compose.onNodeWithTag("componentPreview").assertExists()
         compose.onNodeWithTag("theme-Dark").performScrollTo().assertIsSelected()
         compose.onNodeWithTag("previewToggle").performClick()
-        compose.onNodeWithText("Test połączenia z PC").performClick()
+        compose.onNodeWithText("Test połączenia z PC").performScrollTo().performClick()
         compose.onNodeWithTag("peerAddress").performScrollTo().assertExists()
         compose.onNodeWithTag("localKey").assertExists()
     }
