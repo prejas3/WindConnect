@@ -2,6 +2,7 @@
 use std::sync::Arc;
 use tauri::Manager;
 use wind_core::network::NetworkChanges;
+mod actions;
 mod autostart;
 mod hotkey;
 pub mod indicator;
@@ -178,6 +179,7 @@ fn main() {
     tauri::Builder::default()
         .manage(panel::Runtime::default())
         .manage(pairing::Runtime::default())
+        .manage(actions::Runtime::default())
         .setup(|app| {
             app.manage(NetworkState::new()?);
             app.manage(tray::install(app.handle())?);
@@ -233,7 +235,10 @@ fn main() {
             panel::panel_snapshot,
             pairing::pairing_snapshot,
             pairing::pairing_action,
-            pairing::dev_pairing_address
+            pairing::dev_pairing_address,
+            actions::actions_snapshot,
+            actions::set_action_enabled,
+            actions::edit_custom_actions
         ])
         .run(tauri::generate_context!())
         .expect("failed to run WindConnect");

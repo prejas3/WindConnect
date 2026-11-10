@@ -421,3 +421,102 @@ async fn falls_back_to_the_relay_and_returns_to_lan() {
     server.close();
     client.shutdown().await;
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn ffi_runs_remote_actions_by_id_only() {
+    use wind_core::actions::{Action, ActionHost, Builtin, Executor, Policy};
+    #[derive(Default)]
+    struct Recorder(Mutex<Vec<Action>>);
+    impl Executor for Recorder {
+        fn supports(&self, b: Builtin) -> bool {
+            b != Builtin::Sleep
+        }
+        fn run(&self, action: &Action) -> Result<(), String> {
+            self.0.lock().unwrap().push(action.clone());
+            Ok(())
+        }
+    }
+    let client = open_client(
+        Box::new(MemoryStorage::default()),
+        "Phone".into(),
+        "127.0.0.1:0".into(),
+    )
+    .await
+    .unwrap();
+    let server_identity = DeviceIdentity::generate().unwrap();
+    let trust = Arc::new(PinnedKeys::new());
+    trust.pin(PublicKey::from_bytes(&client.identity().public_key.try_into().unwrap()).unwrap());
+    let server = Endpoint::bind(
+        "127.0.0.1:0".parse().unwrap(),
+        &server_identity,
+        trust.clone(),
+    )
+    .unwrap();
+    let address = server.local_addr().unwrap().to_string();
+    client
+        .pin_peer(server_identity.public_key().as_bytes().to_vec())
+        .unwrap();
+    let ran = Arc::new(Recorder::default());
+    let host_ran = ran.clone();
+    let server_task = tokio::spawn(async move {
+        let connection = server.accept().await.unwrap().unwrap();
+        let mut router = Router::new();
+        let streams = router.route_actions(4);
+        let (session, _) = Session::accept(
+            connection,
+            LocalInfo {
+                name: "PC".into(),
+                kind: DeviceKind::Computer,
+                app: None,
+            },
+            router,
+        )
+        .await
+        .unwrap();
+        tokio::spawn(
+            ActionHost::new(Arc::new(Policy::default()), host_ran, trust)
+                .serve(session.clone(), streams),
+        );
+        session.closed().await;
+        server.close();
+        server.wait_idle().await;
+    });
+    let connection = client
+        .connect(address, server_identity.public_key().as_bytes().to_vec())
+        .await
+        .unwrap();
+    let ids: Vec<_> = connection
+        .list_actions()
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|a| a.id)
+        .collect();
+    assert_eq!(ids, ["lock", "open-url"]);
+    assert_eq!(
+        connection.run_action("lock".into(), None).await.unwrap(),
+        "done"
+    );
+    assert_eq!(
+        connection.run_action("sleep".into(), None).await.unwrap(),
+        "refused"
+    );
+    assert_eq!(
+        connection
+            .run_action("open-url".into(), Some("javascript:alert(1)".into()))
+            .await
+            .unwrap(),
+        "bad-argument"
+    );
+    assert!(matches!(
+        connection.run_action("cmd /c calc".into(), None).await,
+        Err(CoreError::InvalidInput { .. })
+    ));
+    assert_eq!(*ran.0.lock().unwrap(), vec![Action::Lock]);
+    connection.disconnect().await;
+    tokio::time::timeout(Duration::from_secs(5), server_task)
+        .await
+        .unwrap()
+        .unwrap();
+    client.shutdown().await;
+}

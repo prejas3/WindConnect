@@ -38,6 +38,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $env:PLAYWRIGHT_MODULE = Join-Path $uiTools 'node_modules/playwright'
           node apps/windows/scripts/check-ui.cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node apps/windows/scripts/check-actions-ui.cjs
           exit $LASTEXITCODE
       - name: Install Tauri CLI
         run: cargo +stable install tauri-cli --version 2.11.4 --locked

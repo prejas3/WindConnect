@@ -2,6 +2,7 @@ use clap::{Args, Parser, Subcommand, ValueEnum};
 use std::{error::Error, io, net::SocketAddr, path::PathBuf, sync::Arc, time::Duration};
 use tokio::{sync::mpsc, task::JoinSet};
 use wind_core::{
+    actions::{self, Action, ActionHost, Builtin, Executor, Policy},
     identity::{DeviceIdentity, PublicKey},
     network::{DiscoveryOptions, NetworkChanges, NetworkDiscovery},
     protocol::{
@@ -63,6 +64,25 @@ enum Command {
         /// wss://windconnect-relay.<subdomain>.workers.dev. Off unless given (D3).
         #[arg(long)]
         relay: Option<String>,
+        /// Accept remote actions (PROTOCOL.md §9.2) from --trust devices, built-ins
+        /// allowed, and print each instead of running it (ACTION_REQUEST lines).
+        #[arg(long)]
+        dry_run_actions: bool,
+    },
+    /// Ask the peer to run a remote action by id (PROTOCOL.md §9.2), or list
+    /// what it would run. The peer decides by its own allowlist.
+    Action {
+        #[command(flatten)]
+        peer: PeerArgs,
+        /// Action id: lock, sleep, open-url or one of the peer's own x-... ids.
+        #[arg(required_unless_present = "list", conflicts_with = "list")]
+        id: Option<String>,
+        /// The address for open-url (http or https only).
+        #[arg(long, conflicts_with = "list")]
+        url: Option<String>,
+        /// List the peer's actions instead.
+        #[arg(long)]
+        list: bool,
     },
     /// Authenticate, exchange Hello/HelloAck, perform one Ping/Pong, then disconnect.
     Connect(PeerArgs),
@@ -188,7 +208,10 @@ async fn run(cli: Cli) -> Result<()> {
             }
             *bind
         }
-        Command::Connect(peer) | Command::Ping { peer, .. } | Command::Send { peer, .. } => {
+        Command::Connect(peer)
+        | Command::Ping { peer, .. }
+        | Command::Send { peer, .. }
+        | Command::Action { peer, .. } => {
             trust.pin(peer.peer_key);
             if peer.address.is_ipv6() {
                 "[::]:0"
@@ -381,8 +404,16 @@ async fn execute(
             echo,
             relay,
             trust,
+            dry_run_actions,
             ..
         } => {
+            let action_trust = dry_run_actions.then(|| {
+                let pins = Arc::new(PinnedKeys::new());
+                for peer in &trust {
+                    pins.pin(*peer);
+                }
+                pins
+            });
             let mut keepers = JoinSet::new();
             if let Some(url) = relay {
                 wind_core::relay::check_url(&url)?;
@@ -418,8 +449,9 @@ async fn execute(
                     incoming = endpoint.accept(), if peers.len() < 16 => match incoming {
                         Some(Ok(connection)) => {
                             let local = local.clone();
+                            let action_trust = action_trust.clone();
                             peers.spawn(async move {
-                                if let Err(error) = serve_peer(connection, local, echo).await { eprintln!("peer: {error}"); }
+                                if let Err(error) = serve_peer(connection, local, echo, action_trust).await { eprintln!("peer: {error}"); }
                             });
                         },
                         Some(Err(error)) => eprintln!("handshake refused: {error}"),
@@ -448,6 +480,31 @@ async fn execute(
                 discovery.shutdown().await;
             }
             Ok(())
+        }
+        Command::Action {
+            peer,
+            id,
+            url,
+            list,
+        } => {
+            let id = id.unwrap_or_default();
+            if !list && !actions::is_action_id(&id) {
+                return Err("action id: 1-64 of a-z, 0-9 and -".into());
+            }
+            let (session, _link) = dial(endpoint, identity, &peer, local, Router::new).await?;
+            let result = if list {
+                actions::list(&session).await.map(|list| {
+                    for action in list {
+                        println!("ACTIONS id={} label={:?}", action.id, action.label);
+                    }
+                })
+            } else {
+                actions::run(&session, &id, url.as_deref())
+                    .await
+                    .map(|status| println!("ACTION id={id} status={status:?}"))
+            };
+            session.goodbye(ErrorCode::GoingAway, None).await;
+            result.map_err(Into::into)
         }
         Command::Connect(peer) => {
             let (session, _link) = dial(endpoint, identity, &peer, local, Router::new).await?;
@@ -523,13 +580,37 @@ async fn execute(
     }
 }
 
+/// Prints each allowed action instead of running it (`serve --dry-run-actions`).
+struct PrintActions;
+
+impl Executor for PrintActions {
+    fn supports(&self, _: Builtin) -> bool {
+        true
+    }
+    fn run(&self, action: &Action) -> std::result::Result<(), String> {
+        match action {
+            Action::Lock => println!("ACTION_REQUEST id=lock"),
+            Action::Sleep => println!("ACTION_REQUEST id=sleep"),
+            Action::OpenUrl(url) => println!("ACTION_REQUEST id=open-url url={url}"),
+            Action::Custom(c) => println!("ACTION_REQUEST id={}", c.id),
+        }
+        Ok(())
+    }
+}
+
 async fn serve_peer(
     connection: wind_core::transport::Connection,
     local: LocalInfo,
     echo: bool,
+    action_trust: Option<Arc<PinnedKeys>>,
 ) -> Result<()> {
-    let (router, mut incoming) = routes();
+    let (mut router, mut incoming) = routes();
+    let action_streams = action_trust.is_some().then(|| router.route_actions(4));
     let (session, mut events) = Session::accept(connection, local, router).await?;
+    if let (Some(trust), Some(streams)) = (action_trust, action_streams) {
+        let host = ActionHost::new(Arc::new(Policy::default()), Arc::new(PrintActions), trust);
+        tokio::spawn(host.serve(session.clone(), streams));
+    }
     println!(
         "ACCEPTED name={:?} public_key={}",
         session.peer().hello.name,

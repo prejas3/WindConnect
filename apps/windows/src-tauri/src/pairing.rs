@@ -125,6 +125,15 @@ fn data_store() -> std::io::Result<DpapiKeyStore> {
     }
     DpapiKeyStore::in_user_profile()
 }
+/// The folder of the identity key, paired devices and actions.json.
+pub fn data_dir() -> std::io::Result<std::path::PathBuf> {
+    let store = data_store()?;
+    store
+        .path()
+        .parent()
+        .map(std::path::Path::to_path_buf)
+        .ok_or_else(|| std::io::Error::other("identity directory missing"))
+}
 fn open_window(
     listener: &PairingListener,
 ) -> Result<QrBits, Box<dyn std::error::Error + Send + Sync>> {
@@ -198,15 +207,25 @@ async fn run(
     // CCS/1 RULE:accept/HELLO is owned outside select, so refresh/network events cannot cancel an in-flight TLS handshake or block the UI actor.
     let (session_sender, mut sessions) = mpsc::channel(1);
     let accepting = endpoint.clone();
+    let (actions_app, actions_trust) = (app.clone(), trust.clone());
     let _accept_task = AcceptTask(tokio::spawn(async move {
         while let Some(incoming) = accepting.accept().await {
             if let Ok(connection) = incoming {
+                // CCS/1 SEC:actions/1 accepted from pinned phones only; each request re-checks the pin (WN-54).
+                let mut router = Router::new();
+                let action_streams = router.route_actions(8);
                 if let Ok(Ok(session)) = tokio::time::timeout(
                     std::time::Duration::from_secs(6),
-                    Session::accept(connection, local.clone(), Router::new()),
+                    Session::accept(connection, local.clone(), router),
                 )
                 .await
                 {
+                    crate::actions::serve(
+                        &actions_app,
+                        actions_trust.clone(),
+                        session.0.clone(),
+                        action_streams,
+                    );
                     if session_sender.send(session).await.is_err() {
                         break;
                     }

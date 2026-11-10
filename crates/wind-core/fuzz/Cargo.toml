@@ -57,3 +57,10 @@ path = "fuzz_targets/paired_file.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "actions"
+path = "fuzz_targets/actions.rs"
+test = false
+doc = false
+bench = false

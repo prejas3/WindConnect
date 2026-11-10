@@ -512,6 +512,36 @@ impl Drop for CoreClient {
     }
 }
 
+/// An action the peer would run now (PROTOCOL.md §9.2).
+#[derive(uniffi::Record, Clone, Debug)]
+pub struct RemoteAction {
+    pub id: String,
+    pub label: String,
+}
+
+/// How a remote action ended: "done", "refused", "bad-argument", "failed"
+/// or "busy".
+fn status_name(status: wind_core::actions::Status) -> String {
+    use wind_core::actions::Status;
+    match status {
+        Status::Done => "done",
+        Status::Refused => "refused",
+        Status::BadArgument => "bad-argument",
+        Status::Failed => "failed",
+        Status::Busy => "busy",
+    }
+    .into()
+}
+
+fn action_error(error: wind_core::actions::RequestError) -> CoreError {
+    match error {
+        wind_core::actions::RequestError::Session(e) => session_error(e),
+        e => CoreError::Transport {
+            reason: e.to_string(),
+        },
+    }
+}
+
 #[derive(uniffi::Object)]
 pub struct CoreConnection {
     session: Session,
@@ -536,6 +566,49 @@ impl CoreConnection {
             .await
             .map(|d| d.as_micros() as u64)
             .map_err(session_error)
+    }
+
+    /// Asks the peer to run `action` ("lock", "sleep", "open-url" or one
+    /// of its own "x-…" ids from [`list_actions`](Self::list_actions));
+    /// `url` only for "open-url". The peer decides by its own allowlist;
+    /// the answer is a status from [`status_name`].
+    pub async fn run_action(
+        &self,
+        action: String,
+        url: Option<String>,
+    ) -> Result<String, CoreError> {
+        if !wind_core::actions::is_action_id(&action) {
+            return Err(CoreError::InvalidInput {
+                reason: "not an action id".into(),
+            });
+        }
+        wind_core::actions::run(&self.session, &action, url.as_deref())
+            .await
+            .map(status_name)
+            .map_err(action_error)
+    }
+
+    /// What the peer would run now (empty when it accepts no actions).
+    pub async fn list_actions(&self) -> Result<Vec<RemoteAction>, CoreError> {
+        let accepts = self
+            .session
+            .peer_capabilities()
+            .iter()
+            .any(|c| c.name() == "actions" && c.version() == 1);
+        if !accepts {
+            return Ok(Vec::new());
+        }
+        wind_core::actions::list(&self.session)
+            .await
+            .map(|list| {
+                list.into_iter()
+                    .map(|a| RemoteAction {
+                        id: a.id,
+                        label: a.label,
+                    })
+                    .collect()
+            })
+            .map_err(action_error)
     }
 
     /// "lan" (direct) or "relay" (PROTOCOL.md §13).

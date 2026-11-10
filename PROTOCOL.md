@@ -20,6 +20,7 @@ QUIC v1 (RFC 9000) + TLS 1.3, ALPN "windconnect/1"
 ├── strumień uni   media        (jw.)                         ramki CBOR
 ├── strumień uni   input        (jw., przyciski)              ramki CBOR
 ├── strumień bidi  files × N    (1–8 na transfer, §9.1)       ramki CBOR
+├── strumień bidi  actions × N  (1 na prośbę, §9.2)           ramki CBOR
 └── datagramy QUIC input        (ruch wskaźnika, przewijanie) CBOR bez długości
 ```
 
@@ -166,7 +167,8 @@ Po nagłówku następuje ciąg ramek (sekcja 4) aż do końca strumienia (FIN).
 Nagłówek pisze **tylko otwierający**. W strumieniu bidi kierunek powrotny
 (od strony, która strumień przyjęła) nie ma nagłówka: zaczyna się od razu
 pierwszą ramką. Dotyczy to `control` (`HelloAck` to pierwsze bajty
-od serwera, przykład w sekcji 7.1) i `files` (odpowiedzi odbiorcy pliku).
+od serwera, przykład w sekcji 7.1), `files` (odpowiedzi odbiorcy pliku) i
+`actions` (odpowiedź na prośbę).
 
 | kanał | nazwa | rodzaj strumienia | otwiera | priorytet wysyłki |
 |---|---|---|---|---|
@@ -176,7 +178,8 @@ od serwera, przykład w sekcji 7.1) i `files` (odpowiedzi odbiorcy pliku).
 | `03` | `media` | uni | nadawca wiadomości | 4 |
 | `04` | `input` | uni + datagramy | nadawca zdarzeń | 1 |
 | `05` | `files` | bidi | nadawca pliku; 1–8 na transfer (§9.1) | 7 (najniższy) |
-| `06`–`3f` | zarezerwowane dla przyszłych kanałów | | | |
+| `06` | `actions` | bidi | proszący o akcję; 1 na prośbę (§9.2) | 5 |
+| `07`–`3f` | zarezerwowane dla przyszłych kanałów | | | |
 | `40`–`ff` | niedozwolone w v1 | | | |
 
 Zasady:
@@ -346,6 +349,7 @@ zawierać dokładnie jeden element CBOR, bez bajtów nadmiarowych.
 |---|---|
 | ramka `Hello` i `HelloAck` | 4 096 B |
 | inne ramki na `control` | 16 384 B |
+| ramki na `actions` (§9.2) | 16 384 B |
 | ramki na pozostałych strumieniach | 1 048 576 B (1 MiB) |
 | datagram | mniejszy z: `max_datagram_frame_size` drugiej strony, 1 200 B |
 
@@ -403,6 +407,7 @@ Możliwości v1.0:
 | `media/1` | strona obsługuje kanał `media` |
 | `input/1` | strona przyjmuje zdarzenia wejścia (kanał `input`, sekcja 8) |
 | `files/1` | strona obsługuje kanał `files` |
+| `actions/1` | strona przyjmuje prośby o akcje (kanał `actions`, §9.2) |
 
 Zasady:
 
@@ -445,6 +450,10 @@ Zasady:
      strony; odbiorca kończy je i usuwa częściowe pliki, a nadawca widzi
      transfer jako anulowany przez drugą stronę. Po ponownym włączeniu
      nadawca zaczyna transfer od nowa (sekcja 9.1).
+   - Kanał `actions` (WN-54): wycofanie działa jak dla `files`; prośba
+     przyjęta przed wycofaniem, której odczyt jeszcze trwa, jest
+     zatrzymana (`CANCELLED`), a nowe strumienie dostają
+     `CAPABILITY_MISSING`.
 
 Przykład asymetryczny: komputer ogłasza `["clipboard/1", "input/1"]`,
 telefon `["notify/1"]`.
@@ -1009,7 +1018,8 @@ dokumentu:
    otwiera go nadawca pliku (nagłówek `01 05`, potem wiadomości sekcji
    9.1), odbiorca pisze w kierunku powrotnym odpowiedzi bez nagłówka, a
    koniec transferu to FIN obu stron. Strumień `files` przyjmuje tylko
-   strona, która ogłosiła `files/1`.
+   strona, która ogłosiła `files/1`. Tak samo `actions` (§9.2, nagłówek
+   `01 06`), który przyjmuje tylko strona z `actions/1`.
 
 ### 9.1 Kanał `files` (`05`, WC-38)
 
@@ -1136,6 +1146,96 @@ Przykłady (ramki z długością):
 | `Bad` 1 | `05 82 02 a1 00 01` |
 | `Complete` | `03 82 03 a0` |
 
+### 9.2 Kanał `actions` (`06`, WN-54)
+
+Akcje zdalne: urządzenie prosi drugie o zablokowanie ekranu, uśpienie,
+otwarcie linku albo uruchomienie akcji, którą użytkownik **drugiego**
+urządzenia sam dodał do swojej listy dozwolonych. Wiadomości `actions/1`;
+jak `files/1` wersjonuje je sama możliwość, bez zmiany wersji minor.
+
+**Zasada nadrzędna.** Prośba wskazuje akcję wyłącznie identyfikatorem
+(i adresem dla `open-url`). Protokół nie ma pola na polecenie, program,
+ścieżkę ani argumenty: co robi akcja własna, ustala tylko użytkownik
+urządzenia, które ją wykonuje, na tym urządzeniu. Strona NIE MOŻE wykonać
+niczego, czego nie ma na jej własnej liście dozwolonych w chwili
+wykonania.
+
+**Strumień.** Jedna prośba to jeden strumień bidi otwarty przez
+proszącego: nagłówek `01 06`, jedna wiadomość, FIN. Wykonujący odpowiada
+jedną wiadomością w kierunku powrotnym (bez nagłówka) i FIN. Ramki na tym
+kanale mają limit 16 384 B (§4.2).
+
+Od proszącego:
+
+| typ | nazwa | pola `body` |
+|---|---|---|
+| 0 | `Run` | `0 action`: tekst, identyfikator akcji; `1 url`: tekst 1–2048 B, opcjonalne, tylko dla `open-url` |
+| 1 | `List` | pusta mapa; jakie akcje strona wykonałaby teraz |
+
+Od wykonującego:
+
+| typ | nazwa | pola `body` |
+|---|---|---|
+| 0 | `Result` | `0 status`: uint, wynik `Run` (tabela niżej) |
+| 1 | `Actions` | `0 actions`: tablica do 64 par `[id, label]`; `label` tekst 1–64 B, do wyświetlania |
+
+**Identyfikatory.** 1–64 bajtów z `a-z`, `0-9` i `-`; inny znak to
+`MALFORMED_FRAME`. Wbudowane: `lock` (blokada ekranu), `sleep`
+(uśpienie), `open-url` (otwarcie adresu). Akcje własne zaczynają się od
+`x-`, więc nigdy nie zasłonią wbudowanej. Strona, która czegoś nie
+potrafi (telefon nie usypia komputera), nie oferuje tego w `Actions` i
+odpowiada na `Run` statusem `1`.
+
+| `status` | znaczenie |
+|---|---|
+| 0 | wykonano (dla `sleep`: uśpienie zaplanowane, odpowiedź wychodzi przed nim) |
+| 1 | odmowa: akcji nie ma na liście dozwolonych, jest wyłączona albo niedostępna |
+| 2 | zły argument: brak lub niedozwolony `url`, albo `url` przy innej akcji niż `open-url` |
+| 3 | dozwolona, ale wykonanie się nie udało |
+| 4 | zajęte: za dużo próśb w krótkim czasie |
+
+Nieznany `status` proszący traktuje jak `3`.
+
+**Kolejność sprawdzeń u wykonującego:**
+
+1. Strumień przyjmuje tylko strona, która ogłosiła `actions/1` (§3,
+   zasada 3); połączenie istnieje tylko z przypiętym kluczem (§2).
+2. Prośba musi przyjść w 5 s od otwarcia strumienia (inaczej
+   `CANCELLED`). Błędna wiadomość: `MALFORMED_FRAME`, nieznany typ:
+   `UNKNOWN_MESSAGE`; w obu przypadkach `STOP_SENDING` i `RESET_STREAM`,
+   bez odpowiedzi i bez wykonania.
+3. **Przed każdą odpowiedzią** strona ponownie sprawdza, że klucz
+   drugiej strony jest nadal przypięty. Jeśli nie (rozparowanie w trakcie
+   połączenia), zamyka połączenie kodem `UNTRUSTED_PEER` i niczego nie
+   wykonuje.
+4. Lista dozwolonych jest odczytywana w chwili wykonania, nie przy
+   połączeniu: wyłączenie akcji działa od razu. Lista, której nie da się
+   odczytać, oznacza, że nic nie jest dozwolone.
+5. `open-url` przyjmuje tylko adres bezwzględny `http://` lub `https://`
+   (wielkość liter schematu dowolna): drukowalne ASCII bez spacji i bez
+   znaków `"` `<` `>` `\` `^` `` ` `` `{` `|` `}`, niepusty host, bez
+   części `użytkownik@`, port (jeśli jest) 1–65535. Każdy inny adres
+   (`file:`, `javascript:`, linki aplikacji, adresy względne, znaki spoza
+   ASCII; nazwy międzynarodowe tylko w postaci `xn--`) to status `2`;
+   strona go nie poprawia.
+6. Naraz wykonuje się najwyżej jedna akcja na połączenie, najwyżej 10 w
+   ciągu 10 s (ponad to status `4`); najwyżej 4 prośby czekają, kolejne
+   strumienie dostają `RATE_LIMITED`.
+7. Akcja własna uruchamia program wskazany przez użytkownika tego
+   urządzenia z jego stałymi argumentami, bez powłoki systemowej (na
+   Windowsie tylko plik `.exe`, nie skrypt `.bat`/`.cmd`).
+
+Przykłady (ramki z długością):
+
+| wiadomość | bajty |
+|---|---|
+| `Run` `lock` | `09 82 00 a1 00 64 6c 6f 63 6b` |
+| `Run` `open-url`, `https://a.pl/` | `1c 82 00 a2 00 68 6f 70 65 6e 2d 75 72 6c 01 6d 68 74 74 70 73 3a 2f 2f 61 2e 70 6c 2f` |
+| `List` | `03 82 01 a0` |
+| `Result` 0 (wykonano) | `05 82 00 a1 00 00` |
+| `Result` 1 (odmowa) | `05 82 00 a1 00 01` |
+| `Actions` `[["lock", "Zablokuj"]]` | `14 82 01 a1 00 81 82 64 6c 6f 63 6b 68 5a 61 62 6c 6f 6b 75 6a` |
+
 ## 10. Kody błędów
 
 Te same kody służą w polu `code` wiadomości `Error` / `Goodbye` oraz jako
@@ -1183,6 +1283,7 @@ ten strumień (`STOP_SENDING` po stronie odbiorcy), nie połączenie.
 | `PointerButton` | sekcja 8.8 (23 B) |
 | `InputSession` s 0, g 0 | `07 82 03 a2 00 00 01 00` |
 | wiadomości `files` | sekcja 9.1 |
+| wiadomości `actions` | sekcja 9.2 |
 
 Przykłady są wektorami testowymi kodera ramek (WC-06): koder MUSI
 produkować dokładnie te bajty, a dekoder odtwarzać z nich te wiadomości.
