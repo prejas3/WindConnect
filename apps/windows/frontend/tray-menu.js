@@ -22,3 +22,5 @@ window.addEventListener('storage', theme); system.addEventListener('change', the
 document.addEventListener('contextmenu', event => event.preventDefault());
 refresh();
 window.__TAURI__?.event?.listen('connection-status', event => { document.querySelector('#tray-state').textContent = labels[event.payload.phase] || labels.unavailable; }).catch(error);
+// CCS/1 RULE:hidden WebViews may miss DOM focus; refresh native state on every explicit open.
+window.__TAURI__?.event?.listen('tray-menu-opened', refresh).catch(error);

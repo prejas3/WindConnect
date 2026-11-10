@@ -30,7 +30,7 @@ Workflow **Windows MSI** buduje pakiet na `windows-latest` dla PR, push do
 `master` lub ręcznego uruchomienia. W zakładce Actions pobierz artefakt
 `WindConnect-windows-x64-msi`, rozpakuj ZIP i uruchom MSI.
 Po instalacji uruchom WindConnect: powinno pojawić się jedno okno ze statusem
-`wind-core 0.24.0 · gotowy`. Zamknij okno i sprawdź odinstalowanie w Ustawieniach.
+`wind-core 0.25.0 · gotowy`. Zamknij okno i sprawdź odinstalowanie w Ustawieniach.
 
 W pliku `tauri.conf.json` wartości `identifier` i
 `bundle.windows.wix.upgradeCode` muszą pozostać stałe między wersjami,
@@ -82,7 +82,7 @@ i tryb wyłączonej przezroczystości; Chromium headless nie potwierdza efektu D
 
 ## Zasobnik i autostart (WN-23)
 
-Lewy klik ikony przywraca okno, prawy otwiera własne menu (DM Sans, motyw
+Lewy klik ikony otwiera panel WN-24, prawy otwiera własne menu (DM Sans, motyw
 aplikacji, strzałki/Home/End/Tab, Enter/Spacja, Escape). Menu jest też dostępne
 przez **Opcje zasobnika** w oknie. Utrata fokusu chowa menu. X/Alt+F4 chowa
 okno do zasobnika; **Zakończ** kończy proces i usuwa ikonę. Kolejne uruchomienie
@@ -129,6 +129,28 @@ i klawiaturę menu. W debug `dev_tray_probe` tworzy dwa lokalne uwierzytelnione
 węzły QUIC/Session, mierzy 15 przejść ikony i wymaga każdego <100 ms; release
 odmawia tej operacji. Pozostają ręczne testy powłoki (prawy/lewy klik rzeczywistej
 ikony, restart Explorera, logowanie i deinstalacja na VM, różne DPI/monitory).
+
+## Panel przy zasobniku (WN-24)
+
+CCS/1
+M: Windows / panel 380×540 DIP
+FLOW: start -> ukryty WebView2 -> font i layout gotowe -> lewy klik zasobnika lub Win+Shift+W -> pokaż istniejące okno.
+RULE: Escape, X, Alt+F4 i utrata fokusu chowają panel; przycisk „Otwórz aplikację” otwiera główne okno. Prawy klik zachowuje menu WN-23.
+RULE: Skrót rejestrowany przez RegisterHotKey bez powtarzania; zamknięcie procesu zwalnia rejestrację. Konflikt skrótu nie przerywa startu: panel pokazuje wyjaśnienie, zasobnik nadal działa.
+IO: Fizyczny prostokąt ikony -> monitor, DPI i work area -> pozycja przy odpowiedniej krawędzi paska. Rozmiar ograniczony do work area; mniejsze ekrany mają przewijanie.
+RULE: Lokalny DM Sans, tokeny WN-20, cztery własne kafle, motyw aplikacji, wejście 160 ms / 8 px; reduced-motion wyłącza animację. Bez sparowanego urządzenia akcje są nieaktywne; brak fikcyjnych zdjęć, powiadomień i baterii.
+PERF: panel_snapshot.painted_us mierzy czas od rozpoczęcia natywnej obsługi otwarcia do potwierdzenia dwóch requestAnimationFrame w WebView2. To potwierdzenie zgłoszenia klatki, nie pomiar fizycznego ekranu; nie czeka na zakończenie animacji 160 ms.
+STATE: Test geometrii: cztery krawędzie paska, ujemne współrzędne, 200% DPI, mały monitor i auto-hide. Test rejestracji: konflikt, dispatch i zwolnienie skrótu z Ctrl+Alt+Shift+F24 (nie przejmuje Win+Shift+W użytkownika).
+
+```powershell
+node apps/windows/scripts/check-panel-native.cjs target/debug/windconnect-windows.exe
+node apps/windows/scripts/check-panel-native.cjs target/release/windconnect-windows.exe
+```
+
+CCS/1
+DEP: PLAYWRIGHT_MODULE jak dla check-ui.cjs.
+IO: 20 pomiarów <80 ms; preloading bez flash, Escape, utrata fokusu, otwarcie aplikacji, motywy, DM Sans, reduced-motion. Raport i PNG: %TEMP%/windconnect-wn24 (lub PANEL_ARTIFACTS). Runner zamyka własny proces i przeglądarkę.
+LIMIT: Przy zajętym Win+Shift+W raport jawnie zapisuje shortcut=false i komunikat OS; pozostałe sprawdzenia działają. Pełny test fizycznego skrótu wymaga wolnego skrótu. Zmiana krawędzi paska/monitora/DPI i rzeczywisty klik ikony pozostają do ręcznej walidacji powłoki; runner nie zmienia konfiguracji pulpitu.
 
 ## Odkrywanie i reguła zapory (WN-15)
 
