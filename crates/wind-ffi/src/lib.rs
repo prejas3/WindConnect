@@ -4,7 +4,7 @@
 use std::{fmt, io, sync::Arc, time::Duration};
 use wind_core::{
     identity::{DeviceIdentity, KeyStore, PublicKey},
-    network::{DiscoverySnapshot, NetworkChanges, NetworkDiscovery},
+    network::{DiscoveryOptions, DiscoverySnapshot, NetworkChanges, NetworkDiscovery},
     protocol::{DeviceKind, ErrorCode},
     relay::RelayLink,
     session::{LocalInfo, Router, Session},
@@ -269,10 +269,20 @@ impl CoreClient {
         let mut discovery = self.discovery.lock().await;
         if discovery.is_none() {
             let key = public_key(&self.identity.public_key)?;
-            let watcher = NetworkDiscovery::start(key, self.endpoint.clone(), self.network.clone())
-                .map_err(|error| CoreError::Transport {
-                    reason: error.to_string(),
-                })?;
+            // Paired devices always get a place in the broadcast cache (WN-87).
+            let options = DiscoveryOptions {
+                paired: Some(self.trust.clone()),
+                ..Default::default()
+            };
+            let watcher = NetworkDiscovery::start_with_options(
+                key,
+                self.endpoint.clone(),
+                self.network.clone(),
+                options,
+            )
+            .map_err(|error| CoreError::Transport {
+                reason: error.to_string(),
+            })?;
             *self.discovered.lock().await = Some(watcher.subscribe());
             *discovery = Some(watcher);
         }

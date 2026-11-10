@@ -4,11 +4,11 @@ use crate::{
     broadcast::{BroadcastConfig, BroadcastDiscovery},
     discovery::{DiscoveredPeer, Discovery, DiscoveryEvent},
     identity::PublicKey,
-    transport::Endpoint,
+    transport::{Endpoint, PinnedKeys},
 };
 use std::{
     collections::BTreeMap,
-    net::{IpAddr, SocketAddr},
+    net::{IpAddr, Ipv4Addr, SocketAddr},
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -51,6 +51,9 @@ pub struct DiscoverySnapshot {
 pub struct DiscoveryOptions {
     pub mdns: bool,
     pub broadcast: Option<BroadcastConfig>,
+    /// Paired devices: the broadcast cache always makes room for them
+    /// (PROTOCOL.md §2.0.1). Only a priority; it grants no trust.
+    pub paired: Option<Arc<PinnedKeys>>,
 }
 
 impl Default for DiscoveryOptions {
@@ -58,19 +61,109 @@ impl Default for DiscoveryOptions {
         Self {
             mdns: true,
             broadcast: Some(BroadcastConfig::default()),
+            paired: None,
         }
+    }
+}
+
+/// Most fingerprints the broadcast cache holds (§2.0.1).
+pub const BROADCAST_CACHE_LIMIT: usize = 128;
+
+struct BroadcastEntry {
+    peer: DiscoveredPeer,
+    source: Ipv4Addr,
+    seen: Instant,
+    paired: bool,
+}
+
+/// CCS/1 SEC:untrusted broadcast cache, bounded; floods cannot shut out paired peers (WN-87).
+/// One unpaired fingerprint per source IP (a newer one replaces it); when
+/// full, the least recently refreshed unpaired entry makes room. A paired
+/// fingerprint is always taken; unpaired ones never displace paired ones.
+#[derive(Default)]
+struct BroadcastCache {
+    entries: BTreeMap<[u8; 32], BroadcastEntry>,
+}
+
+impl BroadcastCache {
+    /// True if the cache changed. `is_paired` is asked only for a new fingerprint.
+    fn offer(
+        &mut self,
+        peer: DiscoveredPeer,
+        source: Ipv4Addr,
+        now: Instant,
+        is_paired: impl FnOnce(&[u8; 32]) -> bool,
+    ) -> bool {
+        let fingerprint = peer.fingerprint;
+        if let Some(entry) = self.entries.get_mut(&fingerprint) {
+            entry.peer = peer;
+            entry.source = source;
+            entry.seen = now;
+            if !entry.paired {
+                self.entries.retain(|key, other| {
+                    *key == fingerprint || other.paired || other.source != source
+                });
+            }
+            return true;
+        }
+        let paired = is_paired(&fingerprint);
+        if !paired {
+            self.entries
+                .retain(|_, other| other.paired || other.source != source);
+        }
+        if self.entries.len() >= BROADCAST_CACHE_LIMIT {
+            let oldest = |paired: bool| {
+                self.entries
+                    .iter()
+                    .filter(|(_, entry)| entry.paired == paired)
+                    .min_by_key(|(_, entry)| entry.seen)
+                    .map(|(key, _)| *key)
+            };
+            let victim = match (oldest(false), paired) {
+                (Some(key), _) => key,
+                (None, true) => match oldest(true) {
+                    Some(key) => key,
+                    None => return false,
+                },
+                (None, false) => return false,
+            };
+            self.entries.remove(&victim);
+        }
+        self.entries.insert(
+            fingerprint,
+            BroadcastEntry {
+                peer,
+                source,
+                seen: now,
+                paired,
+            },
+        );
+        true
+    }
+
+    /// True if something expired.
+    fn expire(&mut self, expiry: Duration) -> bool {
+        let before = self.entries.len();
+        self.entries
+            .retain(|_, entry| entry.seen.elapsed() < expiry);
+        before != self.entries.len()
+    }
+
+    fn clear(&mut self) {
+        self.entries.clear();
+    }
+
+    fn peers(&self) -> impl Iterator<Item = &DiscoveredPeer> {
+        self.entries.values().map(|entry| &entry.peer)
     }
 }
 
 fn merged_peers(
     mdns: &BTreeMap<String, DiscoveredPeer>,
-    broadcast: &BTreeMap<[u8; 32], (DiscoveredPeer, Instant)>,
+    broadcast: &BroadcastCache,
 ) -> Vec<DiscoveredPeer> {
     let mut merged = BTreeMap::new();
-    for peer in mdns
-        .values()
-        .chain(broadcast.values().map(|(peer, _)| peer))
-    {
+    for peer in mdns.values().chain(broadcast.peers()) {
         let entry = merged
             .entry(peer.fingerprint)
             .or_insert_with(|| peer.clone());
@@ -141,7 +234,7 @@ impl NetworkDiscovery {
             let mut discovery = discovery.and_then(Result::ok);
             let mut broadcast = broadcast.and_then(Result::ok);
             let mut peers = BTreeMap::new();
-            let mut broadcast_peers = BTreeMap::new();
+            let mut broadcast_peers = BroadcastCache::default();
             let mut replied: BTreeMap<std::net::Ipv4Addr, Instant> = BTreeMap::new();
             let period = options
                 .broadcast
@@ -201,9 +294,7 @@ impl NetworkDiscovery {
                     },
                     _ = tick.tick(), if options.broadcast.is_some() => {
                         if let Some(backend) = &broadcast {
-                            let before = broadcast_peers.len();
-                            broadcast_peers.retain(|_, (_, seen): &mut (DiscoveredPeer, Instant)| seen.elapsed() < backend.config().expiry);
-                            if before != broadcast_peers.len() { sender.send_modify(|state| state.peers = merged_peers(&peers, &broadcast_peers)); }
+                            if broadcast_peers.expire(backend.config().expiry) { sender.send_modify(|state| state.peers = merged_peers(&peers, &broadcast_peers)); }
                             if let Ok(address) = endpoint.local_addr() {
                                 if let Err(error) = backend.query(address.port()).await { sender.send_modify(|state| state.error = Some(error.to_string())); }
                             }
@@ -217,8 +308,8 @@ impl NetworkDiscovery {
                             let peer = DiscoveredPeer { service_name: format!("broadcast-{}", packet.fingerprint.iter().map(|b| format!("{b:02x}")).collect::<String>()),
                                 fingerprint: packet.fingerprint, addresses: vec![SocketAddr::new(IpAddr::V4(*source.ip()), packet.port)], pairing_port: None };
                             // CCS/1 SEC:bound untrusted cache and same-size unicast replies, at most one/IP/second.
-                            if broadcast_peers.len() < 128 || broadcast_peers.contains_key(&packet.fingerprint) {
-                                broadcast_peers.insert(packet.fingerprint, (peer, Instant::now()));
+                            let paired = |fingerprint: &[u8; 32]| options.paired.as_ref().is_some_and(|pins| pins.contains_fingerprint(fingerprint));
+                            if broadcast_peers.offer(peer, *source.ip(), Instant::now(), paired) {
                                 sender.send_modify(|state| state.peers = merged_peers(&peers, &broadcast_peers));
                             }
                             replied.retain(|_, time| time.elapsed() < Duration::from_secs(1));
@@ -353,5 +444,100 @@ mod windows {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn peer(fingerprint: [u8; 32], ip: Ipv4Addr) -> DiscoveredPeer {
+        DiscoveredPeer {
+            service_name: String::new(),
+            fingerprint,
+            addresses: vec![SocketAddr::new(IpAddr::V4(ip), 1)],
+            pairing_port: None,
+        }
+    }
+    fn fake(i: usize) -> [u8; 32] {
+        let mut fingerprint = [0xEE; 32];
+        fingerprint[..8].copy_from_slice(&(i as u64).to_be_bytes());
+        fingerprint
+    }
+    fn ip(net: u8, i: usize) -> Ipv4Addr {
+        Ipv4Addr::new(10, net, (i / 250) as u8, (i % 250) as u8 + 1)
+    }
+    const PHONE: [u8; 32] = [7; 32];
+
+    /// Spoofed source IPs: every fake fingerprint from its own IP, refreshed
+    /// each round before the phone; the paired phone still gets in, and
+    /// the limit holds.
+    #[test]
+    fn paired_fingerprint_gets_in_when_spoofed_ips_fill_the_cache() {
+        let mut cache = BroadcastCache::default();
+        let start = Instant::now();
+        let paired = |f: &[u8; 32]| *f == PHONE;
+        let phone = Ipv4Addr::new(192, 168, 1, 20);
+        for round in 0..3u64 {
+            let now = start + Duration::from_secs(2 * round);
+            for i in 0..200 {
+                cache.offer(peer(fake(i), ip(0, i)), ip(0, i), now, paired);
+                assert!(cache.entries.len() <= BROADCAST_CACHE_LIMIT);
+            }
+            assert!(cache.offer(peer(PHONE, phone), phone, now, paired));
+            assert!(cache.entries.contains_key(&PHONE));
+            assert_eq!(cache.entries.len(), BROADCAST_CACHE_LIMIT);
+        }
+        // Many more fakes never displace it.
+        for i in 0..400 {
+            let at = start + Duration::from_secs(9);
+            cache.offer(peer(fake(1000 + i), ip(1, i)), ip(1, i), at, paired);
+        }
+        assert!(cache.entries.contains_key(&PHONE));
+        assert_eq!(cache.entries.len(), BROADCAST_CACHE_LIMIT);
+    }
+
+    #[test]
+    fn one_unpaired_fingerprint_per_source_ip() {
+        let mut cache = BroadcastCache::default();
+        let now = Instant::now();
+        let spammer = Ipv4Addr::new(10, 0, 0, 66);
+        for i in 0..128 {
+            cache.offer(peer(fake(i), spammer), spammer, now, |_| false);
+        }
+        assert_eq!(cache.entries.len(), 1);
+        assert!(
+            cache.entries.contains_key(&fake(127)),
+            "the newest replaces"
+        );
+        let laptop = Ipv4Addr::new(10, 0, 0, 5);
+        assert!(cache.offer(peer([5; 32], laptop), laptop, now, |_| false));
+        assert_eq!(cache.entries.len(), 2);
+        // A paired fingerprint shares an IP; an unpaired one from that IP
+        // replaces only the unpaired entry there.
+        assert!(cache.offer(peer(PHONE, laptop), laptop, now, |f| *f == PHONE));
+        assert!(cache.offer(peer(fake(999), laptop), laptop, now, |_| false));
+        assert!(cache.entries.contains_key(&PHONE));
+        assert!(!cache.entries.contains_key(&[5; 32]));
+        assert_eq!(cache.entries.len(), 3);
+    }
+
+    #[test]
+    fn full_of_paired_drops_unpaired_and_evicts_oldest_paired() {
+        let mut cache = BroadcastCache::default();
+        let start = Instant::now();
+        for i in 0..BROADCAST_CACHE_LIMIT {
+            let at = start + Duration::from_millis(i as u64);
+            cache.offer(peer(fake(i), ip(0, i)), ip(0, i), at, |_| true);
+        }
+        let later = start + Duration::from_secs(1);
+        let other = Ipv4Addr::new(10, 9, 9, 9);
+        assert!(!cache.offer(peer([1; 32], other), other, later, |_| false));
+        assert!(cache.offer(peer([2; 32], other), other, later, |_| true));
+        assert!(
+            !cache.entries.contains_key(&fake(0)),
+            "oldest paired made room"
+        );
+        assert_eq!(cache.entries.len(), BROADCAST_CACHE_LIMIT);
     }
 }

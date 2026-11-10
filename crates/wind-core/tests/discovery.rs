@@ -65,6 +65,7 @@ async fn sas_window_advertises_the_pairing_port() {
         DiscoveryOptions {
             mdns: true,
             broadcast: None,
+            paired: None,
         },
     )
     .unwrap();

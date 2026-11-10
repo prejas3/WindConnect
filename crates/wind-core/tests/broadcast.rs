@@ -38,6 +38,7 @@ async fn two_nodes_discover_without_any_multicast_and_expire_stopped_peers() {
     let options = DiscoveryOptions {
         mdns: false,
         broadcast: Some(config(port)),
+        paired: None,
     };
     let changes = Arc::new(NetworkChanges::default());
     let mut one = NetworkDiscovery::start_with_options(
@@ -153,6 +154,7 @@ async fn network_change_sends_fresh_port_without_waiting_for_broadcast_interval(
         DiscoveryOptions {
             mdns: false,
             broadcast: Some(cfg_a),
+            paired: None,
         },
     )
     .unwrap();
@@ -163,6 +165,7 @@ async fn network_change_sends_fresh_port_without_waiting_for_broadcast_interval(
         DiscoveryOptions {
             mdns: false,
             broadcast: Some(cfg_b),
+            paired: None,
         },
     )
     .unwrap();
@@ -267,4 +270,101 @@ async fn sending_to_a_gone_peer_does_not_disable_receiving() {
     .expect("the later query arrives");
     assert_eq!(got.0.fingerprint, [2; 32]);
     assert_eq!(got.0.port, 47821);
+}
+
+/// WN-87: one host on the LAN floods 128 made-up fingerprints every
+/// interval; the paired device on another IP still shows up, and the
+/// broadcast cache never holds more than 128.
+#[tokio::test(flavor = "multi_thread")]
+async fn flood_of_fake_fingerprints_from_one_ip_does_not_hide_paired_device() {
+    let a = DeviceIdentity::generate().unwrap();
+    let b = DeviceIdentity::generate().unwrap();
+    let pins_a = Arc::new(PinnedKeys::new());
+    pins_a.pin(b.public_key());
+    let first = Endpoint::bind("127.0.0.1:0".parse().unwrap(), &a, pins_a.clone()).unwrap();
+    let second = Endpoint::bind(
+        "127.0.0.2:0".parse().unwrap(),
+        &b,
+        Arc::new(PinnedKeys::new()),
+    )
+    .unwrap();
+    let port = free_port();
+    let at = move |last: u8| SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, last), port);
+    let cfg = |listen: SocketAddrV4, to: SocketAddrV4| BroadcastConfig {
+        listen,
+        destinations: vec![to],
+        interval: Duration::from_millis(50),
+        expiry: Duration::from_millis(250),
+    };
+    let mut one = NetworkDiscovery::start_with_options(
+        a.public_key(),
+        first.clone(),
+        Arc::new(NetworkChanges::default()),
+        DiscoveryOptions {
+            mdns: false,
+            broadcast: Some(cfg(at(1), at(2))),
+            paired: Some(pins_a.clone()),
+        },
+    )
+    .unwrap();
+    let mut state = one.subscribe();
+    let spammer = tokio::net::UdpSocket::bind(at(3)).await.unwrap();
+    let flood = tokio::spawn(async move {
+        loop {
+            for i in 0..128u32 {
+                let mut fingerprint = [0xEE; 32];
+                fingerprint[..4].copy_from_slice(&i.to_be_bytes());
+                let packet = Packet {
+                    query: true,
+                    port: 40000,
+                    fingerprint,
+                };
+                let _ = spammer.send_to(&packet.encode(), at(1)).await;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    });
+    // Let the flood run for several expiry periods before the phone appears.
+    tokio::time::sleep(Duration::from_millis(600)).await;
+    assert!(!state.borrow().peers.is_empty(), "the flood is seen");
+    let mut two = NetworkDiscovery::start_with_options(
+        b.public_key(),
+        second.clone(),
+        Arc::new(NetworkChanges::default()),
+        DiscoveryOptions {
+            mdns: false,
+            broadcast: Some(cfg(at(2), at(1))),
+            paired: None,
+        },
+    )
+    .unwrap();
+    let wanted = *b.fingerprint().as_bytes();
+    tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            {
+                let snapshot = state.borrow_and_update();
+                assert!(snapshot.peers.len() <= 128, "the limit holds");
+                if snapshot.peers.iter().any(|peer| peer.fingerprint == wanted) {
+                    break;
+                }
+            }
+            state.changed().await.unwrap();
+        }
+    })
+    .await
+    .expect("the paired device must show up despite the flood");
+    // It stays while the flood goes on, past several expiry periods.
+    tokio::time::sleep(Duration::from_millis(600)).await;
+    {
+        let snapshot = state.borrow();
+        assert!(snapshot.peers.len() <= 128);
+        assert!(snapshot.peers.iter().any(|peer| peer.fingerprint == wanted));
+    }
+    flood.abort();
+    one.shutdown().await;
+    two.shutdown().await;
+    first.close();
+    second.close();
+    first.wait_idle().await;
+    second.wait_idle().await;
 }

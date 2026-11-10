@@ -115,6 +115,18 @@ QUIC v1 (RFC 9000) + TLS 1.3, ALPN "windconnect/1"
   Port źródłowy musi być portem odkrywania. Pakiety obce, niepoprawne,
   nadmiarowe i własny odcisk są pomijane. Nieodświeżony wpis wygasa po 8 s;
   bufor broadcastu mieści najwyżej 128 odcisków.
+- Pełny bufor robi miejsce zamiast odrzucać nowe wpisy (WN-87), tak aby
+  jeden nadawca zmyślonych odcisków nie wyłączył odkrywania:
+  - jedno IP źródłowe ma najwyżej jeden niesparowany odcisk; nowszy odcisk
+    z tego IP zastępuje poprzedni (jedno urządzenie ma jeden odcisk);
+  - odcisk sparowanego urządzenia (klucz przypięty, §2.1) jest przyjmowany
+    zawsze i nie liczy się do limitu jednego odcisku na IP;
+  - gdy bufor jest pełny, nowy wpis wypiera najdawniej odświeżony wpis
+    niesparowany; niesparowany odcisk nigdy nie wypiera sparowanego. Gdy
+    bufor jest pełen samych sparowanych, niesparowany jest pomijany, a
+    sparowany wypiera najdawniej odświeżony sparowany.
+  Pierwszeństwo sparowanych to tylko kolejność w buforze wskazówek; nie
+  daje zaufania i niczego nie przypina.
 - Broadcast działa równolegle z mDNS, również gdy multicast jest niedostępny.
   Wyniki są łączone według odcisku, z usunięciem powtórzonych adresów.
   To niezaufane wskazówki; NIE MOGĄ przypinać kluczy ani omijać TLS.
