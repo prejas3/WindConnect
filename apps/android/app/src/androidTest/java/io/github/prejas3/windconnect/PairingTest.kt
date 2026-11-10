@@ -29,6 +29,22 @@ class PairingTest {
     }
     private fun waitFor(tag: String) { compose.waitUntil(10_000) { compose.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty() } }
     private fun trust(): String = File(compose.activity.noBackupFilesDir, "paired.txt").let { if (it.exists()) it.readText() else "" }
+    private fun openScanner() {
+        compose.waitUntil(15_000) { compose.onAllNodesWithTag("pairingStatus").fetchSemanticsNodes().any { node ->
+            node.config[androidx.compose.ui.semantics.SemanticsProperties.Text].none { it.text == "Przygotowywanie połączenia…" }
+        } }
+        if (compose.onAllNodesWithTag("scanQr").fetchSemanticsNodes().isEmpty()) compose.onNodeWithTag("openSettings").performClick()
+        compose.waitUntil(15_000) { !compose.onNodeWithTag("scanQr").fetchSemanticsNode().config.contains(androidx.compose.ui.semantics.SemanticsProperties.Disabled) }
+        compose.onNodeWithTag("scanQr").performScrollTo().performClick()
+    }
+
+    @Test fun settingsReturnsToHomeWithoutInventingAConnection() {
+        compose.onNodeWithTag("openSettings").performClick()
+        compose.onNodeWithTag("backgroundStatus").assertExists()
+        compose.onNodeWithTag("closeSettings").performClick()
+        compose.onNodeWithTag("computerCard").assertExists()
+        compose.onNodeWithTag("recentTransfers").assertExists()
+    }
 
     @Test fun externalViewRequiresConfirmationAndCancellationDoesNotTrust() {
         val before = trust()
@@ -42,7 +58,7 @@ class PairingTest {
         compose.activityRule.scenario.recreate()
         waitFor("confirmPairing")
         compose.onNodeWithTag("cancelPairing").performScrollTo().performClick()
-        compose.onNodeWithTag("scanQr").assertExists()
+        compose.onNodeWithTag("computerCard").assertExists()
         assertEquals(before, trust())
         deliver(link("Drugi%20PC"))
         waitFor("confirmPairing")
@@ -74,11 +90,10 @@ class PairingTest {
     }
 
     @Test fun scannerEntryAndCancelRemainAvailable() {
-        compose.waitUntil(15_000) { !compose.onNodeWithTag("scanQr").fetchSemanticsNode().config.contains(androidx.compose.ui.semantics.SemanticsProperties.Disabled) }
-        compose.onNodeWithTag("scanQr").performClick()
+        openScanner()
         compose.onNodeWithText("Zeskanuj kod QR").assertExists()
         compose.onNodeWithTag("cancelPairing").performScrollTo().performClick()
-        compose.onNodeWithTag("scanQr").assertExists()
+        compose.onNodeWithTag("computerCard").assertExists()
     }
 
     @Test fun explicitConfirmationPairsWithRealPc() {
@@ -115,6 +130,35 @@ class PairingTest {
         val elapsed = android.os.SystemClock.elapsedRealtime() - start
         assertTrue("decoded QR to connected session must stay below 10s: $elapsed", elapsed < 10000)
         InstrumentationRegistry.getInstrumentation().sendStatus(0, android.os.Bundle().apply { putString("qrToConnectedMs", elapsed.toString()) })
+        if (InstrumentationRegistry.getArguments().getString("homeScreenProof") == "true") {
+            compose.onNodeWithTag("pairingDone").performScrollTo().performClick()
+            compose.onNodeWithTag("computerName").assertTextEquals("Test PC")
+            compose.onNodeWithTag("computerLatency").assertTextContains("ms", substring = true)
+            for (tag in listOf("homeSend", "homeTouchpad", "homeLock", "homeLink")) compose.onNodeWithTag(tag).assertIsNotEnabled()
+            compose.activityRule.scenario.recreate()
+            compose.onNodeWithTag("computerName").assertTextEquals("Test PC")
+            val instrumentation = InstrumentationRegistry.getInstrumentation()
+            for (theme in listOf("Light", "Dark")) {
+                compose.onNodeWithTag("previewToggle").performClick()
+                if (android.os.Build.VERSION.SDK_INT >= 31) {
+                    val source = compose.onNodeWithTag("paletteSource").fetchSemanticsNode().config[androidx.compose.ui.semantics.SemanticsProperties.Text].first().text
+                    if (source.contains("systemowy")) compose.onNodeWithTag("dynamicColor").performClick()
+                }
+                compose.onNodeWithTag("theme-$theme").performScrollTo().performClick()
+                compose.onNodeWithTag("previewToggle").performClick()
+                compose.onNodeWithTag("computerName").assertTextEquals("Test PC")
+                compose.waitForIdle()
+                val image = instrumentation.uiAutomation.takeScreenshot()
+                File(context.cacheDir, "wn31-$theme.png").outputStream().use { image.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+                image.recycle()
+            }
+            compose.onNodeWithTag("openSettings").performClick()
+            compose.onNodeWithTag("backgroundStatus").assertExists()
+            compose.onNodeWithTag("closeSettings").performClick()
+            compose.onNodeWithTag("computerName").assertTextEquals("Test PC")
+            instrumentation.sendStatus(0, android.os.Bundle().apply { putString("homeScreenProof", "true") })
+            compose.activityRule.scenario.close()
+        }
         if (background) {
             val manager = context.getSystemService(android.app.NotificationManager::class.java)
             val deadline = android.os.SystemClock.elapsedRealtime() + 5000
@@ -200,8 +244,7 @@ class PairingTest {
         }
         manager.registerAvailabilityCallback(callback, android.os.Handler(android.os.Looper.getMainLooper()))
         try {
-            compose.waitUntil(15_000) { !compose.onNodeWithTag("scanQr").fetchSemanticsNode().config.contains(androidx.compose.ui.semantics.SemanticsProperties.Disabled) }
-            compose.onNodeWithTag("scanQr").performClick()
+            openScanner()
             compose.onNodeWithTag("cameraPreview").assertExists()
             try {
                 compose.waitUntil(5_000) { Thread.getAllStackTraces().keys.any { it.name.startsWith("WindConnect QR") && it.isAlive } }

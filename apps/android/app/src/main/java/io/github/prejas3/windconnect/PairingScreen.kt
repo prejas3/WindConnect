@@ -31,6 +31,8 @@ fun PairingScreen(model: PairingViewModel, diagnostic: @Composable () -> Unit) {
     var hasCamera by remember { mutableStateOf(context.checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) }
     var denied by remember { mutableStateOf(false) }
     var diagnostics by remember { mutableStateOf(false) }
+    val scroll = rememberScrollState()
+    LaunchedEffect(state.screen) { if (state.screen != "home") diagnostics = false; scroll.scrollTo(0) }
     val lifecycle = LocalLifecycleOwner.current
     DisposableEffect(lifecycle) {
         val observer = object : DefaultLifecycleObserver {
@@ -44,20 +46,14 @@ fun PairingScreen(model: PairingViewModel, diagnostic: @Composable () -> Unit) {
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted -> hasCamera = granted; denied = !granted }
     BackHandler(state.screen != "home" || diagnostics) { if (diagnostics) diagnostics = false else model.cancel() }
     if (diagnostics && state.screen == "home") { diagnostic(); return }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp).testTag("pairingScreen"), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+    Column(Modifier.fillMaxSize().verticalScroll(scroll).padding(24.dp).testTag("pairingScreen"), verticalArrangement = Arrangement.spacedBy(18.dp)) {
         when (state.screen) {
-            "home" -> {
-                Text("Połącz z komputerem", style = MaterialTheme.typography.headlineSmall)
-                Text("Otwórz WindConnect na komputerze i wyświetl kod QR. Oba urządzenia powinny być w tej samej sieci Wi-Fi.")
-                WindCard(Modifier.fillMaxWidth()) {
-                    Text("Twój komputer pod ręką", style = MaterialTheme.typography.titleMedium)
-                    Text("Zeskanuj kod, sprawdź urządzenie i potwierdź parowanie.")
-                    WindButton("Zeskanuj kod QR", model::scan, Modifier.testTag("scanQr"), enabled = state.ready)
-                }
-                Text(state.message.ifEmpty { if (state.ready) "Gotowy do parowania" else "Przygotowywanie bezpiecznego połączenia…" }, modifier = Modifier.testTag("pairingStatus"))
+            "home" -> HomeScreen(state, model::scan) { diagnostics = true }
+            "settings" -> {
+                Text("Ustawienia", style = MaterialTheme.typography.headlineSmall)
+                WindButton("Powrót", model::cancel, Modifier.testTag("closeSettings"), kind = ButtonKind.Quiet)
                 BackgroundControls(state.hasPairedDevice)
-                if (state.skippedRecords > 0uL) Text("Pominięto uszkodzone wpisy sparowania: ${state.skippedRecords}. Poprawne urządzenia są nadal dostępne.", modifier = Modifier.testTag("pairingStorageWarning"), style = MaterialTheme.typography.bodySmall)
-                if (BuildConfig.DEBUG) WindButton("Test połączenia z PC", { diagnostics = true }, kind = ButtonKind.Quiet)
+                WindButton("Sparuj kolejny komputer", model::scan, Modifier.testTag("scanQr"), enabled = state.ready, kind = ButtonKind.Secondary)
             }
             "scanner" -> {
                 Text("Zeskanuj kod QR", style = MaterialTheme.typography.headlineSmall)

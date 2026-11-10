@@ -5,6 +5,7 @@ import android.content.Intent
 import androidx.activity.viewModels
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.compose.ReportDrawnWhen
 import androidx.activity.enableEdgeToEdge
 import android.app.Application
 import androidx.compose.foundation.layout.Arrangement
@@ -55,7 +56,9 @@ class MainActivity : ComponentActivity() {
         receiveLink(intent)
         setContent {
             val state by pairing.ui.collectAsStateWithLifecycle()
-            WindApp(forceContent = state.screen != "home") { PairingScreen(pairing) { ConnectionScreen() } }
+            // CCS/1 PERF:TTFD includes local identity/store readiness; an offline PC cannot hold startup reporting indefinitely.
+            ReportDrawnWhen { state.initialized }
+            WindApp(forceContent = state.screen != "home", onSettings = pairing::settings) { PairingScreen(pairing) { ConnectionScreen() } }
         }
     }
     override fun onNewIntent(intent: Intent) {
@@ -71,7 +74,8 @@ class MainActivity : ComponentActivity() {
         if (incoming.action == Intent.ACTION_VIEW) {
             val link = incoming.dataString
             incoming.data = null
-            pairing.offerLink(link)
+            // CCS/1 RULE:configuration recreation must not re-offer an already consumed VIEW intent.
+            if (link != null) pairing.offerLink(link)
         }
     }
 }

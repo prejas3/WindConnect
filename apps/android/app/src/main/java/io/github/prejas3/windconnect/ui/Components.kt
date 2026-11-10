@@ -83,6 +83,9 @@ fun WindIcon(name: String, modifier: Modifier = Modifier) {
         "lock" -> "M5 10h14v11H5zM8 10V7a4 4 0 0 1 8 0v3M12 14v3"
         "touch" -> "M4 3h16v18H4zM4 15h16M12 15v6M9 8l2 2 4-4"
         "phone" -> "M6 2h12v20H6zM10 5h4M11 19h2"
+        "external" -> "M14 3h7v7M10 14L21 3M21 14v7H3V3h7"
+        "file" -> "M14 2H4v20h16V8zM14 2v6h6M8 13h8M8 17h5"
+        "gear" -> "M12 9a3 3 0 1 0 0 6a3 3 0 0 0 0-6M9 3h6l1 3 3 1 2 5-2 5-3 1-1 3H9l-1-3-3-1-2-5 2-5 3-1z"
         else -> "M3 4h18v12H3zM8 21h8M12 16v5"
     }
     val path = remember(data) { PathParser().parsePathString(data).toPath() }
@@ -90,9 +93,9 @@ fun WindIcon(name: String, modifier: Modifier = Modifier) {
 }
 
 @Composable
-fun WindAction(title: String, subtitle: String, icon: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+fun WindAction(title: String, subtitle: String, icon: String, onClick: (() -> Unit)?, modifier: Modifier = Modifier) {
     Column(modifier.heightIn(min = 96.dp).clip(RoundedCornerShape(13.dp)).background(MaterialTheme.colorScheme.surface)
-        .clickable(role = Role.Button, onClick = onClick).padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        .clickable(enabled = onClick != null, role = Role.Button, onClick = { onClick?.invoke() }).padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         WindIcon(icon)
         Text(title, style = MaterialTheme.typography.labelLarge)
         Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)

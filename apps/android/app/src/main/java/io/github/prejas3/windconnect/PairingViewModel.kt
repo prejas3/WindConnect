@@ -23,6 +23,9 @@ data class PairingUi(
     val message: String = "",
     val skippedRecords: ULong = 0uL,
     val hasPairedDevice: Boolean = false,
+    val initialized: Boolean = false,
+    val computerName: String? = null,
+    val connection: ConnectionState? = null,
 )
 
 class PairingViewModel(application: Application) : AndroidViewModel(application) {
@@ -37,7 +40,7 @@ class PairingViewModel(application: Application) : AndroidViewModel(application)
                 val opened = (application as WindApplication).connections.acquire()
                 core = opened
                 val paired = opened.pairedDevices()
-                mutableUi.update { it.copy(ready = true, skippedRecords = opened.skippedPairingRecords, hasPairedDevice = paired.isNotEmpty()) }
+                mutableUi.update { it.copy(ready = true, initialized = true, skippedRecords = opened.skippedPairingRecords, hasPairedDevice = paired.isNotEmpty(), computerName = paired.lastOrNull()?.name) }
                 viewModelScope.launch {
                     opened.state.collect { state ->
                         val message = when (state) {
@@ -46,17 +49,22 @@ class PairingViewModel(application: Application) : AndroidViewModel(application)
                             is ConnectionState.Failed -> "Komputer chwilowo nieosiągalny · sparowanie zachowane"
                             else -> null
                         }
-                        if (message != null) mutableUi.update { current -> if (current.screen in listOf("home", "paired")) current.copy(message = message) else current }
+                        mutableUi.update { current -> current.copy(
+                            connection = state,
+                            computerName = (state as? ConnectionState.Connected)?.peerName ?: current.computerName,
+                            message = if (message != null && current.screen in listOf("home", "paired")) message else current.message,
+                        ) }
                     }
                 }
             } catch (error: Exception) {
                 if (error is CancellationException) throw error
-                mutableUi.update { it.copy(message = "Nie udało się odczytać tożsamości urządzenia. Uruchom aplikację ponownie.") }
+                mutableUi.update { it.copy(initialized = true, message = "Nie udało się odczytać tożsamości urządzenia. Uruchom aplikację ponownie.") }
             }
         }
     }
 
     fun scan() { if (ui.value.screen != "pairing") { clearOffer(); mutableUi.update { it.copy(screen = "scanner", message = "") } } }
+    fun settings() { if (ui.value.screen == "home") mutableUi.update { it.copy(screen = "settings") } }
     fun cancel() { if (ui.value.screen != "pairing") { clearOffer(); mutableUi.update { it.copy(screen = "home", name = "", fingerprint = "", message = if (core?.state?.value is ConnectionState.Connected) "Połączono z komputerem" else "") } } }
     fun cameraError() { mutableUi.update { it.copy(screen = "error", message = "Nie udało się otworzyć aparatu. Zamknij inne aplikacje korzystające z aparatu i spróbuj ponownie.") } }
 
@@ -85,7 +93,7 @@ class PairingViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             try {
                 val peer = owner.pairQr(active)
-                mutableUi.update { it.copy(screen = "paired", name = peer.name, fingerprint = peer.fingerprint, hasPairedDevice = true, message = "Sparowano · Łączenie z komputerem…") }
+                mutableUi.update { it.copy(screen = "paired", name = peer.name, computerName = peer.name, fingerprint = peer.fingerprint, hasPairedDevice = true, message = "Sparowano · Łączenie z komputerem…") }
                 try {
                     owner.connectPaired(peer)
                     mutableUi.update { it.copy(message = "Połączono z komputerem") }

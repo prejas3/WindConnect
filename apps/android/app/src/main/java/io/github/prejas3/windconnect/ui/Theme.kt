@@ -2,6 +2,7 @@ package io.github.prejas3.windconnect.ui
 
 import android.os.Build
 import android.app.Activity
+import android.graphics.drawable.ColorDrawable
 import android.content.Context
 import android.content.ContextWrapper
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -10,6 +11,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
@@ -77,6 +79,8 @@ fun WindConnectTheme(mode: ThemeMode = ThemeMode.System, dynamicColor: Boolean =
     val view = LocalView.current
     SideEffect {
         view.context.activity()?.window?.let { window ->
+            // CCS/1 RULE:system-bar backing follows the app's selected theme, including manual overrides.
+            window.setBackgroundDrawable(ColorDrawable(colors.background.toArgb()))
             WindowCompat.getInsetsController(window, view).apply {
                 isAppearanceLightStatusBars = !dark
                 isAppearanceLightNavigationBars = !dark
