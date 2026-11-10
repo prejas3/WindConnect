@@ -16,6 +16,10 @@ pub struct DiscoveredPeer {
     pub service_name: String,
     pub fingerprint: [u8; 32],
     pub addresses: Vec<SocketAddr>,
+    /// TXT `pair` (§12.4): the port of the device's pairing endpoint while
+    /// its SAS window is open. An untrusted hint like the rest; §12.6
+    /// authenticates.
+    pub pairing_port: Option<u16>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -32,27 +36,31 @@ pub struct Discovery {
     monitor: Receiver<mdns_sd::DaemonEvent>,
     fingerprint: [u8; 32],
     fullname: String,
+    instance: String,
+    hex: String,
+    port: u16,
 }
 
 impl Discovery {
     /// CCS/1 IO:device public key + actual bound QUIC port -> LAN discovery
     /// RULE:call after binding transport; port 0 is rejected. No pairing state changes.
     pub fn start(key: &PublicKey, port: u16) -> mdns_sd::Result<Self> {
+        Self::start_with_pairing(key, port, None)
+    }
+
+    /// [`start`](Self::start), advertising `pairing` as TXT `pair` from the
+    /// first announcement (see [`set_pairing_port`](Self::set_pairing_port)).
+    pub fn start_with_pairing(
+        key: &PublicKey,
+        port: u16,
+        pairing: Option<u16>,
+    ) -> mdns_sd::Result<Self> {
         if port == 0 {
             return Err(mdns_sd::Error::Msg("QUIC port must be nonzero".into()));
         }
         let hex = key.fingerprint().to_hex();
         let instance = format!("wc-{}", &hex[..40]);
-        let host = format!("{instance}.local.");
-        let service = ServiceInfo::new(
-            SERVICE_TYPE,
-            &instance,
-            &host,
-            "",
-            port,
-            &[("fingerprint", hex.as_str())][..],
-        )?
-        .enable_addr_auto();
+        let service = service_info(&instance, &hex, port, pairing)?;
         let fullname = service.get_fullname().to_owned();
         let daemon = ServiceDaemon::new()?;
         let result = (|| {
@@ -68,12 +76,27 @@ impl Discovery {
                 monitor,
                 fingerprint: *key.fingerprint().as_bytes(),
                 fullname,
+                instance,
+                hex,
+                port,
             }),
             Err(error) => {
                 let _ = daemon.shutdown();
                 Err(error)
             }
         }
+    }
+
+    /// CCS/1 IO:open SAS window port | None -> TXT `pair` re-announced (§12.4)
+    /// RULE:port 0 is refused; the receiver treats the value as an untrusted hint.
+    pub fn set_pairing_port(&self, pairing: Option<u16>) -> mdns_sd::Result<()> {
+        if pairing == Some(0) {
+            return Err(mdns_sd::Error::Msg("pairing port must be nonzero".into()));
+        }
+        // Registering the same name again replaces its records (TXT is a
+        // unique record set, so peers drop the old value).
+        self.daemon
+            .register(service_info(&self.instance, &self.hex, self.port, pairing)?)
     }
 
     /// Cancellation safe; ignores malformed records and our own advertisement.
@@ -113,6 +136,39 @@ impl Drop for Discovery {
     }
 }
 
+fn service_info(
+    instance: &str,
+    hex: &str,
+    port: u16,
+    pairing: Option<u16>,
+) -> mdns_sd::Result<ServiceInfo> {
+    let pairing = pairing
+        .filter(|port| *port != 0)
+        .map(|port| port.to_string());
+    let mut txt = vec![("fingerprint", hex)];
+    if let Some(pairing) = &pairing {
+        txt.push(("pair", pairing.as_str()));
+    }
+    Ok(ServiceInfo::new(
+        SERVICE_TYPE,
+        instance,
+        &format!("{instance}.local."),
+        "",
+        port,
+        &txt[..],
+    )?
+    .enable_addr_auto())
+}
+
+/// TXT `pair`: 1–5 decimal digits, 1–65535; anything else is no port.
+fn pairing_port(info: &ResolvedService) -> Option<u16> {
+    let value = info.get_property_val_str("pair")?;
+    if value.is_empty() || value.len() > 5 || !value.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    value.parse().ok().filter(|port| *port != 0)
+}
+
 fn decode(info: &ResolvedService) -> Option<DiscoveredPeer> {
     if !info.ty_domain.eq_ignore_ascii_case(SERVICE_TYPE) || info.port == 0 {
         return None;
@@ -150,6 +206,7 @@ fn decode(info: &ResolvedService) -> Option<DiscoveredPeer> {
         service_name: info.fullname.clone(),
         fingerprint,
         addresses,
+        pairing_port: pairing_port(info),
     })
 }
 
@@ -159,13 +216,17 @@ mod tests {
     use std::net::IpAddr;
 
     fn record(value: &str) -> ResolvedService {
+        record_with(&[("fingerprint", value)])
+    }
+
+    fn record_with(txt: &[(&str, &str)]) -> ResolvedService {
         ServiceInfo::new(
             SERVICE_TYPE,
             "test",
             "test.local.",
             "192.168.1.2",
             47821,
-            &[("fingerprint", value)][..],
+            txt,
         )
         .unwrap()
         .as_resolved_service()
@@ -176,6 +237,39 @@ mod tests {
         let peer = decode(&record(&"aB".repeat(32))).unwrap();
         assert_eq!(peer.fingerprint, [0xab; 32]);
         assert_eq!(peer.addresses, ["192.168.1.2:47821".parse().unwrap()]);
+        assert_eq!(peer.pairing_port, None);
+    }
+
+    #[test]
+    fn pairing_port_is_read_and_a_bad_one_skipped() {
+        let fingerprint = "ab".repeat(32);
+        let pair = |value: &str| {
+            decode(&record_with(&[
+                ("fingerprint", fingerprint.as_str()),
+                ("pair", value),
+            ]))
+            .expect("a bad pair value leaves the advertisement usable")
+            .pairing_port
+        };
+        assert_eq!(pair("47830"), Some(47830));
+        assert_eq!(pair("1"), Some(1));
+        assert_eq!(pair("65535"), Some(65535));
+        for bad in [
+            "0", "00000", "", "abc", "+5", "-1", " 5", "65536", "123456", "4783o",
+        ] {
+            assert_eq!(pair(bad), None, "pair={bad:?}");
+        }
+    }
+
+    #[test]
+    fn advertisement_carries_pair_only_while_set() {
+        let hex = "ab".repeat(32);
+        let without = service_info("wc-test", &hex, 47820, None).unwrap();
+        assert!(without.get_property("pair").is_none());
+        let with = service_info("wc-test", &hex, 47820, Some(47830)).unwrap();
+        assert_eq!(with.get_property_val_str("pair"), Some("47830"));
+        let zero = service_info("wc-test", &hex, 47820, Some(0)).unwrap();
+        assert!(zero.get_property("pair").is_none());
     }
 
     #[test]

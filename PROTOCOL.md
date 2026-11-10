@@ -91,6 +91,11 @@ QUIC v1 (RFC 9000) + TLS 1.3, ALPN "windconnect/1"
   (host z `.local.`); mDNS może zmienić nazwę przy konflikcie.
 - Ogłoszenie jest niezaufaną wskazówką adresową. Odcisk TXT NIE MOŻE
   przypinać klucza ani omijać uwierzytelnienia TLS z §2.
+- TXT `pair` (WN-82, §12.4): port endpointu parowania, tylko gdy otwarte
+  jest okno SAS; znika po jego zamknięciu (sparowanie, wygaśnięcie,
+  zamknięcie, blokada po próbach, zastąpienie oknem QR). Wartość: 1–5 cyfr
+  dziesiętnych, 1–65535; inna (0, nie liczba, za duża) oznacza brak portu,
+  a reszta ogłoszenia zostaje. Zmiana sieci nie usuwa pola.
 - Aktualizacja rozwiązanego ogłoszenia zastępuje jego poprzednie adresy;
   goodbye lub wygaśnięcie rekordów usuwa usługę. Własny odcisk jest pomijany.
 
@@ -1169,8 +1174,9 @@ loguje.
 
 Ścieżka SAS nie ma linku. Serwer z otwartym oknem SAS ogłasza port
 endpointu parowania w mDNS (§2.0) w polu TXT `pair=<port>` i usuwa je po
-zamknięciu okna (ogłaszanie wdraża WC-27; do tego czasu adres podaje
-aplikacja). Ogłoszenie jest niezaufaną wskazówką, jak całe mDNS.
+zamknięciu okna (WN-82; aplikacja łączy `PairingListener` z odkrywaniem,
+WC-27). Ogłoszenie jest niezaufaną wskazówką, jak całe mDNS: adres bierze
+się z A/AAAA tego samego ogłoszenia, a uwierzytelnia §12.6.
 
 ### 12.5 Ścieżka QR
 

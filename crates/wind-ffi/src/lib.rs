@@ -124,6 +124,8 @@ pub struct CoreClient {
 pub struct DiscoveredDevice {
     pub fingerprint: String,
     pub addresses: Vec<String>,
+    /// TXT `pair` (§12.4): the SAS pairing port while its window is open.
+    pub pairing_port: Option<u16>,
 }
 
 #[derive(uniffi::Record, Clone, Debug)]
@@ -234,6 +236,7 @@ impl CoreClient {
                         .map(|b| format!("{b:02x}"))
                         .collect(),
                     addresses: peer.addresses.into_iter().map(|a| a.to_string()).collect(),
+                    pairing_port: peer.pairing_port,
                 })
                 .collect(),
         })

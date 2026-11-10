@@ -793,3 +793,64 @@ async fn sas_through_a_relay_shows_different_codes() {
     assert_eq!(pc.paired_keys(), vec![]);
     assert_eq!(phone.paired_keys(), vec![]);
 }
+
+/// WN-82 (§12.4): the listener tells its advertiser (mDNS TXT `pair`) its
+/// port while a SAS window is open, and `None` however that window ends;
+/// a QR window is never advertised.
+#[tokio::test]
+async fn sas_window_is_advertised_only_while_open() {
+    let (pc, phone) = (Device::new(), Device::new());
+    let mut listener = pc.listener(PairingConfig {
+        ttl: Duration::from_millis(300),
+        ..PairingConfig::default()
+    });
+    let port = Some(listener.local_addr().unwrap().port());
+    let told = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let log = told.clone();
+    listener.advertise_with(Arc::new(move |p| log.lock().unwrap().push(p)));
+    let take = || std::mem::take(&mut *told.lock().unwrap());
+    assert_eq!(take(), vec![], "no window: nothing to withdraw");
+
+    listener.open_sas();
+    listener.open_sas();
+    assert_eq!(take(), vec![port], "told once per change");
+    listener.open_qr(vec![listener.local_addr().unwrap()]);
+    assert_eq!(take(), vec![None], "QR replaced SAS");
+    listener.open_sas();
+    listener.close_window();
+    assert_eq!(take(), vec![port, None], "closed");
+
+    listener.open_sas();
+    // Earlier windows' Replaced/Closed events are still queued.
+    timeout(T, async {
+        while !matches!(
+            event(&mut listener).await,
+            PairingEvent::WindowClosed(WindowEnd::Expired)
+        ) {}
+    })
+    .await
+    .expect("the SAS window expires");
+    assert_eq!(take(), vec![port, None], "expired");
+
+    listener.open_sas();
+    let (tx, mut prompts) = mpsc::unbounded_channel();
+    let client = sas_client(&phone, listener.local_addr().unwrap(), tx);
+    let on_pc = server_prompt(&mut listener).await;
+    timeout(T, prompts.recv()).await.unwrap().unwrap().accept();
+    on_pc.accept();
+    timeout(T, client).await.unwrap().unwrap().unwrap();
+    assert_eq!(take(), vec![port, None], "paired");
+
+    listener.open_sas();
+    let late = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let late_log = late.clone();
+    listener.advertise_with(Arc::new(move |p| late_log.lock().unwrap().push(p)));
+    assert_eq!(take(), vec![port, None], "a replaced advertiser withdraws");
+    assert_eq!(
+        *late.lock().unwrap(),
+        vec![port],
+        "a new one learns the open window"
+    );
+    drop(listener);
+    assert_eq!(*late.lock().unwrap(), vec![port, None], "dropped listener");
+}

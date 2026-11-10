@@ -49,6 +49,11 @@ use crate::transport::{
 use crypto::{exporter, EXPORTER_LEN};
 use wire::{read_message, write_message, PairMessage, ReadFail, NONCE_LEN, SECRET_LEN};
 
+/// Told the pairing port while a SAS window is open (`Some`) and `None`
+/// once it ends; see [`PairingListener::advertise_with`]. Runs under the
+/// listener's lock: it must return quickly and not call the listener.
+pub type PairingAdvertiser = Arc<dyn Fn(Option<u16>) + Send + Sync>;
+
 /// Failed attempts that close a pairing window.
 pub const MAX_PAIR_ATTEMPTS: u32 = 3;
 
@@ -308,9 +313,29 @@ struct Shared {
     store: Arc<dyn PairedStore>,
     pins: Arc<PinnedKeys>,
     config: PairingConfig,
+    port: u16,
+    /// The advertiser and the value it was last told.
+    advert: Mutex<(Option<PairingAdvertiser>, Option<u16>)>,
 }
 
 impl Shared {
+    /// Tells the advertiser what the window now needs: the port while a SAS
+    /// window is open, else `None`. Call without the window lock held.
+    // CCS/1 RULE:lock order advert -> window; calls the advertiser at most once per change.
+    fn advertise(&self) {
+        let mut advert = self.advert.lock().unwrap_or_else(|e| e.into_inner());
+        let wanted = match &*self.lock() {
+            Window::Open(o) if o.secret.is_none() => Some(self.port),
+            _ => None,
+        };
+        if advert.1 != wanted {
+            advert.1 = wanted;
+            if let Some(advertiser) = &advert.0 {
+                advertiser(wanted);
+            }
+        }
+    }
+
     fn emit(&self, event: PairingEvent) {
         let _ = self.events.send(event);
     }
@@ -330,6 +355,7 @@ impl Shared {
             busy: false,
         });
         drop(w);
+        self.advertise();
         if replaced {
             self.emit(PairingEvent::WindowClosed(WindowEnd::Replaced));
         }
@@ -370,6 +396,7 @@ impl Shared {
             *w = Window::Locked;
         }
         drop(w);
+        self.advertise();
         self.emit(PairingEvent::AttemptFailed { reason, failures });
         if failures >= MAX_PAIR_ATTEMPTS {
             self.emit(PairingEvent::WindowClosed(WindowEnd::TooManyAttempts));
@@ -402,6 +429,7 @@ impl Shared {
         *w = Window::Closed;
         self.pins.pin(device.key);
         drop(w);
+        self.advertise();
         self.emit(PairingEvent::Paired(device.clone()));
         self.emit(PairingEvent::WindowClosed(WindowEnd::Paired));
         Ok(())
@@ -412,6 +440,7 @@ impl Shared {
         if matches!(&*w, Window::Open(o) if o.id == id) {
             *w = Window::Closed;
             drop(w);
+            self.advertise();
             self.emit(PairingEvent::WindowClosed(WindowEnd::Expired));
         }
     }
@@ -421,6 +450,7 @@ impl Shared {
         let was_open = matches!(*w, Window::Open(_));
         *w = Window::Closed;
         drop(w);
+        self.advertise();
         if was_open {
             self.emit(PairingEvent::WindowClosed(WindowEnd::Closed));
         }
@@ -456,6 +486,7 @@ impl PairingListener {
     ) -> Result<Self, EndpointError> {
         let server = pairing_server_config(identity)?;
         let endpoint = quinn::Endpoint::server(server, addr).map_err(EndpointError::Io)?;
+        let port = endpoint.local_addr().map_err(EndpointError::Io)?.port();
         let (tx, events) = mpsc::unbounded_channel();
         let shared = Arc::new(Shared {
             window: Mutex::new(Window::Closed),
@@ -466,6 +497,8 @@ impl PairingListener {
             store,
             pins,
             config,
+            port,
+            advert: Mutex::new((None, None)),
         });
         let runtime = tokio::runtime::Handle::current();
         runtime.spawn(accept_loop(endpoint.clone(), shared.clone()));
@@ -497,6 +530,25 @@ impl PairingListener {
     pub fn open_sas(&self) {
         let id = self.shared.open(None);
         self.expire_after(id);
+    }
+
+    /// Reports this listener's port to `advertiser` while a SAS window is
+    /// open and `None` once it ends (closed, expired, paired, locked,
+    /// replaced, or the listener dropped), as §12.4 asks of mDNS TXT `pair`:
+    /// pass [`crate::network::NetworkDiscovery::pairing_advertiser`]. A QR
+    /// window is not advertised; its link carries the address. Replaces an
+    /// earlier advertiser (told `None` if it was advertising) and tells the
+    /// new one at once if a SAS window is open.
+    pub fn advertise_with(&self, advertiser: PairingAdvertiser) {
+        let mut advert = self.shared.advert.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(old) = advert.0.replace(advertiser) {
+            if advert.1.is_some() {
+                old(None);
+            }
+        }
+        advert.1 = None;
+        drop(advert);
+        self.shared.advertise();
     }
 
     /// Closes the window, if any; its secret is wiped.
