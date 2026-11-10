@@ -440,6 +440,11 @@ Zasady:
      z wyzerowanym stanem, a odbiorca zwalnia wciśnięte przyciski
      (sekcje 8.2 i 8.4); zdarzenia z czasu wyłączenia nie trafiają
      do systemu.
+   - Kanał `files` (WN-86): wycofanie zatrzymuje (`STOP_SENDING`,
+     `CANCELLED`) strumienie wszystkich trwających transferów do tej
+     strony; odbiorca kończy je i usuwa częściowe pliki, a nadawca widzi
+     transfer jako anulowany przez drugą stronę. Po ponownym włączeniu
+     nadawca zaczyna transfer od nowa (sekcja 9.1).
 
 Przykład asymetryczny: komputer ogłasza `["clipboard/1", "input/1"]`,
 telefon `["notify/1"]`.
@@ -1064,6 +1069,11 @@ Przebieg:
 6. Anulowanie przez którąkolwiek stronę: `RESET_STREAM` i `STOP_SENDING`
    z kodem `CANCELLED` na wszystkich strumieniach transferu. Odbiorca usuwa
    wtedy częściowy plik.
+7. Wycofanie `files/1` (sekcja 6, zasada 5) działa jak anulowanie przez
+   odbiorcę każdego jego trwającego transferu; nowe strumienie `files`
+   w czasie wycofania dostają `CAPABILITY_MISSING`. Taki transfer nie jest
+   „anulowany przez użytkownika”, więc ponowiony (ten sam `id`) po ponownym
+   włączeniu zostaje przyjęty.
 
 **Wznowienie.** Zerwanie połączenia nie kończy transferu. Nadawca po
 ponownym połączeniu wysyła ten sam `Offer` (ten sam `id`), a odbiorca w

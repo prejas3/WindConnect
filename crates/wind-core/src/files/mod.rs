@@ -112,6 +112,8 @@ pub enum FailReason {
     Protocol(String),
     /// A local file error.
     Io(String),
+    /// This side stopped accepting files (`files/1` withdrawn, §6 rule 5).
+    Withdrawn,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -652,13 +654,14 @@ fn end_of_recv(e: RecvError) -> End {
         RecvError::Read(quinn::ReadError::Reset(code)) => end_of_code(code.into_inner()),
         RecvError::Read(_) => End::Lost,
         RecvError::Frame(f) => End::Failed(FailReason::Protocol(format!("{f:?}"))),
+        RecvError::Withdrawn => End::Failed(FailReason::Withdrawn),
     }
 }
 
 fn frame_code(e: &RecvError) -> ErrorCode {
     match e {
         RecvError::Frame(f) => f.code(),
-        RecvError::Read(_) => ErrorCode::Cancelled,
+        RecvError::Read(_) | RecvError::Withdrawn => ErrorCode::Cancelled,
     }
 }
 

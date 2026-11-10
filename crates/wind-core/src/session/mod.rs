@@ -35,8 +35,9 @@
 //! channel takes nothing: its streams get `STOP_SENDING` (`CANCELLED`), and
 //! new ones `CAPABILITY_MISSING` (§3, rule 3); re-enabled, it takes the
 //! peer's next, new stream. Withdrawing `input` releases pressed buttons and
-//! ends its session (§8.2). `files` transfers are owned by their module, so
-//! `files` is not switched here (WC-38).
+//! ends its session (§8.2). Withdrawing `files` stops the streams already
+//! handed to its module: their next read stops them with `CANCELLED` and
+//! fails with [`RecvError::Withdrawn`] (WN-86).
 
 mod framed;
 mod router;
@@ -223,7 +224,7 @@ struct Inner {
     /// Our announcements so far: `Hello` / `HelloAck` is 0, each
     /// `Capabilities` one more (§8.2).
     local_announcements: AtomicU64,
-    /// The gate of each uni channel we route (and `input`).
+    /// The gate of each uni channel we route (and `input`, `files`).
     gates: HashMap<u8, watch::Sender<Gate>>,
     /// The input actor, when we route input.
     input_cmds: Option<mpsc::Sender<InputCmd>>,
@@ -552,7 +553,7 @@ impl Session {
         accepts.sort_by_key(|a| a.channel.byte());
         let gates = accepts
             .iter()
-            .filter(|a| is_uni(a.channel))
+            .filter(|a| is_uni(a.channel) || a.channel == Channel::Files)
             .map(|a| (a.channel.byte(), watch::Sender::new(open)))
             .collect();
         let input = router.input.map(|out| {
@@ -653,8 +654,10 @@ impl Session {
     /// next stream, which the peer opens anew.
     ///
     /// Only a channel routed when the session started can be re-enabled
-    /// (its module is the router's). `control` and `files` are not switched
-    /// here: `WrongChannel`.
+    /// (its module is the router's). `control` is not switched: an
+    /// unrouted channel or `control` is `WrongChannel`. For `files`, streams
+    /// already taken fail their next read with [`RecvError::Withdrawn`]
+    /// (stopped with `CANCELLED`); the module ends its transfers.
     pub async fn set_accepted(&self, channel: Channel, accept: bool) -> Result<bool, SessionError> {
         let gate = self
             .inner
@@ -935,6 +938,7 @@ async fn control_loop(inner: Arc<Inner>, mut recv: FramedRecv) {
                 close(&inner.conn, e.code(), "bad control frame");
                 break format!("{e:?}");
             }
+            Err(RecvError::Withdrawn) => break "control withdrawn".into(),
             Err(RecvError::Read(quinn::ReadError::ConnectionLost(e))) => {
                 // Already closed: closing again would replace the reason.
                 break e.to_string();
@@ -1230,7 +1234,9 @@ async fn read_ahead(
                     recv.stop(e.code());
                     break;
                 }
-                Err(RecvError::Read(quinn::ReadError::Reset(_))) => break,
+                Err(RecvError::Read(quinn::ReadError::Reset(_))) | Err(RecvError::Withdrawn) => {
+                    break
+                }
                 Err(RecvError::Read(_)) => {
                     lost = true;
                     break;
@@ -1268,12 +1274,19 @@ async fn bidi_loop(inner: Arc<Inner>, files: Option<(u64, mpsc::Sender<FileStrea
                     let _ = send.reset(varint_code(e.code()));
                 }
                 Ok(Channel::Files) => match files {
+                    // Withdrawn (§6, rule 5): new streams are refused.
+                    Some(_) if inner.gate(Channel::Files).is_some_and(|g| !g.enabled) => {
+                        let _ = recv.stop(varint_code(ErrorCode::CapabilityMissing));
+                        let _ = send.reset(varint_code(ErrorCode::CapabilityMissing));
+                    }
                     Some(tx) => {
                         let _ = send.set_priority(send_priority(Channel::Files));
-                        let stream = FileStream {
-                            send,
-                            recv: FramedRecv::new(recv, Channel::Files),
-                        };
+                        let mut framed = FramedRecv::new(recv, Channel::Files);
+                        if let Some(gate) = inner.gates.get(&Channel::Files.byte()) {
+                            let at = gate.borrow().withdrawals;
+                            framed = framed.with_gate(gate.subscribe(), at);
+                        }
+                        let stream = FileStream { send, recv: framed };
                         if let Err(mpsc::error::SendError(mut s)) = tx.send(stream).await {
                             s.recv.stop(ErrorCode::Cancelled);
                             let _ = s.send.reset(varint_code(ErrorCode::Cancelled));
@@ -1393,7 +1406,9 @@ async fn input_stream_task(
                 // §4.4: an unknown type is skipped.
                 Err(RecvError::Frame(FrameError::UnknownMessage { .. })) => None,
                 Err(RecvError::Frame(e)) => Some(e.code()),
-                Err(RecvError::Read(quinn::ReadError::Reset(_))) => break,
+                Err(RecvError::Read(quinn::ReadError::Reset(_))) | Err(RecvError::Withdrawn) => {
+                    break
+                }
                 Err(RecvError::Read(_)) => {
                     lost = true;
                     break;
