@@ -4,6 +4,8 @@ use tauri::{Emitter, Manager};
 use wind_core::network::NetworkChanges;
 mod actions;
 mod autostart;
+mod clipboard;
+mod clipboard_native;
 mod files;
 mod hotkey;
 pub mod indicator;
@@ -212,6 +214,7 @@ fn main() {
         .manage(pairing::Runtime::default())
         .manage(actions::Runtime::default())
         .manage(files::Runtime::default())
+        .manage(clipboard::Runtime::default())
         .setup(move |app| {
             if let Err(error) = shell_menu::install() {
                 eprintln!("Explorer menu unavailable: {error}");
@@ -314,7 +317,9 @@ fn main() {
             actions::set_action_enabled,
             actions::edit_custom_actions,
             files::files_snapshot,
-            files::files_action
+            files::files_action,
+            clipboard::clipboard_snapshot,
+            clipboard::clipboard_action
         ])
         .run(tauri::generate_context!())
         .expect("failed to run WindConnect");

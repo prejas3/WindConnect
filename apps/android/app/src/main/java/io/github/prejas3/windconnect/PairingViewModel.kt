@@ -9,6 +9,7 @@ import io.github.prejas3.windconnect.bindings.SasPairing
 import io.github.prejas3.windconnect.bindings.inspectQrLink
 import io.github.prejas3.windconnect.core.WindCore
 import io.github.prejas3.windconnect.core.ConnectionState
+import io.github.prejas3.windconnect.core.ClipboardUi
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -33,6 +34,8 @@ data class PairingUi(
     val nearby: List<DiscoveredDevice> = emptyList(),
     /** The code to compare with the computer's screen. */
     val code: String = "",
+
+    val clipboard: ClipboardUi = ClipboardUi(),
 )
 
 /** Short, stable label for an unnamed computer in the nearby list (fingerprint prefix). */
@@ -51,6 +54,7 @@ class PairingViewModel(application: Application) : AndroidViewModel(application)
             try {
                 val opened = (application as WindApplication).connections.acquire()
                 core = opened
+                viewModelScope.launch { opened.clipboardUi.collect { value -> mutableUi.update { it.copy(clipboard = value) } } }
                 val paired = opened.pairedDevices()
                 mutableUi.update { it.copy(ready = true, initialized = true, skippedRecords = opened.skippedPairingRecords, hasPairedDevice = paired.isNotEmpty(), computerName = paired.lastOrNull()?.name) }
                 viewModelScope.launch {
@@ -125,7 +129,7 @@ class PairingViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             try {
                 val peer = attempt.decide(same)
-                mutableUi.update { it.copy(screen = "paired", name = peer.name, fingerprint = peer.fingerprint, code = "", hasPairedDevice = true, message = "Sparowano · Łączenie z komputerem…") }
+                mutableUi.update { it.copy(screen = "paired", name = peer.name, computerName = peer.name, fingerprint = peer.fingerprint, code = "", hasPairedDevice = true, message = "Sparowano · Łączenie z komputerem…") }
                 try {
                     owner.connectPaired(peer)
                     mutableUi.update { it.copy(message = "Połączono z komputerem") }
@@ -144,6 +148,10 @@ class PairingViewModel(application: Application) : AndroidViewModel(application)
     private fun stopNearby() { nearbyWatch?.cancel(); nearbyWatch = null }
     // CCS/1 RULE:cancel only; a code()/decide() call may still hold the object, so UniFFI's cleaner frees it.
     private fun clearSas() { sas?.cancel(); sas = null }
+
+    fun setClipboardEnabled(value: Boolean) { core?.setClipboardEnabled(value) }
+    fun sendClipboard() { viewModelScope.launch { core?.sendCurrentClipboard() } }
+
     fun cameraError() { mutableUi.update { it.copy(screen = "error", message = "Nie udało się otworzyć aparatu. Zamknij inne aplikacje korzystające z aparatu i spróbuj ponownie.") } }
 
     fun offerLink(link: String?) {

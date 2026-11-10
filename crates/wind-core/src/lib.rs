@@ -2,6 +2,7 @@
 
 pub mod actions;
 pub mod broadcast;
+pub mod clipboard;
 pub mod discovery;
 pub mod files;
 pub mod identity;

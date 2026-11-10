@@ -35,6 +35,14 @@ mod platform {
             });
         })
     }
+    pub fn install_clipboard(callback: impl Fn() + Send + 'static) -> io::Result<Hotkey> {
+        use windows_sys::Win32::UI::Input::KeyboardAndMouse::{MOD_ALT, MOD_CONTROL};
+        register(
+            MOD_CONTROL | MOD_ALT | MOD_SHIFT | MOD_NOREPEAT,
+            b'C' as u32,
+            callback,
+        )
+    }
     fn register(
         modifiers: u32,
         key: u32,
@@ -89,4 +97,4 @@ mod platform {
     }
 }
 #[cfg(windows)]
-pub use platform::install;
+pub use platform::{install, install_clipboard, Hotkey};

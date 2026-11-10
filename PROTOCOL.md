@@ -1236,6 +1236,80 @@ Przykłady (ramki z długością):
 | `Result` 1 (odmowa) | `05 82 00 a1 00 01` |
 | `Actions` `[["lock", "Zablokuj"]]` | `14 82 01 a1 00 81 82 64 6c 6f 63 6b 68 5a 61 62 6c 6f 6b 75 6a` |
 
+### 9.3 Kanał `clipboard` (`01`, WN-35)
+
+CCS/1
+PURPOSE:tekst i linki jako zwykły UTF-8, w obie strony przez istniejącą sesję mTLS/E2E. Link nie jest poleceniem otwarcia URL. Pierwsze wiadomości możliwości `clipboard/1`, jak początkowe `files/1`, bez zmiany ALPN/ramkowania ani wersji minor.
+RULE:obie strony ogłaszają `clipboard/1`; odpowiedź idzie osobnym strumieniem uni w przeciwnym kierunku, zgodnie z §6. Brak capability blokuje wysłanie.
+
+| typ | nazwa | pola mapy body |
+| --- | --- | --- |
+| 0 | Set | `0`: losowy identyfikator 16 B (bytes); `1`: dodatni licznik Lamporta uint64; `2`: tekst UTF-8 (text), 0–262144 B |
+| 1 | Applied | `0`: identyfikator Set 16 B; `1`: wynik uint: 0 applied, 1 refused, 2 failed |
+
+Walidacja: odrzucić nieprawidłowy typ/rozmiar ID, zerowy/ujemny licznik,
+NUL w tekście, nadmiarowy rozmiar, nieprawidłowe wartości i powtórzone klucze.
+Nieznane opcjonalne pola są pomijane; nieznany typ/niepoprawna wiadomość
+nie dotyka schowka i nie dostaje fałszywego potwierdzenia.
+Odpowiedź **applied** powstaje dopiero po udanym zapisie w systemowym API,
+**refused** przy wyłączonym odbiorze lub starszej/zdublowanej zmianie,
+**failed** gdy zapis OS się nie udał. Nadawca ma do 4 oczekujących odpowiedzi,
+każda z terminem 3 s i anulowaniem po zamknięciu sesji. Nieznane/stare ID
+odpowiedzi nie zmieniają stanu. Brak odpowiedzi oznacza brak potwierdzenia,
+nigdy sukces. Queue routera ma 4 wiadomości; nie ma historii ani kolejki offline.
+
+Kolejność i echo: aktywna sesja utrzymuje w pamięci licznik i ostatni klucz
+`(licznik, id)`, a proces SHA-256 ostatniej wysłanej/odebranej treści. Lokalna zmiana
+zwiększa licznik; odbiór podnosi go do maksimum własnego i otrzymanego.
+Klucze porównuje się leksykograficznie (id jako 16 bajtów bez znaku).
+Set z kluczem mniejszym lub równym ostatniemu zostaje odrzucony. Przy
+równoczesnych zmianach o tym samym liczniku wygrywa większe losowe id;
+obie strony zbiegają do tej wartości bez porównywania zegarów ściennych.
+Nieudany zapis też przesuwa klucz, ale nie hash zastosowanej treści.
+Automat nie wysyła powtórnie tego samego hasha przy callbacku własnego
+zapisu lub powrocie fokusu. Ręczna próba może ponowić taką samą treść.
+Reconnect nie odtwarza starej zawartości. Adoptowana nowa sesja zaczyna licznik
+od0 i usuwa stary klucz, aby restart drugiej strony nie zablokował jej zmian.
+Hash pozostaje. Zmiana generacji kończy stary odbiór i oczekujące odpowiedzi.
+Android dodatkowo wymaga timestamp schowka późniejszego niż przyjęcie sesji
+(ClipDescription.timestamp, lokalny System.currentTimeMillis); zawartość
+sprzed sesji/restartu procesu nie wychodzi po odzyskaniu fokusu. Nieznany,
+równy granicy timestamp jest pomijany; po cofnięciu zegara
+może być potrzebne ręczne wysłanie. Granica nie wymaga zapisu payloadu
+ani porównywania zegarów urządzeń. Ręczna akcja omija wyłącznie tę granicę,
+nie sprawdzanie treści wrażliwych.
+Spóźnione Set ze starej sesji nie mogą zmieniać OS. Zapasowe połączenie
+próbujące powrotu z relay na LAN nie jest adoptowane do tej funkcji przed
+decyzją właściciela połączenia. Nie istnieje trwały log schowka.
+
+Prywatność nadawcy (także ręcznego): Windows nie odczytuje/wysyła payloadu,
+gdy jest format `ExcludeClipboardContentFromMonitorProcessing`, albo
+`CanIncludeInClipboardHistory`/`CanUploadToCloudClipboard` zawiera DWORD 0
+(uszkodzone dane opt-out traktuje zachowawczo jako prywatne). Android
+nie wysyła treści z `ClipDescription.extras[android.content.extra.IS_SENSITIVE]`.
+Windows usuwa terminator CF_UNICODETEXT przed walidacją; HTML, obrazy,
+pliki, intenty i URI providerów nie są koercjonowane do tekstu.
+
+Prywatność odbiorcy: Windows zapisuje przed tekstem formaty
+`CanIncludeInClipboardHistory` = 0 i `CanUploadToCloudClipboard` = 0.
+Android zawsze zapisuje odebrany tekst z `EXTRA_IS_SENSITIVE` = true,
+co również maskuje podgląd w nakładce Androida 13+. W ten sposób odbiorca
+nie rozsyła dalej treści przez własny automat/historię/chmurę. Żadne treści
+nie trafiają do logów, powiadomień, frontendowego IPC ani plików aplikacji.
+
+Polityka aplikacji: automat jest domyślny. Przełącznik wyłącza automatyczny
+odczyt i odbiór/nadpisywanie; ręczne wysłanie nie omija flag wrażliwości.
+Windows reaguje na WM_CLIPBOARDUPDATE. Android czyta tylko z fokusem:
+listener i porównanie aktualnej treści przy powrocie do aplikacji. W tle
+telefon wysyła po stuknięciu akcji powiadomienia otwierającej widoczną,
+nieeksportowaną Activity z bezpośredniego immutable PendingIntent;
+odczyt czeka na fokus/odblokowanie, bez READ_LOGS, Accessibility lub IME.
+Odbiór PC→telefon działa w usłudze połączenia także bez Activity.
+
+Przykład Set, id=16 zer, licznik=1, tekst `hi` (bez nagłówka/ramki):
+`82 00 a3 00 50 00000000000000000000000000000000 01 01 02 62 6869`.
+Applied dla tego ID: `82 01 a2 00 50 00000000000000000000000000000000 01 00`.
+
 ## 10. Kody błędów
 
 Te same kody służą w polu `code` wiadomości `Error` / `Goodbye` oraz jako

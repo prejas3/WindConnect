@@ -140,3 +140,4 @@ async function start() {
   await invoke('panel_ready');
 }
 start().catch(error);
+import './clipboard.js';

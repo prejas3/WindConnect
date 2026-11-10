@@ -24,7 +24,7 @@ internal fun computerLabel(value: String?): String = value.orEmpty().filterNot {
 }.trim().take(64).ifEmpty { "Komputer" }
 
 @Composable
-fun HomeScreen(state: PairingUi, onScan: () -> Unit, onNearby: (() -> Unit)? = null, onDiagnostics: () -> Unit) {
+fun HomeScreen(state: PairingUi, onScan: () -> Unit, onDiagnostics: () -> Unit, onNearby: (() -> Unit)? = null, onClipboard: (() -> Unit)? = null, onClipboardEnabled: ((Boolean) -> Unit)? = null) {
     val connected = state.connection as? ConnectionState.Connected
     val known = state.hasPairedDevice || connected != null
     val name = if (known) computerLabel(state.computerName) else "Twój komputer"
@@ -74,6 +74,7 @@ fun HomeScreen(state: PairingUi, onScan: () -> Unit, onNearby: (() -> Unit)? = n
         // WN-27: pairing by code comparison when the camera can't be used.
         if (onNearby != null) WindButton("Paruj bez aparatu", onNearby, Modifier.fillMaxWidth().testTag("pairNearby"), enabled = state.ready, kind = ButtonKind.Secondary)
     }
+    if (onClipboard != null && onClipboardEnabled != null) ClipboardControls(state, onClipboard, onClipboardEnabled)
     Text("Ostatnie transfery", style = MaterialTheme.typography.titleMedium)
     WindCard(Modifier.fillMaxWidth().testTag("recentTransfers")) {
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -87,4 +88,15 @@ fun HomeScreen(state: PairingUi, onScan: () -> Unit, onNearby: (() -> Unit)? = n
     if (!state.ready && state.message.isNotEmpty()) Text(state.message, color = colors.error)
     if (state.skippedRecords > 0uL) Text("Pominięto uszkodzone wpisy sparowania: ${state.skippedRecords}. Poprawne urządzenia są nadal dostępne.", modifier = Modifier.testTag("pairingStorageWarning"), style = MaterialTheme.typography.bodySmall)
     if (BuildConfig.DEBUG) WindButton("Test połączenia z PC", onDiagnostics, kind = ButtonKind.Quiet)
+}
+
+@Composable
+fun ClipboardControls(state: PairingUi, onSend: () -> Unit, onEnabled: (Boolean) -> Unit) {
+    WindCard(Modifier.fillMaxWidth().testTag("clipboardCard")) {
+        Text("Wspólny schowek", style = MaterialTheme.typography.titleMedium)
+        WindSwitch("Synchronizacja automatyczna", state.clipboard.enabled, onEnabled, Modifier.testTag("clipboardEnabled"))
+        Text(state.clipboard.status, style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("clipboardStatus"))
+        Text("PC → telefon także w tle. Telefon → PC po otwarciu aplikacji lub z akcji powiadomienia. Treści oznaczone jako wrażliwe nie są wysyłane.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        WindButton("Wyślij schowek", onSend, Modifier.fillMaxWidth().testTag("sendClipboard"), enabled = state.connection is ConnectionState.Connected && !state.clipboard.busy, kind = ButtonKind.Secondary)
+    }
 }

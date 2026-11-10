@@ -45,12 +45,12 @@ const server = http.createServer(async (request, response) => {
       }
     }
     await page.locator('[data-theme-choice="light"]').click();
-    const switchControl = page.locator('[role="switch"]').first();
+    const switchControl = page.locator('#gallery [role="switch"]').first();
     await switchControl.focus(); await page.keyboard.press('Space');
     assert.equal(await switchControl.getAttribute('aria-checked'), 'false');
     await page.keyboard.press('Enter');
     assert.equal(await switchControl.getAttribute('aria-checked'), 'true');
-    const disabled = page.locator('[role="switch"][disabled]');
+    const disabled = page.locator('#gallery [role="switch"][disabled]');
     assert.equal(await disabled.isDisabled(), true);
     await page.locator('.checkbox').focus(); await page.keyboard.press('Space');
     assert.equal(await page.locator('.checkbox').isChecked(), false);
