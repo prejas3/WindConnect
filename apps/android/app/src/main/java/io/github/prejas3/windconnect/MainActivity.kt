@@ -1,6 +1,8 @@
 package io.github.prejas3.windconnect
 
 import android.os.Bundle
+import android.content.Intent
+import androidx.activity.viewModels
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -46,11 +48,26 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 class MainActivity : ComponentActivity() {
+    private val pairing: PairingViewModel by viewModels()
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        receiveLink(intent)
         setContent {
-            WindApp { ConnectionScreen() }
+            val state by pairing.ui.collectAsStateWithLifecycle()
+            WindApp(forceContent = state.screen != "home") { PairingScreen(pairing) { ConnectionScreen() } }
+        }
+    }
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        receiveLink(intent)
+    }
+    private fun receiveLink(incoming: Intent) {
+        // CCS/1 SEC:never retain the QR secret in Activity intent/saved state; every VIEW is validated in Rust.
+        if (incoming.action == Intent.ACTION_VIEW) {
+            val link = incoming.dataString
+            incoming.data = null
+            pairing.offerLink(link)
         }
     }
 }

@@ -22,6 +22,26 @@ import org.junit.Assert.fail
 import org.junit.Test
 
 class CoreApiTest {
+    @Test fun damagedPairingRecordsDoNotBlockWindCoreOpen() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val directory = java.io.File(context.cacheDir, "paired-recovery-${java.util.UUID.randomUUID()}").apply { mkdirs() }
+        val scoped = object : android.content.ContextWrapper(context) {
+            override fun getNoBackupFilesDir(): java.io.File = directory
+        }
+        val key = "58" + "66".repeat(31)
+        java.io.File(directory, "paired.txt").writeText("\n$key 1 Saved-PC\nbroken record\n")
+        try {
+            val core = WindCore.open(scoped, "Android")
+            try {
+                assertEquals(1uL, core.skippedPairingRecords)
+                assertEquals(ConnectionState.Ready, core.state.value)
+            } finally { core.shutdown() }
+        } finally {
+            assertTrue(directory.canonicalPath.startsWith(context.cacheDir.canonicalPath + java.io.File.separator))
+            directory.deleteRecursively()
+        }
+    }
+
     /** CCS/1 RULE:opt-in only; changes Wi-Fi on the explicitly selected test device. */
     @Test fun wifiReturnWakesNativeDiscovery() = runBlocking {
         assumeTrue(InstrumentationRegistry.getArguments().getString("toggleWifi") == "true")

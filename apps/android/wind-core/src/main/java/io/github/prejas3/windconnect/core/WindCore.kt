@@ -36,7 +36,13 @@ sealed interface ConnectionState {
 }
 
 /** CCS/1 M:WindCore | IO:coroutines + StateFlow -> UniFFI -> authenticated QUIC session */
-class WindCore private constructor(private val client: CoreClient) {
+class WindCore private constructor(private val client: CoreClient, private val pairedDirectory: String, val skippedPairingRecords: ULong) {
+    suspend fun pairQr(offer: io.github.prejas3.windconnect.bindings.QrOffer): io.github.prejas3.windconnect.bindings.PeerInfo = withContext(Dispatchers.IO) {
+        gate.withLock {
+            check(!stopped) { "core is stopped" }
+            client.pairQr(offer, pairedDirectory)
+        }
+    }
     val identity: IdentityInfo = client.identity()
     val localAddress: String = client.localAddress()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -231,7 +237,9 @@ class WindCore private constructor(private val client: CoreClient) {
                     }
                     val client = openClient(storage, name, bindAddress)
                     native = client
-                    WindCore(client).also {
+                    val pairedDirectory = context.noBackupFilesDir.absolutePath
+                    val paired = client.loadPaired(pairedDirectory)
+                    WindCore(client, pairedDirectory, paired.skippedRecords).also {
                         opened = it
                         it.observeNetwork(context.applicationContext)
                     }

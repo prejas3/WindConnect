@@ -1,10 +1,10 @@
 # Android
 
-Aplikacja Kotlin / Jetpack Compose z ekranem testowym połączenia z PC.
+Aplikacja Kotlin / Jetpack Compose ze skanerem QR i potwierdzeniem parowania z PC.
 Moduł `:wind-core` zawiera wiązania UniFFI 0.32.2, wrapper korutynowy ze
 `StateFlow` i biblioteki Rust dla arm64-v8a oraz x86_64. Wymagany Android 10+
-(minSdk 29). Ekran wymaga ręcznego zweryfikowania i podania klucza PC;
-pełny protokół parowania powstaje w osobnej karcie.
+(minSdk 29). Parowanie QR korzysta z protokołu WN-19 przez UniFFI;
+debug zachowuje dodatkowy ekran ręcznego testu połączenia z PC.
 
 ## Budowanie
 
@@ -39,14 +39,47 @@ adb install -r app-debug.apk
 adb shell am start -W -n io.github.prejas3.windconnect/.MainActivity
 ```
 
-Powinien pojawić się ekran „Test połączenia z PC”, odcisk i klucz publiczny Androida.
-Ikona robocza jest własnym zasobem projektu na licencji MIT. Aplikacja nie wymaga
-uprawnień przyznawanych w runtime; używa uprawnienia INTERNET. Instalację na telefonie oraz pobranie APK z CI trzeba
+Powinien pojawić się ekran „Połącz z komputerem”. Debug: przycisk „Test połączenia z PC”
+otwiera diagnostykę z odciskiem i kluczem publicznym Androida.
+Ikona robocza jest własnym zasobem projektu na licencji MIT. Aplikacja
+uprawnienia CAMERA żąda dopiero po wybraniu skanera i naciśnięciu „Zezwól na aparat”;
+odbiór linku z aparatu systemowego nie wymaga tego uprawnienia. Używa też INTERNET. Instalację na telefonie oraz pobranie APK z CI trzeba
 potwierdzić po opublikowaniu repozytorium.
 
 Gradle Wrapper jest narzędziem budowania na licencji Apache-2.0;
 tekst licencji znajduje się w `gradle/wrapper/LICENSE`.
 
+
+## Parowanie QR (WN-26)
+
+CCS/1
+FLOW: „Zeskanuj kod QR” -> zgoda CAMERA -> Camera2/YUV -> ZXing -> ścisły parser Rust §12.4 -> ekran nazwy i odcisku -> jawne „Sparuj urządzenia” -> uwierzytelniony protokół WN-19 -> zapis przypiętego klucza.
+IO: Link `windconnect:pair?v=1&k=…&s=…&a=…[&n=…]` obsługiwany przez ACTION_VIEW/DEFAULT/BROWSABLE (schemat z PROTOCOL.md). Zewnętrzny aparat otwiera ekran potwierdzenia; ciepły start obsługuje onNewIntent. Link nigdy nie uruchamia parowania sam.
+SEC: Skan/intent używają tego samego parsera Rust: limit 1024 bajty, wersja, klucz Ed25519, jednorazowy sekret, adresy i powtórzone pola. Błędny link nie nadaje zaufania. Nazwa z linku jest niezaufana; UI podaje też odcisk. Nie wyświetlamy ani nie logujemy sekretu; intent jest czyszczony, oferta nie trafia do saved state/preferences. Po odtworzeniu procesu trzeba zeskanować kod ponownie.
+STATE: Oferta żyje w obiekcie Rust, wymazującym sekret przy zwolnieniu. Anulowanie zwalnia ofertę; równoległe intenty nie zastępują trwającego parowania. Próba trwa maksymalnie 30 s; po błędzie wymagany nowy kod. Sekret jest konsumowany przez FFI jednokrotnie. Potwierdzone klucze: noBackupFilesDir/paired.txt, ładowane przy otwieraniu WindCore; klucz prywatny pozostaje w istniejącym KeystoreIdentityStore.
+RULE: Uszkodzone linie paired.txt są pomijane zgodnie z WN-19. load_paired zwraca poprawne devices i osobne skipped_records; poprawne klucze pozostają przypięte. Liczba pominiętych wpisów przechodzi przez WindCore do nieblokującego komunikatu na ekranie głównym. Błąd odczytu pliku nadal jest błędem magazynu; zła linia nie blokuje startu ani nie powoduje wyczyszczenia pliku.
+RULE: Aparat tylko na ekranie skanera i w stanie resumed; sesja/obrazy zamykane po wyjściu lub onPause. Brak zapisu zdjęć, wysyłania klatek i usługi aparatu w tle. Odmowa zgody ma własny komunikat i przejście do ustawień; link systemowy działa bez zgody CAMERA. Brak aparatu nie blokuje instalacji.
+LIMIT: WN-26 paruje i zapisuje zaufanie; ekran urządzeń/usługa i automatyczne łączenie sesji należą do kolejnych kart lane. PC pokaże QR w WN-25. Fizyczne zachowanie Samsung Camera na S25 Ultra/One UI wymaga sprawdzenia: aparat musi zaoferować otwarcie custom URI `windconnect:pair`. Obsługa VIEW potwierdzona testem Androida nie zastępuje tego testu aparatu.
+
+Testy:
+
+```powershell
+cargo test --locked -p wind-ffi --test pairing
+.\gradlew.bat --no-daemon :app:connectedDebugAndroidTest
+```
+
+CCS/1
+STATE: PairingTest: VIEW intent, jawne potwierdzenie, anulowanie bez zapisu zaufania, odtworzenie Activity i kolejny intent, błędne/obce/za długie linki, QR w czterech obrotach, puste klatki i wejście/wyjście ze skanera. Bridge Rust: rzeczywisty QUIC, brak połączenia przed potwierdzeniem, trwałość klucza po ponownym otwarciu, odmowa replay i brak sekretu w błędach.
+IO: Opcjonalny lokalny peer Androida: `cargo run --locked -p wind-ffi --example qr_pairing_peer -- <katalog-TEMP>`. Zapisuje testowy offer.txt (jednorazowy sekret, 120 s), nasłuchuje na loopback i podaje adres 10.0.2.2 emulatora. Test `PairingTest#explicitConfirmationPairsWithRealPc` przyjmuje argument instrumentacji pairingLink z tego pliku. Nie używać jako serwera produkcyjnego ani dla prawdziwych tożsamości; plik pozostaje wyłącznie w TEMP, poza logiem testów.
+
+Nowa zależność dostarczana w APK:
+
+| Komponent | Wersja | Licencja i pliki źródłowe | Gdzie trafia | Wynik audytu |
+| --- | --- | --- | --- | --- |
+| ZXing Core | 3.5.4 | Apache-2.0, upstream LICENSE i NOTICE; nagłówki klas core i POM | DEX; assets/ZXing-LICENSE.txt i ZXing-NOTICE.txt | Permisywna; niezmieniona biblioteka, brak runtime zależności przechodnich. Pełne teksty dołączone i zweryfikowane w APK. |
+
+CCS/1
+EXT: https://github.com/zxing/zxing/tree/zxing-3.5.4/core ; źródła licencji https://github.com/zxing/zxing/blob/zxing-3.5.4/LICENSE i NOTICE. Audyt WN-26 dotyczy przyrostu; istniejące DM Sans/AndroidX/JNA/Rust pozostają bez nowych zasobów/licencji. Camera2, własny podgląd i przyciski nie dodają biblioteki UI.
 
 ## Klucz tożsamości (Android Keystore)
 
@@ -104,7 +137,7 @@ generator, a nie ręcznie edytowane wiązania lub binaria.
 
 AAR: `wind-core/build/outputs/aar/wind-core-release.aar`.
 Lokalne repozytorium Maven z AAR, źródłami, POM i metadanymi Gradle:
-`wind-core/build/repo/`. Współrzędne: `io.github.prejas3.windconnect:wind-core:0.26.0`.
+`wind-core/build/repo/`. Współrzędne: `io.github.prejas3.windconnect:wind-core:0.27.0`.
 Publikacja zapisuje pliki lokalnie; nie wysyła ich do zewnętrznego repozytorium.
 Konsument musi korzystać z POM/metadanych (JNA i korutyny są zależnościami
 przechodnimi); sama kopia pliku AAR nie dostarczy JNA.
@@ -117,7 +150,7 @@ Konsument spoza repozytorium dodaje lokalne repozytorium do
 maven { url = uri("/sciezka/do/wind-core/build/repo") }
 ```
 
-oraz `implementation("io.github.prejas3.windconnect:wind-core:0.26.0")`.
+oraz `implementation("io.github.prejas3.windconnect:wind-core:0.27.0")`.
 W aplikacji konsumenta ogranicz ABI do `arm64-v8a` i `x86_64`.
 
 ```kotlin
@@ -214,7 +247,7 @@ toggleWifi true` dodaje prawdziwą zmianę sieci):
 ```powershell
 adb shell am instrument -w -r -e class io.github.prejas3.windconnect.MulticastLockTest -e pcAddress 10.0.2.2:47820 -e pcKey <PC_PUBLIC_KEY> -e toggleWifi true $runner
 ```
-Wersja aplikacji to 0.26.0, a Android `versionCode` to 35. Numery wydań rosną
+Wersja aplikacji to 0.27.0, a Android `versionCode` to 36. Numery wydań rosną
 niezależnie od kolejności kart, aby aktualizacja APK i MSI nie cofała wersji.
 
 Test na emulatorze/telefonie: `CoreApiTest#platformNetworkCallbackWakesDiscoveryWithoutPolling`

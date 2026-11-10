@@ -4,6 +4,8 @@ import android.os.Bundle
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
@@ -20,6 +22,9 @@ class CoreConnectionTest {
         .config[SemanticsProperties.Text].joinToString("") { it.text }
 
     private fun identity(): String {
+        if (compose.onAllNodesWithTag("localKey").fetchSemanticsNodes().isEmpty()) {
+            compose.onNodeWithText("Test połączenia z PC").performClick()
+        }
         compose.waitUntil(15_000) { text("localKey").length == 64 }
         return text("localKey")
     }
