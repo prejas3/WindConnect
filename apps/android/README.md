@@ -24,6 +24,14 @@ Z katalogu `apps/android` na Windows:
 
 Na Linuxie/macOS użyj `./gradlew` zamiast `.\gradlew.bat`.
 Wynik: `app/build/outputs/apk/debug/app-debug.apk`.
+
+ABI (WN-95): wywołanie z samymi zadaniami debug (`assembleDebug`,
+`connectedDebugAndroidTest`, `testDebugUnitTest`, `lintDebug`…) poza CI
+kompiluje i pakuje jedno ABI, domyślnie `x86_64` (emulator). Na telefon
+(S25 Ultra) dodaj `-PwindAbi=arm64-v8a`; oba naraz: `-PwindAbi=all`.
+Release, `build` i wszystko w CI (zmienna `CI`) budują oba ABI. Biblioteki
+Rust trafiają do wspólnego `target/` repozytorium (bez drugiej kopii w
+`wind-core/build`); sprzątanie: `scripts/clean-build.ps1`.
 Klucz debug jest generowany lokalnie przez narzędzia Androida; APK służy do testów.
 
 ## CI i instalacja
@@ -137,7 +145,7 @@ generator, a nie ręcznie edytowane wiązania lub binaria.
 
 AAR: `wind-core/build/outputs/aar/wind-core-release.aar`.
 Lokalne repozytorium Maven z AAR, źródłami, POM i metadanymi Gradle:
-`wind-core/build/repo/`. Współrzędne: `io.github.prejas3.windconnect:wind-core:0.31.0`.
+`wind-core/build/repo/`. Współrzędne: `io.github.prejas3.windconnect:wind-core:0.32.0`.
 Publikacja zapisuje pliki lokalnie; nie wysyła ich do zewnętrznego repozytorium.
 Konsument musi korzystać z POM/metadanych (JNA i korutyny są zależnościami
 przechodnimi); sama kopia pliku AAR nie dostarczy JNA.
@@ -150,7 +158,7 @@ Konsument spoza repozytorium dodaje lokalne repozytorium do
 maven { url = uri("/sciezka/do/wind-core/build/repo") }
 ```
 
-oraz `implementation("io.github.prejas3.windconnect:wind-core:0.31.0")`.
+oraz `implementation("io.github.prejas3.windconnect:wind-core:0.32.0")`.
 W aplikacji konsumenta ogranicz ABI do `arm64-v8a` i `x86_64`.
 
 ```kotlin
@@ -247,7 +255,7 @@ toggleWifi true` dodaje prawdziwą zmianę sieci):
 ```powershell
 adb shell am instrument -w -r -e class io.github.prejas3.windconnect.MulticastLockTest -e pcAddress 10.0.2.2:47820 -e pcKey <PC_PUBLIC_KEY> -e toggleWifi true $runner
 ```
-Wersja aplikacji to 0.31.0, a Android `versionCode` to 40. Numery wydań rosną
+Wersja aplikacji to 0.32.0, a Android `versionCode` to 41. Numery wydań rosną
 niezależnie od kolejności kart, aby aktualizacja APK i MSI nie cofała wersji.
 
 Test na emulatorze/telefonie: `CoreApiTest#platformNetworkCallbackWakesDiscoveryWithoutPolling`
