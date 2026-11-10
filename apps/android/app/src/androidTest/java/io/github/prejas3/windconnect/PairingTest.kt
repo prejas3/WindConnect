@@ -95,6 +95,10 @@ class PairingTest {
 
     @Test fun qrConnectsRealDesktop() {
         assumeTrue("requires real desktop QR image fixture", InstrumentationRegistry.getArguments().getString("desktopQr") == "true")
+        val background = InstrumentationRegistry.getArguments().getString("backgroundService") == "true"
+        val context = compose.activity.applicationContext
+        if (background) assertFalse("app cannot acquire CPU wake locks", context.packageManager.getPackageInfo(context.packageName, android.content.pm.PackageManager.GET_PERMISSIONS).requestedPermissions?.contains(android.Manifest.permission.WAKE_LOCK) == true)
+        if (android.os.Build.VERSION.SDK_INT >= 33) InstrumentationRegistry.getInstrumentation().uiAutomation.grantRuntimePermission(context.packageName, android.Manifest.permission.POST_NOTIFICATIONS)
         val file = File(compose.activity.cacheDir, "desktop-qr.png")
         val bitmap = android.graphics.BitmapFactory.decodeFile(file.absolutePath)
         val pixels = IntArray(bitmap.width * bitmap.height)
@@ -111,6 +115,76 @@ class PairingTest {
         val elapsed = android.os.SystemClock.elapsedRealtime() - start
         assertTrue("decoded QR to connected session must stay below 10s: $elapsed", elapsed < 10000)
         InstrumentationRegistry.getInstrumentation().sendStatus(0, android.os.Bundle().apply { putString("qrToConnectedMs", elapsed.toString()) })
+        if (background) {
+            val manager = context.getSystemService(android.app.NotificationManager::class.java)
+            val deadline = android.os.SystemClock.elapsedRealtime() + 5000
+            while (manager.activeNotifications.none { it.id == ConnectionService.ID && it.notification.extras.getString(android.app.Notification.EXTRA_TEXT).orEmpty().startsWith("Połączono") } && android.os.SystemClock.elapsedRealtime() < deadline) Thread.sleep(50)
+            fun notification() = manager.activeNotifications.first { it.id == ConnectionService.ID }.notification
+            assertTrue(notification().extras.getString(android.app.Notification.EXTRA_TEXT).orEmpty().startsWith("Połączono"))
+            assertEquals(2, notification().actions.size)
+            compose.activityRule.scenario.close()
+            fun shell(command: String): String = InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand(command).use { descriptor ->
+                android.os.ParcelFileDescriptor.AutoCloseInputStream(descriptor).bufferedReader().use { it.readText() }
+            }
+            // CCS/1 LIMIT:test-only emulator power changes are restored in finally; physical overnight validation remains separate.
+            assertEquals("1", shell("getprop ro.kernel.qemu").trim())
+            val wasExempt = context.getSystemService(android.os.PowerManager::class.java).isIgnoringBatteryOptimizations(context.packageName)
+            val exempt = InstrumentationRegistry.getArguments().getString("batteryExempt") != "false"
+            val seconds = (InstrumentationRegistry.getArguments().getString("soakSeconds")?.toIntOrNull() ?: 60).coerceIn(60, 1800)
+            var connectedChecks = 0
+            try {
+                shell("cmd deviceidle whitelist ${if (exempt) "+" else "-"}${context.packageName}")
+                assertEquals(exempt, context.getSystemService(android.os.PowerManager::class.java).isIgnoringBatteryOptimizations(context.packageName))
+                shell("dumpsys battery unplug")
+                shell("input keyevent 223")
+                val result = shell("dumpsys deviceidle force-idle")
+                assertTrue(result, result.contains("idle", ignoreCase = true))
+                repeat(seconds / 5) { index ->
+                    Thread.sleep(5000)
+                    val connected = notification().extras.getString(android.app.Notification.EXTRA_TEXT).orEmpty().startsWith("Połączono")
+                    if (connected) connectedChecks++
+                    if (exempt) assertTrue("session remains connected without Activity in Doze", connected)
+                    if ((index + 1) % 12 == 0) {
+                        val activeLocks = shell("dumpsys power").substringAfter("Wake Locks:").substringBefore("Suspend Blockers:")
+                        assertFalse("no application wake lock during Doze", activeLocks.contains("WindConnect:session"))
+                        InstrumentationRegistry.getInstrumentation().sendStatus(0, android.os.Bundle().apply {
+                            putString("soakProgress", "${(index + 1) * 5}/$seconds seconds, exempt=$exempt, connectedChecks=$connectedChecks, wakeLock=false")
+                        })
+                    }
+                }
+                InstrumentationRegistry.getInstrumentation().sendStatus(0, android.os.Bundle().apply { putString("backgroundDozeComplete", "true") })
+                shell("dumpsys deviceidle unforce")
+                shell("dumpsys battery reset")
+                shell("input keyevent 224")
+                // CCS/1 RULE:without exemption Doze can block networking; waking must recover without a permanent CPU lock.
+                val recovered = android.os.SystemClock.elapsedRealtime() + 75000
+                while (!notification().extras.getString(android.app.Notification.EXTRA_TEXT).orEmpty().startsWith("Połączono") && android.os.SystemClock.elapsedRealtime() < recovered) Thread.sleep(200)
+                assertTrue("connection recovers on wake", notification().extras.getString(android.app.Notification.EXTRA_TEXT).orEmpty().startsWith("Połączono"))
+                val stop = notification().actions.first { it.title.toString() == "Zatrzymaj" }
+                stop.actionIntent.send()
+                val stopped = android.os.SystemClock.elapsedRealtime() + 5000
+                while (manager.activeNotifications.any { it.id == ConnectionService.ID } && android.os.SystemClock.elapsedRealtime() < stopped) Thread.sleep(50)
+                assertFalse(ConnectionService.enabled(context))
+                assertTrue(manager.activeNotifications.none { it.id == ConnectionService.ID })
+                val locks = shell("dumpsys power").substringAfter("Wake Locks:").substringBefore("Suspend Blockers:")
+                assertFalse("notification stop releases active wake lock", locks.contains("WindConnect:session"))
+                ConnectionBootReceiver().onReceive(context, Intent(Intent.ACTION_BOOT_COMPLETED))
+                Thread.sleep(500)
+                assertTrue("explicit stop survives boot", manager.activeNotifications.none { it.id == ConnectionService.ID })
+                InstrumentationRegistry.getInstrumentation().sendStatus(0, android.os.Bundle().apply { putString("backgroundDozeSeconds", seconds.toString()); putString("batteryExempt", exempt.toString()); putString("connectedDozeChecks", connectedChecks.toString()); putString("wakeLock", "false"); putString("stopReleasesService", "true") })
+                if (InstrumentationRegistry.getArguments().getString("backgroundBoot") == "true") {
+                    assertTrue(ConnectionService.start(context, enable = true))
+                    val restored = android.os.SystemClock.elapsedRealtime() + 15000
+                    while (manager.activeNotifications.none { it.id == ConnectionService.ID && it.notification.extras.getString(android.app.Notification.EXTRA_TEXT).orEmpty().startsWith("Połączono") } && android.os.SystemClock.elapsedRealtime() < restored) Thread.sleep(100)
+                    assertTrue(notification().extras.getString(android.app.Notification.EXTRA_TEXT).orEmpty().startsWith("Połączono"))
+                }
+            } finally {
+                shell("dumpsys deviceidle unforce")
+                shell("dumpsys battery reset")
+                shell("input keyevent 224")
+                shell("cmd deviceidle whitelist ${if (wasExempt) "+" else "-"}${context.packageName}")
+            }
+        }
         Thread.sleep(2000) // CCS/1 PURPOSE:bounded evidence window for host to capture the actual connected desktop UI.
     }
 

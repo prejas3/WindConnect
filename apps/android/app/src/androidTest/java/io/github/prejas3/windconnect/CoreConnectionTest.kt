@@ -23,7 +23,7 @@ class CoreConnectionTest {
 
     private fun identity(): String {
         if (compose.onAllNodesWithTag("localKey").fetchSemanticsNodes().isEmpty()) {
-            compose.onNodeWithText("Test połączenia z PC").performClick()
+            compose.onNodeWithText("Test połączenia z PC").performScrollTo().performClick()
         }
         compose.waitUntil(15_000) { text("localKey").length == 64 }
         return text("localKey")

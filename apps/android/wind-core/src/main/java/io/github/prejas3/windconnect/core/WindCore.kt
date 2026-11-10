@@ -52,6 +52,10 @@ class WindCore private constructor(
     val skippedPairingRecords: ULong,
     private val settings: SharedPreferences,
 ) {
+    suspend fun pairedDevices(): List<io.github.prejas3.windconnect.bindings.PeerInfo> = withContext(Dispatchers.IO) {
+        gate.withLock { check(!stopped); client.loadPaired(pairedDirectory).devices }
+    }
+
     suspend fun pairQr(offer: io.github.prejas3.windconnect.bindings.QrOffer): io.github.prejas3.windconnect.bindings.PeerInfo = withContext(Dispatchers.IO) {
         gate.withLock {
             check(!stopped) { "core is stopped" }

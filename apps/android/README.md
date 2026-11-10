@@ -145,7 +145,7 @@ generator, a nie ręcznie edytowane wiązania lub binaria.
 
 AAR: `wind-core/build/outputs/aar/wind-core-release.aar`.
 Lokalne repozytorium Maven z AAR, źródłami, POM i metadanymi Gradle:
-`wind-core/build/repo/`. Współrzędne: `io.github.prejas3.windconnect:wind-core:0.32.0`.
+`wind-core/build/repo/`. Współrzędne: `io.github.prejas3.windconnect:wind-core:0.33.0`.
 Publikacja zapisuje pliki lokalnie; nie wysyła ich do zewnętrznego repozytorium.
 Konsument musi korzystać z POM/metadanych (JNA i korutyny są zależnościami
 przechodnimi); sama kopia pliku AAR nie dostarczy JNA.
@@ -158,7 +158,7 @@ Konsument spoza repozytorium dodaje lokalne repozytorium do
 maven { url = uri("/sciezka/do/wind-core/build/repo") }
 ```
 
-oraz `implementation("io.github.prejas3.windconnect:wind-core:0.32.0")`.
+oraz `implementation("io.github.prejas3.windconnect:wind-core:0.33.0")`.
 W aplikacji konsumenta ogranicz ABI do `arm64-v8a` i `x86_64`.
 
 ```kotlin
@@ -255,8 +255,38 @@ toggleWifi true` dodaje prawdziwą zmianę sieci):
 ```powershell
 adb shell am instrument -w -r -e class io.github.prejas3.windconnect.MulticastLockTest -e pcAddress 10.0.2.2:47820 -e pcKey <PC_PUBLIC_KEY> -e toggleWifi true $runner
 ```
-Wersja aplikacji to 0.32.0, a Android `versionCode` to 41. Numery wydań rosną
+Wersja aplikacji to 0.33.0, a Android `versionCode` to 42. Numery wydań rosną
 niezależnie od kolejności kart, aby aktualizacja APK i MSI nie cofała wersji.
+
+## Połączenie w tle (WN-29)
+
+CCS/1
+FLOW: potwierdzone parowanie -> włączenie usługi `connectedDevice` -> stałe powiadomienie z nazwą PC, rzeczywistym stanem i akcjami „Otwórz urządzenie”, „Połącz ponownie” (offline), „Zatrzymaj”. Schowek/pliki są osobnymi modułami; powiadomienie nie udaje ich wysyłania przed ich wdrożeniem.
+RULE: Activity i usługa dzierżawią jeden WindCore w Application. Zamknięcie/obrót ekranu zwalnia tylko dzierżawę ekranu; ostatnia dzierżawa zamyka natywne uchwyty, discovery i sesję. Wyłączenie tła rozłącza sesję i zapisuje wyłączenie przed zatrzymaniem usługi.
+FLOW: START_STICKY odtwarza usługę po odzyskaniu procesu przez system. BOOT_COMPLETED po odblokowaniu i MY_PACKAGE_REPLACED wznawiają tylko wcześniej włączoną usługę; bez uruchamiania przed odblokowaniem tożsamości. Force-stop systemowy wymaga ponownego otwarcia aplikacji. Brak uprawnień do startu w tle daje komunikat przy kolejnym otwarciu.
+SEC: reconnect ładuje tylko trwałe sparowane klucze; discovery dostarcza adres, nie zaufanie. Ponawianie z backoff 3–60 s, bez domyślnego relay, alarmów lub nowych kanałów sieciowych. Obecnie wybierany ostatni zapisany komputer; wybór wielu urządzeń rozwija WN-31.
+PERF: brak WAKE_LOCK i stałego podtrzymywania CPU. Keepalive QUIC co15 s po stronie PC i Androida już istnieje w transporcie. FGS nie znosi restrykcji sieci Doze; wyjątek baterii jest decyzją użytkownika. Offline bez blokady CPU. Dobowy pobór energii mierzy osobna karta WN-30; emulator nie dowodzi budżetu <1%/dobę.
+
+### Telefon i nocny test
+
+1. Zainstaluj `app/build/outputs/apk/debug/app-debug.apk` i sparuj PC. Zezwól na powiadomienia, aby widzieć urządzenie i akcje; po odmowie sekcja „Połączenie w tle” prowadzi do ustawień powiadomień.
+2. W sekcji „Połączenie w tle” otwórz optymalizację baterii i ustaw WindConnect jako nieoptymalizowany. Sam FGS nie znosi ograniczeń sieci Doze. Aplikacja nie zmienia tej zgody samoczynnie.
+3. Samsung: Ustawienia → Bateria → Limity użycia w tle → aplikacje nigdy nieusypiane; dodaj WindConnect i usuń z listy głęboko usypianych. Nazwy mogą się różnić w wydaniach One UI. Po aktualizacji sprawdź ustawienie ponownie.
+4. Zanotuj model, Android/One UI, wersję APK, stan baterii i ustawienia oszczędzania. PC ma pozostać uruchomiony w tej samej sieci. Zamknij ekran aplikacji, wyłącz ekran telefonu i odłącz ładowarkę na8 h. Rano sprawdź „Połączono”, działającą sesję i zmianę baterii. Powtórz restart telefonu: po odblokowaniu usługa ma wrócić bez otwierania aplikacji. „Zatrzymaj” ma wyłączyć ją także po kolejnym restarcie.
+
+CCS/1 LIMIT: emulator API35 z wymuszonym Doze i jawnym wyjątkiem baterii sprawdza cykl życia, nie zastępuje nocy na S25 Ultra/najnowszym One UI. Nie deklarować spełnienia nocnego kryterium bez tego pomiaru.
+
+Źródła reguł platformy: [typ connectedDevice](https://developer.android.com/develop/background-work/services/fgs/service-types), [Doze i wyjątki baterii](https://developer.android.com/training/monitoring-device-state/doze-standby), [start FGS w tle](https://developer.android.com/develop/background-work/services/fgs/restrictions-bg-start), [zarządzanie aplikacjami Samsunga](https://developer.samsung.com/mobile/app-management.html).
+
+### Powtarzalne sprawdzenia
+
+```powershell
+cargo build --locked -p windconnect-windows --example background_peer
+# ANDROID_HOME i JAVA_HOME jak w testach QR WN-25; macierz QR koduje ten sam Rust qrcode/ECC M co aplikacja PC
+node apps/windows/scripts/check-background-android.cjs
+```
+
+CCS/1 STATE: fixture wymaga zweryfikowanego emulatora i czyści wyłącznie jego testową aplikację. PC peer ma efemeryczną tożsamość i limit2100 s; zainstalowana aplikacja PC nie jest zatrzymywana. Obraz QR dekodowany na Androidzie, pełne parowanie i TLS bez obejścia trust. Publiczny pakiet discovery przekazywany przez emulator NAT. Test zamyka Activity, wymusza60 s Doze (SOAK_SECONDS=1800:30 min; BATTERY_EXEMPT=0: bez wyjątku baterii), sprawdza brak blokad CPU, próbuje akcję Zatrzymaj, uruchamia ponownie usługę i restartuje emulator; wymaga nowej prawdziwej sesji po BOOT_COMPLETED. Przywraca ustawienia zasilania i usuwa surowy jednorazowy link. TEMP/windconnect-wn29-*/ zawiera wynik i logi. ConnectionOwnerTest osobno sprawdza współdzielenie, ostatnie zwolnienie i trwałą tożsamość.
 
 Test na emulatorze/telefonie: `CoreApiTest#platformNetworkCallbackWakesDiscoveryWithoutPolling`
 potwierdza rzeczywisty callback systemu i generację z natywnego odkrywania.

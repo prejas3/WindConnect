@@ -55,6 +55,7 @@ fun PairingScreen(model: PairingViewModel, diagnostic: @Composable () -> Unit) {
                     WindButton("Zeskanuj kod QR", model::scan, Modifier.testTag("scanQr"), enabled = state.ready)
                 }
                 Text(state.message.ifEmpty { if (state.ready) "Gotowy do parowania" else "Przygotowywanie bezpiecznego połączenia…" }, modifier = Modifier.testTag("pairingStatus"))
+                BackgroundControls(state.hasPairedDevice)
                 if (state.skippedRecords > 0uL) Text("Pominięto uszkodzone wpisy sparowania: ${state.skippedRecords}. Poprawne urządzenia są nadal dostępne.", modifier = Modifier.testTag("pairingStorageWarning"), style = MaterialTheme.typography.bodySmall)
                 if (BuildConfig.DEBUG) WindButton("Test połączenia z PC", { diagnostics = true }, kind = ButtonKind.Quiet)
             }
@@ -87,6 +88,7 @@ fun PairingScreen(model: PairingViewModel, diagnostic: @Composable () -> Unit) {
                 Text(state.name, style = MaterialTheme.typography.titleLarge)
                 Text("Klucz komputera został bezpiecznie zapamiętany na tym telefonie.")
                 Text(state.message, modifier = Modifier.testTag("pairedConnectionStatus"))
+                BackgroundControls(state.hasPairedDevice)
                 WindButton("Gotowe", model::cancel, Modifier.testTag("pairingDone"))
             }
             else -> {
