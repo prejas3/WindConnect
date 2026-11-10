@@ -104,7 +104,7 @@ generator, a nie ręcznie edytowane wiązania lub binaria.
 
 AAR: `wind-core/build/outputs/aar/wind-core-release.aar`.
 Lokalne repozytorium Maven z AAR, źródłami, POM i metadanymi Gradle:
-`wind-core/build/repo/`. Współrzędne: `io.github.prejas3.windconnect:wind-core:0.25.0`.
+`wind-core/build/repo/`. Współrzędne: `io.github.prejas3.windconnect:wind-core:0.25.1`.
 Publikacja zapisuje pliki lokalnie; nie wysyła ich do zewnętrznego repozytorium.
 Konsument musi korzystać z POM/metadanych (JNA i korutyny są zależnościami
 przechodnimi); sama kopia pliku AAR nie dostarczy JNA.
@@ -117,7 +117,7 @@ Konsument spoza repozytorium dodaje lokalne repozytorium do
 maven { url = uri("/sciezka/do/wind-core/build/repo") }
 ```
 
-oraz `implementation("io.github.prejas3.windconnect:wind-core:0.25.0")`.
+oraz `implementation("io.github.prejas3.windconnect:wind-core:0.25.1")`.
 W aplikacji konsumenta ogranicz ABI do `arm64-v8a` i `x86_64`.
 
 ```kotlin
@@ -194,9 +194,27 @@ Adres ostatniego peera pozostaje ręcznie wybranym adresem; automatyczny wybór
 nowego IP z listy urządzeń należy do integracji zarządzania urządzeniami.
 
 Moduł deklaruje normalne uprawnienia `ACCESS_NETWORK_STATE` i
-`CHANGE_WIFI_MULTICAST_STATE`. W czasie obserwacji utrzymuje `MulticastLock`,
-zwalniany razem z callbackiem, zadaniami i daemonem w `shutdown()`.
-Wersja aplikacji to 0.25.0, a Android `versionCode` to 33. Numery wydań rosną
+`CHANGE_WIFI_MULTICAST_STATE`. `MulticastLock` jest brany tylko wtedy, gdy
+odkrywanie jest potrzebne (WN-83, `MulticastPolicy`):
+
+- bez aktywnej sesji przez 30 s od startu, od zmiany sieci, od utraty sesji
+  albo od `WindCore.refreshDiscovery()` (np. odświeżenie listy urządzeń);
+- przez cały czas, gdy otwarty jest ekran wymagający odkrywania (okno
+  parowania SAS, lista urządzeń): `WindCore.discoveryScreen(true)` …
+  `discoveryScreen(false)`, wywołania liczone parami.
+
+Aktywna sesja nie trzyma locka, także po zmianie sieci: wraca przez migrację
+QUIC (WN-16, WN-84). `shutdown()` zwalnia lock razem z callbackiem, zadaniami
+i daemonem. Reguły sprawdza `MulticastPolicyTest`
+(`./gradlew :wind-core:testDebugUnitTest`), a na urządzeniu
+`MulticastLockTest`, który czyta listę „Multicast Locks held” z
+`dumpsys wifi` (wymaga `android_peer` jak w teście Android → PC; `-e
+toggleWifi true` dodaje prawdziwą zmianę sieci):
+
+```powershell
+adb shell am instrument -w -r -e class io.github.prejas3.windconnect.MulticastLockTest -e pcAddress 10.0.2.2:47820 -e pcKey <PC_PUBLIC_KEY> -e toggleWifi true $runner
+```
+Wersja aplikacji to 0.25.1, a Android `versionCode` to 34. Numery wydań rosną
 niezależnie od kolejności kart, aby aktualizacja APK i MSI nie cofała wersji.
 
 Test na emulatorze/telefonie: `CoreApiTest#platformNetworkCallbackWakesDiscoveryWithoutPolling`
@@ -208,6 +226,19 @@ Test ręczny: wprowadź zweryfikowany klucz i adres PC, spróbuj połączenia be
 zasięgu PC, a potem wejdź do Wi-Fi tego PC. Próba powinna ruszyć po zdarzeniu
 sieci. Sprawdzenie przejścia między fizycznymi sieciami na S25 Ultra pozostaje
 testem sprzętowym.
+
+## Bateria (WC-30)
+
+Budżet planu: < 1% baterii na dobę. Pomiary składowe:
+
+| Data | Urządzenie | Pomiar | Wynik |
+| --- | --- | --- | --- |
+| 2026-11-10 | emulator API 35 (x86_64), `MulticastLockTest` z `android_peer` | `MulticastLock` (WN-83) | brany od startu; zwolniony 243 ms po zestawieniu sesji; przy aktywnej sesji zdarzenie sieci i odświeżenie go nie biorą; po utracie sesji brany po 237 ms i zwolniony sam po 30 253 ms; po wyłączeniu Wi-Fi bez sesji brany po 958 ms; po `shutdown()` zwolniony |
+
+Przed WN-83 lock był trzymany przez całe życie `WindCore`. Teraz przy stałym
+połączeniu z PC jest trzymany tylko przez czas zestawiania sesji, a bez
+połączenia przez okna po 30 s. Zużycie w mAh wymaga pomiaru na telefonie
+(S25 Ultra, Battery Historian) i należy do WC-30.
 
 ## Motyw i komponenty (WN-22)
 

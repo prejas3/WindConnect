@@ -1,6 +1,7 @@
 package io.github.prejas3.windconnect.core
 
 import android.content.Context
+import android.os.SystemClock
 import io.github.prejas3.windconnect.bindings.CoreClient
 import io.github.prejas3.windconnect.bindings.CoreConnection
 import io.github.prejas3.windconnect.bindings.CoreException
@@ -16,6 +17,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -49,11 +51,42 @@ class WindCore private constructor(private val client: CoreClient) {
     private var networkRetry: Job? = null
     private val mutableNetwork = MutableStateFlow(NetworkSnapshot(0uL, emptyList(), null))
     val network: StateFlow<NetworkSnapshot> = mutableNetwork.asStateFlow()
+    @Volatile private var multicast: MulticastPolicy? = null
+    private var multicastTimer: Job? = null
+
+    /** A screen that needs discovery opens (SAS pairing, device list): multicast stays on until
+     * the matching `false`. Calls are counted. */
+    fun discoveryScreen(open: Boolean) = withMulticast { policy, now -> policy.screen(now, open) }
+
+    /** Look for devices again for a short while (e.g. pull to refresh), even without a network change. */
+    fun refreshDiscovery() = withMulticast { policy, now -> policy.wake(now) }
+
+    // CCS/1 RULE:every policy change reschedules its one timer; all under the policy's monitor.
+    private fun withMulticast(change: (MulticastPolicy, Long) -> Unit) {
+        val policy = multicast ?: return
+        synchronized(policy) {
+            change(policy, SystemClock.elapsedRealtime())
+            multicastTimer?.cancel()
+            val wait = policy.nextCheck(SystemClock.elapsedRealtime()) ?: return
+            multicastTimer = scope.launch {
+                delay(wait)
+                withMulticast { p, now -> p.tick(now) }
+            }
+        }
+    }
 
     private suspend fun observeNetwork(context: Context) {
         client.startDiscovery()
         val observer = NetworkObserver(context)
         this.observer = observer
+        multicast = MulticastPolicy(observer.multicast)
+        refreshDiscovery()
+        scope.launch {
+            // CCS/1 RULE:an active session needs no multicast; a lost one looks again (WN-83).
+            state.collect { value ->
+                withMulticast { policy, now -> policy.connected(now, value is ConnectionState.Connected) }
+            }
+        }
         scope.launch {
             try {
                 while (true) { mutableNetwork.value = client.nextNetworkSnapshot() }
@@ -65,6 +98,7 @@ class WindCore private constructor(private val client: CoreClient) {
         scope.launch {
             for (event in observer.events) {
                 try {
+                    refreshDiscovery()
                     // CCS/1 RULE:outside gate; wakes a connect currently holding gate immediately.
                     client.networkChanged()
                     if (mutableState.value !is ConnectionState.Connecting &&
@@ -149,6 +183,7 @@ class WindCore private constructor(private val client: CoreClient) {
                 desiredPeer = null
                 networkRetry?.cancel()
                 try {
+                    multicast?.let { policy -> synchronized(policy) { multicastTimer?.cancel(); policy.close() } }
                     observer?.close()
                     observer = null
                     releaseConnection()
