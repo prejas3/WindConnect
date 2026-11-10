@@ -67,6 +67,9 @@ fn icon(phase: Phase) -> Image<'static> {
 }
 
 pub fn show_main(app: &tauri::AppHandle) -> tauri::Result<()> {
+    if let Some(panel) = app.get_webview_window("panel") {
+        panel.hide()?;
+    }
     if let Some(menu) = app.get_webview_window("tray-menu") {
         menu.hide()?;
     }
@@ -81,6 +84,9 @@ pub fn show_menu(
     app: &tauri::AppHandle,
     position: tauri::PhysicalPosition<f64>,
 ) -> tauri::Result<()> {
+    if let Some(panel) = app.get_webview_window("panel") {
+        panel.hide()?;
+    }
     let Some(window) = app.get_webview_window("tray-menu") else {
         return Ok(());
     };
@@ -104,6 +110,7 @@ pub fn show_menu(
     window.set_position(tauri::PhysicalPosition::new(x as i32, y as i32))?;
     window.show()?;
     window.set_focus()?;
+    app.emit_to("tray-menu", "tray-menu-opened", ())?;
     Ok(())
 }
 
@@ -119,7 +126,7 @@ pub fn install(app: &tauri::AppHandle) -> tauri::Result<TrayRuntime> {
                     button: MouseButton::Left,
                     button_state: MouseButtonState::Up,
                     ..
-                } => show_main(tray.app_handle()),
+                } => crate::panel::show(tray.app_handle()),
                 TrayIconEvent::Click {
                     button: MouseButton::Right,
                     button_state: MouseButtonState::Up,

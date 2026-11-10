@@ -20,11 +20,12 @@ const delay = milliseconds => new Promise(resolve => setTimeout(resolve,millisec
     for(let attempt=0;attempt<60;attempt++){
       const pages=browser.contexts().flatMap(context=>context.pages());
       menu=pages.find(page=>page.url().includes('tray-menu.html'));
-      main=pages.find(page=>page.url().includes('tauri.localhost')&&!page.url().includes('tray-menu.html'));
+      main=pages.find(page=>page.url().includes('tauri.localhost')&&!/tray-menu.html|panel.html/.test(page.url()));
       if(main&&menu)break;await delay(100);
     }
     assert(main&&menu,'both app webviews created');
     await main.waitForFunction(()=>document.querySelector('#status')?.textContent.includes('gotowy'));
+    await main.waitForFunction(async()=>{try{await window.__TAURI__.core.invoke('tray_snapshot');return true;}catch{return false;}});
     const invoke=(page,command,args)=>page.evaluate(({command,args})=>window.__TAURI__.core.invoke(command,args),{command,args});
     let state=await invoke(main,'tray_snapshot'); assert.equal(state.main_visible,false,'login startup has no main window flash');
     const samples=[];

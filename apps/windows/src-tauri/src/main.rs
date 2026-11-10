@@ -3,8 +3,10 @@ use std::sync::Arc;
 use tauri::Manager;
 use wind_core::network::NetworkChanges;
 mod autostart;
+mod hotkey;
 pub mod indicator;
 mod instance;
+mod panel;
 mod tray;
 
 #[tauri::command]
@@ -173,9 +175,24 @@ fn main() {
         }
     };
     tauri::Builder::default()
+        .manage(panel::Runtime::default())
         .setup(|app| {
             app.manage(NetworkState::new()?);
             app.manage(tray::install(app.handle())?);
+            #[cfg(windows)]
+            match hotkey::install(app.handle().clone()) {
+                Ok(hotkey) => {
+                    app.manage(hotkey);
+                }
+                Err(error) => {
+                    eprintln!("panel shortcut unavailable: {error}");
+                    app.state::<panel::Runtime>()
+                        .0
+                        .lock()
+                        .unwrap()
+                        .shortcut_error = Some(error.to_string());
+                }
+            }
             if !std::env::args().any(|arg| arg == "--autostart") {
                 tray::show_main(app.handle())?;
             }
@@ -186,7 +203,9 @@ fn main() {
                 api.prevent_close();
                 let _ = window.hide();
             }
-            tauri::WindowEvent::Focused(false) if window.label() == "tray-menu" => {
+            tauri::WindowEvent::Focused(false)
+                if matches!(window.label(), "tray-menu" | "panel") =>
+            {
                 let _ = window.hide();
             }
             _ => {}
@@ -201,7 +220,11 @@ fn main() {
             autostart_enabled,
             set_autostart,
             tray_action,
-            dev_tray_probe
+            dev_tray_probe,
+            panel::panel_ready,
+            panel::panel_painted,
+            panel::panel_action,
+            panel::panel_snapshot
         ])
         .run(tauri::generate_context!())
         .expect("failed to run WindConnect");

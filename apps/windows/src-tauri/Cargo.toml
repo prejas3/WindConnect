@@ -17,7 +17,7 @@ tokio = { version = "1", features = ["sync", "rt", "macros", "time"] }
 
 [target.'cfg(windows)'.dependencies]
 window-vibrancy = "0.8.1"
-windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Registry", "Win32_System_Threading", "Win32_UI_WindowsAndMessaging"] }
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Registry", "Win32_System_Threading", "Win32_UI_WindowsAndMessaging", "Win32_UI_Input_KeyboardAndMouse"] }
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]
