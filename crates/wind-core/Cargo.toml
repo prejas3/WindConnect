@@ -25,8 +25,11 @@ tokio = { version = "1", features = ["rt", "sync", "time", "macros", "net"] }
 zeroize = "1"
 
 [dev-dependencies]
+# tests/relay.rs only: a WebSocket client for the local relay (relay/, WN-59).
+futures-util = { version = "0.3", default-features = false, features = ["sink"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
 tempfile = "3"
+tokio-tungstenite = "0.30"
 tokio = { version = "1", features = ["rt", "macros", "time", "rt-multi-thread", "sync"] }
 
 [target."cfg(windows)".dependencies]

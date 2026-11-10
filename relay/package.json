@@ -1,0 +1,20 @@
+{
+  "name": "windconnect-relay",
+  "version": "0.26.0",
+  "private": true,
+  "license": "MIT",
+  "description": "WindConnect E2E relay: forwards only encrypted QUIC packets between two paired devices (PROTOCOL.md \u00a713).",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-plugin": "1.4.7",
+    "@cloudflare/workers-types": "5.20261019.1",
+    "typescript": "5.9.3",
+    "vitest": "4.1.12",
+    "wrangler": "4.152.0"
+  }
+}

@@ -1,0 +1,37 @@
+name: Relay CI
+
+on:
+  pull_request:
+    paths: ["relay/**", ".github/workflows/relay.yml"]
+  push:
+    branches: [master]
+    paths: ["relay/**", ".github/workflows/relay.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  relay:
+    name: relay Worker (workerd tests)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: relay
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: relay/package-lock.json
+      - name: Install
+        run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Test (Workers runtime, no deploy)
+        run: npm test
