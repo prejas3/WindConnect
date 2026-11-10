@@ -3,8 +3,17 @@ members = ["crates/wind-core", "crates/wind-ffi", "crates/windctl", "apps/window
 default-members = ["crates/wind-core"]
 resolver = "2"
 
+# WN-95: smaller build folders. Our crates keep line tables (backtraces
+# and panics still show file:line); dependencies carry no debug info.
+# Release and the Android libraries are unchanged.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
+
 [workspace.package]
-version = "0.31.0"
+version = "0.32.0"
 edition = "2021"
 license = "MIT"
 

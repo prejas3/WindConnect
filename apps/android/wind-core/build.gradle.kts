@@ -5,10 +5,15 @@ plugins {
 }
 
 group = "io.github.prejas3.windconnect"
-version = "0.31.0"
+version = "0.32.0"
 
 val repositoryRoot = rootProject.projectDir.resolve("../..").canonicalFile
-val rustTarget = layout.buildDirectory.dir("rust")
+// WN-95: Rust builds share the repository's Cargo target folder, so the
+// host library for bindings reuses `cargo build` output instead of a second
+// copy under build/rust; scripts/clean-build.ps1 cleans it.
+val rustTarget = repositoryRoot.resolve("target")
+@Suppress("UNCHECKED_CAST")
+val windAbis = rootProject.extra["windAbis"] as List<String>
 val generatedKotlin = layout.buildDirectory.dir("generated/uniffi")
 val generatedJni = layout.buildDirectory.dir("generated/jniLibs")
 val isWindows = System.getProperty("os.name").startsWith("Windows")
@@ -22,7 +27,7 @@ android {
     ndkVersion = "27.0.12077973"
     defaultConfig {
         minSdk = 29
-        ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
+        ndk { abiFilters += windAbis }
         consumerProguardFiles("consumer-rules.pro")
     }
     compileOptions {
@@ -37,7 +42,7 @@ android {
 
 fun Exec.rustInputs() {
     workingDir(repositoryRoot)
-    environment("CARGO_TARGET_DIR", rustTarget.get().asFile.absolutePath)
+    environment("CARGO_TARGET_DIR", rustTarget.absolutePath)
     inputs.files(fileTree(repositoryRoot.resolve("crates")) {
         include("**/src/**/*.rs", "**/Cargo.toml", "**/uniffi.toml")
         exclude("**/target/**")
@@ -49,7 +54,7 @@ fun Exec.rustInputs() {
 val buildHost by tasks.registering(Exec::class) {
     rustInputs()
     commandLine("cargo", "build", "--locked", "-p", "wind-ffi", "--lib")
-    outputs.file(rustTarget.map { it.file("debug/$hostLibrary") })
+    outputs.file(rustTarget.resolve("debug/$hostLibrary"))
 }
 
 val generateBindings by tasks.registering(Exec::class) {
@@ -57,13 +62,14 @@ val generateBindings by tasks.registering(Exec::class) {
     rustInputs()
     commandLine("cargo", "run", "--locked", "-p", "wind-ffi", "--features", "bindgen",
         "--bin", "wind-bindgen", "--", "generate", "--library",
-        rustTarget.get().file("debug/$hostLibrary").asFile.absolutePath,
+        rustTarget.resolve("debug/$hostLibrary").absolutePath,
         "--language", "kotlin", "--no-format",
         "--out-dir", generatedKotlin.get().asFile.absolutePath)
     outputs.dir(generatedKotlin)
 }
 
-val nativeTasks = listOf("arm64-v8a" to "aarch64-linux-android", "x86_64" to "x86_64-linux-android").map { (abi, triple) ->
+val nativeTasks = listOf("arm64-v8a" to "aarch64-linux-android", "x86_64" to "x86_64-linux-android")
+    .filter { (abi, _) -> abi in windAbis }.map { (abi, triple) ->
     val buildNative = tasks.register<Exec>("buildRust${abi.replace("-", "").replace("_", "")}") {
         rustInputs()
         val toolchain = android.sdkDirectory.resolve("ndk/${android.ndkVersion}/toolchains/llvm/prebuilt/$hostTag/bin")
@@ -78,11 +84,11 @@ val nativeTasks = listOf("arm64-v8a" to "aarch64-linux-android", "x86_64" to "x8
         environment("${prefix}_LINKER", toolchain.resolve("clang$extension").absolutePath)
         environment("${prefix}_RUSTFLAGS", "-C link-arg=--target=${triple}29 -C link-arg=-Wl,-z,max-page-size=16384 -C link-arg=-Wl,-z,common-page-size=16384")
         commandLine("cargo", "build", "--locked", "--release", "-p", "wind-ffi", "--lib", "--target", triple)
-        outputs.file(rustTarget.map { it.file("$triple/release/libwind_ffi.so") })
+        outputs.file(rustTarget.resolve("$triple/release/libwind_ffi.so"))
     }
     tasks.register<Copy>("stageRust${abi.replace("-", "").replace("_", "")}") {
         dependsOn(buildNative)
-        from(rustTarget.map { it.file("$triple/release/libwind_ffi.so") })
+        from(rustTarget.resolve("$triple/release/libwind_ffi.so"))
         into(generatedJni.map { it.dir(abi) })
     }
 }

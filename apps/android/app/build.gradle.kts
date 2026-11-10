@@ -12,9 +12,10 @@ android {
         applicationId = "io.github.prejas3.windconnect"
         minSdk = 29
         targetSdk = 35
-        versionCode = 40
-        versionName = "0.31.0"
-        ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
+        versionCode = 41
+        versionName = "0.32.0"
+        @Suppress("UNCHECKED_CAST")
+        ndk { abiFilters += rootProject.extra["windAbis"] as List<String> }
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
