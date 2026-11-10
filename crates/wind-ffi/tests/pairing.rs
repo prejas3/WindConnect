@@ -201,3 +201,105 @@ async fn damaged_record_is_reported_and_valid_key_still_authenticates() {
     assert!(root.starts_with(std::env::temp_dir()));
     std::fs::remove_dir_all(root).unwrap();
 }
+
+/// SAS end to end: the PC opens a code window, the phone finds it by its
+/// discovered address and port, both see the same code, both accept, and
+/// each side records the other. A rejected code pairs nobody.
+#[tokio::test(flavor = "multi_thread")]
+async fn sas_pairs_only_when_both_accept_the_same_code() {
+    use wind_core::pairing::PairingEvent;
+    use wind_ffi::DiscoveredDevice;
+    let root = std::env::temp_dir().join(format!(
+        "windconnect-ffi-sas-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let pc_store = Arc::new(PairedDevicesFile::in_dir(root.join("pc")));
+    let phone_dir = root.join("phone").to_string_lossy().into_owned();
+    let identity = DeviceIdentity::generate().unwrap();
+    let mut listener = PairingListener::bind(
+        "127.0.0.1:0".parse().unwrap(),
+        &identity,
+        Some("Test PC"),
+        pc_store.clone(),
+        Arc::new(PinnedKeys::new()),
+        PairingConfig::default(),
+    )
+    .unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let client = open_client(
+        Box::new(Memory::default()),
+        "Pixel".into(),
+        "127.0.0.1:0".into(),
+    )
+    .await
+    .unwrap();
+    let device = DiscoveredDevice {
+        fingerprint: identity.fingerprint().to_hex(),
+        addresses: vec!["127.0.0.1:47820".into()],
+        pairing_port: Some(port),
+    };
+
+    // Rejected on the PC: nobody is paired.
+    listener.open_sas();
+    let attempt = client
+        .start_sas(device.clone(), phone_dir.clone())
+        .await
+        .unwrap();
+    let phone_code = attempt.code().await.unwrap();
+    let Some(PairingEvent::Sas(prompt)) = listener.next_event().await else {
+        panic!("no prompt on the PC");
+    };
+    assert_eq!(prompt.code_text(), phone_code.code);
+    assert_eq!(prompt.peer_name(), Some("Pixel"));
+    prompt.reject();
+    assert!(attempt.decide(true).await.is_err());
+    assert!(client
+        .load_paired(phone_dir.clone())
+        .unwrap()
+        .devices
+        .is_empty());
+    assert!(pc_store.load().unwrap().devices.is_empty());
+
+    // Both accept the same code: both record the other.
+    listener.open_sas();
+    let attempt = client
+        .start_sas(device.clone(), phone_dir.clone())
+        .await
+        .unwrap();
+    let phone_code = attempt.code().await.unwrap();
+    assert_eq!(phone_code.peer_name, "Test PC");
+    assert_eq!(phone_code.code.len(), 7);
+    let prompt = loop {
+        match listener.next_event().await {
+            Some(PairingEvent::Sas(p)) => break p,
+            Some(_) => continue,
+            None => panic!("listener ended"),
+        }
+    };
+    assert_eq!(prompt.code_text(), phone_code.code);
+    prompt.accept();
+    let peer = attempt.decide(true).await.unwrap();
+    // The phone succeeds only after the PC recorded it: the PC reports Paired, never a failure.
+    match tokio::time::timeout(std::time::Duration::from_secs(3), listener.next_event()).await {
+        Ok(Some(PairingEvent::Paired(device))) => {
+            assert_eq!(device.name.as_deref(), Some("Pixel"))
+        }
+        other => panic!("PC side after the phone's success: {other:?}"),
+    }
+    assert_eq!(peer.name, "Test PC");
+    assert_eq!(peer.public_key, identity.public_key().as_bytes());
+    assert_eq!(
+        client.load_paired(phone_dir.clone()).unwrap().devices.len(),
+        1
+    );
+    assert_eq!(pc_store.load().unwrap().devices.len(), 1);
+
+    // No window: refused, with no code.
+    let attempt = client.start_sas(device, phone_dir.clone()).await.unwrap();
+    assert!(attempt.code().await.is_err());
+    let _ = std::fs::remove_dir_all(&root);
+}

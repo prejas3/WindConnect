@@ -48,12 +48,13 @@ fun PairingScreen(model: PairingViewModel, diagnostic: @Composable () -> Unit) {
     if (diagnostics && state.screen == "home") { diagnostic(); return }
     Column(Modifier.fillMaxSize().verticalScroll(scroll).padding(24.dp).testTag("pairingScreen"), verticalArrangement = Arrangement.spacedBy(18.dp)) {
         when (state.screen) {
-            "home" -> HomeScreen(state, model::scan) { diagnostics = true }
+            "home" -> HomeScreen(state, model::scan, onNearby = model::nearby) { diagnostics = true }
             "settings" -> {
                 Text("Ustawienia", style = MaterialTheme.typography.headlineSmall)
                 WindButton("Powrót", model::cancel, Modifier.testTag("closeSettings"), kind = ButtonKind.Quiet)
                 BackgroundControls(state.hasPairedDevice)
                 WindButton("Sparuj kolejny komputer", model::scan, Modifier.testTag("scanQr"), enabled = state.ready, kind = ButtonKind.Secondary)
+                WindButton("Paruj bez aparatu", model::nearby, Modifier.testTag("pairNearby"), enabled = state.ready, kind = ButtonKind.Secondary)
             }
             "scanner" -> {
                 Text("Zeskanuj kod QR", style = MaterialTheme.typography.headlineSmall)
@@ -78,6 +79,36 @@ fun PairingScreen(model: PairingViewModel, diagnostic: @Composable () -> Unit) {
                 WindButton(if (state.screen == "pairing") "Parowanie…" else "Sparuj urządzenia", model::confirm, Modifier.fillMaxWidth().testTag("confirmPairing"), enabled = state.ready && state.screen == "confirm")
                 if (state.screen == "confirm") WindButton("Anuluj", model::cancel, Modifier.testTag("cancelPairing"), kind = ButtonKind.Secondary)
                 else Text("Weryfikowanie jednorazowego kodu. To może potrwać do 30 sekund.", modifier = Modifier.testTag("pairingProgress"))
+            }
+            "nearby" -> {
+                Text("Komputery w pobliżu", style = MaterialTheme.typography.headlineSmall)
+                Text("Na komputerze otwórz panel WindConnect i wybierz „Paruj bez aparatu”. Komputer pojawi się tutaj.")
+                if (state.nearby.isEmpty()) Text("Szukam w tej sieci Wi-Fi…", modifier = Modifier.testTag("nearbyEmpty"))
+                state.nearby.forEach { device ->
+                    WindCard(Modifier.fillMaxWidth().testTag("nearbyDevice")) {
+                        Text("Komputer gotowy do parowania", style = MaterialTheme.typography.titleMedium)
+                        Text(shortFingerprint(device.fingerprint), style = MaterialTheme.typography.bodySmall)
+                        WindButton("Paruj", { model.pairWith(device) }, Modifier.fillMaxWidth())
+                    }
+                }
+                Text("Lista pochodzi z sieci i niczego nie potwierdza. O zaufaniu decyduje porównanie kodów na obu ekranach.", style = MaterialTheme.typography.bodySmall)
+                WindButton("Anuluj", model::cancel, Modifier.testTag("cancelPairing"), kind = ButtonKind.Secondary)
+            }
+            "sas-connecting" -> {
+                Text("Łączenie z komputerem…", style = MaterialTheme.typography.headlineSmall)
+                Text("Za chwilę oba ekrany pokażą ten sam sześciocyfrowy kod.")
+                WindButton("Anuluj", model::cancel, Modifier.testTag("cancelPairing"), kind = ButtonKind.Secondary)
+            }
+            "sas-code", "sas-rejected", "sas-confirming" -> {
+                Text("Porównaj kody", style = MaterialTheme.typography.headlineSmall)
+                WindCard(Modifier.fillMaxWidth()) {
+                    Text(state.name, style = MaterialTheme.typography.titleMedium, modifier = Modifier.testTag("pairingPeer"))
+                    Text(state.code, style = MaterialTheme.typography.displayMedium, modifier = Modifier.testTag("sasCode"))
+                }
+                Text("Sparuj tylko wtedy, gdy komputer pokazuje dokładnie ten sam kod. Inny kod oznacza, że łączysz się z innym urządzeniem.")
+                WindButton("Kody są takie same", { model.decide(true) }, Modifier.fillMaxWidth().testTag("sasSame"), enabled = state.screen == "sas-code")
+                WindButton("Kody się różnią", { model.decide(false) }, Modifier.fillMaxWidth().testTag("sasDifferent"), enabled = state.screen == "sas-code", kind = ButtonKind.Secondary)
+                if (state.screen == "sas-confirming") Text("Czekam na potwierdzenie na komputerze.", modifier = Modifier.testTag("pairingProgress"))
             }
             "paired" -> {
                 Text("Urządzenia sparowane", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.testTag("pairingSuccess"))

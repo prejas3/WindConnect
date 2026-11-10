@@ -1051,10 +1051,24 @@ async fn sas_client(
             DecideError::Read(e) => read_error(e),
             DecideError::Write => PairError::Protocol("stream failed"),
         })?;
+    // CCS/1 RULE:the server's FIN comes only after it recorded us (§12.6, rule 6); our Confirm(true) is
+    // then surely in. Only then record it here: a close right after decide could drop our Confirm (WN-27).
+    let _ = send.finish();
+    match timeout(config.step_timeout, recv.read_to_end(MAX_PAIR_FRAME)).await {
+        Err(_) => return Err(PairError::Timeout),
+        Ok(Ok(rest)) if rest.is_empty() => {}
+        Ok(Ok(_)) => return Err(PairError::Protocol("data after the confirmation")),
+        Ok(Err(quinn::ReadToEndError::Read(quinn::ReadError::ConnectionLost(e)))) => {
+            return Err(match refused(&e) {
+                Some(code) => PairError::Refused(code),
+                None => PairError::Connection(e),
+            })
+        }
+        Ok(Err(_)) => return Err(PairError::Protocol("the server did not finish the pairing")),
+    }
     let device = PairedDevice::now(server, their_name);
     store.add(&device).map_err(PairError::Store)?;
     pins.pin(server);
-    let _ = send.finish();
     Ok(device)
 }
 

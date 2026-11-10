@@ -62,6 +62,18 @@ class WindCore private constructor(
             client.pairQr(offer, pairedDirectory)
         }
     }
+    /**
+     * Pairing by code comparison (WN-27, PROTOCOL.md §12.6) with a computer whose SAS window
+     * is open (`pairingPort`). Read the code with [SasPairing.code], show it, and pass the
+     * person's answer to [SasPairing.decide]; only a match accepted on both screens pairs.
+     */
+    suspend fun startSas(device: io.github.prejas3.windconnect.bindings.DiscoveredDevice): io.github.prejas3.windconnect.bindings.SasPairing = withContext(Dispatchers.IO) {
+        gate.withLock {
+            check(!stopped) { "core is stopped" }
+            client.startSas(device, pairedDirectory)
+        }
+    }
+
     /** CCS/1 SEC:discovery supplies addresses only; the key must already be in the durable paired store. */
     suspend fun connectPaired(peer: io.github.prejas3.windconnect.bindings.PeerInfo) = withContext(Dispatchers.IO) {
         withTimeout(7_000) {

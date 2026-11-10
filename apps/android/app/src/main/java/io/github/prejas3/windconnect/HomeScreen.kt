@@ -24,7 +24,7 @@ internal fun computerLabel(value: String?): String = value.orEmpty().filterNot {
 }.trim().take(64).ifEmpty { "Komputer" }
 
 @Composable
-fun HomeScreen(state: PairingUi, onScan: () -> Unit, onDiagnostics: () -> Unit) {
+fun HomeScreen(state: PairingUi, onScan: () -> Unit, onNearby: (() -> Unit)? = null, onDiagnostics: () -> Unit) {
     val connected = state.connection as? ConnectionState.Connected
     val known = state.hasPairedDevice || connected != null
     val name = if (known) computerLabel(state.computerName) else "Twój komputer"
@@ -71,6 +71,8 @@ fun HomeScreen(state: PairingUi, onScan: () -> Unit, onDiagnostics: () -> Unit) 
     if (!known) {
         Text("Otwórz WindConnect na komputerze i zeskanuj kod QR. Oba urządzenia powinny być w tej samej sieci Wi-Fi.", style = MaterialTheme.typography.bodyMedium)
         WindButton("Zeskanuj kod QR", onScan, Modifier.fillMaxWidth().testTag("scanQr"), enabled = state.ready)
+        // WN-27: pairing by code comparison when the camera can't be used.
+        if (onNearby != null) WindButton("Paruj bez aparatu", onNearby, Modifier.fillMaxWidth().testTag("pairNearby"), enabled = state.ready, kind = ButtonKind.Secondary)
     }
     Text("Ostatnie transfery", style = MaterialTheme.typography.titleMedium)
     WindCard(Modifier.fillMaxWidth().testTag("recentTransfers")) {

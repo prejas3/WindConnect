@@ -29,6 +29,8 @@ pub struct Snapshot {
     pub message: String,
     pub skipped_records: usize,
     pub pair_to_connected_ms: Option<u64>,
+    /// SAS (§12.6): the code to compare with the phone, while it waits for a decision.
+    pub code: Option<String>,
 }
 impl Default for Snapshot {
     fn default() -> Self {
@@ -39,12 +41,17 @@ impl Default for Snapshot {
             message: "Przygotowywanie bezpiecznego połączenia…".into(),
             skipped_records: 0,
             pair_to_connected_ms: None,
+            code: None,
         }
     }
 }
 enum Action {
     Refresh,
     Close,
+    /// Pair without a camera: open a SAS window (WN-27).
+    Sas,
+    /// The person's answer to the shown code.
+    Decide(bool),
 }
 struct AcceptTask(tokio::task::JoinHandle<()>);
 impl Drop for AcceptTask {
@@ -254,6 +261,9 @@ async fn run(
         trust,
         PairingConfig::default(),
     )?;
+    // CCS/1 FLOW:SAS window open -> mDNS TXT pair=<port> -> phone lists this PC -> both show the code (§12.4, §12.6).
+    listener.advertise_with(discovery.pairing_advertiser());
+    let mut prompt: Option<wind_core::pairing::SasPrompt> = None;
     let indicator = app.state::<crate::tray::TrayRuntime>().indicator.clone();
     let mut snapshot = Snapshot {
         skipped_records: loaded.skipped.len(),
@@ -289,8 +299,31 @@ async fn run(
                 snapshot.phase = "offline".into(); snapshot.message = "Telefon sparowany, ale brak połączenia. Sprawdź wspólną sieć Wi-Fi.".into();
             },
             command = commands.recv() => match command {
-                Some(Action::Refresh) => { if active.is_none() { refresh = true; } }
-                Some(Action::Close) => { if active.is_none() { listener.close_window(); snapshot.qr = None; snapshot.phase = "offline".into(); snapshot.message = "Parowanie anulowane".into(); } }
+                Some(Action::Refresh) => { if active.is_none() { if let Some(p) = prompt.take() { p.reject(); } snapshot.code = None; refresh = true; } }
+                Some(Action::Close) => { if active.is_none() { if let Some(p) = prompt.take() { p.reject(); } listener.close_window(); snapshot.qr = None; snapshot.code = None; snapshot.phase = "offline".into(); snapshot.message = "Parowanie anulowane".into(); } }
+                Some(Action::Sas) => {
+                    if active.is_none() {
+                        if let Some(p) = prompt.take() { p.reject(); }
+                        listener.open_sas();
+                        snapshot.qr = None; snapshot.code = None;
+                        snapshot.phase = "sas-waiting".into();
+                        snapshot.message = format!("Na telefonie wybierz „Paruj bez aparatu”, a potem {name} z listy.");
+                    }
+                }
+                Some(Action::Decide(accept)) => {
+                    if let Some(p) = prompt.take() {
+                        if accept {
+                            p.accept();
+                            snapshot.phase = "sas-confirming".into();
+                            snapshot.message = "Czekam na potwierdzenie na telefonie…".into();
+                        } else {
+                            p.reject();
+                            snapshot.code = None;
+                            snapshot.phase = "sas-waiting".into();
+                            snapshot.message = "Kod odrzucony. Spróbuj ponownie z telefonu albo wróć do kodu QR.".into();
+                        }
+                    }
+                }
                 None => break,
             },
             changed = network.changed() => {
@@ -298,13 +331,26 @@ async fn run(
                 if snapshot.phase == "waiting" || snapshot.phase == "no-network" { refresh = true; }
             },
             event = listener.next_event() => match event {
+                Some(PairingEvent::Sas(p)) => {
+                    if let Some(old) = prompt.replace(p) { old.reject(); }
+                    let shown = prompt.as_ref().expect("just set");
+                    snapshot.code = Some(shown.code_text());
+                    snapshot.phone = shown.peer_name().map(String::from);
+                    snapshot.phase = "sas-code".into();
+                    snapshot.message = format!("Czy {} pokazuje ten sam kod?", shown.peer_name().unwrap_or("telefon"));
+                }
                 Some(PairingEvent::Paired(device)) => {
+                    prompt = None; snapshot.code = None;
                     crate::files::set_target(&app, *device.key.fingerprint().as_bytes(), device.name.clone());
                     paired_at = Some(Instant::now()); snapshot.qr = None;
                     if active.as_ref().is_none_or(|(session, _)| session.peer().key != device.key) { snapshot.phase = "connecting".into(); snapshot.phone = device.name; snapshot.message = "Sparowano · czekam na bezpieczne połączenie telefonu".into(); }
                 }
-                Some(PairingEvent::WindowClosed(WindowEnd::Expired | WindowEnd::TooManyAttempts)) if snapshot.phase == "waiting" => { snapshot.phase = "expired".into(); snapshot.qr = None; snapshot.message = "Kod wygasł lub osiągnięto limit prób. Wyświetl nowy kod.".into(); }
-                Some(PairingEvent::AttemptFailed { failures, .. }) => { snapshot.message = format!("Próba parowania odrzucona ({failures}/3). Sprawdź kod i sieć."); }
+                Some(PairingEvent::WindowClosed(WindowEnd::Expired | WindowEnd::TooManyAttempts)) if snapshot.phase == "waiting" || snapshot.phase.starts_with("sas-") => { prompt = None; snapshot.code = None; snapshot.phase = "expired".into(); snapshot.qr = None; snapshot.message = "Parowanie wygasło lub osiągnięto limit prób. Zacznij od nowa.".into(); }
+                Some(PairingEvent::AttemptFailed { failures, .. }) => {
+                    prompt = None;
+                    if snapshot.phase.starts_with("sas-") { snapshot.code = None; snapshot.phase = "sas-waiting".into(); }
+                    snapshot.message = format!("Próba parowania odrzucona ({failures}/3). Sprawdź kod i sieć.");
+                }
                 _ => {},
             },
             incoming = sessions.recv() => {
@@ -347,6 +393,9 @@ pub fn pairing_action(
     let action = match action {
         "refresh" => Action::Refresh,
         "close" => Action::Close,
+        "sas" => Action::Sas,
+        "sas-accept" => Action::Decide(true),
+        "sas-reject" => Action::Decide(false),
         _ => return Err("unsupported pairing action".into()),
     };
     state

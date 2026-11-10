@@ -120,7 +120,7 @@ pub struct PairedLoadResult {
 #[derive(uniffi::Object)]
 pub struct CoreClient {
     /// Signs pairing and relay authentication (PROTOCOL.md §13.2).
-    device_identity: DeviceIdentity,
+    device_identity: Arc<DeviceIdentity>,
     endpoint: Endpoint,
     /// Relay base URL; `None` (the default, D3) never touches the relay.
     relay: std::sync::Mutex<Option<String>>,
@@ -196,7 +196,7 @@ pub async fn open_client(
             kind: DeviceKind::Phone,
             app: Some(wind_core::VERSION.into()),
         },
-        device_identity: identity,
+        device_identity: Arc::new(identity),
     }))
 }
 
@@ -240,6 +240,60 @@ impl CoreClient {
             fingerprint: device.key.fingerprint().to_hex(),
             name: device.name.unwrap_or_else(|| "Komputer".into()),
         })
+    }
+
+    /// Starts pairing by code comparison (PROTOCOL.md §12.6) with a
+    /// discovered computer whose SAS window is open (`pairing_port`). Nothing
+    /// is trusted yet: [`SasPairing::code`] gives the code to show, and only
+    /// [`SasPairing::decide`] with `true`, matched by the computer's own
+    /// acceptance, records and pins its key.
+    /// CCS/1 SEC:the address is an untrusted mDNS hint; the code comparison authenticates (§12.4, §12.6).
+    pub async fn start_sas(
+        &self,
+        device: DiscoveredDevice,
+        directory: String,
+    ) -> Result<Arc<SasPairing>, CoreError> {
+        let port = device.pairing_port.ok_or_else(|| CoreError::InvalidInput {
+            reason: "the computer has no pairing window open".into(),
+        })?;
+        let ips: Vec<std::net::IpAddr> = device
+            .addresses
+            .iter()
+            .filter_map(|a| a.parse::<std::net::SocketAddr>().ok().map(|s| s.ip()))
+            .collect();
+        let ip = ips
+            .iter()
+            .find(|ip| ip.is_ipv4())
+            .or(ips.first())
+            .copied()
+            .ok_or_else(|| CoreError::InvalidInput {
+                reason: "the computer has no address".into(),
+            })?;
+        let address = std::net::SocketAddr::new(ip, port);
+        let (prompt_tx, prompt_rx) = tokio::sync::oneshot::channel();
+        let identity = self.device_identity.clone();
+        let trust = self.trust.clone();
+        let name = self.local.name.clone();
+        let task = tokio::spawn(async move {
+            let store = wind_core::pairing::PairedDevicesFile::in_dir(directory);
+            wind_core::pairing::pair_with_sas(
+                &identity,
+                address,
+                Some(&name),
+                &store,
+                &trust,
+                &wind_core::pairing::PairingConfig::default(),
+                move |prompt| {
+                    let _ = prompt_tx.send(prompt);
+                },
+            )
+            .await
+        });
+        Ok(Arc::new(SasPairing {
+            prompt: tokio::sync::Mutex::new(Some(prompt_rx)),
+            pending: std::sync::Mutex::new(None),
+            task: tokio::sync::Mutex::new(Some(task)),
+        }))
     }
 
     pub fn load_paired(&self, directory: String) -> Result<PairedLoadResult, CoreError> {
@@ -472,6 +526,132 @@ impl CoreClient {
             session,
             relay: None,
         }))
+    }
+}
+
+/// The code both screens show (§12.6), and the computer's name.
+#[derive(uniffi::Record, Clone, Debug)]
+pub struct SasCode {
+    /// Six digits in two groups: `042 917`.
+    pub code: String,
+    pub peer_name: String,
+}
+
+type SasTask = tokio::task::JoinHandle<
+    Result<wind_core::pairing::PairedDevice, wind_core::pairing::PairError>,
+>;
+
+/// One pairing by code comparison, from [`CoreClient::start_sas`].
+/// Dropping it without a decision rejects.
+#[derive(uniffi::Object)]
+pub struct SasPairing {
+    prompt:
+        tokio::sync::Mutex<Option<tokio::sync::oneshot::Receiver<wind_core::pairing::SasPrompt>>>,
+    pending: std::sync::Mutex<Option<wind_core::pairing::SasPrompt>>,
+    task: tokio::sync::Mutex<Option<SasTask>>,
+}
+
+fn sas_error(error: wind_core::pairing::PairError) -> CoreError {
+    use wind_core::pairing::PairError;
+    CoreError::Transport {
+        reason: match error {
+            PairError::Rejected => "the code was rejected",
+            PairError::Timeout => "pairing timed out",
+            PairError::Refused(ErrorCode::RateLimited) => {
+                "the computer is busy or locked after failed attempts; show a new code there"
+            }
+            PairError::Refused(_) | PairError::Connection(_) => {
+                "the computer closed pairing; open pairing by code there again"
+            }
+            _ => "pairing failed",
+        }
+        .into(),
+    }
+}
+
+#[uniffi::export(async_runtime = "tokio")]
+impl SasPairing {
+    /// Waits for the code (both sides' nonces exchanged).
+    pub async fn code(&self) -> Result<SasCode, CoreError> {
+        let receiver = self.prompt.lock().await.take();
+        let Some(receiver) = receiver else {
+            return Err(CoreError::InvalidInput {
+                reason: "the code was already read".into(),
+            });
+        };
+        match receiver.await {
+            Ok(prompt) => {
+                let code = SasCode {
+                    code: prompt.code_text(),
+                    peer_name: prompt.peer_name().unwrap_or("Komputer").to_string(),
+                };
+                *self.pending.lock().unwrap() = Some(prompt);
+                Ok(code)
+            }
+            // The task ended before a code: its error says why.
+            Err(_) => Err(self.finish().await.err().unwrap_or(CoreError::Transport {
+                reason: "pairing failed".into(),
+            })),
+        }
+    }
+
+    /// The person's answer. `true` pairs only if the computer accepted too;
+    /// `false` rejects. Returns the computer once both accepted.
+    pub async fn decide(&self, accept: bool) -> Result<PeerInfo, CoreError> {
+        let prompt = self.pending.lock().unwrap().take();
+        let Some(prompt) = prompt else {
+            return Err(CoreError::InvalidInput {
+                reason: "no code to decide on".into(),
+            });
+        };
+        if accept {
+            prompt.accept();
+        } else {
+            prompt.reject();
+        }
+        let device = self.finish().await?;
+        Ok(PeerInfo {
+            public_key: device.key.as_bytes().to_vec(),
+            fingerprint: device.key.fingerprint().to_hex(),
+            name: device.name.unwrap_or_else(|| "Komputer".into()),
+        })
+    }
+
+    /// Stops the attempt (rejects a shown code).
+    pub fn cancel(&self) {
+        if let Some(prompt) = self.pending.lock().unwrap().take() {
+            prompt.reject();
+        }
+        if let Ok(mut task) = self.task.try_lock() {
+            if let Some(task) = task.take() {
+                task.abort();
+            }
+        }
+    }
+}
+
+impl SasPairing {
+    async fn finish(&self) -> Result<wind_core::pairing::PairedDevice, CoreError> {
+        let task = self
+            .task
+            .lock()
+            .await
+            .take()
+            .ok_or(CoreError::InvalidInput {
+                reason: "pairing already finished".into(),
+            })?;
+        match task.await {
+            Ok(result) => result.map_err(sas_error),
+            Err(_) => Err(CoreError::Transport {
+                reason: "pairing was cancelled".into(),
+            }),
+        }
+    }
+}
+
+impl Drop for SasPairing {
+    fn drop(&mut self) {
+        self.cancel();
     }
 }
 

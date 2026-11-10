@@ -1465,6 +1465,16 @@ SAS = be_u32(SHA-256("wc-pair-v1 sas" ‖ E ‖ K_c ‖ K_s ‖ N_c ‖ N_s)[0..
    `CANCELLED`, a druga strona traktuje takie zamknięcie jak odrzucenie.
    Strona zapisuje i przypina klucz drugiej tylko wtedy, gdy zaakceptował
    jej użytkownik **i** druga strona przysłała `true`.
+6. Zakończenie (WN-27): serwer po obu zgodach zapisuje i przypina klucz
+   klienta, a dopiero potem kończy swój kierunek strumienia (FIN) i czeka,
+   aż klient zamknie połączenie. Klient po obu zgodach kończy swój kierunek
+   (FIN) i czeka na FIN serwera (limit kroku, 10 s); dopiero po nim zapisuje
+   i przypina klucz serwera, po czym zamyka połączenie kodem `NO_ERROR`.
+   Zamknięcie połączenia, dane po `PairConfirm` albo brak FIN w czasie to
+   błąd: klient niczego nie zapisuje. Dzięki temu zamknięcie przez klienta
+   nie porzuci jego `PairConfirm(true)` w drodze, a jedyna możliwa
+   asymetria to serwer, który zapisał klienta, gdy jego FIN nie doszedł
+   (jak w §12.8).
 
 Kolejność jest wymuszona: wiadomość poza nią (np. `PairReveal` przed
 `PairHello`, `PairConfirm` w miejscu `PairReveal`, druga `PairNonce`) to

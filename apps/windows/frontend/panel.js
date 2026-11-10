@@ -16,15 +16,27 @@ theme();
 function renderPairing(state) {
   const waiting = state.phase === 'waiting';
   const connected = state.phase === 'connected';
+  const sas = state.phase.startsWith('sas-');
+  const asking = state.phase === 'sas-code';
   document.querySelector('#phone-name').textContent = state.phone || 'Twój telefon';
-  document.querySelector('#connection-state').textContent = ({ connected: 'Połączono · Wi-Fi', waiting: 'Oczekiwanie na telefon', connecting: 'Sparowano · Łączenie…', offline: 'Telefon rozłączony', loading: 'Uruchamianie…' })[state.phase] || 'Brak połączenia';
-  document.querySelector('#pairing-title').textContent = connected ? (state.phone || 'Telefon połączony') : waiting ? 'Połącz telefon' : state.phase === 'connecting' ? 'Kończenie połączenia…' : 'Parowanie telefonu';
+  document.querySelector('#connection-state').textContent = ({ connected: 'Połączono · Wi-Fi', waiting: 'Oczekiwanie na telefon', 'sas-waiting': 'Oczekiwanie na telefon', 'sas-code': 'Porównaj kody', 'sas-confirming': 'Porównaj kody', connecting: 'Sparowano · Łączenie…', offline: 'Telefon rozłączony', loading: 'Uruchamianie…' })[state.phase] || 'Brak połączenia';
+  document.querySelector('#pairing-title').textContent = connected ? (state.phone || 'Telefon połączony') : waiting ? 'Połącz telefon' : sas ? 'Paruj bez aparatu' : state.phase === 'connecting' ? 'Kończenie połączenia…' : 'Parowanie telefonu';
+  // CCS/1 SEC:the code is shown only while a decision is pending; accept only after the person compares both screens (§12.6).
+  const code = document.querySelector('#pairing-code');
+  code.hidden = !asking || !state.code;
+  code.textContent = asking && state.code ? state.code : '';
+  document.querySelector('#pairing-accept').hidden = !asking;
+  document.querySelector('#pairing-reject').hidden = !asking;
+  document.querySelector('#pairing-sas').hidden = !(waiting || state.phase === 'expired' || state.phase === 'no-network');
   document.querySelector('#pairing-message').textContent = state.message;
   document.querySelector('#quick-actions').hidden = !connected;
   document.querySelector('#pairing-instructions').hidden = !waiting;
   document.querySelector('#pairing-hint').hidden = !connected;
-  document.querySelector('#pairing-refresh').hidden = connected || ['connecting','loading','failed'].includes(state.phase);
-  document.querySelector('#pairing-cancel').hidden = !waiting;
+  const refresh = document.querySelector('#pairing-refresh');
+  refresh.hidden = connected || asking || ['connecting','loading','failed','sas-confirming'].includes(state.phase);
+  refresh.textContent = sas ? 'Wróć do kodu QR' : 'Wyświetl nowy kod';
+  refresh.classList.toggle('primary', !sas);
+  document.querySelector('#pairing-cancel').hidden = !(waiting || sas);
   document.querySelector('#pairing-warning').hidden = !state.skipped_records;
   document.querySelector('#pairing-warning').textContent = state.skipped_records ? `Pominięto uszkodzone wpisy sparowania: ${state.skipped_records}.` : '';
   const canvas = document.querySelector('#pairing-qr');
@@ -98,7 +110,8 @@ function renderDrag(over) {
 }
 document.querySelector('#send-files').addEventListener('click', () => invoke?.('files_action', { action: 'pick' }).catch(error));
 document.querySelector('#transfers-clear').addEventListener('click', () => invoke?.('files_action', { action: 'clear' }).catch(error));
-document.querySelectorAll('#pairing-refresh,#pairing-cancel').forEach(button => button.addEventListener('click', () => invoke?.('pairing_action', { action: button.id === 'pairing-refresh' ? 'refresh' : 'close' }).catch(error)));
+const pairingActions = { 'pairing-refresh': 'refresh', 'pairing-cancel': 'close', 'pairing-sas': 'sas', 'pairing-accept': 'sas-accept', 'pairing-reject': 'sas-reject' };
+document.querySelectorAll(Object.keys(pairingActions).map(id => `#${id}`).join(',')).forEach(button => button.addEventListener('click', () => invoke?.('pairing_action', { action: pairingActions[button.id] }).catch(error)));
 // CCS/1 PERF:preload font/layout before ready; two frames acknowledge content submission, not physical display scanout.
 async function refreshShortcut() {
   const state = await invoke('panel_snapshot');
