@@ -111,6 +111,15 @@ impl PinnedKeys {
             .unwrap_or_else(|e| e.into_inner())
             .remove(key)
     }
+
+    /// Whether a pinned key has this SHA-256 SPKI fingerprint (§2.1).
+    pub fn contains_fingerprint(&self, fingerprint: &[u8; 32]) -> bool {
+        self.keys
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .iter()
+            .any(|key| key.fingerprint().as_bytes() == fingerprint)
+    }
 }
 
 impl PeerTrust for PinnedKeys {
