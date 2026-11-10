@@ -19,9 +19,10 @@
     <section class="pairing-card" aria-labelledby="pairing-title">
       <h2 id="pairing-title">Połącz telefon</h2>
       <canvas id="pairing-qr" role="img" aria-label="Jednorazowy kod QR do sparowania telefonu" hidden></canvas>
+      <p id="pairing-code" class="pairing-code" aria-label="Kod do porównania" hidden></p>
       <p id="pairing-message" role="status">Przygotowywanie bezpiecznego połączenia…</p>
       <p id="pairing-instructions" class="subtle" hidden>Otwórz skaner w WindConnect na telefonie. Kod jest jednorazowy i ważny przez 5 minut.</p>
-      <div class="button-row"><button id="pairing-refresh" class="button primary small" hidden>Wyświetl nowy kod</button><button id="pairing-cancel" class="button quiet small" hidden>Anuluj</button></div>
+      <div class="button-row"><button id="pairing-accept" class="button primary small" hidden>Kody są takie same</button><button id="pairing-reject" class="button small" hidden>Kody się różnią</button><button id="pairing-refresh" class="button primary small" hidden>Wyświetl nowy kod</button><button id="pairing-sas" class="button small" hidden>Paruj bez aparatu</button><button id="pairing-cancel" class="button quiet small" hidden>Anuluj</button></div>
       <p id="pairing-hint" class="subtle" hidden>Pozostałe akcje pojawią się w kolejnych etapach. Pliki możesz też przeciągnąć na ten panel albo wysłać z menu Eksploratora.</p>
       <p id="pairing-warning" class="subtle" role="status" hidden></p>
     </section>

@@ -292,3 +292,17 @@ Komputer nie ogłasza jeszcze `files/1` (odbiór to WN-40); folder
 
 Test panelu (Playwright jak dla `check-ui.cjs`, IPC podstawione):
 `node apps/windows/scripts/check-send-ui.cjs`.
+
+## Parowanie bez aparatu (WN-27)
+
+Panel w trybie kodu QR ma przycisk „Paruj bez aparatu”: otwiera okno SAS
+(PROTOCOL.md §12.6) i ogłasza w mDNS port parowania (TXT `pair`, §12.4) na
+czas okna. Telefon w „Paruj bez aparatu” pokazuje komputery z tym polem;
+po wybraniu oba ekrany pokazują ten sam sześciocyfrowy kod z nazwą drugiej
+strony. Klucz drugiej strony jest zapisany dopiero wtedy, gdy na **obu**
+ekranach wybrano „Kody są takie same”. „Kody się różnią” albo brak decyzji
+w 60 s to nieudana próba; po 3 próbach okno się zamyka (§12.2). Lista na
+telefonie to niezaufane wskazówki z sieci: o zaufaniu decyduje porównanie
+kodów.
+
+Test panelu (IPC podstawione): `node apps/windows/scripts/check-sas-ui.cjs`.

@@ -145,7 +145,7 @@ generator, a nie ręcznie edytowane wiązania lub binaria.
 
 AAR: `wind-core/build/outputs/aar/wind-core-release.aar`.
 Lokalne repozytorium Maven z AAR, źródłami, POM i metadanymi Gradle:
-`wind-core/build/repo/`. Współrzędne: `io.github.prejas3.windconnect:wind-core:0.36.0`.
+`wind-core/build/repo/`. Współrzędne: `io.github.prejas3.windconnect:wind-core:0.37.0`.
 Publikacja zapisuje pliki lokalnie; nie wysyła ich do zewnętrznego repozytorium.
 Konsument musi korzystać z POM/metadanych (JNA i korutyny są zależnościami
 przechodnimi); sama kopia pliku AAR nie dostarczy JNA.
@@ -158,7 +158,7 @@ Konsument spoza repozytorium dodaje lokalne repozytorium do
 maven { url = uri("/sciezka/do/wind-core/build/repo") }
 ```
 
-oraz `implementation("io.github.prejas3.windconnect:wind-core:0.36.0")`.
+oraz `implementation("io.github.prejas3.windconnect:wind-core:0.37.0")`.
 W aplikacji konsumenta ogranicz ABI do `arm64-v8a` i `x86_64`.
 
 ```kotlin
@@ -255,7 +255,7 @@ toggleWifi true` dodaje prawdziwą zmianę sieci):
 ```powershell
 adb shell am instrument -w -r -e class io.github.prejas3.windconnect.MulticastLockTest -e pcAddress 10.0.2.2:47820 -e pcKey <PC_PUBLIC_KEY> -e toggleWifi true $runner
 ```
-Wersja aplikacji to 0.36.0, a Android `versionCode` to 45. Numery wydań rosną
+Wersja aplikacji to 0.37.0, a Android `versionCode` to 46. Numery wydań rosną
 niezależnie od kolejności kart, aby aktualizacja APK i MSI nie cofała wersji.
 
 ## Ekran główny (WN-31)
@@ -393,3 +393,14 @@ w cache debug aplikacji (`wn22-Light.png`, `wn22-Dark.png`). CI kompiluje APK
 instrumentacji; urządzeniowe uruchomienie jest lokalne. Docelowo sprawdź na S25
 Ultra / najnowszym One UI, także duży font i nawigację gestami. Emulator API 35
 nie zastępuje kontroli układu i koloru tapety na Samsungu.
+
+## Parowanie bez aparatu (WN-27)
+
+Ekran parowania ma „Paruj bez aparatu”: lista komputerów z otwartym oknem
+kodu (mDNS TXT `pair`, PROTOCOL.md §12.4; na czas ekranu włączony multicast,
+`discoveryScreen`). Wybór łączy się z portem parowania (`CoreClient.startSas`),
+oba ekrany pokazują ten sam kod (`SasPairing.code`), a para powstaje tylko
+po „Kody są takie same” na telefonie i na komputerze (`SasPairing.decide`).
+Lista niczego nie potwierdza; adres to wskazówka, uwierzytelnia porównanie
+kodów (§12.6). Test FFI: `cargo test -p wind-ffi --test pairing`
+(`sas_pairs_only_when_both_accept_the_same_code`).
