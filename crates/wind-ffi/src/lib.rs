@@ -106,8 +106,15 @@ pub struct PeerInfo {
     pub fingerprint: String,
 }
 
+#[derive(uniffi::Record, Clone, Debug)]
+pub struct PairedLoadResult {
+    pub devices: Vec<PeerInfo>,
+    pub skipped_records: u64,
+}
+
 #[derive(uniffi::Object)]
 pub struct CoreClient {
+    device_identity: DeviceIdentity,
     endpoint: Endpoint,
     trust: Arc<PinnedKeys>,
     identity: IdentityInfo,
@@ -180,11 +187,75 @@ pub async fn open_client(
             kind: DeviceKind::Phone,
             app: Some(wind_core::VERSION.into()),
         },
+        device_identity: identity,
     }))
 }
 
 #[uniffi::export(async_runtime = "tokio")]
 impl CoreClient {
+    /// CCS/1 SEC:call only after explicit confirmation; parsed offer is single-use and never exports its secret.
+    pub async fn pair_qr(
+        &self,
+        offer: Arc<QrOffer>,
+        directory: String,
+    ) -> Result<PeerInfo, CoreError> {
+        let offer = offer
+            .offer
+            .lock()
+            .unwrap()
+            .take()
+            .ok_or_else(|| CoreError::InvalidInput {
+                reason: "pairing offer already consumed".into(),
+            })?;
+        let store = wind_core::pairing::PairedDevicesFile::in_dir(directory);
+        let device = tokio::time::timeout(
+            Duration::from_secs(30),
+            wind_core::pairing::pair_with_offer(
+                &self.device_identity,
+                &offer,
+                Some(&self.local.name),
+                &store,
+                &self.trust,
+                &wind_core::pairing::PairingConfig::default(),
+            ),
+        )
+        .await
+        .map_err(|_| CoreError::Transport {
+            reason: "pairing timed out".into(),
+        })?
+        .map_err(|_| CoreError::Transport {
+            reason: "pairing refused or expired; scan a new QR code".into(),
+        })?;
+        Ok(PeerInfo {
+            public_key: device.key.as_bytes().to_vec(),
+            fingerprint: device.key.fingerprint().to_hex(),
+            name: device.name.unwrap_or_else(|| "Komputer".into()),
+        })
+    }
+
+    pub fn load_paired(&self, directory: String) -> Result<PairedLoadResult, CoreError> {
+        let list = wind_core::pairing::PairedDevicesFile::in_dir(directory)
+            .load()
+            .map_err(|_| CoreError::Storage {
+                reason: "paired devices could not be read".into(),
+            })?;
+        // CCS/1 RULE:damaged records are reported separately; valid records remain trusted (WN-19).
+        let skipped_records = list.skipped.len() as u64;
+        list.pin_all(&self.trust);
+        let devices = list
+            .devices
+            .into_iter()
+            .map(|device| PeerInfo {
+                public_key: device.key.as_bytes().to_vec(),
+                fingerprint: device.key.fingerprint().to_hex(),
+                name: device.name.unwrap_or_else(|| "Komputer".into()),
+            })
+            .collect();
+        Ok(PairedLoadResult {
+            devices,
+            skipped_records,
+        })
+    }
     pub async fn start_discovery(&self) -> Result<(), CoreError> {
         let mut discovery = self.discovery.lock().await;
         if discovery.is_none() {
@@ -301,6 +372,37 @@ impl CoreClient {
         self.endpoint.close();
         self.endpoint.wait_idle().await;
     }
+}
+
+#[derive(uniffi::Object)]
+pub struct QrOffer {
+    offer: std::sync::Mutex<Option<wind_core::pairing::PairingOffer>>,
+    info: PeerInfo,
+}
+
+#[uniffi::export]
+impl QrOffer {
+    pub fn preview(&self) -> PeerInfo {
+        self.info.clone()
+    }
+}
+
+#[uniffi::export]
+pub fn inspect_qr_link(link: String) -> Result<Arc<QrOffer>, CoreError> {
+    let link = Zeroizing::new(link);
+    let offer =
+        wind_core::pairing::PairingOffer::parse(&link).map_err(|_| CoreError::InvalidInput {
+            reason: "invalid WindConnect pairing link".into(),
+        })?;
+    let info = PeerInfo {
+        public_key: offer.key.as_bytes().to_vec(),
+        fingerprint: offer.key.fingerprint().to_hex(),
+        name: offer.name.clone().unwrap_or_else(|| "Komputer".into()),
+    };
+    Ok(Arc::new(QrOffer {
+        offer: std::sync::Mutex::new(Some(offer)),
+        info,
+    }))
 }
 
 impl Drop for CoreClient {

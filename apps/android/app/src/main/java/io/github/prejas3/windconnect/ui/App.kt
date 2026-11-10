@@ -18,20 +18,21 @@ import androidx.compose.ui.text.style.TextOverflow
 import io.github.prejas3.windconnect.BuildConfig
 
 @Composable
-fun WindApp(connection: @Composable () -> Unit) {
+fun WindApp(forceContent: Boolean = false, connection: @Composable () -> Unit) {
     val preferences = LocalContext.current.getSharedPreferences("appearance", 0)
     var modeName by rememberSaveable { mutableStateOf(preferences.getString("theme", ThemeMode.System.name) ?: ThemeMode.System.name) }
     var dynamic by rememberSaveable { mutableStateOf(preferences.getBoolean("dynamic", true)) }
     var preview by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(forceContent) { if (forceContent) preview = false }
     val mode = ThemeMode.entries.firstOrNull { it.name == modeName } ?: ThemeMode.System
     WindConnectTheme(mode, dynamic) {
         Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).safeDrawingPadding().imePadding()) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text("WindConnect", modifier = Modifier.weight(1f).padding(end = 12.dp, top = 10.dp, bottom = 10.dp), style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                if (BuildConfig.DEBUG) WindButton(if (preview) "Połączenie" else "Podgląd", onClick = { preview = !preview }, modifier = Modifier.testTag("previewToggle"), kind = ButtonKind.Quiet)
+                if (BuildConfig.DEBUG && !forceContent) WindButton(if (preview) "Połączenie" else "Podgląd", onClick = { preview = !preview }, modifier = Modifier.testTag("previewToggle"), kind = ButtonKind.Quiet)
             }
             Box(Modifier.weight(1f)) {
-                if (BuildConfig.DEBUG && preview) ComponentPreview(
+                if (BuildConfig.DEBUG && preview && !forceContent) ComponentPreview(
                     mode, dynamic,
                     onMode = { modeName = it.name; preferences.edit().putString("theme", it.name).apply() },
                     onDynamic = { dynamic = it; preferences.edit().putBoolean("dynamic", it).apply() },

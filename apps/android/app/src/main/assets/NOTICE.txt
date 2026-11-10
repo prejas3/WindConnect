@@ -6,3 +6,10 @@ SHA256 res/font/dm_sans.ttf: 8cd08d97e89c24d0aa92edd2f0f4c8ee6195eee9b7c9f154865
 
 Icons and UI code: WindConnect contributors, project MIT licence.
 No external UI libraries, photos or remote fonts added by WN-22.
+
+WN-26: ZXing Core 3.5.4, unchanged, com.google.zxing:core.
+Copyright ZXing authors; Apache License 2.0.
+Source: https://github.com/zxing/zxing/tree/zxing-3.5.4/core
+Full licence: ZXing-LICENSE.txt; upstream notices: ZXing-NOTICE.txt.
+Ships as DEX in the APK. Core has no runtime transitive dependencies.
+Camera preview/lifecycle and scanner UI are project MIT code using Android Camera2.
