@@ -77,6 +77,7 @@ fn merged_peers(
         entry.addresses.extend(peer.addresses.iter().copied());
         entry.addresses.sort_unstable();
         entry.addresses.dedup();
+        entry.pairing_port = entry.pairing_port.or(peer.pairing_port);
     }
     merged.into_values().collect()
 }
@@ -84,6 +85,7 @@ fn merged_peers(
 /// Owns the discovery task and, on Windows, its OS callback registration.
 pub struct NetworkDiscovery {
     _changes: Arc<NetworkChanges>,
+    pairing: Arc<watch::Sender<Option<u16>>>,
     state: watch::Receiver<DiscoverySnapshot>,
     task: Option<JoinHandle<()>>,
     #[cfg(windows)]
@@ -110,6 +112,8 @@ impl NetworkDiscovery {
             return Err(std::io::Error::other("no discovery backend enabled"));
         }
         let mut network = changes.subscribe();
+        let pairing = Arc::new(watch::channel(None::<u16>).0);
+        let mut pairing_changes = pairing.subscribe();
         #[cfg(windows)]
         let windows = WindowsNetworkMonitor::start(changes.clone())?;
         let port = endpoint.local_addr()?.port();
@@ -156,7 +160,7 @@ impl NetworkDiscovery {
                         replied.clear();
                         sender.send_replace(DiscoverySnapshot { generation, ..Default::default() });
                         let result = if options.mdns { endpoint.local_addr().map_err(std::io::Error::other)
-                            .and_then(|addr| Discovery::start(&key, addr.port()).map_err(std::io::Error::other))
+                            .and_then(|addr| Discovery::start_with_pairing(&key, addr.port(), *pairing_changes.borrow()).map_err(std::io::Error::other))
                             } else { Err(std::io::Error::other("mDNS disabled")) };
                         if let Some(config) = &options.broadcast {
                             if broadcast.is_none() { broadcast = BroadcastDiscovery::bind(*key.fingerprint().as_bytes(), config.clone()).ok(); }
@@ -172,6 +176,13 @@ impl NetworkDiscovery {
                             }
                             Err(error) if options.mdns => { sender.send_modify(|state| state.error = Some(error.to_string())); }
                             _ => {},
+                        }
+                    }
+                    changed = pairing_changes.changed() => {
+                        if changed.is_err() { break; }
+                        let port = *pairing_changes.borrow_and_update();
+                        if let Some(discovery) = &discovery {
+                            if let Err(error) = discovery.set_pairing_port(port) { sender.send_modify(|state| state.error = Some(error.to_string())); }
                         }
                     }
                     event = async { match &discovery {
@@ -204,7 +215,7 @@ impl NetworkDiscovery {
                     }} => match received {
                         Ok(Some((packet, source))) => {
                             let peer = DiscoveredPeer { service_name: format!("broadcast-{}", packet.fingerprint.iter().map(|b| format!("{b:02x}")).collect::<String>()),
-                                fingerprint: packet.fingerprint, addresses: vec![SocketAddr::new(IpAddr::V4(*source.ip()), packet.port)] };
+                                fingerprint: packet.fingerprint, addresses: vec![SocketAddr::new(IpAddr::V4(*source.ip()), packet.port)], pairing_port: None };
                             // CCS/1 SEC:bound untrusted cache and same-size unicast replies, at most one/IP/second.
                             if broadcast_peers.len() < 128 || broadcast_peers.contains_key(&packet.fingerprint) {
                                 broadcast_peers.insert(packet.fingerprint, (peer, Instant::now()));
@@ -232,6 +243,7 @@ impl NetworkDiscovery {
         });
         Ok(Self {
             _changes: changes,
+            pairing,
             state,
             task: Some(task),
             #[cfg(windows)]
@@ -243,12 +255,35 @@ impl NetworkDiscovery {
         self.state.clone()
     }
 
+    /// Advertises (`Some`) or withdraws (`None`) TXT `pair` (§12.4); kept
+    /// across network changes. Port 0 withdraws.
+    pub fn set_pairing_port(&self, port: Option<u16>) {
+        set_pairing(&self.pairing, port);
+    }
+
+    /// CCS/1 FLOW:PairingListener SAS window -> this advertiser -> TXT `pair`
+    /// For [`crate::pairing::PairingListener::advertise_with`]; outlives nothing it needs.
+    pub fn pairing_advertiser(&self) -> crate::pairing::PairingAdvertiser {
+        let pairing = Arc::downgrade(&self.pairing);
+        Arc::new(move |port| {
+            if let Some(pairing) = pairing.upgrade() {
+                set_pairing(&pairing, port);
+            }
+        })
+    }
+
     pub async fn shutdown(&mut self) {
         if let Some(task) = self.task.take() {
             task.abort();
             let _ = task.await;
         }
     }
+}
+
+/// Wakes the discovery task only when the advertised value changes.
+fn set_pairing(pairing: &watch::Sender<Option<u16>>, port: Option<u16>) {
+    let port = port.filter(|p| *p != 0);
+    pairing.send_if_modified(|current| std::mem::replace(current, port) != port);
 }
 
 impl Drop for NetworkDiscovery {
