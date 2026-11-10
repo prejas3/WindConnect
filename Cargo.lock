@@ -4891,11 +4891,12 @@ checksum = "712e227841d057c1ee1cd2fb22fa7e5a5461ae8e48fa2ca79ec42cfc1931183f"
 
 [[package]]
 name = "wind-core"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "ed25519-dalek",
  "futures-util",
  "if-addrs",
+ "libc",
  "mdns-sd",
  "quinn",
  "rand_core 0.6.4",
@@ -4916,7 +4917,7 @@ dependencies = [
 
 [[package]]
 name = "wind-ffi"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "tokio",
  "uniffi",
@@ -4926,7 +4927,7 @@ dependencies = [
 
 [[package]]
 name = "windconnect-windows"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "if-addrs",
  "qrcode",
@@ -4941,7 +4942,7 @@ dependencies = [
 
 [[package]]
 name = "windctl"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "clap",
  "tempfile",

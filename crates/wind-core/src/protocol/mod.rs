@@ -99,6 +99,8 @@ pub enum ErrorCode {
     RateLimited,
     Cancelled,
     GoingAway,
+    /// No room for an incoming file (§9.1, WC-38).
+    NoSpace,
 }
 
 impl ErrorCode {
@@ -119,6 +121,7 @@ impl ErrorCode {
             Self::RateLimited => 0x0b,
             Self::Cancelled => 0x0c,
             Self::GoingAway => 0x0d,
+            Self::NoSpace => 0x0e,
         }
     }
 
@@ -138,6 +141,7 @@ impl ErrorCode {
             0x0b => Self::RateLimited,
             0x0c => Self::Cancelled,
             0x0d => Self::GoingAway,
+            0x0e => Self::NoSpace,
             _ => Self::InternalError,
         }
     }
@@ -233,7 +237,7 @@ mod tests {
         for c in 0..=0x0d {
             assert_eq!(ErrorCode::from_code(c).code(), c);
         }
-        assert_eq!(ErrorCode::from_code(0x0e), ErrorCode::InternalError);
+        assert_eq!(ErrorCode::from_code(0x0f), ErrorCode::InternalError);
         assert_eq!(ErrorCode::from_code(u64::MAX), ErrorCode::InternalError);
     }
 }

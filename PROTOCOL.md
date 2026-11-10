@@ -19,7 +19,7 @@ QUIC v1 (RFC 9000) + TLS 1.3, ALPN "windconnect/1"
 ├── strumień uni   notify       (jw.)                         ramki CBOR
 ├── strumień uni   media        (jw.)                         ramki CBOR
 ├── strumień uni   input        (jw., przyciski)              ramki CBOR
-├── strumień bidi  files × N    (jeden na transfer)           ramki CBOR
+├── strumień bidi  files × N    (1–8 na transfer, §9.1)       ramki CBOR
 └── datagramy QUIC input        (ruch wskaźnika, przewijanie) CBOR bez długości
 ```
 
@@ -175,7 +175,7 @@ od serwera, przykład w sekcji 7.1) i `files` (odpowiedzi odbiorcy pliku).
 | `02` | `notify` | uni | nadawca wiadomości | 3 |
 | `03` | `media` | uni | nadawca wiadomości | 4 |
 | `04` | `input` | uni + datagramy | nadawca zdarzeń | 1 |
-| `05` | `files` | bidi | nadawca pliku; 1 na transfer | 7 (najniższy) |
+| `05` | `files` | bidi | nadawca pliku; 1–8 na transfer (§9.1) | 7 (najniższy) |
 | `06`–`3f` | zarezerwowane dla przyszłych kanałów | | | |
 | `40`–`ff` | niedozwolone w v1 | | | |
 
@@ -1001,10 +1001,130 @@ dokumentu:
 3. Numery typów i kluczy nie są nigdy używane ponownie, także po wycofaniu.
 4. Zasady wspólne: wiadomości kanału uni są jednokierunkowe, a odpowiedzi
    podlegają sekcji 6, zasada 4. Strumień `files` jest dwukierunkowy:
-   otwiera go nadawca pliku (nagłówek `01 05`, potem metadane i dane),
-   odbiorca pisze w kierunku powrotnym potwierdzenia bez nagłówka, a koniec
-   transferu to FIN obu stron. Strumień `files` przyjmuje tylko strona,
-   która ogłosiła `files/1`.
+   otwiera go nadawca pliku (nagłówek `01 05`, potem wiadomości sekcji
+   9.1), odbiorca pisze w kierunku powrotnym odpowiedzi bez nagłówka, a
+   koniec transferu to FIN obu stron. Strumień `files` przyjmuje tylko
+   strona, która ogłosiła `files/1`.
+
+### 9.1 Kanał `files` (`05`, WC-38)
+
+Wiadomości `files/1`. Kanał nie miał wcześniej typów wiadomości, więc
+wersjonuje je sama możliwość `files/1` (sekcja 9, zasada 2), bez zmiany
+wersji minor protokołu.
+
+**Transfer** to jeden plik. Nadawca wybiera losowy `id` (16 B) i dzieli
+plik na **fragmenty** o stałym rozmiarze `chunk` (ostatni może być krótszy).
+Fragment `i` zaczyna się w bajcie `i × chunk`. Transfer używa od 1 do
+`streams` strumieni `files` naraz; każdy fragment może pójść dowolnym z nich.
+Folder to osobny transfer dla każdego pliku, ze ścieżką względną.
+
+Od nadawcy pliku (typy kanału w tym kierunku):
+
+| typ | nazwa | pola `body` |
+|---|---|---|
+| 0 | `Offer` | `0 id`: bajty, 16 B; `1 path`: tekst, 1–1024 B; `2 size`: uint; `3 chunk`: uint; `4 streams`: uint 1–8; `5 modified`: uint, opcjonalne (ms od epoki Uniksa) |
+| 1 | `Join` | `0 id`: bajty, 16 B; `1 stream`: uint 1–7 |
+| 2 | `Chunk` | `0 index`: uint; `1 data`: bajty; `2 sha256`: bajty, 32 B |
+
+Od odbiorcy pliku (kierunek powrotny tych samych strumieni):
+
+| typ | nazwa | pola `body` |
+|---|---|---|
+| 0 | `Accept` | `0 have`: bajty, mapa bitowa fragmentów, które odbiorca już ma |
+| 1 | `Ack` | `0 index`: uint; fragment sprawdzony i zapisany |
+| 2 | `Bad` | `0 index`: uint; suma kontrolna się nie zgadza |
+| 3 | `Complete` | pusta mapa; plik jest pod nazwą docelową |
+
+Przebieg:
+
+1. Pierwszy strumień transferu zaczyna się od `Offer`. `chunk` to
+   wielokrotność 65 536 w zakresie 65 536–524 288 B, a liczba fragmentów
+   `⌈size / chunk⌉` nie przekracza 2²² (mapa `have` ma najwyżej 512 KiB).
+   Wartości spoza zakresu to `MALFORMED_FRAME`.
+2. Odbiorca odpowiada `Accept`. W `have` fragment `i` to bajt `i / 8`,
+   bit `0x80 >> (i mod 8)`; pusta mapa znaczy „nic nie mam”. Odmowa to
+   `STOP_SENDING` i `RESET_STREAM` pierwszego strumienia: zła ścieżka
+   `MALFORMED_FRAME`, za mało miejsca `NO_SPACE`, za dużo transferów
+   `RATE_LIMITED`, odmowa użytkownika `CANCELLED`.
+3. Po `Accept` nadawca może otworzyć do `streams − 1` dalszych strumieni;
+   każdy zaczyna się od `Join` z `id` i numerem strumienia (każdy numer raz).
+   `Join`, którego `Offer` nie doszedł w ciągu 5 s, odbiorca zatrzymuje
+   kodem `CANCELLED`. Czekające strumienie liczą się do limitów odbiorcy
+   (zalecane: 32 naraz, ponad limit od razu `RATE_LIMITED`).
+4. Nadawca wysyła `Chunk` każdego fragmentu, którego nie ma w `have`.
+   `data` ma dokładnie długość fragmentu, a `index` jest mniejszy niż
+   liczba fragmentów; inaczej `MALFORMED_FRAME`. Odbiorca liczy SHA-256
+   `data`: zgodny fragment zapisuje i odpowiada `Ack` na tym samym
+   strumieniu, niezgodny odrzuca i odpowiada `Bad`. Nadawca wysyła wtedy
+   fragment ponownie, najwyżej 3 razy, potem kończy transfer.
+5. Gdy odbiorca ma wszystkie fragmenty, zapisuje plik trwale, nadaje mu
+   nazwę docelową i dopiero wtedy wysyła `Complete` na pierwszym strumieniu
+   oraz FIN na wszystkich. Nadawca uznaje transfer za skończony dopiero po
+   `Complete` (nie po ostatnim `Ack`) i odpowiada FIN.
+6. Anulowanie przez którąkolwiek stronę: `RESET_STREAM` i `STOP_SENDING`
+   z kodem `CANCELLED` na wszystkich strumieniach transferu. Odbiorca usuwa
+   wtedy częściowy plik.
+
+**Wznowienie.** Zerwanie połączenia nie kończy transferu. Nadawca po
+ponownym połączeniu wysyła ten sam `Offer` (ten sam `id`), a odbiorca w
+`have` podaje fragmenty, które ma trwale zapisane; przesyłane są tylko
+pozostałe. Odbiorca przechowuje częściowy plik osobno dla każdego
+urządzenia, pod parą (odcisk nadawcy, `id`), bo `id` wybiera druga strona,
+i to **poza** folderem docelowym (np. w katalogu stanu aplikacji), tak by
+żadna `path` od drugiej strony nie sięgała do częściowych plików ani ich
+stanu.
+Bit fragmentu trafia do zapisanego stanu dopiero po trwałym zapisie jego
+danych (najpierw synchronizacja pliku, potem atomowa podmiana stanu), więc
+po awarii zasilania wznowienie nie pominie niezapisanego fragmentu. Stan
+zawiera `size`, `chunk` i `modified` z `Offer`; wznowienie wymaga zgodności
+wszystkich trzech, inaczej odbiorca zaczyna od nowa z pustym `have`.
+Częściowe pliki porzucone (bez zmian przez 7 dni, zalecane) odbiorca usuwa.
+
+**Brak skrótu całego pliku.** Każdy bajt pliku przychodzi w fragmencie,
+którego SHA-256 odbiorca sprawdza przed zapisem i zaznaczeniem, a trwałość
+stanu idzie po trwałości danych. Skrót całego pliku po stronie nadawcy
+wymagałby drugiego odczytu i nie wykryłby zmiany źródła między odczytami.
+Zamiast tego nadawca przed wysłaniem ostatniego fragmentu (i co 64
+fragmenty) sprawdza, czy rozmiar i czas modyfikacji źródła są takie jak w
+`Offer`; zmienione źródło kończy transfer kodem `CANCELLED`.
+
+**Ścieżki.** `path` pochodzi od drugiej strony, więc odbiorca sprawdza ją
+sam, niezależnie od systemu nadawcy, i niczego nie poprawia; ścieżka
+łamiąca którąkolwiek regułę to `MALFORMED_FRAME`, bez tworzenia pliku:
+
+- separatorem jest wyłącznie `/`; `\` w ścieżce jest niedozwolony;
+- części puste, `.` i `..` są niedozwolone (także wiodący `/`, czyli
+  ścieżka absolutna); najwyżej 32 części, każda do 255 B UTF-8;
+- niedozwolone znaki: `:` (litery dysków, strumienie NTFS `plik:strumień`),
+  `<>"|?*`, znaki sterujące (Cc) i znaki kierunku pisma (U+061C, U+200E,
+  U+200F, U+202A–U+202E, U+2066–U+2069);
+- niedozwolone nazwy urządzeń Windows: `CON`, `PRN`, `AUX`, `NUL`,
+  `COM1`–`COM9`, `LPT1`–`LPT9` (także z cyframi ¹²³), bez względu na
+  wielkość liter i rozszerzenie (`nul.txt`), oraz część kończąca się
+  kropką lub spacją (Windows je obcina).
+
+Odbiorca tworzy podfoldery w swoim folderze docelowym po jednym i odrzuca
+każdy, który jest dowiązaniem lub punktem połączenia (junction); ścieżka
+docelowa musi leżeć w folderze docelowym. Istniejącego pliku nigdy nie
+nadpisuje: przy kolizji nazwy dodaje „ (1)”, „ (2)”… przed rozszerzeniem,
+rezerwując nazwę atomowo (utworzenie nowego pliku tylko wtedy, gdy go nie
+ma), więc dwa transfery kończące się naraz dostają różne nazwy.
+
+**Miejsce.** Przed `Accept` odbiorca sprawdza wolne miejsce na brakującą
+część pliku z zapasem (zalecane 64 MiB); za mało to `NO_SPACE`. Nadawca nie
+ponawia takiego transferu sam.
+
+Przykłady (ramki z długością):
+
+| wiadomość | bajty |
+|---|---|
+| `Offer` id `11`×16, `a/b.txt`, 300 000 B, chunk 262 144, 4 strumienie | `2c 82 00 a5 00 50 11…11 01 67 61 2f 62 2e 74 78 74 02 1a 00 04 93 e0 03 1a 00 04 00 00 04 04` |
+| `Join` id `11`×16, strumień 1 | `17 82 01 a2 00 50 11…11 01 01` |
+| `Chunk` 1, `hi`, sha256 zera (przykład kodowania) | `2c 82 02 a3 00 01 01 42 68 69 02 58 20 00…00` |
+| `Accept` have `80` | `06 82 00 a1 00 41 80` |
+| `Ack` 1 | `05 82 01 a1 00 01` |
+| `Bad` 1 | `05 82 02 a1 00 01` |
+| `Complete` | `03 82 03 a0` |
 
 ## 10. Kody błędów
 
@@ -1027,8 +1147,9 @@ kody aplikacji QUIC w `CONNECTION_CLOSE`, `RESET_STREAM` i `STOP_SENDING`.
 | `0b` | `RATE_LIMITED` | zbyt wiele wiadomości (nie liczba strumieni uni, §3.1 zasada 5) | strumień, `Error` |
 | `0c` | `CANCELLED` | anulowane przez użytkownika lub stronę | strumień |
 | `0d` | `GOING_AWAY` | wyjście, uśpienie, rozparowanie | `Goodbye`, połączenie |
+| `0e` | `NO_SPACE` | brak miejsca na plik (§9.1) | strumień `files` |
 
-Kody `0e`–`ff` są zarezerwowane dla v1; nieznany kod odbiorca traktuje jak
+Kody `0f`–`ff` są zarezerwowane dla v1; nieznany kod odbiorca traktuje jak
 `INTERNAL_ERROR`. Błąd w ramce strumienia innego niż `control` zamyka tylko
 ten strumień (`STOP_SENDING` po stronie odbiorcy), nie połączenie.
 
@@ -1051,6 +1172,7 @@ ten strumień (`STOP_SENDING` po stronie odbiorcy), nie połączenie.
 | `Scroll` (datagram) | sekcja 8.8 (17 B) |
 | `PointerButton` | sekcja 8.8 (23 B) |
 | `InputSession` s 0, g 0 | `07 82 03 a2 00 00 01 00` |
+| wiadomości `files` | sekcja 9.1 |
 
 Przykłady są wektorami testowymi kodera ramek (WC-06): koder MUSI
 produkować dokładnie te bajty, a dekoder odtwarzać z nich te wiadomości.

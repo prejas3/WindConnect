@@ -35,7 +35,11 @@ tempfile = "3"
 tokio = { version = "1", features = ["rt", "macros", "time", "rt-multi-thread", "sync"] }
 
 [target."cfg(windows)".dependencies]
-windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security_Cryptography", "Win32_NetworkManagement_IpHelper", "Win32_Networking_WinSock", "Win32_NetworkManagement_Ndis"] }
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security_Cryptography", "Win32_NetworkManagement_IpHelper", "Win32_Networking_WinSock", "Win32_NetworkManagement_Ndis", "Win32_Storage_FileSystem"] }
+
+[target."cfg(unix)".dependencies]
+# statvfs for free space before taking a file (files, WC-38); already in the tree.
+libc = "0.2"
 
 [target."cfg(windows)".dev-dependencies]
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Threading"] }

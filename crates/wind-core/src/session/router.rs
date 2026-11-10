@@ -23,7 +23,7 @@ pub struct ChannelMessage {
     pub message: RawMessage,
 }
 
-/// A `files` stream opened by the peer (one per transfer): its frames in
+/// A `files` stream opened by the peer (1–8 per transfer, §9.1): its frames in
 /// `recv`, the replies in `send`. The header has been read.
 #[derive(Debug)]
 pub struct FileStream {
