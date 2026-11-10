@@ -58,6 +58,18 @@ kątem tekstu wiadomości, jego fragmentu i nazw urządzeń. Żadna ich nie
 zawiera, a druga strona odczytuje wiadomość. Pomiar z 2026-11-10 (Windows,
 `wrangler dev`): 27–31 ramek, ok. 15 KB, RTT 6–9 ms.
 
+Klient (WN-60): `cargo test -p wind-core --test relay -- --ignored`
+sprawdza też `RelayLink`, a `cargo test -p wind-ffi --test bridge -- --ignored`
+sprawdza przejście z LAN na przekaźnik i powrót. Z `windctl`:
+
+```powershell
+windctl --identity pc.key serve --trust <klucz telefonu> --relay ws://127.0.0.1:8787
+windctl --identity phone.key send --address 192.0.2.1:47820 --peer-key <klucz PC> --relay ws://127.0.0.1:8787 --text "schowek"
+```
+
+Gdy adres nie odpowiada, druga komenda wypisze `route=relay`, a pierwsza
+`RECEIVED channel=Clipboard`.
+
 ## Wdrożenie (tylko właściciel)
 
 Agenci nie wdrażają przekaźnika. Szymon uruchamia w Claude Code, w katalogu

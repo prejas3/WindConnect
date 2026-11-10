@@ -105,6 +105,24 @@ z kanałem i typem. Bez tej opcji `SENT ... echo_verified=false` potwierdza
 lokalne wysłanie i żywą sesję kontrolną, nie wykonanie funkcji na odbiorcy.
 Serwer wypisuje `RECEIVED` z ciałem CBOR w hex; bez `--echo` nie odsyła go.
 
+## Przekaźnik (WN-60)
+
+Przekaźnik (PROTOCOL.md §13) działa tylko po podaniu `--relay URL`
+(`wss://…`; `ws://` tylko do adresu loopback lub prywatnego, np. lokalnego
+`wrangler dev`):
+
+```text
+windctl --identity <plik_PC> serve --trust <public_key_telefonu> --relay wss://windconnect-relay.<subdomena>.workers.dev
+windctl --identity <plik_A> send --address 192.168.1.20:47820 --peer-key <public_key_PC> --relay wss://windconnect-relay.<subdomena>.workers.dev --text "schowek"
+```
+
+`serve --relay` czeka na przekaźniku na każde urządzenie z `--trust` i
+łączy się ponownie z narastającym opóźnieniem, gdy połączenie się kończy
+(`RELAY waiting peer=…`). Dla `connect`, `ping` i `send` opcja `--route`
+przyjmuje `auto` (domyślnie: adres przez 2 s, potem przekaźnik), `lan` albo
+`relay`. Wypisywana linia `CONNECTED … route=lan|relay` mówi, którą drogą
+poszła sesja.
+
 ## Testy
 
 ```text

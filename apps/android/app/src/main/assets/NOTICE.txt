@@ -13,3 +13,12 @@ Source: https://github.com/zxing/zxing/tree/zxing-3.5.4/core
 Full licence: ZXing-LICENSE.txt; upstream notices: ZXing-NOTICE.txt.
 Ships as DEX in the APK. Core has no runtime transitive dependencies.
 Camera preview/lifecycle and scanner UI are project MIT code using Android Camera2.
+
+Relay client in wind-core (WN-60, PROTOCOL.md §13):
+tokio-tungstenite 0.30.0, Copyright (c) 2017 Daniel Abramov, Alexey Galakhov;
+licence: MIT; full text: tokio-tungstenite-MIT.txt.
+tungstenite 0.30.0, Copyright (c) 2017 Alexey Galakhov, (c) 2016 Jason Housley;
+chosen licence: MIT; full text: tungstenite-MIT.txt.
+webpki-roots 1.0.11 (Mozilla root certificates for wss:// TLS), from
+https://github.com/rustls/webpki-roots; Community Data License Agreement -
+Permissive 2.0; full text: webpki-roots-CDLA-Permissive-2.0.txt.

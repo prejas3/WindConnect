@@ -1358,3 +1358,23 @@ typów wiadomości: to wszystko jest wewnątrz QUIC. Worker nie zapisuje tych
 metadanych: Workers Logs są wyłączone (`observability.enabled: false`), a kod
 niczego nie loguje. Włączenie przekaźnika (D3) oznacza zgodę na to, że
 operator może te metadane zobaczyć.
+
+### 13.5 Klient (WN-60)
+
+- Przekaźnik jest wyłączony, dopóki użytkownik nie poda jego adresu
+  (`wss://…`; `ws://` tylko do adresu loopback lub prywatnego, dla
+  lokalnego `wrangler dev`). Wyłączony przekaźnik nie jest nigdy używany.
+- Klient łączy się najpierw pod adres urządzenia w LAN. Przy włączonym
+  przekaźniku ta próba ma 2 s; potem łączy się przez przekaźnik. Odmowa
+  zaufania (`UNTRUSTED_PEER`) nie przechodzi na przekaźnik.
+- Przez przekaźnik działa ta sama sesja QUIC (§2): urządzenie trzyma
+  lokalny adres UDP, który zastępuje peera. Pakiety własnego endpointu
+  wysłane na ten adres idą do przekaźnika, a ramki z przekaźnika trafiają
+  do endpointu jak od peera. Do przekaźnika trafiają tylko pakiety z
+  aktualnego adresu własnego endpointu.
+- PC z włączonym przekaźnikiem czeka na nim na każde sparowane urządzenie
+  i łączy się ponownie z narastającym opóźnieniem (1–60 s), gdy połączenie
+  się kończy. Bezczynne gniazdo co 25 s wysyła `{"t":"ping"}`.
+- Po zmianie sieci w czasie sesji przez przekaźnik klient próbuje adresu
+  w LAN (2 s). Jeśli odpowiada, nowa sesja w LAN zastępuje sesję przez
+  przekaźnik.

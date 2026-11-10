@@ -1,6 +1,7 @@
 package io.github.prejas3.windconnect.core
 
 import android.content.Context
+import android.content.SharedPreferences
 import android.os.SystemClock
 import io.github.prejas3.windconnect.bindings.CoreClient
 import io.github.prejas3.windconnect.bindings.CoreConnection
@@ -29,14 +30,25 @@ import kotlinx.coroutines.withContext
 sealed interface ConnectionState {
     data object Ready : ConnectionState
     data object Connecting : ConnectionState
-    data class Connected(val peerName: String, val fingerprint: String, val roundTripMicros: Long) : ConnectionState
+    /** [route]: "lan" (direct) or "relay" (PROTOCOL.md §13, only when [WindCore.setRelay] turned it on). */
+    data class Connected(
+        val peerName: String,
+        val fingerprint: String,
+        val roundTripMicros: Long,
+        val route: String = "lan",
+    ) : ConnectionState
     data class Disconnected(val reason: String) : ConnectionState
     data class Failed(val message: String) : ConnectionState
     data object Stopped : ConnectionState
 }
 
 /** CCS/1 M:WindCore | IO:coroutines + StateFlow -> UniFFI -> authenticated QUIC session */
-class WindCore private constructor(private val client: CoreClient, private val pairedDirectory: String, val skippedPairingRecords: ULong) {
+class WindCore private constructor(
+    private val client: CoreClient,
+    private val pairedDirectory: String,
+    val skippedPairingRecords: ULong,
+    private val settings: SharedPreferences,
+) {
     suspend fun pairQr(offer: io.github.prejas3.windconnect.bindings.QrOffer): io.github.prejas3.windconnect.bindings.PeerInfo = withContext(Dispatchers.IO) {
         gate.withLock {
             check(!stopped) { "core is stopped" }
@@ -57,8 +69,24 @@ class WindCore private constructor(private val client: CoreClient, private val p
     private var networkRetry: Job? = null
     private val mutableNetwork = MutableStateFlow(NetworkSnapshot(0uL, emptyList(), null))
     val network: StateFlow<NetworkSnapshot> = mutableNetwork.asStateFlow()
+    private val mutableRelay = MutableStateFlow<String?>(null)
+    /** The relay base URL, or null: off, the default (decision D3). */
+    val relayUrl: StateFlow<String?> = mutableRelay.asStateFlow()
+    private var lanReturn: Job? = null
     @Volatile private var multicast: MulticastPolicy? = null
     private var multicastTimer: Job? = null
+
+    /**
+     * Turns the E2E relay on (`wss://…`, PROTOCOL.md §13) or off (null) and remembers it. Off by
+     * default. Takes effect from the next connection; the relay only ever sees encrypted QUIC.
+     * @throws CoreException.InvalidInput for a URL the core refuses.
+     */
+    fun setRelay(url: String?) {
+        val value = url?.trim()?.takeIf { it.isNotEmpty() }
+        client.setRelay(value)
+        settings.edit().apply { if (value == null) remove(RELAY_URL) else putString(RELAY_URL, value) }.apply()
+        mutableRelay.value = value
+    }
 
     /** A screen that needs discovery opens (SAS pairing, device list): multicast stays on until
      * the matching `false`. Calls are counted. */
@@ -107,6 +135,11 @@ class WindCore private constructor(private val client: CoreClient, private val p
                     refreshDiscovery()
                     // CCS/1 RULE:outside gate; wakes a connect currently holding gate immediately.
                     client.networkChanged()
+                    val now = mutableState.value
+                    // CCS/1 FLOW:network change on the relay -> LAN address tried in the background -> swap (WN-60)
+                    if (now is ConnectionState.Connected && now.route == "relay" && lanReturn?.isActive != true) {
+                        lanReturn = scope.launch { returnToLan() }
+                    }
                     if (mutableState.value !is ConnectionState.Connecting &&
                         mutableState.value !is ConnectionState.Connected && networkRetry?.isActive != true) {
                         networkRetry = scope.launch {
@@ -142,21 +175,7 @@ class WindCore private constructor(private val client: CoreClient, private val p
             try {
                 client.pinPeer(verifiedPeerKey)
                 opened = client.connect(address, verifiedPeerKey)
-                val rtt = opened.ping().toLong()
-                val peer = opened.peer()
-                val active = opened
-                connection = active
-                mutableState.value = ConnectionState.Connected(peer.name, peer.fingerprint, rtt)
-                watcher = scope.launch {
-                    val reason = active.waitClosed()
-                    gate.withLock {
-                        if (connection === active) {
-                            connection = null
-                            active.destroy()
-                            mutableState.value = ConnectionState.Disconnected(reason)
-                        }
-                    }
-                }
+                adopt(opened)
             } catch (error: Exception) {
                 opened?.destroy()
                 if (error is CancellationException) {
@@ -170,11 +189,52 @@ class WindCore private constructor(private val client: CoreClient, private val p
             }
     }
 
+    /** Makes [opened] the session (pinged first) and watches it close. Holds [gate]. */
+    private suspend fun adopt(opened: CoreConnection) {
+        val rtt = opened.ping().toLong()
+        val peer = opened.peer()
+        connection = opened
+        mutableState.value = ConnectionState.Connected(peer.name, peer.fingerprint, rtt, opened.route())
+        watcher = scope.launch {
+            val reason = opened.waitClosed()
+            gate.withLock {
+                if (connection === opened) {
+                    connection = null
+                    opened.destroy()
+                    mutableState.value = ConnectionState.Disconnected(reason)
+                }
+            }
+        }
+    }
+
+    /** On the relay after a network change: the peer's address, if it answers, replaces the relay. */
+    private suspend fun returnToLan() {
+        val peer = desiredPeer ?: return
+        val direct = try { client.connectDirect(peer.first, peer.second) } catch (error: Exception) {
+            if (error is CancellationException) throw error
+            return // still away from home: keep the relay
+        }
+        gate.withLock {
+            val now = mutableState.value
+            if (stopped || desiredPeer !== peer || now !is ConnectionState.Connected || now.route != "relay") {
+                direct.destroy()
+                return
+            }
+            releaseConnection()
+            try { adopt(direct) } catch (error: Exception) {
+                direct.destroy()
+                if (error is CancellationException) throw error
+                mutableState.value = ConnectionState.Disconnected(error.message ?: "LAN return failed")
+            }
+        }
+    }
+
     suspend fun disconnect() = withContext(Dispatchers.IO) {
         gate.withLock {
             if (!stopped) {
                 desiredPeer = null
                 networkRetry?.cancel()
+                lanReturn?.cancel()
                 releaseConnection()
                 mutableState.value = ConnectionState.Disconnected("disconnected locally")
             }
@@ -188,6 +248,7 @@ class WindCore private constructor(private val client: CoreClient, private val p
                 stopped = true
                 desiredPeer = null
                 networkRetry?.cancel()
+                lanReturn?.cancel()
                 try {
                     multicast?.let { policy -> synchronized(policy) { multicastTimer?.cancel(); policy.close() } }
                     observer?.close()
@@ -213,7 +274,16 @@ class WindCore private constructor(private val client: CoreClient, private val p
         }
     }
 
+    /** The saved relay, if any; one the core now refuses is forgotten (off). */
+    private fun restoreRelay() {
+        val saved = settings.getString(RELAY_URL, null) ?: return
+        try { setRelay(saved) } catch (error: CoreException.InvalidInput) { setRelay(null) }
+    }
+
     companion object {
+        private const val SETTINGS = "windconnect.core"
+        private const val RELAY_URL = "relay_url"
+
         suspend fun open(context: Context, name: String, bindAddress: String = "0.0.0.0:0"): WindCore {
             var native: CoreClient? = null
             var opened: WindCore? = null
@@ -239,8 +309,10 @@ class WindCore private constructor(private val client: CoreClient, private val p
                     native = client
                     val pairedDirectory = context.noBackupFilesDir.absolutePath
                     val paired = client.loadPaired(pairedDirectory)
-                    WindCore(client, pairedDirectory, paired.skippedRecords).also {
+                    val settings = context.applicationContext.getSharedPreferences(SETTINGS, Context.MODE_PRIVATE)
+                    WindCore(client, pairedDirectory, paired.skippedRecords, settings).also {
                         opened = it
+                        it.restoreRelay()
                         it.observeNetwork(context.applicationContext)
                     }
                 }

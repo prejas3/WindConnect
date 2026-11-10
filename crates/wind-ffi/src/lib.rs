@@ -6,12 +6,17 @@ use wind_core::{
     identity::{DeviceIdentity, KeyStore, PublicKey},
     network::{DiscoverySnapshot, NetworkChanges, NetworkDiscovery},
     protocol::{DeviceKind, ErrorCode},
+    relay::RelayLink,
     session::{LocalInfo, Router, Session},
     transport::{Endpoint, PinnedKeys},
 };
 use zeroize::{Zeroize, Zeroizing};
 
 uniffi::setup_scaffolding!();
+
+/// With the relay on, the address gets this long first (a LAN answers in
+/// milliseconds; the relay is the fallback).
+const LAN_FIRST: Duration = Duration::from_secs(2);
 
 #[derive(Debug, uniffi::Error)]
 pub enum CoreError {
@@ -114,8 +119,11 @@ pub struct PairedLoadResult {
 
 #[derive(uniffi::Object)]
 pub struct CoreClient {
+    /// Signs pairing and relay authentication (PROTOCOL.md §13.2).
     device_identity: DeviceIdentity,
     endpoint: Endpoint,
+    /// Relay base URL; `None` (the default, D3) never touches the relay.
+    relay: std::sync::Mutex<Option<String>>,
     trust: Arc<PinnedKeys>,
     identity: IdentityInfo,
     local: LocalInfo,
@@ -171,6 +179,7 @@ pub async fn open_client(
         })?;
     Ok(Arc::new(CoreClient {
         endpoint,
+        relay: std::sync::Mutex::new(None),
         trust,
         bind_ip: address.ip(),
         bind_port: address.port(),
@@ -331,10 +340,97 @@ impl CoreClient {
         Ok(())
     }
 
+    /// Turns the relay on with its base URL (`wss://…`, see
+    /// `wind_core::relay::check_url`) or off with `None`. Off by default (D3);
+    /// takes effect from the next connection.
+    pub fn set_relay(&self, url: Option<String>) -> Result<(), CoreError> {
+        if let Some(url) = &url {
+            wind_core::relay::check_url(url).map_err(|e| CoreError::InvalidInput {
+                reason: e.to_string(),
+            })?;
+        }
+        *self.relay.lock().unwrap_or_else(|e| e.into_inner()) = url;
+        Ok(())
+    }
+
+    pub fn relay_url(&self) -> Option<String> {
+        self.relay.lock().unwrap_or_else(|e| e.into_inner()).clone()
+    }
+
+    /// CCS/1 FLOW:address (LAN_FIRST when the relay is on) -> relay (§13); route() tells which
     pub async fn connect(
         &self,
         address: String,
         key: Vec<u8>,
+    ) -> Result<Arc<CoreConnection>, CoreError> {
+        let relay = self.relay_url();
+        let wait = if relay.is_some() {
+            LAN_FIRST
+        } else {
+            Duration::from_secs(10)
+        };
+        let direct = self.dial_direct(&address, &key, wait).await;
+        let (Err(error), Some(relay)) = (&direct, relay) else {
+            return direct;
+        };
+        if matches!(
+            error,
+            CoreError::UntrustedPeer { .. } | CoreError::InvalidInput { .. }
+        ) {
+            return direct;
+        }
+        let peer = public_key(&key)?;
+        let link = RelayLink::connect(&relay, &self.device_identity, peer, self.endpoint.clone())
+            .await
+            .map_err(|e| CoreError::Transport {
+                reason: e.to_string(),
+            })?;
+        let (session, _) = tokio::time::timeout(
+            Duration::from_secs(10),
+            Session::dial(
+                &self.endpoint,
+                link.addr(),
+                peer,
+                self.local.clone(),
+                Router::new(),
+            ),
+        )
+        .await
+        .map_err(|_| CoreError::Transport {
+            reason: "the peer did not answer through the relay".into(),
+        })?
+        .map_err(session_error)?;
+        Ok(Arc::new(CoreConnection {
+            session,
+            relay: Some(link),
+        }))
+    }
+
+    /// Only the address, for LAN_FIRST: e.g. to come back from the relay
+    /// once the network changed.
+    pub async fn connect_direct(
+        &self,
+        address: String,
+        key: Vec<u8>,
+    ) -> Result<Arc<CoreConnection>, CoreError> {
+        self.dial_direct(&address, &key, LAN_FIRST).await
+    }
+
+    pub async fn shutdown(&self) {
+        if let Some(mut discovery) = self.discovery.lock().await.take() {
+            discovery.shutdown().await;
+        }
+        self.endpoint.close();
+        self.endpoint.wait_idle().await;
+    }
+}
+
+impl CoreClient {
+    async fn dial_direct(
+        &self,
+        address: &str,
+        key: &[u8],
+        wait: Duration,
     ) -> Result<Arc<CoreConnection>, CoreError> {
         let address = address.parse().map_err(|_| CoreError::InvalidInput {
             reason: "peer address must be an IP address and port".into(),
@@ -342,11 +438,11 @@ impl CoreClient {
         let mut changes = self.network.subscribe();
         let (session, _) = loop {
             let attempt = tokio::time::timeout(
-            Duration::from_secs(10),
+            wait,
             Session::dial(
                 &self.endpoint,
                 address,
-                public_key(&key)?,
+                public_key(key)?,
                 self.local.clone(),
                 Router::new(),
             ),
@@ -362,15 +458,10 @@ impl CoreClient {
             reason: "connection timed out".into(),
         })?
         .map_err(session_error)?;
-        Ok(Arc::new(CoreConnection { session }))
-    }
-
-    pub async fn shutdown(&self) {
-        if let Some(mut discovery) = self.discovery.lock().await.take() {
-            discovery.shutdown().await;
-        }
-        self.endpoint.close();
-        self.endpoint.wait_idle().await;
+        Ok(Arc::new(CoreConnection {
+            session,
+            relay: None,
+        }))
     }
 }
 
@@ -414,6 +505,8 @@ impl Drop for CoreClient {
 #[derive(uniffi::Object)]
 pub struct CoreConnection {
     session: Session,
+    /// Held while the session runs through the relay.
+    relay: Option<RelayLink>,
 }
 
 #[uniffi::export(async_runtime = "tokio")]
@@ -433,6 +526,11 @@ impl CoreConnection {
             .await
             .map(|d| d.as_micros() as u64)
             .map_err(session_error)
+    }
+
+    /// "lan" (direct) or "relay" (PROTOCOL.md §13).
+    pub fn route(&self) -> String {
+        if self.relay.is_some() { "relay" } else { "lan" }.into()
     }
 
     pub async fn wait_closed(&self) -> String {
