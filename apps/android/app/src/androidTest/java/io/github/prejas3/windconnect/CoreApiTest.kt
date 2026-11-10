@@ -22,6 +22,24 @@ import org.junit.Assert.fail
 import org.junit.Test
 
 class CoreApiTest {
+    @Test fun discoveryCannotAuthorizeAnUnpairedKey() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val directory = java.io.File(context.cacheDir, "unpaired-${java.util.UUID.randomUUID()}").apply { mkdirs() }
+        val scoped = object : android.content.ContextWrapper(context) { override fun getNoBackupFilesDir(): java.io.File = directory }
+        val core = WindCore.open(scoped, "Android")
+        try {
+            try {
+                core.connectPaired(io.github.prejas3.windconnect.bindings.PeerInfo(ByteArray(32), "Untrusted", "untrusted"))
+                fail("discovery must not authorize an unpaired key")
+            } catch (error: IllegalStateException) { assertTrue(error.message.orEmpty().contains("not paired")) }
+            assertEquals(ConnectionState.Ready, core.state.value)
+        } finally {
+            core.shutdown()
+            assertTrue(directory.canonicalPath.startsWith(context.cacheDir.canonicalPath + java.io.File.separator))
+            directory.deleteRecursively()
+        }
+    }
+
     @Test fun damagedPairingRecordsDoNotBlockWindCoreOpen() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val directory = java.io.File(context.cacheDir, "paired-recovery-${java.util.UUID.randomUUID()}").apply { mkdirs() }

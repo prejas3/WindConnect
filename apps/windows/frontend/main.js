@@ -70,5 +70,6 @@ async function start() {
   }
 }
 start();
+document.querySelector('#open-pairing').addEventListener('click', () => invoke?.('panel_action', { action: 'show' }).catch(error => { console.error(error); toast('Nie udało się otworzyć panelu telefonu.'); }));
 document.querySelector('#tray-options').addEventListener('click', () => invoke?.('tray_action', { action: 'menu' }).catch(error => { console.error(error); toast('Nie udało się otworzyć menu.'); }));
 document.querySelector('#quit-app').addEventListener('click', () => invoke?.('tray_action', { action: 'quit' }).catch(error => { console.error(error); toast('Nie udało się zakończyć aplikacji.'); }));

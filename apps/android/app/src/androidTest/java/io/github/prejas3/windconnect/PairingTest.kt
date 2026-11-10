@@ -93,6 +93,27 @@ class PairingTest {
         assertTrue(trust().isNotBlank())
     }
 
+    @Test fun qrConnectsRealDesktop() {
+        assumeTrue("requires real desktop QR image fixture", InstrumentationRegistry.getArguments().getString("desktopQr") == "true")
+        val file = File(compose.activity.cacheDir, "desktop-qr.png")
+        val bitmap = android.graphics.BitmapFactory.decodeFile(file.absolutePath)
+        val pixels = IntArray(bitmap.width * bitmap.height)
+        bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
+        val luminance = ByteArray(pixels.size) { ((pixels[it] shr 16) and 255).toByte() }
+        val link = decodeQr(luminance, bitmap.width, bitmap.height) ?: throw AssertionError("PC canvas did not decode as QR")
+        bitmap.recycle()
+        val start = android.os.SystemClock.elapsedRealtime()
+        deliver(link)
+        waitFor("confirmPairing")
+        compose.waitUntil(5000) { !compose.onNodeWithTag("confirmPairing").fetchSemanticsNode().config.contains(androidx.compose.ui.semantics.SemanticsProperties.Disabled) }
+        compose.onNodeWithTag("confirmPairing").performScrollTo().performClick()
+        compose.waitUntil(9000) { compose.onAllNodesWithTag("pairedConnectionStatus").fetchSemanticsNodes().any { it.config[androidx.compose.ui.semantics.SemanticsProperties.Text].any { text -> text.text == "Połączono z komputerem" } } }
+        val elapsed = android.os.SystemClock.elapsedRealtime() - start
+        assertTrue("decoded QR to connected session must stay below 10s: $elapsed", elapsed < 10000)
+        InstrumentationRegistry.getInstrumentation().sendStatus(0, android.os.Bundle().apply { putString("qrToConnectedMs", elapsed.toString()) })
+        Thread.sleep(2000) // CCS/1 PURPOSE:bounded evidence window for host to capture the actual connected desktop UI.
+    }
+
     @Test fun cameraWorkerStopsAfterLeavingScanner() {
         InstrumentationRegistry.getInstrumentation().uiAutomation.grantRuntimePermission(compose.activity.packageName, android.Manifest.permission.CAMERA)
         compose.activityRule.scenario.recreate()

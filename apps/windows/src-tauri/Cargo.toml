@@ -14,6 +14,8 @@ tauri = { version = "2", features = ["tray-icon"] }
 wind-core = { path = "../../../crates/wind-core" }
 serde = { version = "1", features = ["derive"] }
 tokio = { version = "1", features = ["sync", "rt", "macros", "time"] }
+qrcode = { version = "=0.14.1", default-features = false }
+if-addrs = "0.15"
 
 [target.'cfg(windows)'.dependencies]
 window-vibrancy = "0.8.1"
