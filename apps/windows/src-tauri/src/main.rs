@@ -4,6 +4,7 @@ use tauri::{Emitter, Manager};
 use wind_core::network::NetworkChanges;
 mod actions;
 mod autostart;
+mod brand_icon;
 mod clipboard;
 mod clipboard_native;
 mod files;
@@ -242,6 +243,9 @@ fn main() {
             }
             app.manage(NetworkState::new()?);
             app.manage(tray::install(app.handle())?);
+            if let Some(window) = app.get_webview_window("main") {
+                brand_icon::watch(&window)?;
+            }
             pairing::start(
                 app.handle().clone(),
                 app.state::<NetworkState>().changes.clone(),
@@ -266,6 +270,9 @@ fn main() {
             Ok(())
         })
         .on_window_event(|window, event| match event {
+            tauri::WindowEvent::ScaleFactorChanged { .. } | tauri::WindowEvent::ThemeChanged(_) => {
+                tray::refresh_icon(window.app_handle());
+            }
             tauri::WindowEvent::CloseRequested { api, .. } => {
                 api.prevent_close();
                 let _ = window.hide();

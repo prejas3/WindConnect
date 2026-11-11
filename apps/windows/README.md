@@ -1,5 +1,9 @@
 # Windows
 
+Ikona WN-93 „Orbita”: źródła SVG i instrukcja odtwarzania w `assets/brand/README.md`.
+ICO zawiera rozmiary16–256px; zasobnik ma osobne warianty16/20/24/32px
+dla trzech stanów i obu palet. Nie skaluje małej bitmapy do większego DPI.
+
 Klient Tauri 2 ze wstępnie wyrenderowanym panelem telefonu i statycznym frontendem
 bez Node.js. Parowanie i uwierzytelniona sesja działają w `wind-core`.
 

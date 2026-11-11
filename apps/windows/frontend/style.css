@@ -17,7 +17,8 @@ h1,h2,h3,p { margin: 0; } h1 { font-size: var(--text-title); letter-spacing: -.8
 p { color: var(--sub); } .subtle { font-size: var(--text-caption); }
 .titlebar { height: 44px; display: flex; align-items: center; justify-content: space-between; padding-left: 20px; user-select: none; border-bottom: 1px solid var(--border); }
 .brand { display: flex; align-items: center; gap: 9px; font-size: 13px; font-weight: 700; letter-spacing: -.3px; pointer-events: none; }
-.brand-mark { background: var(--accent); color: var(--on-accent); width: 23px; height: 23px; border-radius: 7px; display: grid; place-items: center; font-size: 14px; }
+.brand-mark { background: var(--accent); width: 23px; height: 23px; border-radius: 7px; display: grid; place-items: center; }
+.brand-mark::before { content: ""; width: 21px; height: 21px; background: var(--on-accent); mask: url("assets/orbita-small.svg") center / contain no-repeat; }
 .window-actions { display: flex; height: 100%; }
 .caption { width: 46px; display: grid; place-items: center; transition: background var(--duration-hover); }
 .caption svg { width: 14px; height: 14px; }.caption:hover { background: var(--tile); }.caption.close:hover { background: #c42b3d; color: white; }.caption:focus-visible { outline-offset: -4px; }
