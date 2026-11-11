@@ -2,7 +2,6 @@ use crate::indicator::{Indicator, Phase};
 #[cfg(debug_assertions)]
 use std::time::Duration;
 use tauri::{
-    image::Image,
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     Emitter, Manager,
 };
@@ -27,45 +26,17 @@ impl Drop for TrayRuntime {
     }
 }
 
-fn segment(x: f64, y: f64, ax: f64, ay: f64, bx: f64, by: f64) -> bool {
-    let projection = (((x - ax) * (bx - ax) + (y - ay) * (by - ay))
-        / ((bx - ax).powi(2) + (by - ay).powi(2)))
-    .clamp(0.0, 1.0);
-    (x - ax - projection * (bx - ax)).hypot(y - ay - projection * (by - ay)) < 1.5
-}
-// CCS/1 RULE:own 32px RGBA icons; color plus distinct shape, no downloaded assets.
-fn icon(phase: Phase) -> Image<'static> {
-    let rgb = match phase {
-        Phase::Connected => [67, 201, 184],
-        Phase::Searching => [239, 188, 124],
-        Phase::Unavailable => [161, 178, 182],
-    };
-    let mut rgba = vec![0; 32 * 32 * 4];
-    for y in 0..32 {
-        for x in 0..32 {
-            let (px, py) = (x as f64 + 0.5, y as f64 + 0.5);
-            let radius = (px - 16.0).hypot(py - 16.0);
-            let ring = (11.0..13.5).contains(&radius);
-            let mark = match phase {
-                Phase::Connected => {
-                    segment(px, py, 9.0, 16.0, 14.0, 21.0)
-                        || segment(px, py, 14.0, 21.0, 23.0, 11.0)
-                }
-                Phase::Searching => [10.0, 16.0, 22.0]
-                    .iter()
-                    .any(|cx| (px - cx).hypot(py - 16.0) < 1.6),
-                Phase::Unavailable => segment(px, py, 10.0, 22.0, 22.0, 10.0),
-            };
-            if ring || mark {
-                let offset = (y * 32 + x) * 4;
-                rgba[offset..offset + 3].copy_from_slice(&rgb);
-                rgba[offset + 3] = 255;
-            }
+// CCS/1 FLOW:taskbar DPI/theme changes select a pre-rendered Orbita variant, also while disconnected.
+pub fn refresh_icon(app: &tauri::AppHandle) {
+    if let (Some(runtime), Some(tray)) =
+        (app.try_state::<TrayRuntime>(), app.tray_by_id("connection"))
+    {
+        let phase = runtime.indicator.snapshot().phase;
+        if let Err(error) = tray.set_icon(Some(crate::brand_icon::current(phase))) {
+            eprintln!("tray icon: {error}");
         }
     }
-    Image::new_owned(rgba, 32, 32)
 }
-
 pub fn show_main(app: &tauri::AppHandle) -> tauri::Result<()> {
     if let Some(panel) = app.get_webview_window("panel") {
         panel.hide()?;
@@ -117,7 +88,7 @@ pub fn show_menu(
 pub fn install(app: &tauri::AppHandle) -> tauri::Result<TrayRuntime> {
     let indicator = Indicator::default();
     let tray = TrayIconBuilder::with_id("connection")
-        .icon(icon(Phase::Unavailable))
+        .icon(crate::brand_icon::current(Phase::Unavailable))
         .tooltip("WindConnect · Brak połączenia")
         .show_menu_on_left_click(false)
         .on_tray_icon_event(|tray, event| {
@@ -148,27 +119,18 @@ pub fn install(app: &tauri::AppHandle) -> tauri::Result<TrayRuntime> {
         error: None,
     });
     let app_handle = app.clone();
-    let icons = [
-        icon(Phase::Connected),
-        icon(Phase::Searching),
-        icon(Phase::Unavailable),
-    ];
     let worker = tauri::async_runtime::spawn(async move {
         while updates.changed().await.is_ok() {
             let update = updates.borrow_and_update().clone();
             let tray = tray.clone();
-            let images = icons.clone();
             let sender = applied_sender.clone();
             let event_app = app_handle.clone();
             if let Err(error) = app_handle.run_on_main_thread(move || {
-                let index = match update.phase {
-                    Phase::Connected => 0,
-                    Phase::Searching => 1,
-                    Phase::Unavailable => 2,
-                };
-                let result = tray.set_icon(Some(images[index].clone())).and_then(|_| {
-                    tray.set_tooltip(Some(format!("WindConnect · {}", update.phase.label())))
-                });
+                let result = tray
+                    .set_icon(Some(crate::brand_icon::current(update.phase)))
+                    .and_then(|_| {
+                        tray.set_tooltip(Some(format!("WindConnect · {}", update.phase.label())))
+                    });
                 let applied = Applied {
                     sequence: update.sequence,
                     phase: update.phase,

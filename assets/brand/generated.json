@@ -1,0 +1,381 @@
+{
+  "renderer": "Chromium 149.0.7827.55",
+  "source": "Orbita / WN-93 direction C",
+  "outputs": [
+    {
+      "file": "apps/windows/frontend/assets/orbita-small.svg",
+      "bytes": 469,
+      "sha256": "b028ae16434cd0481459d2c7e6d37e649fd7a020319d1b142b7ed19d31f97947"
+    },
+    {
+      "file": "apps/windows/src-tauri/icons/app-16.png",
+      "bytes": 826,
+      "sha256": "98d9adc9aed42cd4730d2a5b8a4967c16c391396c0bdcda656863be70cbe3ef7"
+    },
+    {
+      "file": "apps/windows/src-tauri/icons/app-20.png",
+      "bytes": 1126,
+      "sha256": "a9ff75fd8320b0da4c1ca75109df91996ec95cf8f8f408d99fad4faa71127ace"
+    },
+    {
+      "file": "apps/windows/src-tauri/icons/app-24.png",
+      "bytes": 1347,
+      "sha256": "c38777290560aee6d9c850a6b7b7f3e60e0629600aed2589e0e295aa4b330f81"
+    },
+    {
+      "file": "apps/windows/src-tauri/icons/app-32.png",
+      "bytes": 1769,
+      "sha256": "2426906a865573be211650d89cc5382c51add928a6ee95d999a8ab4a92503a28"
+    },
+    {
+      "file": "apps/windows/src-tauri/icons/app-40.png",
+      "bytes": 2332,
+      "sha256": "08a704262261e93fe8ff0df9ab7606cadfefa9b4610b1bc8eebc9da5ff86a24d"
+    },
+    {
+      "file": "apps/windows/src-tauri/icons/app-48.png",
+      "bytes": 2835,
+      "sha256": "b41b7c5216f4ca6f5d4fb241883f36c223d8b68dd9e9c3e511c024a01ab25f1c"
+    },
+    {
+      "file": "apps/windows/src-tauri/icons/app-64.png",
+      "bytes": 3643,
+      "sha256": "c4b1b38f1e704cd00ddb96712abe16359be14759652f780cf1674b746956c6d3"
+    },
+    {
+      "file": "apps/windows/src-tauri/icons/app-96.png",
+      "bytes": 5714,
+      "sha256": "420cd5d1381e30f24b67f73f7c776312feb8d5d12aff77fcb4f240a0cc21c19e"
+    },
+    {
+      "file": "apps/windows/src-tauri/icons/app-128.png",
+      "bytes": 7254,
+      "sha256": "3cf7c4102accb1e02d853651d3d2b790b7b16cc9371a743317ab72d038a012c6"
+    },
+    {
+      "file": "apps/windows/src-tauri/icons/app-256.png",
+      "bytes": 15672,
+      "sha256": "3539b59ac17b62d01b50aece84ed2ad4e137af0121d67ddb432126452ff07456"
+    },
+    {
+      "file": "apps/windows/src-tauri/icons/icon.ico",
+      "bytes": 42684,
+      "sha256": "df6365e73b5639118866c3749d36a2d78b3aa2c08a42407beaa78bf0639350b8"
+    },
+    {
+      "file": "apps/windows/src-tauri/icons/tray/connected-light-16.png",
+      "bytes": 719,
+      "sha256": "7a720489c782ca1e9fa3463c0a790855b4b7dfbe9790c9bcf89b0542c6b01263"
+    },
+    {
+      "file": "apps/windows/src-tauri/icons/tray/connected-light-16.rgba",
+      "bytes": 1024,
+      "sha256": "566404960bd427e8f9f4e0304eaa4aaf83f276039fd954dfb64de59db642ea7b"
+    },
+    {
+      "file": "apps/windows/src-tauri/icons/tray/connected-light-20.png",
+      "bytes": 957,
+      "sha256": "d4c466a4205bebbb2bcfe51393418d5a9a6cf2bc187130aa40c8252a3535f47c"
+    },
+    {
+      "file": "apps/windows/src-tauri/icons/tray/connected-light-20.rgba",
+      "bytes": 1600,
+      "sha256": "05a3dd2ec1cec155b1dd63e8a9720531ce0255a746b245ab9acbfd6360d0b988"
+    },
+    {
+      "file": "apps/windows/src-tauri/icons/tray/connected-light-24.png",
+      "bytes": 1172,
+      "sha256": "b343d3f8fee4de765219f4284546a1a1be682702656f3bb75e7adb67e6279d1b"
+    },
+    {
+      "file": "apps/windows/src-tauri/icons/tray/connected-light-24.rgba",
+      "bytes": 2304,
+      "sha256": "a1f991a1bde62273ab4eb8e3662aeb6698b1029e4f02fe09f3fc6657133c6a86"
+    },
+    {
+      "file": "apps/windows/src-tauri/icons/tray/connected-light-32.png",
+      "bytes": 1475,
+      "sha256": "3e00880d0d02e29cb66c76c124357916fe49a1d85529af11ddac8e045de3cad5"
+    },
+    {
+      "file": "apps/windows/src-tauri/icons/tray/connected-light-32.rgba",
+      "bytes": 4096,
+      "sha256": "0ff16069302dc36f967c4916e2ff27a777ea83f43a8c122e3e0f50af2459524f"
+    },
+    {
+      "file": "apps/windows/src-tauri/icons/tray/searching-light-16.png",
+      "bytes": 653,
+      "sha256": "5bb5d3e465563b5b376db320a271b0e5e1247486c090bf934b9de26c455be80e"
+    },
+    {
+      "file": "apps/windows/src-tauri/icons/tray/searching-light-16.rgba",
+      "bytes": 1024,
+      "sha256": "5d0b23d77da62387322cdfd6146b165633a646cb98f34ec8136e565fe0693958"
+    },
+    {
+      "file": "apps/windows/src-tauri/icons/tray/searching-light-20.png",
+      "bytes": 915,
+      "sha256": "eb69b99cbc876c7d462af79ef1bfffb4c84509a847030f17f10f1998aa683d7e"
+    },
+    {
+      "file": "apps/windows/src-tauri/icons/tray/searching-light-20.rgba",
+      "bytes": 1600,
+      "sha256": "59ccea8c15118e50475c04b59ad9c8f7f9585e339063682a3e9d8c2306cbfd6a"
+    },
+    {
+      "file": "apps/windows/src-tauri/icons/tray/searching-light-24.png",
+      "bytes": 1078,
+      "sha256": "ec30b2c00f99d975cad3701a1cd30e7d36d583ac043c2f539131aa4fbd629f99"
+    },
+    {
+      "file": "apps/windows/src-tauri/icons/tray/searching-light-24.rgba",
+      "bytes": 2304,
+      "sha256": "0c1f86ec552a8496a9f27d93284892e07c5f2776bc959a3a8bef8657ff278334"
+    },
+    {
+      "file": "apps/windows/src-tauri/icons/tray/searching-light-32.png",
+      "bytes": 1397,
+      "sha256": "67272b8f1fea744ebb1234be2d7f82458e87138eaef3369702bfceb97ca480e8"
+    },
+    {
+      "file": "apps/windows/src-tauri/icons/tray/searching-light-32.rgba",
+      "bytes": 4096,
+      "sha256": "92b2b341eba2d440d56a6986b186df2cf9877f18bcc90f3fb4e50333f0d45d1a"
+    },
+    {
+      "file": "apps/windows/src-tauri/icons/tray/unavailable-light-16.png",
+      "bytes": 718,
+      "sha256": "9bec6abd912b0a42517b07a1b2f3f4b6437084e8d05797c5cd8e074ab72e989b"
+    },
+    {
+      "file": "apps/windows/src-tauri/icons/tray/unavailable-light-16.rgba",
+      "bytes": 1024,
+      "sha256": "d335add1729bc7232eaed417f9a04f9795b80c63b38da79a008dfd62e2ac84f1"
+    },
+    {
+      "file": "apps/windows/src-tauri/icons/tray/unavailable-light-20.png",
+      "bytes": 987,
+      "sha256": "ca6199f345f36d42042b1fe83bc93fbcf85e5539bb312958fffb7cfbd8b7b4db"
+    },
+    {
+      "file": "apps/windows/src-tauri/icons/tray/unavailable-light-20.rgba",
+      "bytes": 1600,
+      "sha256": "27de16d66fecca75b7809e7dc1cadca04485921be3d23494c9ceeb189ca9ac9a"
+    },
+    {
+      "file": "apps/windows/src-tauri/icons/tray/unavailable-light-24.png",
+      "bytes": 1225,
+      "sha256": "d0645a035aa250ec86a2d8c1614d6d42f9eebf248bced9612153837d24a71217"
+    },
+    {
+      "file": "apps/windows/src-tauri/icons/tray/unavailable-light-24.rgba",
+      "bytes": 2304,
+      "sha256": "ceadcbec13d3f3eeac8da9a43c07913f946837fae71bab58bbb1e2edbfaa2595"
+    },
+    {
+      "file": "apps/windows/src-tauri/icons/tray/unavailable-light-32.png",
+      "bytes": 1467,
+      "sha256": "08b40e1ff9b33c12fbddae45dbc4c6ff26ccee8c11a2d8f231f9ecca12b742d7"
+    },
+    {
+      "file": "apps/windows/src-tauri/icons/tray/unavailable-light-32.rgba",
+      "bytes": 4096,
+      "sha256": "0aac1db4ca4d0ac9b79226809c344cf3e7edd1c181ff9b459a378a0c3beefe78"
+    },
+    {
+      "file": "apps/windows/src-tauri/icons/tray/connected-dark-16.png",
+      "bytes": 718,
+      "sha256": "8bd2aab6477cd9d3d5f3250e8ba74d5f333867c580206679ccf1a135d91776ee"
+    },
+    {
+      "file": "apps/windows/src-tauri/icons/tray/connected-dark-16.rgba",
+      "bytes": 1024,
+      "sha256": "f0c7d127cff5ebdab41287284c6ee45fe30e5b42df91eb833a2dd9b1bb2dc8f7"
+    },
+    {
+      "file": "apps/windows/src-tauri/icons/tray/connected-dark-20.png",
+      "bytes": 967,
+      "sha256": "bc4737fc4471541e71ee0e7e4c5a33fda71bb0d525775693d7cfb8f4b1335f36"
+    },
+    {
+      "file": "apps/windows/src-tauri/icons/tray/connected-dark-20.rgba",
+      "bytes": 1600,
+      "sha256": "cb7d8354b881af3953846b878c1d00d8e03864f246d0c82bbe47f34735d72df0"
+    },
+    {
+      "file": "apps/windows/src-tauri/icons/tray/connected-dark-24.png",
+      "bytes": 1192,
+      "sha256": "5b6e3aea99dfafe6c152b205c549191578836ef1c2295bb929226656e8dbb7f9"
+    },
+    {
+      "file": "apps/windows/src-tauri/icons/tray/connected-dark-24.rgba",
+      "bytes": 2304,
+      "sha256": "c74a8e8e74c6267700b0c1df574e36d51e78572b44c874cd13a1cf4c972f5433"
+    },
+    {
+      "file": "apps/windows/src-tauri/icons/tray/connected-dark-32.png",
+      "bytes": 1507,
+      "sha256": "0761f3187eeb3742daf2313a351250a82030c3b9e6f6722cd3466ce88b20b0a6"
+    },
+    {
+      "file": "apps/windows/src-tauri/icons/tray/connected-dark-32.rgba",
+      "bytes": 4096,
+      "sha256": "d02435130f78f670689acc496b364129e77133f2088f3f081972910f08052ca4"
+    },
+    {
+      "file": "apps/windows/src-tauri/icons/tray/searching-dark-16.png",
+      "bytes": 674,
+      "sha256": "9899c3a4f2b5142340df18c32a1eed4196fae1c7fb6e62f0a9a05ccbcb3f4499"
+    },
+    {
+      "file": "apps/windows/src-tauri/icons/tray/searching-dark-16.rgba",
+      "bytes": 1024,
+      "sha256": "6557edac1085b506b673f68a7c7caf1d693754e052219dee378564e91e84c856"
+    },
+    {
+      "file": "apps/windows/src-tauri/icons/tray/searching-dark-20.png",
+      "bytes": 947,
+      "sha256": "d511778aedf4f9a1bfa5b7628e8eaa84a2cf0a37c5cfb7d839936ade25d6a6a3"
+    },
+    {
+      "file": "apps/windows/src-tauri/icons/tray/searching-dark-20.rgba",
+      "bytes": 1600,
+      "sha256": "719f396be6bd09bd65aa2b4e6afd228aeb4a0ce2dca2c75b51235e425ab6ce53"
+    },
+    {
+      "file": "apps/windows/src-tauri/icons/tray/searching-dark-24.png",
+      "bytes": 1108,
+      "sha256": "e1dc6572313cbe390414d54c0a0be1877654d57bea1cc3aea3591e2832443ecf"
+    },
+    {
+      "file": "apps/windows/src-tauri/icons/tray/searching-dark-24.rgba",
+      "bytes": 2304,
+      "sha256": "a5249f32e33fb5cb0e11c6af5e21009186e637bf275ed8a55c94b4f1ee5a7ac4"
+    },
+    {
+      "file": "apps/windows/src-tauri/icons/tray/searching-dark-32.png",
+      "bytes": 1418,
+      "sha256": "63d916ad3fd70d400023368f2a66f467c3acf4a3424447440716884bddc78547"
+    },
+    {
+      "file": "apps/windows/src-tauri/icons/tray/searching-dark-32.rgba",
+      "bytes": 4096,
+      "sha256": "a8485307a49de80802f9fbca232322ae3e1636ca3e1235130623357c9faf04e0"
+    },
+    {
+      "file": "apps/windows/src-tauri/icons/tray/unavailable-dark-16.png",
+      "bytes": 718,
+      "sha256": "aa8dba85ffd6c41a1ace665a73dea8130eaa072188907cb3319149ee939a1398"
+    },
+    {
+      "file": "apps/windows/src-tauri/icons/tray/unavailable-dark-16.rgba",
+      "bytes": 1024,
+      "sha256": "21bb32e91ed86169282579b385665e0db41837a1720c8c81821d4d18b5fec9d6"
+    },
+    {
+      "file": "apps/windows/src-tauri/icons/tray/unavailable-dark-20.png",
+      "bytes": 985,
+      "sha256": "e6e8ad2a7c70de51ec2e6c29545ce7cc24cc70dd7894338f2f91bb390930c353"
+    },
+    {
+      "file": "apps/windows/src-tauri/icons/tray/unavailable-dark-20.rgba",
+      "bytes": 1600,
+      "sha256": "deb7119f62c06e3da98bfff6f6bdc8b4b93ba9d8c919592dc542a363056ffbc8"
+    },
+    {
+      "file": "apps/windows/src-tauri/icons/tray/unavailable-dark-24.png",
+      "bytes": 1229,
+      "sha256": "0f39d4ba632e0039b331a504b9a37fb5bf85214a6bc7de45502118cb0ca0c373"
+    },
+    {
+      "file": "apps/windows/src-tauri/icons/tray/unavailable-dark-24.rgba",
+      "bytes": 2304,
+      "sha256": "47b8651def9487173126c8aed3ad09f576db2776a91bc86a6ef7a10a0a44b141"
+    },
+    {
+      "file": "apps/windows/src-tauri/icons/tray/unavailable-dark-32.png",
+      "bytes": 1447,
+      "sha256": "d97ba6c25dbca06aecf0011be37956ed86b72fc7de3382d396c662af416080cd"
+    },
+    {
+      "file": "apps/windows/src-tauri/icons/tray/unavailable-dark-32.rgba",
+      "bytes": 4096,
+      "sha256": "f9deb81027c714d75abb85c13fbffdd24b4f2e37a5bf4e983560cc60dbfe3355"
+    },
+    {
+      "file": "apps/android/app/src/main/res/drawable/ic_launcher_foreground.xml",
+      "bytes": 1220,
+      "sha256": "2ae6e461959272dabe184364a14fa83b450bf42cb79b4238dec4bc1ec4e4f9aa"
+    },
+    {
+      "file": "apps/android/app/src/main/res/drawable/ic_launcher_monochrome.xml",
+      "bytes": 1220,
+      "sha256": "2ae6e461959272dabe184364a14fa83b450bf42cb79b4238dec4bc1ec4e4f9aa"
+    },
+    {
+      "file": "apps/android/app/src/main/res/drawable/ic_connection.xml",
+      "bytes": 1197,
+      "sha256": "4e930d7b0b564cb65f007c3b8784acc9d48bad635cdbe4f09788a7fd4e94da2d"
+    },
+    {
+      "file": "apps/android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml",
+      "bytes": 295,
+      "sha256": "ae92c429e7ef5c0be5e06b652315e43fb7f0fa6034c6ab005b19bc950a8ccf4c"
+    },
+    {
+      "file": "apps/android/app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml",
+      "bytes": 295,
+      "sha256": "ae92c429e7ef5c0be5e06b652315e43fb7f0fa6034c6ab005b19bc950a8ccf4c"
+    },
+    {
+      "file": "apps/android/app/src/main/res/mipmap-mdpi/ic_launcher.png",
+      "bytes": 2835,
+      "sha256": "b41b7c5216f4ca6f5d4fb241883f36c223d8b68dd9e9c3e511c024a01ab25f1c"
+    },
+    {
+      "file": "apps/android/app/src/main/res/mipmap-mdpi/ic_launcher_round.png",
+      "bytes": 3263,
+      "sha256": "a6ee58d14bb7e2c59e9c96ec57ce7c0593f54228b01b5e9d10e13ae1406e819f"
+    },
+    {
+      "file": "apps/android/app/src/main/res/mipmap-hdpi/ic_launcher.png",
+      "bytes": 4231,
+      "sha256": "fa71eda7714fc7b105715a9806e896c7915cd288c607c5d85f68dd5a2e5ba92b"
+    },
+    {
+      "file": "apps/android/app/src/main/res/mipmap-hdpi/ic_launcher_round.png",
+      "bytes": 4933,
+      "sha256": "eb6bdc0e36102fc7e3654e52f4119c6d46b80c671b0f89c03efc4bf2692abba9"
+    },
+    {
+      "file": "apps/android/app/src/main/res/mipmap-xhdpi/ic_launcher.png",
+      "bytes": 5714,
+      "sha256": "420cd5d1381e30f24b67f73f7c776312feb8d5d12aff77fcb4f240a0cc21c19e"
+    },
+    {
+      "file": "apps/android/app/src/main/res/mipmap-xhdpi/ic_launcher_round.png",
+      "bytes": 6584,
+      "sha256": "a7f033c054d8aa9eafbf6b5f0dcfdd9e5c3317602c16a8aa9a13108c5c05ab23"
+    },
+    {
+      "file": "apps/android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png",
+      "bytes": 8647,
+      "sha256": "029903ff33be62c073a4aa166b23083847e20ee416c7e65b24c42e24c7ae891a"
+    },
+    {
+      "file": "apps/android/app/src/main/res/mipmap-xxhdpi/ic_launcher_round.png",
+      "bytes": 10042,
+      "sha256": "b412e37449a85a149cf3218e3ef411c3a7338569ec36f4811c5d8d4e584a9fba"
+    },
+    {
+      "file": "apps/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png",
+      "bytes": 11575,
+      "sha256": "157602025858541f0c2ceeb551eb3cd328e27fa6c4ee322cb439b38a92df37a3"
+    },
+    {
+      "file": "apps/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.png",
+      "bytes": 13476,
+      "sha256": "ae75854ebf049487b37fd566f5d99550f12b474f61b341eb12c3811b253caa84"
+    }
+  ]
+}

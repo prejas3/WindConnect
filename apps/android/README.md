@@ -1,5 +1,11 @@
 # Android
 
+Ikona WN-93 „Orbita” ma warstwy adaptive i monochrome, własny biały wektor
+powiadomienia oraz mipmapy mdpi–xxxhdpi. Źródła i odtwarzanie:
+`assets/brand/README.md`. Na S25 Ultra sprawdź launcher One UI przy włączonych
+i wyłączonych ikonach tematycznych oraz stałe powiadomienie; emulator potwierdza
+zasoby/API Androida, ale nie zachowanie launchera Samsunga.
+
 Aplikacja Kotlin / Jetpack Compose ze skanerem QR i potwierdzeniem parowania z PC.
 Moduł `:wind-core` zawiera wiązania UniFFI 0.32.2, wrapper korutynowy ze
 `StateFlow` i biblioteki Rust dla arm64-v8a oraz x86_64. Wymagany Android 10+
@@ -147,7 +153,7 @@ generator, a nie ręcznie edytowane wiązania lub binaria.
 
 AAR: `wind-core/build/outputs/aar/wind-core-release.aar`.
 Lokalne repozytorium Maven z AAR, źródłami, POM i metadanymi Gradle:
-`wind-core/build/repo/`. Współrzędne: `io.github.prejas3.windconnect:wind-core:0.38.0`.
+`wind-core/build/repo/`. Współrzędne: `io.github.prejas3.windconnect:wind-core:0.39.0`.
 Publikacja zapisuje pliki lokalnie; nie wysyła ich do zewnętrznego repozytorium.
 Konsument musi korzystać z POM/metadanych (JNA i korutyny są zależnościami
 przechodnimi); sama kopia pliku AAR nie dostarczy JNA.
@@ -160,7 +166,7 @@ Konsument spoza repozytorium dodaje lokalne repozytorium do
 maven { url = uri("/sciezka/do/wind-core/build/repo") }
 ```
 
-oraz `implementation("io.github.prejas3.windconnect:wind-core:0.38.0")`.
+oraz `implementation("io.github.prejas3.windconnect:wind-core:0.39.0")`.
 W aplikacji konsumenta ogranicz ABI do `arm64-v8a` i `x86_64`.
 
 ```kotlin
@@ -310,7 +316,7 @@ pamięć odkrywania po zmianie sieci. Pytanie i odpowiedź unicast sprawdza test
 hosta, a filtrowanie broadcast przez prawdziwy układ Wi-Fi bez locka wymaga
 telefonu.
 
-Wersja aplikacji to 0.38.0, a Android `versionCode` to 47. Numery wydań rosną
+Wersja aplikacji to 0.39.0, a Android `versionCode` to 48. Numery wydań rosną
 niezależnie od kolejności kart, aby aktualizacja APK i MSI nie cofała wersji.
 
 ## Ekran główny (WN-31)
