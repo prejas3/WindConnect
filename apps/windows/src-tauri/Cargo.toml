@@ -17,6 +17,8 @@ serde_json = "1"
 tokio = { version = "1", features = ["sync", "rt", "macros", "time", "net"] }
 qrcode = { version = "=0.14.1", default-features = false }
 if-addrs = "0.15"
+# Wipes the QR modules of a closed pairing window (WN-94); already in the tree via wind-core.
+zeroize = "1"
 
 [target.'cfg(windows)'.dependencies]
 window-vibrancy = "0.8.1"

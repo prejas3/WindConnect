@@ -21,7 +21,7 @@ const stub = () => {
   window.__TAURI__ = {
     core: { invoke: async (cmd, args) => {
       window.__calls.push([cmd, args]);
-      if (cmd === 'pairing_snapshot') return { phase: 'waiting', phone: null, qr, message: 'Zeskanuj kod w WindConnect na telefonie', skipped_records: 0, code: null };
+      if (cmd === 'pairing_snapshot') return { phase: 'waiting', phone: null, qr: structuredClone(qr), message: 'Zeskanuj kod w WindConnect na telefonie', skipped_records: 0, code: null };
       if (cmd === 'files_snapshot') return { phone: null, rows: [], active: 0, activeSize: 0, activeDone: 0 };
       if (cmd === 'panel_snapshot') return { shortcut_error: null };
       return null;
