@@ -37,6 +37,8 @@ fun HomeScreen(state: PairingUi, onScan: () -> Unit, onDiagnostics: () -> Unit, 
         else -> "Brak sparowanego komputera"
     }
     val colors = MaterialTheme.colorScheme
+    // WC-34: first run, the Welcome card comes first (what is needed, one main action, the camera explained).
+    if (!known) WelcomeCard(state.ready, onScan, onNearby)
     Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(colors.primaryContainer).padding(18.dp).testTag("connectionStrip"),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         WindIcon("pc")
@@ -67,12 +69,6 @@ fun HomeScreen(state: PairingUi, onScan: () -> Unit, onDiagnostics: () -> Unit, 
             WindAction("Otwórz na PC", "ostatni link", "external", null, Modifier.weight(1f).fillMaxHeight().testTag("homeLink"))
         }
         Text("Szybkie akcje są jeszcze niedostępne.", color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
-    }
-    if (!known) {
-        Text("Otwórz WindConnect na komputerze i zeskanuj kod QR. Oba urządzenia powinny być w tej samej sieci Wi-Fi.", style = MaterialTheme.typography.bodyMedium)
-        WindButton("Zeskanuj kod QR", onScan, Modifier.fillMaxWidth().testTag("scanQr"), enabled = state.ready)
-        // WN-27: pairing by code comparison when the camera can't be used.
-        if (onNearby != null) WindButton("Paruj bez aparatu", onNearby, Modifier.fillMaxWidth().testTag("pairNearby"), enabled = state.ready, kind = ButtonKind.Secondary)
     }
     if (onClipboard != null && onClipboardEnabled != null) ClipboardControls(state, onClipboard, onClipboardEnabled)
     Text("Ostatnie transfery", style = MaterialTheme.typography.titleMedium)

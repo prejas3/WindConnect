@@ -61,3 +61,15 @@ body.modal-open { overflow: hidden; }
 @media(max-width:700px) { main { padding: 24px 18px; }.gallery-grid { grid-template-columns: 1fr; }.page-heading { align-items: start; flex-direction: column; }.token-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }h1 { font-size: 25px; } }
 @media(prefers-reduced-motion:reduce) { *,*::before,*::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }.button:active,.tile:active { transform: none !important; } }
 @media(forced-colors:active) { body { background: Canvas !important; }.button,.switch,.checkbox,.device-option,.surface,.segmented { border: 1px solid ButtonText; }.switch[aria-checked="true"],.checkbox:checked { background: Highlight; forced-color-adjust: none; }.switch[aria-checked="true"]::before { background: HighlightText; }.checkbox:checked::before { border-color: HighlightText; }.device-option[aria-selected="true"] { outline: 2px solid Highlight; }.status-pill::before { background: CanvasText; } }
+/* WC-34: first-run onboarding in the main window (shares the panel's single pairing window). */
+.onboarding { padding: 28px; display: grid; gap: 14px; }.onboarding h2 { font-size: 22px; outline: none; }.onboarding .lead { color: var(--sub); max-width: 560px; }
+.onboarding-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; counter-reset: step; }
+.onboarding-steps > li { counter-increment: step; display: grid; grid-template-columns: 30px minmax(0,1fr); column-gap: 12px; row-gap: 0; align-items: start; }.onboarding-steps > li > * + * { margin-top: 6px; }
+body.onboarding-active #actions, body.onboarding-active [data-clipboard-controls] { display: none; }
+.onboarding-steps > li::before { content: counter(step); grid-row: 1 / span 9; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; color: var(--accent); background: var(--accent-bg); }
+.onboarding-steps > li.current::before { color: var(--on-accent); background: var(--accent); }.onboarding-steps > li.done::before { content: "✓"; }
+.onboarding-steps > li > * { grid-column: 2; }.onboarding-steps span { color: var(--sub); }
+#onboarding-qr { background: #fff; image-rendering: pixelated; max-width: 100%; justify-self: start; margin-top: 6px; }
+.onboarding .pairing-code { font-size: 40px; font-weight: 700; letter-spacing: 6px; font-variant-numeric: tabular-nums; margin: 6px 0; }
+.onboarding .button-row { display: flex; flex-wrap: wrap; gap: 8px; }
+#onboarding-done { display: grid; gap: 12px; max-width: 520px; }#onboarding-done[hidden] { display: none; }#onboarding-done .control-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }#onboarding-done small { display: block; color: var(--sub); font-size: 12px; }#onboarding-finish { justify-self: start; }

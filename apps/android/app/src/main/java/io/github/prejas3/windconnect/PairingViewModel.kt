@@ -181,7 +181,7 @@ class PairingViewModel(application: Application) : AndroidViewModel(application)
                     if (error is CancellationException && error !is kotlinx.coroutines.TimeoutCancellationException) throw error
                     mutableUi.update { it.copy(message = "Sparowano. Komputer jest chwilowo nieosiągalny — sprawdź wspólną sieć Wi-Fi.") }
                 }
-                ConnectionService.start(getApplication(), enable = true)
+                // WC-34: the background connection is the person's choice on the Gotowe screen.
             } catch (error: Exception) {
                 if (error is CancellationException) throw error
                 mutableUi.update { it.copy(screen = "error", code = "", message = if (same) "Parowanie nie zostało potwierdzone na komputerze. Spróbuj ponownie." else "Kody się różniły, więc urządzenia nie zostały sparowane. Spróbuj ponownie.") }
@@ -231,7 +231,7 @@ class PairingViewModel(application: Application) : AndroidViewModel(application)
                     if (error is CancellationException && error !is kotlinx.coroutines.TimeoutCancellationException) throw error
                     mutableUi.update { it.copy(message = "Sparowano. Komputer jest chwilowo nieosiągalny — sprawdź wspólną sieć Wi-Fi.") }
                 }
-                ConnectionService.start(getApplication(), enable = true)
+                // WC-34: the background connection is the person's choice on the Gotowe screen.
             } catch (error: Exception) {
                 if (error is CancellationException) throw error
                 mutableUi.update { it.copy(screen = "error", message = "Nie udało się sparować. Sprawdź wspólną sieć Wi-Fi i zeskanuj nowy kod na komputerze.") }

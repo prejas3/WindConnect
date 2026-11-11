@@ -24,6 +24,31 @@
         <button data-theme-choice="system" aria-pressed="true">System</button><button data-theme-choice="light" aria-pressed="false">Jasny</button><button data-theme-choice="dark" aria-pressed="false">Ciemny</button>
       </div>
     </div>
+    <section id="onboarding" class="surface onboarding" aria-labelledby="onboarding-title" hidden>
+      <h2 id="onboarding-title" tabindex="-1">Połącz telefon z tym komputerem</h2>
+      <p class="lead">Zajmie to mniej niż minutę. Połączenie działa w Twojej sieci, jest szyfrowane od końca do końca i nie wymaga konta.</p>
+      <ol class="onboarding-steps">
+        <li data-step="1"><strong>Otwórz WindConnect na telefonie</strong><span>Nie masz aplikacji? Pobierz plik APK ze strony wydań projektu WindConnect (GitHub Releases).</span></li>
+        <li data-step="2"><strong id="onboarding-step-title">Zeskanuj ten kod telefonem</strong><span id="onboarding-hint">W aplikacji stuknij „Zeskanuj kod z komputera”.</span>
+          <canvas id="onboarding-qr" role="img" aria-label="Kod parowania" hidden></canvas>
+          <p id="onboarding-code" class="pairing-code" aria-label="Kod do porównania" hidden></p>
+          <p id="onboarding-message" role="status"></p>
+          <div class="button-row">
+            <button id="onboarding-accept" class="button primary" hidden>Kody są takie same</button>
+            <button id="onboarding-reject" class="button" hidden>Kody się różnią</button>
+            <button id="onboarding-refresh" class="button" hidden>Wyświetl nowy kod</button>
+            <button id="onboarding-sas" class="button quiet" hidden>Paruj bez aparatu</button>
+          </div>
+        </li>
+        <li data-step="3"><strong id="onboarding-done-title">Gotowe</strong><span id="onboarding-done-text">Po sparowaniu telefon łączy się sam, gdy oba urządzenia są w tej samej sieci.</span>
+          <div id="onboarding-done" hidden>
+            <div class="control-row"><div><span id="onboarding-autostart-label">Uruchamiaj z Windows</span><small>Telefon połączy się po włączeniu komputera, bez otwierania aplikacji.</small></div><button id="onboarding-autostart" class="switch" role="switch" aria-checked="false" aria-labelledby="onboarding-autostart-label"></button></div>
+            <button id="onboarding-finish" class="button primary">Przejdź do aplikacji</button>
+          </div>
+        </li>
+      </ol>
+      <p class="subtle">Instalator dodał już regułę zapory dla sieci prywatnej, więc nic więcej nie musisz zezwalać. WindConnect działa w zasobniku obok zegara; panel otworzysz skrótem Win + Shift + W.</p>
+    </section>
     <section id="home" aria-labelledby="empty-title" class="surface empty-state">
       <span class="empty-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="6" y="2" width="12" height="20" rx="3"/><path d="M10 5h4M11 19h2"/></svg></span>
       <h2 id="empty-title">Miejsce na Twój telefon</h2>

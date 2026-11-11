@@ -91,7 +91,7 @@ class PairingTest {
 
     @Test fun scannerEntryAndCancelRemainAvailable() {
         openScanner()
-        compose.onNodeWithText("Zeskanuj kod QR").assertExists()
+        compose.onNodeWithText("Zeskanuj kod z komputera").assertExists()
         compose.onNodeWithTag("cancelPairing").performScrollTo().performClick()
         compose.onNodeWithTag("computerCard").assertExists()
     }
@@ -170,6 +170,9 @@ class PairingTest {
             compose.activityRule.scenario.close()
         }
         if (background) {
+            // WC-34: the background connection is chosen on the Gotowe screen (notifications already granted above).
+            compose.onNodeWithTag("keepBackground").performScrollTo().performClick()
+            compose.onNodeWithTag("backgroundOutcome").assertTextContains("Włączone", substring = true)
             val manager = context.getSystemService(android.app.NotificationManager::class.java)
             val deadline = android.os.SystemClock.elapsedRealtime() + 5000
             while (manager.activeNotifications.none { it.id == ConnectionService.ID && it.notification.extras.getString(android.app.Notification.EXTRA_TEXT).orEmpty().startsWith("Połączono") } && android.os.SystemClock.elapsedRealtime() < deadline) Thread.sleep(50)

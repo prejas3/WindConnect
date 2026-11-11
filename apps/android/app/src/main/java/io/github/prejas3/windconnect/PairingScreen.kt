@@ -49,7 +49,9 @@ fun PairingScreen(model: PairingViewModel, diagnostic: @Composable () -> Unit) {
     Column(Modifier.fillMaxSize().verticalScroll(scroll).padding(24.dp).testTag("pairingScreen"), verticalArrangement = Arrangement.spacedBy(18.dp)) {
         when (state.screen) {
             "home" -> {
-                HomeScreen(state, model::scan, onDiagnostics = { diagnostics = true }, onNearby = model::nearby, onClipboard = model::sendClipboard, onClipboardEnabled = model::setClipboardEnabled)
+                // WC-34: the Welcome card explained the camera, so the system asks right after the tap.
+                val scan = { if (!hasCamera) permission.launch(Manifest.permission.CAMERA); model.scan() }
+                HomeScreen(state, scan, onDiagnostics = { diagnostics = true }, onNearby = model::nearby, onClipboard = model::sendClipboard, onClipboardEnabled = model::setClipboardEnabled)
                 if (state.devices.isNotEmpty()) WindButton("Sparowane komputery", model::devices, Modifier.fillMaxWidth().testTag("openDevices"), kind = ButtonKind.Secondary)
             }
             "devices" -> DevicesScreen(state, onBack = model::cancel, onConnect = model::connectDevice, onRename = model::renameDevice, onUnpair = model::unpairDevice)
@@ -116,14 +118,7 @@ fun PairingScreen(model: PairingViewModel, diagnostic: @Composable () -> Unit) {
                 WindButton("Kody się różnią", { model.decide(false) }, Modifier.fillMaxWidth().testTag("sasDifferent"), enabled = state.screen == "sas-code", kind = ButtonKind.Secondary)
                 if (state.screen == "sas-confirming") Text("Czekam na potwierdzenie na komputerze.", modifier = Modifier.testTag("pairingProgress"))
             }
-            "paired" -> {
-                Text("Urządzenia sparowane", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.testTag("pairingSuccess"))
-                Text(state.name, style = MaterialTheme.typography.titleLarge)
-                Text("Klucz komputera został bezpiecznie zapamiętany na tym telefonie.")
-                Text(state.message, modifier = Modifier.testTag("pairedConnectionStatus"))
-                BackgroundControls(state.hasPairedDevice)
-                WindButton("Gotowe", model::cancel, Modifier.testTag("pairingDone"))
-            }
+            "paired" -> DoneScreen(state.name, state.message, onDone = model::cancel)
             else -> {
                 Text("Nie można sparować", style = MaterialTheme.typography.headlineSmall)
                 Text(state.message, modifier = Modifier.testTag("pairingError"), color = MaterialTheme.colorScheme.error)
