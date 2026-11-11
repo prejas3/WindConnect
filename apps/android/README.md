@@ -153,7 +153,7 @@ generator, a nie ręcznie edytowane wiązania lub binaria.
 
 AAR: `wind-core/build/outputs/aar/wind-core-release.aar`.
 Lokalne repozytorium Maven z AAR, źródłami, POM i metadanymi Gradle:
-`wind-core/build/repo/`. Współrzędne: `io.github.prejas3.windconnect:wind-core:0.39.0`.
+`wind-core/build/repo/`. Współrzędne: `io.github.prejas3.windconnect:wind-core:0.40.0`.
 Publikacja zapisuje pliki lokalnie; nie wysyła ich do zewnętrznego repozytorium.
 Konsument musi korzystać z POM/metadanych (JNA i korutyny są zależnościami
 przechodnimi); sama kopia pliku AAR nie dostarczy JNA.
@@ -166,7 +166,7 @@ Konsument spoza repozytorium dodaje lokalne repozytorium do
 maven { url = uri("/sciezka/do/wind-core/build/repo") }
 ```
 
-oraz `implementation("io.github.prejas3.windconnect:wind-core:0.39.0")`.
+oraz `implementation("io.github.prejas3.windconnect:wind-core:0.40.0")`.
 W aplikacji konsumenta ogranicz ABI do `arm64-v8a` i `x86_64`.
 
 ```kotlin
@@ -316,8 +316,20 @@ pamięć odkrywania po zmianie sieci. Pytanie i odpowiedź unicast sprawdza test
 hosta, a filtrowanie broadcast przez prawdziwy układ Wi-Fi bez locka wymaga
 telefonu.
 
-Wersja aplikacji to 0.39.0, a Android `versionCode` to 48. Numery wydań rosną
+Wersja aplikacji to 0.40.0, a Android `versionCode` to 49. Numery wydań rosną
 niezależnie od kolejności kart, aby aktualizacja APK i MSI nie cofała wersji.
+
+## Sparowane komputery (WC-28)
+
+CCS/1
+FLOW:Ekran główny / Ustawienia -> „Sparowane komputery”: nazwa lokalna, „Połącz”, „Usuń” (pytanie w karcie, bez okna dialogowego).
+RULE:usunięcie z połączonym komputerem wysyła Goodbye UNPAIRED od razu; bez połączenia klucz jest odwołany natychmiast, a powiadomienie idzie, gdy odkrywanie pokaże ten komputer (raz na generację sieci, pełne uzgadnianie bez 0-RTT). Komputer, który usunął telefon, zamyka sesję kodem UNPAIRED: telefon usuwa klucz rozmówcy z TLS i nie wraca.
+RULE:BUSY (komputer ma inny telefon) i odmowa TLS („Komputer odrzuca połączenie — sparuj ponownie”) wstrzymują automatyczne ponawiania usługi tła do zmiany sieci albo „Połącz”.
+LIMIT:po BUSY telefon nie wraca sam, gdy komputer się zwolni. Powiadomienie o usunięciu należy się 30 dni.
+
+Testy: `DevicesScreenTest` (lista, zmiana nazwy, pytanie o usunięcie,
+komunikaty końca sesji), `cargo test --locked -p wind-ffi --test bridge`
+(`ffi_paired_list_rename_unpair_both_ways_and_busy`).
 
 ## Ekran główny (WN-31)
 

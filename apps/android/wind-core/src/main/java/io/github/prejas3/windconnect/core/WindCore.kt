@@ -30,6 +30,10 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
+/** [ConnectionState.Disconnected] reasons and the refusal message (WC-28). */
+const val END_UNPAIRED_HERE = "unpaired-here"
+const val REFUSED = "Komputer odrzuca połączenie — sparuj ponownie"
+
 sealed interface ConnectionState {
     data object Ready : ConnectionState
     data object Connecting : ConnectionState
@@ -57,6 +61,66 @@ class WindCore private constructor(
         gate.withLock { check(!stopped); client.loadPaired(pairedDirectory).devices }
     }
 
+    private val mutablePaired = MutableStateFlow<List<io.github.prejas3.windconnect.bindings.PairedEntry>>(emptyList())
+    /** Paired computers and those still owed an unpair notice (WC-28), newest state. */
+    val paired: StateFlow<List<io.github.prejas3.windconnect.bindings.PairedEntry>> = mutablePaired.asStateFlow()
+
+    /** Reads the list again (also pins it, as [pairedDevices] does). */
+    suspend fun refreshPaired() = withContext(Dispatchers.IO) {
+        mutablePaired.value = client.pairedList(pairedDirectory)
+    }
+
+    /** A local name for a paired computer, shown on this phone only. */
+    suspend fun renamePaired(key: ByteArray, name: String) = withContext(Dispatchers.IO) {
+        gate.withLock { check(!stopped); client.renamePaired(pairedDirectory, key, name) }
+        refreshPaired()
+    }
+
+    /**
+     * Removes the pairing on both sides (WC-28, PROTOCOL.md §12.10). Connected to that computer:
+     * it is told now. Otherwise its key is revoked at once and the notice goes when the computer
+     * is next seen on the network ([deliverNotices]).
+     */
+    suspend fun unpair(key: ByteArray) = withContext(Dispatchers.IO) {
+        gate.withLock {
+            check(!stopped)
+            val current = connection
+            if (current != null && current.peer().publicKey.contentEquals(key)) {
+                watcher?.cancel(); watcher = null; connection = null
+                try { current.unpair(pairedDirectory) } finally { current.destroy() }
+                mutableState.value = ConnectionState.Disconnected(END_UNPAIRED_HERE)
+            } else client.unpair(pairedDirectory, key)
+            if (desiredPeer?.second?.contentEquals(key) == true) desiredPeer = null
+        }
+        refreshPaired()
+        deliverNotices(network.value)
+    }
+
+    // CCS/1 RULE:BUSY or a refusal pauses automatic retries until the network changes or the user asks (WC-28).
+    @Volatile private var holdOff = false
+    /** Keys (hex) of computers that refused us in TLS; the service stops retrying them. */
+    private val refused = java.util.Collections.synchronizedSet(mutableSetOf<String>())
+    private fun keyId(key: ByteArray) = key.joinToString("") { "%02x".format(it) }
+    private val noticeTried = java.util.Collections.synchronizedMap(mutableMapOf<String, ULong>())
+
+    /** Sends owed unpair notices to computers seen in [snapshot], once per network generation. */
+    private fun deliverNotices(snapshot: NetworkSnapshot) {
+        scope.launch {
+            val owed = mutablePaired.value.filter { it.owed }
+            for (entry in owed) {
+                val seen = snapshot.peers.firstOrNull { it.fingerprint == entry.fingerprint && it.addresses.isNotEmpty() } ?: continue
+                if (noticeTried.put(entry.fingerprint, snapshot.generation) == snapshot.generation) continue
+                for (address in seen.addresses.sortedBy { it.startsWith("[") }) {
+                    val delivered = try { client.deliverNotice(pairedDirectory, address, entry.publicKey) } catch (error: Exception) {
+                        if (error is CancellationException) throw error
+                        false
+                    }
+                    if (delivered) { refreshPaired(); break }
+                }
+            }
+        }
+    }
+
     suspend fun pairQr(offer: io.github.prejas3.windconnect.bindings.QrOffer): io.github.prejas3.windconnect.bindings.PeerInfo = withContext(Dispatchers.IO) {
         gate.withLock {
             check(!stopped) { "core is stopped" }
@@ -76,7 +140,9 @@ class WindCore private constructor(
     }
 
     /** CCS/1 SEC:discovery supplies addresses only; the key must already be in the durable paired store. */
-    suspend fun connectPaired(peer: io.github.prejas3.windconnect.bindings.PeerInfo) = withContext(Dispatchers.IO) {
+    suspend fun connectPaired(peer: io.github.prejas3.windconnect.bindings.PeerInfo, user: Boolean = true) = withContext(Dispatchers.IO) {
+        if (user) { holdOff = false; refused.remove(keyId(peer.publicKey)) }
+        else if (holdOff || keyId(peer.publicKey) in refused) return@withContext
         withTimeout(7_000) {
             gate.withLock {
                 check(!stopped) { "core is stopped" }
@@ -178,7 +244,11 @@ class WindCore private constructor(
         }
         scope.launch {
             try {
-                while (true) { mutableNetwork.value = client.nextNetworkSnapshot() }
+                while (true) {
+                    val snapshot = client.nextNetworkSnapshot()
+                    mutableNetwork.value = snapshot
+                    if (mutablePaired.value.any { it.owed }) deliverNotices(snapshot)
+                }
             } catch (error: Exception) {
                 if (error is CancellationException) throw error
                 if (!stopped) mutableNetwork.value = mutableNetwork.value.copy(error = error.message)
@@ -186,6 +256,7 @@ class WindCore private constructor(
         }
         scope.launch {
             for (event in observer.events) {
+                holdOff = false
                 try {
                     refreshDiscovery()
                     // CCS/1 RULE:outside gate; wakes a connect currently holding gate immediately.
@@ -232,6 +303,11 @@ class WindCore private constructor(
                 opened = client.connect(address, verifiedPeerKey)
                 adopt(opened)
             } catch (error: Exception) {
+                // CCS/1 RULE:a connection that failed before adoption may carry the computer's unpair notice (§12.10).
+                if (error !is CancellationException && opened != null && honourUnpair(opened)) {
+                    opened.destroy()
+                    return
+                }
                 opened?.destroy()
                 if (error is CancellationException) {
                     desiredPeer = null
@@ -239,9 +315,26 @@ class WindCore private constructor(
                     throw error
                 }
                 if (error is CoreException.UntrustedPeer || error is CoreException.InvalidInput) desiredPeer = null
+                // No notice reached us (or it expired): the computer refuses us in TLS (§12.10).
+                if (error is CoreException.UntrustedPeer) { refused.add(keyId(verifiedPeerKey)); mutableState.value = ConnectionState.Failed(REFUSED); throw error }
                 mutableState.value = ConnectionState.Failed(error.message ?: error.javaClass.simpleName)
                 throw error
             }
+    }
+
+    /**
+     * A connection that ended before it became the session: if the computer closed it with
+     * UNPAIRED (it removed this phone, §12.10), forget the key of this connection's TLS peer and
+     * stop wanting it. True when that happened. Holds [gate].
+     */
+    private suspend fun honourUnpair(failed: CoreConnection): Boolean {
+        val end = withTimeoutOrNull(500) { failed.waitEnd() } ?: return false
+        if (end != "unpaired") return false
+        try { failed.forgetPeer(pairedDirectory) } catch (error: Exception) { if (error is CancellationException) throw error }
+        desiredPeer = null
+        mutableState.value = ConnectionState.Disconnected(end)
+        scope.launch { refreshPaired() }
+        return true
     }
 
     /** Makes [opened] the session (pinged first) and watches it close. Holds [gate]. */
@@ -253,14 +346,24 @@ class WindCore private constructor(
         connection = opened
         mutableState.value = ConnectionState.Connected(peer.name, peer.fingerprint, rtt, opened.route())
         watcher = scope.launch {
-            val reason = opened.waitClosed()
+            // CCS/1 FLOW:end code -> unpaired: forget this connection's TLS peer | busy/untrusted: hold retries (WC-28).
+            val end = opened.waitEnd()
             gate.withLock {
                 if (connection === opened) {
                     connection = null
+                    when (end) {
+                        "unpaired" -> {
+                            try { opened.forgetPeer(pairedDirectory) } catch (error: Exception) { if (error is CancellationException) throw error }
+                            desiredPeer = null
+                        }
+                        "busy" -> holdOff = true
+                        "untrusted" -> { refused.add(keyId(peer.publicKey)); desiredPeer = null }
+                    }
                     opened.destroy()
-                    mutableState.value = ConnectionState.Disconnected(reason)
+                    mutableState.value = ConnectionState.Disconnected(end)
                 }
             }
+            if (end == "unpaired") refreshPaired()
         }
     }
 
@@ -279,6 +382,7 @@ class WindCore private constructor(
             }
             releaseConnection()
             try { adopt(direct) } catch (error: Exception) {
+                if (error !is CancellationException && honourUnpair(direct)) { direct.destroy(); return }
                 direct.destroy()
                 if (error is CancellationException) throw error
                 mutableState.value = ConnectionState.Disconnected(error.message ?: "LAN return failed")

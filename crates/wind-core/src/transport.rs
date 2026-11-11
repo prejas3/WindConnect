@@ -83,12 +83,21 @@ fn transport_config(options: EndpointOptions) -> Arc<quinn::TransportConfig> {
 /// device list (WC-28) fill it; this module only asks.
 pub trait PeerTrust: Send + Sync + 'static {
     fn is_trusted(&self, key: &PublicKey) -> bool;
+    /// A device we removed that is still owed its unpair notice (WC-28,
+    /// PROTOCOL.md §12.10). Its handshake completes, but the connection is
+    /// in notice mode ([`Connection::is_notice`]): no session, only
+    /// `Goodbye` `UNPAIRED`.
+    fn is_revoked(&self, _key: &PublicKey) -> bool {
+        false
+    }
 }
 
-/// A set of pinned keys in memory.
+/// A set of pinned keys in memory, and the revoked ones (removed, notice
+/// still owed).
 #[derive(Debug, Default)]
 pub struct PinnedKeys {
     keys: RwLock<HashSet<PublicKey>>,
+    revoked: RwLock<HashSet<PublicKey>>,
 }
 
 impl PinnedKeys {
@@ -96,8 +105,13 @@ impl PinnedKeys {
         Self::default()
     }
 
-    /// Pins `key`; true if it wasn't pinned yet.
+    /// Pins `key`; true if it wasn't pinned yet. Pairing again ends a
+    /// revocation.
     pub fn pin(&self, key: PublicKey) -> bool {
+        self.revoked
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(&key);
         self.keys
             .write()
             .unwrap_or_else(|e| e.into_inner())
@@ -110,6 +124,24 @@ impl PinnedKeys {
             .write()
             .unwrap_or_else(|e| e.into_inner())
             .remove(key)
+    }
+
+    /// Unpins `key` and keeps it only for the unpair notice (§12.10).
+    pub fn revoke(&self, key: PublicKey) {
+        self.unpin(&key);
+        self.revoked
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(key);
+    }
+
+    /// The notice to `key` is settled: from now on its handshake fails.
+    pub fn settle(&self, key: &PublicKey) {
+        self.unpin(key);
+        self.revoked
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(key);
     }
 
     /// Whether a pinned key has this SHA-256 SPKI fingerprint (§2.1).
@@ -125,6 +157,13 @@ impl PinnedKeys {
 impl PeerTrust for PinnedKeys {
     fn is_trusted(&self, key: &PublicKey) -> bool {
         self.keys
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .contains(key)
+    }
+
+    fn is_revoked(&self, key: &PublicKey) -> bool {
+        self.revoked
             .read()
             .unwrap_or_else(|e| e.into_inner())
             .contains(key)
@@ -173,7 +212,11 @@ impl fmt::Debug for PinnedVerifier {
 impl PinnedVerifier {
     fn check(&self, end_entity: &CertificateDer<'_>) -> Result<(), rustls::Error> {
         let key = certificate_key(end_entity).ok_or_else(untrusted)?;
-        if self.expected.is_some_and(|e| e != key) || !self.trust.is_trusted(&key) {
+        // A revoked key passes here only to be told it is unpaired: the
+        // connection is in notice mode (`Connection::from_quinn`).
+        if self.expected.is_some_and(|e| e != key)
+            || !(self.trust.is_trusted(&key) || self.trust.is_revoked(&key))
+        {
             return Err(untrusted());
         }
         Ok(())
@@ -467,14 +510,23 @@ pub(crate) fn pairing_client_config(
     Ok(config)
 }
 
-/// A QUIC connection to a device whose key is pinned.
+/// A QUIC connection to a device whose key is pinned, or, in notice mode,
+/// revoked.
 #[derive(Debug, Clone)]
 pub struct Connection {
     inner: quinn::Connection,
     peer: PublicKey,
+    notice: bool,
 }
 
 impl Connection {
+    /// The peer's key is revoked (WC-28, §12.10): this connection exists
+    /// only to send it `Goodbye` `UNPAIRED`. A session on it opens no
+    /// channel and installs no router (`Session::accept` / `connect`).
+    pub fn is_notice(&self) -> bool {
+        self.notice
+    }
+
     /// The peer's device key, checked against the pinned keys.
     pub fn peer_key(&self) -> PublicKey {
         self.peer
@@ -495,14 +547,25 @@ impl Connection {
     /// the ticket was issued is caught here (closed with `UNTRUSTED_PEER`).
     fn from_quinn(inner: quinn::Connection, trust: &dyn PeerTrust) -> Result<Self, ConnectError> {
         let peer = handshake_peer_key(&inner).ok_or(ConnectError::NoPeerKey)?;
-        if !trust.is_trusted(&peer) {
-            inner.close(
-                quinn::VarInt::from_u32(ErrorCode::UntrustedPeer.code() as u32),
-                b"",
-            );
-            return Err(ConnectError::Unpinned(peer));
+        if trust.is_trusted(&peer) {
+            return Ok(Connection {
+                inner,
+                peer,
+                notice: false,
+            });
         }
-        Ok(Connection { inner, peer })
+        if trust.is_revoked(&peer) {
+            return Ok(Connection {
+                inner,
+                peer,
+                notice: true,
+            });
+        }
+        inner.close(
+            quinn::VarInt::from_u32(ErrorCode::UntrustedPeer.code() as u32),
+            b"",
+        );
+        Err(ConnectError::Unpinned(peer))
     }
 }
 
@@ -640,21 +703,36 @@ impl Endpoint {
     /// remembered TLS session the connection is usable for 0-RTT data at
     /// once ([`Dialing::early`]); see [`Dialing::established`].
     pub fn dial(&self, addr: SocketAddr, peer: PublicKey) -> Result<Dialing, ConnectError> {
-        if !self.trust.is_trusted(&peer) {
+        let revoked = self.trust.is_revoked(&peer);
+        if !self.trust.is_trusted(&peer) && !revoked {
             return Err(ConnectError::NotPaired(peer));
         }
         let connecting = self
             .inner
             .connect_with(self.client_config(peer)?, addr, CERT_SERVER_NAME)
             .map_err(ConnectError::Connect)?;
-        let state = match connecting.into_0rtt() {
-            Ok((conn, accepted)) => DialState::ZeroRtt(conn, accepted),
-            Err(connecting) => DialState::Full(connecting),
+        // CCS/1 SEC:a notice dial (revoked peer) is always a full handshake, never 0-RTT (§12.10).
+        let state = match revoked {
+            true => DialState::Full(connecting),
+            false => match connecting.into_0rtt() {
+                Ok((conn, accepted)) => DialState::ZeroRtt(conn, accepted),
+                Err(connecting) => DialState::Full(connecting),
+            },
         };
         Ok(Dialing {
             state,
             trust: self.trust.clone(),
         })
+    }
+
+    /// Forgets what this endpoint remembers about `peer`: its client
+    /// configuration with its TLS session store, so no ticket issued before
+    /// an unpairing can resume a session or carry 0-RTT data (WC-28).
+    pub fn forget(&self, peer: &PublicKey) {
+        self.clients
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(peer);
     }
 
     /// Connects to the device with key `peer` at `addr`. The peer must be

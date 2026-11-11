@@ -146,6 +146,15 @@ pub enum SessionError {
     /// Dialing failed (see [`crate::transport::ConnectError`]).
     Connect(crate::transport::ConnectError),
     Timeout,
+    /// The connection was in notice mode (the peer's key is revoked, WC-28,
+    /// §12.10): no session started; `Goodbye` `UNPAIRED` was sent and the
+    /// connection closed. `delivered` when the peer acknowledged it: then
+    /// the notice is settled (`PairedDevicesFile::settle`), otherwise it is
+    /// owed again on the next connection.
+    Unpaired {
+        peer: PublicKey,
+        delivered: bool,
+    },
 }
 
 impl fmt::Display for SessionError {
@@ -161,6 +170,15 @@ impl fmt::Display for SessionError {
             SessionError::Stopped(code) => write!(f, "peer stopped the stream ({code})"),
             SessionError::Connect(e) => write!(f, "{e}"),
             SessionError::Timeout => f.write_str("timed out"),
+            SessionError::Unpaired { delivered, .. } => write!(
+                f,
+                "unpair notice {}",
+                if *delivered {
+                    "delivered"
+                } else {
+                    "not delivered"
+                }
+            ),
         }
     }
 }
@@ -359,6 +377,11 @@ impl Session {
         router: Router,
     ) -> Result<(Session, mpsc::UnboundedReceiver<SessionEvent>), SessionError> {
         let deadline = Instant::now() + HELLO_TIMEOUT;
+        let router = if conn.is_notice() {
+            Router::new()
+        } else {
+            router
+        };
         let control = open_control(conn.quinn(), &local, &router).await?;
         Self::finish_client(conn, control, router, deadline).await
     }
@@ -381,6 +404,12 @@ impl Session {
             None => None,
         };
         let (conn, accepted) = dialing.established().await.map_err(SessionError::Connect)?;
+        // A notice dial has no 0-RTT (`Endpoint::dial`), so `early` is None.
+        let router = if conn.is_notice() {
+            Router::new()
+        } else {
+            router
+        };
         let control = match (early, accepted) {
             (Some(control), true) => control,
             (rejected, _) => {
@@ -461,6 +490,10 @@ impl Session {
             }
         };
         check_version(&conn, &peer_hello)?;
+        let mut send = send;
+        if conn.is_notice() {
+            return Err(notice(&conn, &mut send).await);
+        }
         Ok(Self::start(conn, peer_hello, send, recv, router))
     }
 
@@ -512,12 +545,22 @@ impl Session {
         };
         check_version(&conn, &peer_hello)?;
 
+        // CCS/1 SEC:notice mode (revoked key, §12.10): HelloAck with our name and no capabilities,
+        // no router, no stream loops; only Goodbye UNPAIRED, then close.
+        let router = if conn.is_notice() {
+            Router::new()
+        } else {
+            router
+        };
         let _ = send.set_priority(send_priority(Channel::Control));
         let ack = encode_frame(&Message::Control(ControlMessage::HelloAck(hello_for(
             &local, &router,
         ))))
         .map_err(SessionError::Frame)?;
         send.write_all(&ack).await?;
+        if conn.is_notice() {
+            return Err(notice(&conn, &mut send).await);
+        }
         Ok(Self::start(conn, peer_hello, send, recv, router))
     }
 
@@ -850,24 +893,140 @@ impl Session {
     ///
     /// A QUIC close drops data not yet sent, so `Goodbye` is followed by the
     /// end of `control` and a short wait for the peer to take both, before
-    /// the close.
-    pub async fn goodbye(&self, code: ErrorCode, message: Option<String>) {
-        let frame = encode_frame(&Message::Control(ControlMessage::Goodbye(Goodbye {
-            code,
-            message,
-        })));
-        if let Ok(frame) = frame {
+    /// the close. True when the peer acknowledged it in time (all of
+    /// `control` acked after its end), which an unpair notice needs before
+    /// it counts as delivered (§12.10).
+    pub async fn goodbye(&self, code: ErrorCode, message: Option<String>) -> bool {
+        let delivered = {
             let mut control = self.inner.control.lock().await;
-            if control.write_all(&frame).await.is_ok() && control.finish().is_ok() {
-                let _ = tokio::time::timeout(GOODBYE_FLUSH, control.stopped()).await;
-            }
-        }
+            send_goodbye(&mut control, code, message).await
+        };
         self.inner.conn.close(code, b"");
+        delivered
     }
 
     /// Waits until the connection is closed.
     pub async fn closed(&self) -> quinn::ConnectionError {
         self.inner.conn.quinn().closed().await
+    }
+
+    /// Whether the connection is closed already.
+    pub fn is_closed(&self) -> bool {
+        self.inner.conn.quinn().close_reason().is_some()
+    }
+}
+
+/// What to do with a new session when one device may have a session at a
+/// time (WC-28: several phones paired with one PC).
+#[derive(Debug)]
+pub enum Admit {
+    /// No live session: take the new one.
+    Take,
+    /// The same device came back (e.g. after a network change): the new
+    /// session replaces its old one, which the caller closes.
+    Replace,
+    /// Another device has the live session and keeps it. The caller sends
+    /// the newcomer `Goodbye` `BUSY`; it doesn't retry on its own until its
+    /// network changes or its user asks (§12.10). Replacing is never
+    /// automatic, so two phones can't keep throwing each other off.
+    Busy,
+}
+
+/// CCS/1 RULE:the active session stays; only the same key replaces it (WC-28).
+pub fn admit(active: Option<&Session>, incoming: &Session) -> Admit {
+    match active {
+        Some(a) if !a.is_closed() && a.peer().key != incoming.peer().key => Admit::Busy,
+        Some(a) if !a.is_closed() => Admit::Replace,
+        _ => Admit::Take,
+    }
+}
+
+/// How long a session refused with BUSY is watched for the peer's own
+/// `Goodbye UNPAIRED` before the answer (§12.10): a phone delivering an
+/// unpair notice sends it right after `HelloAck`.
+pub const NOTICE_GRACE: Duration = Duration::from_millis(500);
+
+/// How a refused session ended.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TurnedAway {
+    /// The peer only came to say it removed the pairing: the caller drops
+    /// its key (`Unpairing::unpaired_by`), the one from this session's TLS.
+    Unpaired,
+    /// Told `BUSY` (§12.10) and closed.
+    Busy,
+}
+
+/// Answers a session [`admit`] refused (or one the user sent away).
+/// CCS/1 RULE:every accepted session, also a refused one, honours the peer's UNPAIRED (§12.10).
+/// Its `Goodbye UNPAIRED` (or a close with that code) within [`NOTICE_GRACE`]
+/// wins over `BUSY`, so a phone that removed this computer while another
+/// phone held the session doesn't count a notice as delivered that nobody read.
+pub async fn turn_away(
+    session: &Session,
+    events: &mut mpsc::UnboundedReceiver<SessionEvent>,
+) -> TurnedAway {
+    let unpaired = tokio::time::timeout(NOTICE_GRACE, async {
+        loop {
+            match events.recv().await {
+                Some(SessionEvent::Goodbye(g)) => return g.code == ErrorCode::Unpaired,
+                Some(SessionEvent::Closed(_)) | None => {
+                    let end = session.closed().await;
+                    return close_code(&end) == Some(ErrorCode::Unpaired);
+                }
+                Some(_) => {}
+            }
+        }
+    })
+    .await
+    .unwrap_or(false);
+    if unpaired {
+        session.inner.conn.close(ErrorCode::NoError, b"");
+        return TurnedAway::Unpaired;
+    }
+    session.goodbye(ErrorCode::Busy, None).await;
+    TurnedAway::Busy
+}
+
+/// The §10 code the peer (or we) closed `error`'s connection with, if it
+/// was an application close: e.g. `UNPAIRED` or `BUSY` after `Goodbye`.
+pub fn close_code(error: &quinn::ConnectionError) -> Option<ErrorCode> {
+    match error {
+        quinn::ConnectionError::ApplicationClosed(close) => {
+            Some(ErrorCode::from_code(close.error_code.into_inner()))
+        }
+        _ => None,
+    }
+}
+
+/// Writes `Goodbye`, ends `control`, and waits up to [`GOODBYE_FLUSH`] for
+/// the peer to acknowledge all of it. True only if it did.
+async fn send_goodbye(
+    control: &mut quinn::SendStream,
+    code: ErrorCode,
+    message: Option<String>,
+) -> bool {
+    let Ok(frame) = encode_frame(&Message::Control(ControlMessage::Goodbye(Goodbye {
+        code,
+        message,
+    }))) else {
+        return false;
+    };
+    if control.write_all(&frame).await.is_err() || control.finish().is_err() {
+        return false;
+    }
+    matches!(
+        tokio::time::timeout(GOODBYE_FLUSH, control.stopped()).await,
+        Ok(Ok(None))
+    )
+}
+
+/// Ends a notice-mode connection (§12.10): `Goodbye` `UNPAIRED`, then close.
+async fn notice(conn: &Connection, control: &mut quinn::SendStream) -> SessionError {
+    let delivered = send_goodbye(control, ErrorCode::Unpaired, None).await;
+    conn.close(ErrorCode::Unpaired, b"");
+    SessionError::Unpaired {
+        peer: conn.peer_key(),
+        delivered,
     }
 }
 

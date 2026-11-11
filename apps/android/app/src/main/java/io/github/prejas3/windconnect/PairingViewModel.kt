@@ -4,12 +4,16 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import io.github.prejas3.windconnect.bindings.DiscoveredDevice
+import io.github.prejas3.windconnect.bindings.PairedEntry
+import io.github.prejas3.windconnect.bindings.PeerInfo
 import io.github.prejas3.windconnect.bindings.QrOffer
 import io.github.prejas3.windconnect.bindings.SasPairing
 import io.github.prejas3.windconnect.bindings.inspectQrLink
 import io.github.prejas3.windconnect.core.WindCore
 import io.github.prejas3.windconnect.core.ConnectionState
 import io.github.prejas3.windconnect.core.ClipboardUi
+import io.github.prejas3.windconnect.core.END_UNPAIRED_HERE
+import io.github.prejas3.windconnect.core.REFUSED
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -36,7 +40,19 @@ data class PairingUi(
     val code: String = "",
 
     val clipboard: ClipboardUi = ClipboardUi(),
+    /** Paired computers and those still owed an unpair notice (WC-28). */
+    val devices: List<PairedEntry> = emptyList(),
 )
+
+/** What the home screen says when a session ended for a WC-28 reason; null for an ordinary end. */
+fun endMessage(state: ConnectionState): String? = when {
+    state is ConnectionState.Disconnected && state.reason == "unpaired" -> "Komputer usunął parowanie z tym telefonem"
+    state is ConnectionState.Disconnected && state.reason == END_UNPAIRED_HERE -> "Usunięto parowanie z komputerem"
+    state is ConnectionState.Disconnected && state.reason == "busy" -> "Komputer jest połączony z innym telefonem. Stuknij „Połącz”, gdy będzie wolny."
+    state is ConnectionState.Disconnected && state.reason == "untrusted" -> REFUSED
+    state is ConnectionState.Failed && state.message == REFUSED -> REFUSED
+    else -> null
+}
 
 /** Short, stable label for an unnamed computer in the nearby list (fingerprint prefix). */
 fun shortFingerprint(hex: String): String = hex.take(8).uppercase().chunked(4).joinToString(" ")
@@ -58,8 +74,16 @@ class PairingViewModel(application: Application) : AndroidViewModel(application)
                 val paired = opened.pairedDevices()
                 mutableUi.update { it.copy(ready = true, initialized = true, skippedRecords = opened.skippedPairingRecords, hasPairedDevice = paired.isNotEmpty(), computerName = paired.lastOrNull()?.name) }
                 viewModelScope.launch {
+                    opened.paired.collect { list ->
+                        val kept = list.filter { !it.owed }
+                        mutableUi.update { it.copy(devices = list, hasPairedDevice = kept.isNotEmpty() || it.connection is ConnectionState.Connected,
+                            computerName = (it.connection as? ConnectionState.Connected)?.peerName ?: kept.lastOrNull()?.name) }
+                    }
+                }
+                opened.refreshPaired()
+                viewModelScope.launch {
                     opened.state.collect { state ->
-                        val message = when (state) {
+                        val message = endMessage(state) ?: when (state) {
                             is ConnectionState.Connected -> "Połączono z komputerem"
                             is ConnectionState.Disconnected -> "Komputer rozłączony · sparowanie zachowane"
                             is ConnectionState.Failed -> "Komputer chwilowo nieosiągalny · sparowanie zachowane"
@@ -68,7 +92,7 @@ class PairingViewModel(application: Application) : AndroidViewModel(application)
                         mutableUi.update { current -> current.copy(
                             connection = state,
                             computerName = (state as? ConnectionState.Connected)?.peerName ?: current.computerName,
-                            message = if (message != null && current.screen in listOf("home", "paired")) message else current.message,
+                            message = if (message != null && current.screen in listOf("home", "paired", "devices")) message else current.message,
                         ) }
                     }
                 }
@@ -81,6 +105,26 @@ class PairingViewModel(application: Application) : AndroidViewModel(application)
 
     fun scan() { if (ui.value.screen != "pairing") { clearOffer(); stopNearby(); mutableUi.update { it.copy(screen = "scanner", message = "") } } }
     fun settings() { if (ui.value.screen == "home") mutableUi.update { it.copy(screen = "settings") } }
+    /** The paired-computer list (WC-28). */
+    fun devices() { if (ui.value.screen == "home" || ui.value.screen == "settings") mutableUi.update { it.copy(screen = "devices", message = "") } }
+    fun renameDevice(entry: PairedEntry, name: String) = deviceCall("Nie udało się zmienić nazwy.") { it.renamePaired(entry.publicKey, name) }
+    fun unpairDevice(entry: PairedEntry) = deviceCall("Nie udało się usunąć parowania. Spróbuj ponownie.") {
+        it.unpair(entry.publicKey)
+        mutableUi.update { ui -> ui.copy(message = "Usunięto parowanie z: ${computerLabel(entry.name)}. Komputer też je usunie.") }
+    }
+    /** The person's own "Połącz": lifts a BUSY or refusal pause (WC-28). */
+    fun connectDevice(entry: PairedEntry) = deviceCall("Komputer jest poza zasięgiem albo połączony z innym telefonem.") {
+        it.connectPaired(PeerInfo(entry.publicKey, entry.name, entry.fingerprint))
+    }
+    private fun deviceCall(failure: String, block: suspend (WindCore) -> Unit) {
+        val owner = core ?: return
+        viewModelScope.launch {
+            try { block(owner) } catch (error: Exception) {
+                if (error is CancellationException && error !is kotlinx.coroutines.TimeoutCancellationException) throw error
+                mutableUi.update { it.copy(message = failure) }
+            }
+        }
+    }
     fun cancel() { if (ui.value.screen != "pairing" && ui.value.screen != "sas-confirming") { clearOffer(); clearSas(); stopNearby(); mutableUi.update { it.copy(screen = "home", name = "", fingerprint = "", code = "", message = if (core?.state?.value is ConnectionState.Connected) "Połączono z komputerem" else "") } } }
 
     // CCS/1 FLOW:"Paruj bez aparatu" -> nearby (TXT pair, untrusted hints) -> start_sas -> code on both screens -> both accept -> paired (WN-27)

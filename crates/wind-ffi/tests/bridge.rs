@@ -616,3 +616,206 @@ async fn ffi_runs_remote_actions_by_id_only() {
         .unwrap();
     client.shutdown().await;
 }
+
+/// WC-28 through the FFI: the list with rename, the computer removing the
+/// phone in a session ("unpaired" -> forget_peer), the phone removing a
+/// computer offline and delivering the notice, and "busy".
+#[tokio::test(flavor = "multi_thread")]
+async fn ffi_paired_list_rename_unpair_both_ways_and_busy() {
+    use wind_core::pairing::{PairedDevice, PairedDevicesFile, PairedStore};
+    use wind_core::protocol::ErrorCode;
+    use wind_core::session::SessionEvent;
+
+    let client = open_client(
+        Box::new(MemoryStorage::default()),
+        "Phone".into(),
+        "127.0.0.1:0".into(),
+    )
+    .await
+    .unwrap();
+    let phone_key =
+        PublicKey::from_bytes(&client.identity().public_key.try_into().unwrap()).unwrap();
+    let dir = std::env::temp_dir().join(format!(
+        "windconnect-wn28-{}-{}",
+        std::process::id(),
+        phone_key.fingerprint().to_hex()
+    ));
+    let directory = dir.to_string_lossy().into_owned();
+    let store = PairedDevicesFile::in_dir(&dir);
+    let pc = |name: &str| {
+        let id = DeviceIdentity::generate().unwrap();
+        store
+            .add(&PairedDevice::now(id.public_key(), Some(name.into())))
+            .unwrap();
+        let trust = Arc::new(PinnedKeys::new());
+        trust.pin(phone_key);
+        let endpoint = Endpoint::bind("127.0.0.1:0".parse().unwrap(), &id, trust).unwrap();
+        (id, endpoint)
+    };
+    let local = || LocalInfo {
+        name: "PC".into(),
+        kind: DeviceKind::Computer,
+        app: None,
+    };
+    let (desk, desk_ep) = pc("Desk");
+    let (laptop, laptop_ep) = pc("Laptop");
+    let list = client.paired_list(directory.clone()).unwrap();
+    assert_eq!(list.len(), 2);
+    client
+        .rename_paired(
+            directory.clone(),
+            desk.public_key().as_bytes().to_vec(),
+            "Komputer w pracy".into(),
+        )
+        .unwrap();
+    assert!(matches!(
+        client.rename_paired(
+            directory.clone(),
+            desk.public_key().as_bytes().to_vec(),
+            " ".into()
+        ),
+        Err(CoreError::InvalidInput { .. })
+    ));
+    let list = client.paired_list(directory.clone()).unwrap();
+    assert_eq!(list[0].name, "Komputer w pracy");
+
+    // "busy": the computer keeps another device's session.
+    let ep = desk_ep.clone();
+    let busy = tokio::spawn(async move {
+        let conn = ep.accept().await.unwrap().unwrap();
+        let (s, _) = Session::accept(conn, local(), Router::new()).await.unwrap();
+        s.goodbye(ErrorCode::Busy, None).await
+    });
+    let connection = client
+        .connect(
+            desk_ep.local_addr().unwrap().to_string(),
+            desk.public_key().as_bytes().to_vec(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(connection.wait_end().await, "busy");
+    busy.await.unwrap();
+
+    // The computer removes the phone during a session.
+    let ep = desk_ep.clone();
+    let removal = tokio::spawn(async move {
+        let conn = ep.accept().await.unwrap().unwrap();
+        let (s, _) = Session::accept(conn, local(), Router::new()).await.unwrap();
+        s.goodbye(ErrorCode::Unpaired, None).await
+    });
+    let connection = client
+        .connect(
+            desk_ep.local_addr().unwrap().to_string(),
+            desk.public_key().as_bytes().to_vec(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(connection.wait_end().await, "unpaired");
+    connection.forget_peer(directory.clone()).unwrap();
+    assert!(removal.await.unwrap(), "the phone acknowledged");
+    let list = client.paired_list(directory.clone()).unwrap();
+    assert_eq!(list.len(), 1, "the desk computer is gone");
+    assert_eq!(list[0].public_key, laptop.public_key().as_bytes());
+
+    // The phone removes the laptop while away, then delivers the notice.
+    client
+        .unpair(directory.clone(), laptop.public_key().as_bytes().to_vec())
+        .await
+        .unwrap();
+    let list = client.paired_list(directory.clone()).unwrap();
+    assert!(list.len() == 1 && list[0].owed, "owed: {list:?}");
+    let ep = laptop_ep.clone();
+    let told = tokio::spawn(async move {
+        let conn = ep.accept().await.unwrap().unwrap();
+        let (_s, mut events) = Session::accept(conn, local(), Router::new()).await.unwrap();
+        loop {
+            match events.recv().await {
+                Some(SessionEvent::Goodbye(g)) => return g.code,
+                Some(_) => {}
+                None => panic!("no Goodbye"),
+            }
+        }
+    });
+    let delivered = client
+        .deliver_notice(
+            directory.clone(),
+            laptop_ep.local_addr().unwrap().to_string(),
+            laptop.public_key().as_bytes().to_vec(),
+        )
+        .await
+        .unwrap();
+    assert!(delivered);
+    assert_eq!(told.await.unwrap(), ErrorCode::Unpaired);
+    assert!(client.paired_list(directory.clone()).unwrap().is_empty());
+    client.shutdown().await;
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// Review WN-28 r1, phone side: a computer that removed this phone answers
+/// its connection in notice mode. The connection comes up, then ends
+/// "unpaired" (before any adoption/ping succeeds), so the caller can still
+/// forget the computer instead of dropping the notice with the connection.
+#[tokio::test(flavor = "multi_thread")]
+async fn ffi_connection_to_a_computer_that_removed_us_ends_unpaired() {
+    use wind_core::pairing::{PairedDevice, PairedDevicesFile, PairedStore};
+
+    let client = open_client(
+        Box::new(MemoryStorage::default()),
+        "Phone".into(),
+        "127.0.0.1:0".into(),
+    )
+    .await
+    .unwrap();
+    let phone_key =
+        PublicKey::from_bytes(&client.identity().public_key.try_into().unwrap()).unwrap();
+    let dir = std::env::temp_dir().join(format!(
+        "windconnect-wn28-notice-{}-{}",
+        std::process::id(),
+        phone_key.fingerprint().to_hex()
+    ));
+    let directory = dir.to_string_lossy().into_owned();
+    let pc = DeviceIdentity::generate().unwrap();
+    PairedDevicesFile::in_dir(&dir)
+        .add(&PairedDevice::now(pc.public_key(), Some("PC".into())))
+        .unwrap();
+    assert_eq!(client.paired_list(directory.clone()).unwrap().len(), 1);
+    // The PC removed the phone while it was away: revoked, notice owed.
+    let trust = Arc::new(PinnedKeys::new());
+    trust.revoke(phone_key);
+    let endpoint = Endpoint::bind("127.0.0.1:0".parse().unwrap(), &pc, trust).unwrap();
+    let ep = endpoint.clone();
+    let server = tokio::spawn(async move {
+        let conn = ep.accept().await.unwrap().unwrap();
+        assert!(conn.is_notice());
+        Session::accept(
+            conn,
+            LocalInfo {
+                name: "PC".into(),
+                kind: DeviceKind::Computer,
+                app: None,
+            },
+            Router::new(),
+        )
+        .await
+        .expect_err("notice mode")
+    });
+    let connection = client
+        .connect(
+            endpoint.local_addr().unwrap().to_string(),
+            pc.public_key().as_bytes().to_vec(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(connection.wait_end().await, "unpaired");
+    connection.forget_peer(directory.clone()).unwrap();
+    assert!(client.paired_list(directory.clone()).unwrap().is_empty());
+    assert!(matches!(
+        server.await.unwrap(),
+        wind_core::session::SessionError::Unpaired {
+            delivered: true,
+            ..
+        }
+    ));
+    client.shutdown().await;
+    let _ = std::fs::remove_dir_all(&dir);
+}

@@ -71,8 +71,7 @@ class CoreApiTest {
         }
         val core = WindCore.open(instrumentation.targetContext, "Android")
         try {
-            withTimeout(5000) { core.network.first { it.generation > 0uL } }
-            delay(500)
+            delay(1500) // the observer's replay is no change (WN-103); wait for it to settle
             val before = core.network.value.generation
             wifi(false)
             withTimeout(5000) { core.network.first { it.generation > before } }
@@ -90,11 +89,15 @@ class CoreApiTest {
         }
     }
 
-    @Test fun platformNetworkCallbackWakesDiscoveryWithoutPolling() = runBlocking {
+    /** WN-103: the callback's replay of the networks it already has is no change, so discovery
+     * keeps its first generation (a restart then hid the phone from browsers); real changes are
+     * covered by [wifiReturnWakesNativeDiscovery] and MdnsStartupTest. */
+    @Test fun platformNetworkCallbackReplayDoesNotRestartDiscovery() = runBlocking {
         val core = WindCore.open(InstrumentationRegistry.getInstrumentation().targetContext, "Android")
         try {
-            val state = withTimeout(5000) { core.network.first { it.generation > 0uL } }
-            assertTrue(state.generation > 0uL)
+            delay(3000)
+            val state = core.network.value
+            assertEquals(0uL, state.generation)
             InstrumentationRegistry.getInstrumentation().sendStatus(0, Bundle().apply {
                 putString("networkGeneration", state.generation.toString())
             })

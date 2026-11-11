@@ -313,6 +313,21 @@ kodów.
 
 Test panelu (IPC podstawione): `node apps/windows/scripts/check-sas-ui.cjs`.
 
+## Telefony w panelu (WC-28)
+
+CCS/1
+FLOW:panel „Telefony” -> device_action(rename|unpair|disconnect) -> aktor parowania; „Dodaj telefon” otwiera kod QR także w czasie sesji.
+RULE:jedna sesja naraz. Ten sam telefon zastępuje swoje stare połączenie; inny dostaje BUSY (PROTOCOL.md §12.10). Telefon sparowany w panelu przed chwilą (2 min) przejmuje sesję. „Rozłącz” odpowiada temu telefonowi BUSY przez 10 min albo do sesji innego telefonu.
+SEC:rozparowanie zapisuje `-<klucz>`, odpina i odwołuje klucz od razu; telefon dostaje Goodbye UNPAIRED w sesji albo przy następnym połączeniu (tryb powiadomienia: bez routera i kanałów). Telefon, który sam usunął parowanie, usuwa tylko klucz rozmówcy z TLS.
+LIMIT:nazwa jest lokalna (nie trafia do telefonu). Telefon po BUSY nie wraca sam, gdy komputer się zwolni.
+
+Test UI (podstawione IPC): `node apps/windows/scripts/check-devices-ui.cjs`
+z `PLAYWRIGHT_MODULE`. Logikę obu stron sprawdzają
+`cargo test --locked -p wind-core --test unpair` (rozparowanie w sesji i
+poza nią w obie strony, brak 0-RTT ze starego biletu, strumienie
+odwołanego klucza bez odbiorcy, dwa telefony naraz bez przepychanki) i
+`--test relay` (tryb powiadomienia przez przekaźnik, wymaga `wrangler dev`).
+
 ## Wspólny schowek (WN-35)
 
 CCS/1

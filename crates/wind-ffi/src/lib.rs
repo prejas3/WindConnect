@@ -123,6 +123,20 @@ pub struct PeerInfo {
     pub fingerprint: String,
 }
 
+/// A row of the paired-device list (WC-28).
+#[derive(uniffi::Record, Clone, Debug)]
+pub struct PairedEntry {
+    pub public_key: Vec<u8>,
+    /// The local name (alias), or the name it gave when pairing.
+    pub name: String,
+    pub fingerprint: String,
+    /// Seconds since the Unix epoch: when paired, or (when `owed`) removed.
+    pub paired_at: u64,
+    /// Removed here; its device is still owed the unpair notice (§12.10),
+    /// delivered by [`CoreClient::deliver_notice`] when it is seen.
+    pub owed: bool,
+}
+
 #[derive(uniffi::Record, Clone, Debug)]
 pub struct PairedLoadResult {
     pub devices: Vec<PeerInfo>,
@@ -316,6 +330,134 @@ impl CoreClient {
         }))
     }
 
+    /// Every paired device and every one still owed its unpair notice
+    /// (WC-28), and pins them as [`load_paired`](Self::load_paired) does.
+    pub fn paired_list(&self, directory: String) -> Result<Vec<PairedEntry>, CoreError> {
+        let list = wind_core::pairing::PairedDevicesFile::in_dir(directory)
+            .load()
+            .map_err(|_| CoreError::Storage {
+                reason: "paired devices could not be read".into(),
+            })?;
+        list.pin_all(&self.trust);
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let owed = list.owed(now);
+        let mut entries: Vec<PairedEntry> = list
+            .devices
+            .iter()
+            .map(|device| PairedEntry {
+                public_key: device.key.as_bytes().to_vec(),
+                fingerprint: device.key.fingerprint().to_hex(),
+                name: device.name.clone().unwrap_or_else(|| "Komputer".into()),
+                paired_at: device.paired_at,
+                owed: false,
+            })
+            .collect();
+        entries.extend(
+            list.revoked
+                .iter()
+                .filter(|(k, _)| owed.contains(k))
+                .map(|(key, at)| PairedEntry {
+                    public_key: key.as_bytes().to_vec(),
+                    fingerprint: key.fingerprint().to_hex(),
+                    name: "Komputer".into(),
+                    paired_at: *at,
+                    owed: true,
+                }),
+        );
+        Ok(entries)
+    }
+
+    /// Gives the paired device `key` the local name `name` (never sent).
+    pub fn rename_paired(
+        &self,
+        directory: String,
+        key: Vec<u8>,
+        name: String,
+    ) -> Result<(), CoreError> {
+        wind_core::pairing::PairedDevicesFile::in_dir(directory)
+            .rename(&public_key(&key)?, &name)
+            .map_err(storage_error)
+    }
+
+    /// Removes the pairing with `key` while it isn't connected (§12.10):
+    /// its key is revoked at once and the notice is owed until
+    /// [`deliver_notice`](Self::deliver_notice) reaches it. With a
+    /// connection to it, use [`CoreConnection::unpair`].
+    pub async fn unpair(&self, directory: String, key: Vec<u8>) -> Result<(), CoreError> {
+        wind_core::pairing::Unpairing::new(
+            wind_core::pairing::PairedDevicesFile::in_dir(directory),
+            self.trust.clone(),
+            self.endpoint.clone(),
+        )
+        .unpair(public_key(&key)?, None)
+        .await
+        .map(|_| ())
+        .map_err(storage_error)
+    }
+
+    /// Dials `key` (owed a notice) at `address` once, without 0-RTT, and
+    /// sends `Goodbye UNPAIRED`. True when delivered: then nothing is owed.
+    /// CCS/1 SEC:the dial opens no channel; the address is an untrusted hint, TLS proves the key.
+    pub async fn deliver_notice(
+        &self,
+        directory: String,
+        address: String,
+        key: Vec<u8>,
+    ) -> Result<bool, CoreError> {
+        let address = address.parse().map_err(|_| CoreError::InvalidInput {
+            reason: "peer address must be an IP address and port".into(),
+        })?;
+        let peer = public_key(&key)?;
+        if !wind_core::transport::PeerTrust::is_revoked(self.trust.as_ref(), &peer) {
+            return Err(CoreError::InvalidInput {
+                reason: "no unpair notice is owed to this device".into(),
+            });
+        }
+        let unpairing = wind_core::pairing::Unpairing::new(
+            wind_core::pairing::PairedDevicesFile::in_dir(directory),
+            self.trust.clone(),
+            self.endpoint.clone(),
+        );
+        let result = tokio::time::timeout(
+            Duration::from_secs(10),
+            Session::dial(
+                &self.endpoint,
+                address,
+                peer,
+                self.local.clone(),
+                Router::new(),
+            ),
+        )
+        .await
+        .map_err(|_| CoreError::Transport {
+            reason: "the computer did not answer".into(),
+        })?;
+        match result {
+            Ok((session, _)) => {
+                // Cannot happen for a revoked key (notice mode); close anyway.
+                session.connection().close(ErrorCode::Unpaired, b"");
+                Ok(false)
+            }
+            Err(error) => {
+                let delivered = matches!(
+                    error,
+                    wind_core::session::SessionError::Unpaired {
+                        delivered: true,
+                        ..
+                    }
+                );
+                if unpairing.notice_result(&error).map_err(storage_error)? {
+                    Ok(delivered)
+                } else {
+                    Err(session_error(error))
+                }
+            }
+        }
+    }
+
     pub fn load_paired(&self, directory: String) -> Result<PairedLoadResult, CoreError> {
         let list = wind_core::pairing::PairedDevicesFile::in_dir(directory)
             .load()
@@ -492,6 +634,8 @@ impl CoreClient {
             clipboard_input: std::sync::Mutex::new(Some(clipboard_input)),
             session,
             relay: Some(link),
+            trust: self.trust.clone(),
+            endpoint: self.endpoint.clone(),
         }))
     }
 
@@ -555,6 +699,8 @@ impl CoreClient {
             clipboard_input: std::sync::Mutex::new(Some(clipboard_input)),
             session,
             relay: None,
+            trust: self.trust.clone(),
+            endpoint: self.endpoint.clone(),
         }))
     }
 }
@@ -761,6 +907,8 @@ pub struct CoreConnection {
     session: Session,
     /// Held while the session runs through the relay.
     relay: Option<RelayLink>,
+    trust: Arc<PinnedKeys>,
+    endpoint: Endpoint,
 }
 
 #[uniffi::export(async_runtime = "tokio")]
@@ -853,6 +1001,64 @@ impl CoreConnection {
 
     pub async fn disconnect(&self) {
         self.session.goodbye(ErrorCode::GoingAway, None).await;
+    }
+
+    /// Why the session ended, once it has: "unpaired" (the peer removed
+    /// the pairing: call [`forget_peer`](Self::forget_peer)), "busy" (the
+    /// computer keeps a session with another device: don't retry until the
+    /// network changes or the user asks), "going-away", "untrusted" or
+    /// "closed" (anything else).
+    pub async fn wait_end(&self) -> String {
+        let error = self.session.closed().await;
+        match wind_core::session::close_code(&error) {
+            Some(ErrorCode::Unpaired) => "unpaired",
+            Some(ErrorCode::Busy) => "busy",
+            Some(ErrorCode::GoingAway) => "going-away",
+            _ if wind_core::transport::is_untrusted_close(&error) => "untrusted",
+            _ => "closed",
+        }
+        .into()
+    }
+
+    /// The peer removed the pairing ("unpaired"): drop its key, the one
+    /// from this connection's TLS handshake, from `directory` and the pins.
+    pub fn forget_peer(&self, directory: String) -> Result<(), CoreError> {
+        self.unpairing(directory)
+            .unpaired_by(&self.session)
+            .map_err(storage_error)
+    }
+
+    /// Removes the pairing with this connection's peer and tells it now
+    /// (§12.10). True when it acknowledged; otherwise the notice is owed.
+    pub async fn unpair(&self, directory: String) -> Result<bool, CoreError> {
+        self.unpairing(directory)
+            .unpair(self.session.peer().key, Some(&self.session))
+            .await
+            .map_err(storage_error)
+    }
+}
+
+impl CoreConnection {
+    fn unpairing(&self, directory: String) -> wind_core::pairing::Unpairing {
+        wind_core::pairing::Unpairing::new(
+            wind_core::pairing::PairedDevicesFile::in_dir(directory),
+            self.trust.clone(),
+            self.endpoint.clone(),
+        )
+    }
+}
+
+fn storage_error(error: std::io::Error) -> CoreError {
+    match error.kind() {
+        std::io::ErrorKind::InvalidInput => CoreError::InvalidInput {
+            reason: "the name is empty".into(),
+        },
+        std::io::ErrorKind::NotFound => CoreError::InvalidInput {
+            reason: "the device is not paired".into(),
+        },
+        _ => CoreError::Storage {
+            reason: "paired devices could not be saved".into(),
+        },
     }
 }
 
