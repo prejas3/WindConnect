@@ -12,6 +12,11 @@ internal interface MulticastSwitch {
  * RULE:held only while discovery is needed: a SAS window or discovery screen open, or no
  * session and less than [window] ms since start, a network change, a lost session or [wake].
  * DEC:an active session needs no multicast: QUIC migration (WN-16, WN-84) brings it back.
+ * DEC:other PCs during a session (WN-90): the broadcast fallback (WN-15), no lock. The phone's
+ * own query every 2 s (sending needs no lock) gets each PC's unicast answer, so another PC is
+ * back in `network` within 5 s of a network change. PCs' broadcast queries reaching the phone
+ * are a bonus, not the basis: without the lock a Wi-Fi chip may filter them. No mDNS window
+ * during a session: with a paired PC simply off it would hold the lock 30 s per network change.
  * Times are monotonic milliseconds from the caller; it rechecks at [nextCheck].
  */
 internal class MulticastPolicy(

@@ -255,6 +255,33 @@ toggleWifi true` dodaje prawdziwą zmianę sieci):
 ```powershell
 adb shell am instrument -w -r -e class io.github.prejas3.windconnect.MulticastLockTest -e pcAddress 10.0.2.2:47820 -e pcKey <PC_PUBLIC_KEY> -e toggleWifi true $runner
 ```
+
+Inne komputery w czasie sesji (wiele PC, WN-90) telefon znajduje zapasowym
+odkrywaniem broadcast (WN-15), bez locka. Podstawą jest pytanie telefonu
+wysyłane co 2 s (wysyłanie nie wymaga locka) i odpowiedź unicast każdego PC.
+Zapytania broadcast innych PC docierające do telefonu są dodatkiem, nie
+podstawą: bez locka i przy wyłączonym ekranie układ Wi-Fi może je filtrować.
+Po zmianie sieci drugi PC wraca na listę `WindCore.network` w ciągu 5 s.
+W czasie sesji nie ma okna mDNS: przy wyłączonym drugim PC trzymałoby lock
+30 s po każdej zmianie sieci. Na hoście sprawdza to
+`query_is_answered_by_unicast_so_the_asker_needs_no_broadcast`
+(`cargo test --locked -p wind-core --test broadcast`), na emulatorze
+`MulticastLockTest#otherPcFoundDuringSessionWithoutLock` przez runner
+(debug i androidTest APK zbudowane,
+`cargo build --locked -p wind-ffi --example android_peer`):
+
+```powershell
+node apps/android/scripts/check-multi-pc.cjs
+```
+
+Runner przekierowuje UDP emulatora (`emu redir`, domyślnie 47823 → 47821;
+`REDIR_PORT`, `PC_PORT` zmieniają porty hosta), uruchamia `android_peer` jako
+pierwszy PC i co 2 s wysyła pakiet odkrywania drugiego PC. LIMIT: przez NAT
+emulatora pakiet przychodzi bez pytania, więc test sprawdza sesję, lock i
+pamięć odkrywania po zmianie sieci. Pytanie i odpowiedź unicast sprawdza test
+hosta, a filtrowanie broadcast przez prawdziwy układ Wi-Fi bez locka wymaga
+telefonu.
+
 Wersja aplikacji to 0.38.0, a Android `versionCode` to 47. Numery wydań rosną
 niezależnie od kolejności kart, aby aktualizacja APK i MSI nie cofała wersji.
 
@@ -352,10 +379,12 @@ Budżet planu: < 1% baterii na dobę. Pomiary składowe:
 | Data | Urządzenie | Pomiar | Wynik |
 | --- | --- | --- | --- |
 | 2026-11-10 | emulator API 35 (x86_64), `MulticastLockTest` z `android_peer` | `MulticastLock` (WN-83) | brany od startu; zwolniony 243 ms po zestawieniu sesji; przy aktywnej sesji zdarzenie sieci i odświeżenie go nie biorą; po utracie sesji brany po 237 ms i zwolniony sam po 30 253 ms; po wyłączeniu Wi-Fi bez sesji brany po 958 ms; po `shutdown()` zwolniony |
+| 2026-11-11 | emulator API 35 (x86_64), `check-multi-pc.cjs` (WN-90), 3 przebiegi | `MulticastLock` przy sesji z PC1 i drugim PC w sieci | lock nie brany przez całą sesję (sprawdzane co 200 ms); drugi PC na liście po 912–920 ms; po wyłączeniu Wi-Fi po 1 818–1 870 ms, po włączeniu po 1 850–1 872 ms (pakiet co 2 s); sesja z PC1 utrzymana |
 
 Przed WN-83 lock był trzymany przez całe życie `WindCore`. Teraz przy stałym
 połączeniu z PC jest trzymany tylko przez czas zestawiania sesji, a bez
-połączenia przez okna po 30 s. Zużycie w mAh wymaga pomiaru na telefonie
+połączenia przez okna po 30 s. Szukanie innych PC w czasie sesji (WN-90) nie
+dokłada czasu z lockiem: idzie przez broadcast. Zużycie w mAh wymaga pomiaru na telefonie
 (S25 Ultra, Battery Historian) i należy do WC-30.
 
 ## Motyw i komponenty (WN-22)

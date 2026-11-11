@@ -368,3 +368,101 @@ async fn flood_of_fake_fingerprints_from_one_ip_does_not_hide_paired_device() {
     first.wait_idle().await;
     second.wait_idle().await;
 }
+
+/// WN-90: a phone in a session holds no MulticastLock, so it may hear no
+/// broadcast at all. It still finds another PC: its own query (sending needs
+/// no lock) gets the PC's unicast answer. Here the PC's own queries go where
+/// nobody listens, so the answer is the only way in; after a network change
+/// (cache cleared) the PC is back within 5 s at the real 2 s query period.
+#[tokio::test(flavor = "multi_thread")]
+async fn query_is_answered_by_unicast_so_the_asker_needs_no_broadcast() {
+    let port = free_port();
+    let at = |last: u8| SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, last), port);
+    let real = |listen: SocketAddrV4, destination: SocketAddrV4| BroadcastConfig {
+        listen,
+        destinations: vec![destination],
+        interval: Duration::from_secs(2),
+        expiry: Duration::from_secs(8),
+    };
+    let options = |config| DiscoveryOptions {
+        mdns: false,
+        broadcast: Some(config),
+        paired: None,
+    };
+    let (phone, pc) = (
+        DeviceIdentity::generate().unwrap(),
+        DeviceIdentity::generate().unwrap(),
+    );
+    let phone_endpoint = Endpoint::bind(
+        "127.0.0.1:0".parse().unwrap(),
+        &phone,
+        Arc::new(PinnedKeys::new()),
+    )
+    .unwrap();
+    let pc_endpoint = Endpoint::bind(
+        "127.0.0.2:0".parse().unwrap(),
+        &pc,
+        Arc::new(PinnedKeys::new()),
+    )
+    .unwrap();
+    let mut pc_discovery = NetworkDiscovery::start_with_options(
+        pc.public_key(),
+        pc_endpoint.clone(),
+        Arc::new(NetworkChanges::default()),
+        options(real(at(2), at(3))),
+    )
+    .unwrap();
+    let phone_changes = Arc::new(NetworkChanges::default());
+    let mut phone_discovery = NetworkDiscovery::start_with_options(
+        phone.public_key(),
+        phone_endpoint.clone(),
+        phone_changes.clone(),
+        options(real(at(1), at(2))),
+    )
+    .unwrap();
+    let mut state = phone_discovery.subscribe();
+    let pc_fingerprint = *pc.fingerprint().as_bytes();
+    let pc_address = std::net::SocketAddr::new(
+        Ipv4Addr::new(127, 0, 0, 2).into(),
+        pc_endpoint.local_addr().unwrap().port(),
+    );
+    async fn found(
+        state: &mut tokio::sync::watch::Receiver<wind_core::network::DiscoverySnapshot>,
+        fingerprint: [u8; 32],
+        address: std::net::SocketAddr,
+    ) -> Duration {
+        let started = std::time::Instant::now();
+        tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                {
+                    let now = state.borrow_and_update();
+                    if let Some(peer) = now.peers.iter().find(|p| p.fingerprint == fingerprint) {
+                        assert_eq!(peer.addresses, vec![address]);
+                        break;
+                    }
+                }
+                state.changed().await.unwrap();
+            }
+        })
+        .await
+        .expect("the PC's unicast answer must reach the phone within 5 s");
+        started.elapsed()
+    }
+    let first = found(&mut state, pc_fingerprint, pc_address).await;
+    println!("found after start: {first:?}");
+    // A network change clears the cache (a new generation, no peers).
+    phone_changes.notify();
+    tokio::time::timeout(Duration::from_secs(1), async {
+        while state.borrow_and_update().generation < 1 {
+            state.changed().await.unwrap();
+        }
+    })
+    .await
+    .expect("the network change is handled");
+    let again = found(&mut state, pc_fingerprint, pc_address).await;
+    println!("found after a network change: {again:?}");
+    phone_discovery.shutdown().await;
+    pc_discovery.shutdown().await;
+    phone_endpoint.close();
+    pc_endpoint.close();
+}

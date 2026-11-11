@@ -21,7 +21,7 @@ class HomeScreenTest {
         var scan = false
         compose.setContent { WindConnectTheme(ThemeMode.Light, false) {
             Column(Modifier.verticalScroll(rememberScrollState())) {
-                HomeScreen(PairingUi(ready = true, initialized = true), { scan = true }, {})
+                HomeScreen(PairingUi(ready = true, initialized = true), { scan = true }, onDiagnostics = {})
             }
         } }
         compose.onNodeWithTag("computerName").assertTextEquals("Twój komputer")
@@ -36,7 +36,7 @@ class HomeScreenTest {
         val state = mutableStateOf(PairingUi(ready = true, initialized = true, hasPairedDevice = true,
             computerName = "Mój PC", connection = ConnectionState.Connected("Mój PC", "test", 1234)))
         compose.setContent { WindConnectTheme(ThemeMode.Dark, false) {
-            Column(Modifier.verticalScroll(rememberScrollState())) { HomeScreen(state.value, {}, {}) }
+            Column(Modifier.verticalScroll(rememberScrollState())) { HomeScreen(state.value, {}, onDiagnostics = {}) }
         } }
         compose.onNodeWithTag("computerName").assertTextEquals("Mój PC")
         compose.onNodeWithTag("computerLatency").assertTextContains("ms", substring = true)
