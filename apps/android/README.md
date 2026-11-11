@@ -31,7 +31,9 @@ kompiluje i pakuje jedno ABI, domyślnie `x86_64` (emulator). Na telefon
 (S25 Ultra) dodaj `-PwindAbi=arm64-v8a`; oba naraz: `-PwindAbi=all`.
 Release, `build` i wszystko w CI (zmienna `CI`) budują oba ABI. Biblioteki
 Rust trafiają do wspólnego `target/` repozytorium (bez drugiej kopii w
-`wind-core/build`); sprzątanie: `scripts/clean-build.ps1`.
+`wind-core/build`); sprzątanie: `scripts/clean-build.ps1` (MSI usuwa tylko w
+wersjach starszych niż `[workspace.package]` z `Cargo.toml`, a bez odczytanej
+wersji żadnego; test: `pwsh scripts/test-clean-build.ps1`).
 Klucz debug jest generowany lokalnie przez narzędzia Androida; APK służy do testów.
 
 ## CI i instalacja

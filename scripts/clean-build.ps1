@@ -7,8 +7,9 @@ without touching code (WN-95).
 Removes only build output, from a fixed list under the repository root:
   - Cargo incremental caches: target/<profile>/incremental and
     target/<triple>/<profile>/incremental
-  - MSI packages of earlier versions in target/release/bundle/msi
-    (the current version, from Cargo.toml, stays)
+  - MSI packages of versions older than [workspace.package] version in
+    Cargo.toml, in target/release/bundle/msi; the current and newer ones
+    stay, and without a readable version none is removed (a warning says so)
   - Gradle builds: apps/android/build, app/build, wind-core/build, .gradle
   - the fuzzing target: crates/wind-core/fuzz/target and its corpus copies
     in fuzz/artifacts are left alone (they are inputs, not output)
@@ -42,6 +43,23 @@ function Get-Size([string]$Path) {
     $sum = (Get-ChildItem -LiteralPath $Path -Recurse -File -Force -ErrorAction SilentlyContinue |
         Measure-Object -Property Length -Sum).Sum
     if ($null -eq $sum) { 0 } else { $sum }
+}
+
+# `version = "x.y.z"` of the [workspace.package] table only (not the first
+# `version =` in the file); $null when it is missing or not x.y.z.
+function Get-WorkspaceVersion([string]$Manifest) {
+    $inside = $false
+    foreach ($line in $Manifest -split '\r?\n') {
+        $trimmed = $line.Trim()
+        if ($trimmed -match '^\[\s*([^\]]+?)\s*\]') {
+            $inside = $Matches[1] -eq 'workspace.package'
+            continue
+        }
+        if ($inside -and $trimmed -match '^version\s*=\s*"(\d+\.\d+\.\d+)"\s*(#.*)?$') {
+            return [version]$Matches[1]
+        }
+    }
+    return $null
 }
 
 $script:freed = 0
@@ -78,14 +96,23 @@ if ($Full) {
             Remove-Output (Join-Path $_.FullName 'incremental')
         }
     }
-    # MSI packages of earlier versions.
+    # MSI packages of earlier versions (WindConnect_<x.y.z>_x64_en-US.msi).
+    # CCS/1 RULE:no version read -> no MSI removed (WN-98). Only versions older
+    # than the workspace's go; newer ones (another branch) and odd names stay.
     $msi = Join-Path $target 'release/bundle/msi'
     if (Test-Path -LiteralPath $msi) {
         $manifest = Get-Content -LiteralPath (Join-Path $Root 'Cargo.toml') -Raw
-        $version = [regex]::Match($manifest, '(?m)^version\s*=\s*"([^"]+)"').Groups[1].Value
-        Get-ChildItem -LiteralPath $msi -File -Filter '*.msi' |
-            Where-Object { -not $version -or $_.Name -notlike "*_${version}_*" } |
-            ForEach-Object { Remove-Output $_.FullName }
+        $current = Get-WorkspaceVersion $manifest
+        if ($null -eq $current) {
+            Write-Warning "no version in [workspace.package] of Cargo.toml; no MSI removed from $msi"
+        } else {
+            Get-ChildItem -LiteralPath $msi -File -Filter '*.msi' |
+                Where-Object {
+                    $match = [regex]::Match($_.Name, '_(\d+\.\d+\.\d+)_')
+                    $match.Success -and [version]$match.Groups[1].Value -lt $current
+                } |
+                ForEach-Object { Remove-Output $_.FullName }
+        }
     }
 }
 
