@@ -13,6 +13,102 @@ use wind_ffi::{open_client, CoreError, IdentityStorage};
 #[derive(Clone, Default)]
 struct MemoryStorage(Arc<Mutex<Option<Vec<u8>>>>);
 
+#[derive(Clone, Default)]
+struct TestClipboard(Arc<Mutex<String>>);
+impl wind_core::clipboard::Sink for TestClipboard {
+    fn apply(&self, text: &str) -> bool {
+        *self.0.lock().unwrap() = text.into();
+        true
+    }
+}
+impl wind_ffi::ClipboardSink for TestClipboard {
+    fn apply_text(&self, text: String) -> bool {
+        *self.0.lock().unwrap() = text;
+        true
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn ffi_clipboard_uses_sink_and_applied_ack_in_both_directions() {
+    let client = open_client(
+        Box::new(MemoryStorage::default()),
+        "Phone".into(),
+        "127.0.0.1:0".into(),
+    )
+    .await
+    .unwrap();
+    let local = TestClipboard::default();
+    client.set_clipboard_sink(Box::new(local.clone()));
+    let identity = DeviceIdentity::generate().unwrap();
+    let pins = Arc::new(PinnedKeys::new());
+    pins.pin(PublicKey::from_bytes(&client.identity().public_key.try_into().unwrap()).unwrap());
+    let endpoint = Endpoint::bind("127.0.0.1:0".parse().unwrap(), &identity, pins).unwrap();
+    let address = endpoint.local_addr().unwrap().to_string();
+    client
+        .pin_peer(identity.public_key().as_bytes().to_vec())
+        .unwrap();
+    let accepting = endpoint.clone();
+    let accept = tokio::spawn(async move {
+        let incoming = accepting.accept().await.unwrap().unwrap();
+        let mut router = Router::new();
+        let input = wind_core::clipboard::Clipboard::route(&mut router);
+        let (session, _) = Session::accept(
+            incoming,
+            LocalInfo {
+                name: "PC".into(),
+                kind: DeviceKind::Computer,
+                app: None,
+            },
+            router,
+        )
+        .await
+        .unwrap();
+        let hub = Arc::new(wind_core::clipboard::Clipboard::default());
+        let remote = TestClipboard::default();
+        hub.set_sink(Arc::new(remote.clone()));
+        (hub.attach(session, input), remote)
+    });
+    let connection = client
+        .connect(address, identity.public_key().as_bytes().to_vec())
+        .await
+        .unwrap();
+    let (pc, remote) = accept.await.unwrap();
+    connection.activate_clipboard().await;
+    assert_eq!(
+        connection
+            .send_clipboard("telefon 👩‍💻".into(), false, false)
+            .await,
+        "applied"
+    );
+    assert_eq!(*remote.0.lock().unwrap(), "telefon 👩‍💻");
+    assert_eq!(
+        pc.send("https://example.com/ż".into(), false, false).await,
+        wind_core::clipboard::Status::Applied
+    );
+    assert_eq!(*local.0.lock().unwrap(), "https://example.com/ż");
+    assert_eq!(
+        connection
+            .send_clipboard("https://example.com/ż".into(), false, false)
+            .await,
+        "unchanged"
+    );
+    assert_eq!(
+        connection
+            .send_clipboard("test password".into(), true, true)
+            .await,
+        "sensitive"
+    );
+    client.set_clipboard_enabled(false);
+    assert_eq!(
+        pc.send("disabled".into(), false, false).await,
+        wind_core::clipboard::Status::Refused
+    );
+    connection.disconnect().await;
+    client.shutdown().await;
+    endpoint.close();
+    endpoint.wait_idle().await;
+}
+
 impl IdentityStorage for MemoryStorage {
     fn load(&self) -> Result<Option<Vec<u8>>, CoreError> {
         Ok(self.0.lock().unwrap().clone())

@@ -308,3 +308,23 @@ telefonie to niezaufane wskazówki z sieci: o zaufaniu decyduje porównanie
 kodów.
 
 Test panelu (IPC podstawione): `node apps/windows/scripts/check-sas-ui.cjs`.
+
+## Wspólny schowek (WN-35)
+
+CCS/1
+FLOW:AddClipboardFormatListener/WM_CLIPBOARDUPDATE -> odczyt CF_UNICODETEXT -> clipboard/1 -> Applied po zapisie OS telefonu. Bez odpytywania. Własne operacje są serializowane, a procedura okna odracza zdarzenie przy zajętym adapterze, zamiast blokować komunikaty właściciela schowka.
+RULE:automat domyślny; ustawienie w clipboard.json obok tożsamości zawiera tylko bool. Uszkodzony plik oznacza wyłączenie. Przełącznik wyłącza automat wysyłania i odbioru. Kafelek „Schowek” i Ctrl+Alt+Shift+C wysyłają ręcznie; konflikt skrótu jest widoczny i nie wyłącza przycisku. Win+Shift+W pozostaje skrótem panelu.
+SEC:nie wysyłamy formatu ExcludeClipboardContentFromMonitorProcessing ani CanIncludeInClipboardHistory/CanUploadToCloudClipboard=0; dotyczy to także ręcznej akcji. Odbiór ustawia oba formaty opt-out=0, zanim zapisze tekst. Brak payloadu w IPC/front-endzie/logach/historii plikowej. Limit256 KiB, bez NUL (terminator Windows jest obcinany); link jest tekstem, nie poleceniem uruchomienia. Szczegóły PROTOCOL.md §9.3.
+LIMIT:PC -> telefon automatycznie także bez otwartej Activity. Telefon -> PC z innej aplikacji wymaga akcji powiadomienia i krótkiego fokusu WindConnect; bez dodatkowych uprawnień systemowych. Oznaczone hasła nie są synchronizowane. Brak odtwarzania schowka po reconnect.
+
+Test natywny bez zmieniania schowka interaktywnego:
+`cargo run --locked -p windconnect-windows --example clipboard_probe`.
+Tworzy osobny pulpit w nieinteraktywnej stacji, wymaga pustego schowka tej
+stacji, sprawdza zdarzenia, Unicode i trzy flagi prywatności, usuwa własne
+syntetyczne dane i kończy wątki. Test Android/PC i pomiar100 próbek w obu
+kierunkach opisano w `apps/android/README.md`, sekcja WN-35.
+
+Test UI: `node apps/windows/scripts/check-clipboard-ui.cjs` z zewnętrznym
+Playwright (`PLAYWRIGHT_MODULE`). Sprawdza klawiaturę, przełącznik, ręczne
+wysyłanie bez połączenia, status sensitive/konfliktu skrótu i układ Light/Dark.
+Podstawione IPC sprawdza UI; dostarczenie OS potwierdza osobny test natywny.

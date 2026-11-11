@@ -58,6 +58,18 @@ pub trait IdentityStorage: Send + Sync {
 
 struct PlatformStore(Box<dyn IdentityStorage>);
 
+/// CCS/1 RULE:callback writes OS clipboard synchronously; true only after success. Never re-enter clipboard send synchronously.
+#[uniffi::export(callback_interface)]
+pub trait ClipboardSink: Send + Sync {
+    fn apply_text(&self, text: String) -> bool;
+}
+struct PlatformClipboard(Box<dyn ClipboardSink>);
+impl wind_core::clipboard::Sink for PlatformClipboard {
+    fn apply(&self, text: &str) -> bool {
+        self.0.apply_text(text.to_owned())
+    }
+}
+
 impl KeyStore for PlatformStore {
     fn load(&self) -> io::Result<Option<Zeroizing<String>>> {
         let Some(mut bytes) = self.0.load().map_err(io::Error::other)? else {
@@ -119,6 +131,7 @@ pub struct PairedLoadResult {
 
 #[derive(uniffi::Object)]
 pub struct CoreClient {
+    clipboard: Arc<wind_core::clipboard::Clipboard>,
     /// Signs pairing and relay authentication (PROTOCOL.md §13.2).
     device_identity: Arc<DeviceIdentity>,
     endpoint: Endpoint,
@@ -178,6 +191,7 @@ pub async fn open_client(
             reason: e.to_string(),
         })?;
     Ok(Arc::new(CoreClient {
+        clipboard: Arc::new(wind_core::clipboard::Clipboard::default()),
         endpoint,
         relay: std::sync::Mutex::new(None),
         trust,
@@ -202,6 +216,12 @@ pub async fn open_client(
 
 #[uniffi::export(async_runtime = "tokio")]
 impl CoreClient {
+    pub fn set_clipboard_sink(&self, sink: Box<dyn ClipboardSink>) {
+        self.clipboard.set_sink(Arc::new(PlatformClipboard(sink)));
+    }
+    pub fn set_clipboard_enabled(&self, enabled: bool) {
+        self.clipboard.set_enabled(enabled);
+    }
     /// CCS/1 SEC:call only after explicit confirmation; parsed offer is single-use and never exports its secret.
     pub async fn pair_qr(
         &self,
@@ -449,6 +469,8 @@ impl CoreClient {
             .map_err(|e| CoreError::Transport {
                 reason: e.to_string(),
             })?;
+        let mut router = Router::new();
+        let clipboard_input = wind_core::clipboard::Clipboard::route(&mut router);
         let (session, _) = tokio::time::timeout(
             Duration::from_secs(10),
             Session::dial(
@@ -456,7 +478,7 @@ impl CoreClient {
                 link.addr(),
                 peer,
                 self.local.clone(),
-                Router::new(),
+                router,
             ),
         )
         .await
@@ -465,6 +487,9 @@ impl CoreClient {
         })?
         .map_err(session_error)?;
         Ok(Arc::new(CoreConnection {
+            clipboard: std::sync::Mutex::new(None),
+            clipboard_shared: self.clipboard.clone(),
+            clipboard_input: std::sync::Mutex::new(Some(clipboard_input)),
             session,
             relay: Some(link),
         }))
@@ -500,7 +525,9 @@ impl CoreClient {
             reason: "peer address must be an IP address and port".into(),
         })?;
         let mut changes = self.network.subscribe();
-        let (session, _) = loop {
+        let ((session, _),clipboard_input) = loop {
+            let mut router=Router::new();
+            let clipboard_input=wind_core::clipboard::Clipboard::route(&mut router);
             let attempt = tokio::time::timeout(
             wait,
             Session::dial(
@@ -508,11 +535,11 @@ impl CoreClient {
                 address,
                 public_key(key)?,
                 self.local.clone(),
-                Router::new(),
+                router,
             ),
         );
             tokio::select! {
-                result = attempt => break result,
+                result = attempt => break result.map(|r|r.map(|s|(s,clipboard_input))),
                 changed = changes.changed() => {
                     if changed.is_err() { return Err(CoreError::Transport { reason: "network observer stopped".into() }); }
                 }
@@ -523,6 +550,9 @@ impl CoreClient {
         })?
         .map_err(session_error)?;
         Ok(Arc::new(CoreConnection {
+            clipboard: std::sync::Mutex::new(None),
+            clipboard_shared: self.clipboard.clone(),
+            clipboard_input: std::sync::Mutex::new(Some(clipboard_input)),
             session,
             relay: None,
         }))
@@ -724,6 +754,10 @@ fn action_error(error: wind_core::actions::RequestError) -> CoreError {
 
 #[derive(uniffi::Object)]
 pub struct CoreConnection {
+    clipboard: std::sync::Mutex<Option<Arc<wind_core::clipboard::Connection>>>,
+    clipboard_shared: Arc<wind_core::clipboard::Clipboard>,
+    clipboard_input:
+        std::sync::Mutex<Option<tokio::sync::mpsc::Receiver<wind_core::session::ChannelMessage>>>,
     session: Session,
     /// Held while the session runs through the relay.
     relay: Option<RelayLink>,
@@ -731,6 +765,23 @@ pub struct CoreConnection {
 
 #[uniffi::export(async_runtime = "tokio")]
 impl CoreConnection {
+    /// CCS/1 RULE:only an adopted connection may change the system clipboard; a standby LAN probe never takes ownership.
+    pub async fn activate_clipboard(&self) {
+        let mut active = self.clipboard.lock().unwrap();
+        if active.is_none() {
+            if let Some(input) = self.clipboard_input.lock().unwrap().take() {
+                *active = Some(self.clipboard_shared.attach(self.session.clone(), input));
+            }
+        }
+    }
+    pub async fn send_clipboard(&self, text: String, sensitive: bool, manual: bool) -> String {
+        let binding = self.clipboard.lock().unwrap().clone();
+        match binding {
+            Some(binding) => binding.send(text, sensitive, manual).await.name(),
+            None => "unavailable",
+        }
+        .into()
+    }
     pub fn peer(&self) -> PeerInfo {
         let peer = self.session.peer();
         PeerInfo {

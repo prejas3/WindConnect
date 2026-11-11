@@ -112,6 +112,11 @@ class PairingTest {
         assumeTrue("requires real desktop QR image fixture", InstrumentationRegistry.getArguments().getString("desktopQr") == "true")
         val background = InstrumentationRegistry.getArguments().getString("backgroundService") == "true"
         val context = compose.activity.applicationContext
+        if (InstrumentationRegistry.getArguments().getString("clipboardProof") == "true") {
+            InstrumentationRegistry.getInstrumentation().runOnMainSync {
+                context.getSystemService(android.content.ClipboardManager::class.java).setPrimaryClip(android.content.ClipData.newPlainText("WN35 old clip", "WN35-STALE-BEFORE-CONNECT"))
+            }
+        }
         if (background) assertFalse("app cannot acquire CPU wake locks", context.packageManager.getPackageInfo(context.packageName, android.content.pm.PackageManager.GET_PERMISSIONS).requestedPermissions?.contains(android.Manifest.permission.WAKE_LOCK) == true)
         if (android.os.Build.VERSION.SDK_INT >= 33) InstrumentationRegistry.getInstrumentation().uiAutomation.grantRuntimePermission(context.packageName, android.Manifest.permission.POST_NOTIFICATIONS)
         val file = File(compose.activity.cacheDir, "desktop-qr.png")
@@ -130,6 +135,11 @@ class PairingTest {
         val elapsed = android.os.SystemClock.elapsedRealtime() - start
         assertTrue("decoded QR to connected session must stay below 10s: $elapsed", elapsed < 10000)
         InstrumentationRegistry.getInstrumentation().sendStatus(0, android.os.Bundle().apply { putString("qrToConnectedMs", elapsed.toString()) })
+        if (InstrumentationRegistry.getArguments().getString("clipboardProof") == "true") {
+            compose.onNodeWithTag("pairingDone").performScrollTo().performClick()
+            ClipboardProof.run(compose)
+            return
+        }
         if (InstrumentationRegistry.getArguments().getString("homeScreenProof") == "true") {
             compose.onNodeWithTag("pairingDone").performScrollTo().performClick()
             compose.onNodeWithTag("computerName").assertTextEquals("Test PC")

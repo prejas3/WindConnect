@@ -145,7 +145,7 @@ generator, a nie ręcznie edytowane wiązania lub binaria.
 
 AAR: `wind-core/build/outputs/aar/wind-core-release.aar`.
 Lokalne repozytorium Maven z AAR, źródłami, POM i metadanymi Gradle:
-`wind-core/build/repo/`. Współrzędne: `io.github.prejas3.windconnect:wind-core:0.37.0`.
+`wind-core/build/repo/`. Współrzędne: `io.github.prejas3.windconnect:wind-core:0.38.0`.
 Publikacja zapisuje pliki lokalnie; nie wysyła ich do zewnętrznego repozytorium.
 Konsument musi korzystać z POM/metadanych (JNA i korutyny są zależnościami
 przechodnimi); sama kopia pliku AAR nie dostarczy JNA.
@@ -158,7 +158,7 @@ Konsument spoza repozytorium dodaje lokalne repozytorium do
 maven { url = uri("/sciezka/do/wind-core/build/repo") }
 ```
 
-oraz `implementation("io.github.prejas3.windconnect:wind-core:0.37.0")`.
+oraz `implementation("io.github.prejas3.windconnect:wind-core:0.38.0")`.
 W aplikacji konsumenta ogranicz ABI do `arm64-v8a` i `x86_64`.
 
 ```kotlin
@@ -281,7 +281,8 @@ emulatora pakiet przychodzi bez pytania, więc test sprawdza sesję, lock i
 pamięć odkrywania po zmianie sieci. Pytanie i odpowiedź unicast sprawdza test
 hosta, a filtrowanie broadcast przez prawdziwy układ Wi-Fi bez locka wymaga
 telefonu.
-Wersja aplikacji to 0.37.0, a Android `versionCode` to 46. Numery wydań rosną
+
+Wersja aplikacji to 0.38.0, a Android `versionCode` to 47. Numery wydań rosną
 niezależnie od kolejności kart, aby aktualizacja APK i MSI nie cofała wersji.
 
 ## Ekran główny (WN-31)
@@ -432,3 +433,38 @@ po „Kody są takie same” na telefonie i na komputerze (`SasPairing.decide`).
 Lista niczego nie potwierdza; adres to wskazówka, uwierzytelnia porównanie
 kodów (§12.6). Test FFI: `cargo test -p wind-ffi --test pairing`
 (`sas_pairs_only_when_both_accept_the_same_code`).
+
+## Wspólny schowek (WN-35)
+
+CCS/1
+FLOW:systemowy ClipboardManager -> UniFFI -> clipboard/1 na sparowanej sesji -> schowek PC; Applied wraca dopiero po udanym zapisie OS. Odbiór PC -> telefon działa także przy zamkniętej Activity, jeśli działa usługa połączenia.
+RULE:automat włączony domyślnie. Przełącznik „Synchronizacja automatyczna” na Home/Ustawieniach zapamiętuje decyzję; wyłącza automatyczny odczyt oraz odbiór, ale nie zatrzymuje połączenia. Ręczne „Wyślij schowek” pozostaje dodatkiem. Samo ponowne otwarcie/fokus nie wysyła już wysłanej/odebranej treści.
+LIMIT:Android 10+ czyta schowek tylko przy fokusie aplikacji. Wysyłanie telefonu działa automatycznie przy fokusie WindConnect i po powrocie do aplikacji, jeśli treść się zmieniła. W innych aplikacjach użyj „Wyślij schowek” w stałym powiadomieniu: otworzy krótko osobny ekran, poczeka na fokus/odblokowanie i po dostarczeniu wróci do poprzedniej aplikacji. Bez READ_LOGS, Accessibility ani zmiany klawiatury. Czas otwarcia ekranu i działania człowieka nie jest budżetem transportu <150 ms.
+SEC:tylko plain text/linki do256 KiB bez NUL; bez otwierania URL lub odczytu URI providerów. EXTRA_IS_SENSITIVE blokuje także wysłanie ręczne. Odebrany tekst zawsze ma sensitive=true (ukryty podgląd Androida13+ i brak echa). Status nie zawiera treści; brak historii/logowania/utrwalania payloadu.
+DEC:chronologii zegarów urządzeń nie porównujemy. Licznik Lamporta+id16B rozstrzyga równoczesne zmiany, hash w pamięci zapobiega echo, reconnect nie odtwarza starej zawartości. Wire i limity w PROTOCOL.md §9.3.
+RULE:automat wysyła tylko schowek skopiowany po przyjęciu bieżącej sesji (ClipDescription.timestamp względem lokalnego System.currentTimeMillis). Stary tekst po restarcie procesu lub reconnect nie zastąpi schowka PC przy fokusie; ręczne wysłanie może go wysłać. Timestamp0/równy granicy jest pomijany. Po cofnięciu zegara użyj ręcznej akcji. Bez utrwalania payloadu.
+
+Test telefonu: sparuj Windows i S25 Ultra, włącz usługę/powiadomienia. Skopiuj
+zwykły tekst Unicode lub link na PC i wklej na telefonie w innej aplikacji,
+gdy WindConnect jest w tle. Skopiuj nowy tekst na telefonie, stuknij akcję
+powiadomienia i wklej na PC. Przy otwartym WindConnect sprawdź automat.
+Tekst oznaczony przez menedżer haseł jako wrażliwy ma zostać pominięty.
+Sprawdź wyłączenie/przywrócenie synchronizacji, utratę sieci i brak starej
+kolejki po reconnect. Potwierdź na aktualnym One UI; emulator nie jest S25.
+
+Automatyczny test OS: z root `cargo build --locked -p windconnect-windows
+--example clipboard_peer`; zbuduj Android debug/androidTest, ustaw
+`JAVA_HOME`, `ANDROID_HOME`, `CLIPBOARD_PROOF=1` i uruchom przez `cw-progress`
+`node apps/windows/scripts/check-background-android.cjs`.
+Test wymaga jednorazowego emulatora (czyści tylko jego dane WindConnect).
+Przed uruchomieniem emulatora wyłącz jego „Enable clipboard sharing”
+(Extended Controls → Settings). Współdzielenie hosta jest drugim kanałem
+schowka, może nadpisywać próbki i gubić sensitive. Po zakończeniu przywróć
+swoje ustawienie. Test sprawdza odczytem kontrolnym każdą kopię przy fokusie;
+nie ponawia ani nie ukrywa błędnego zapisu próbki.
+Windows używa osobnego pulpitu w nieinteraktywnej stacji i odmawia testu,
+jeśli jej schowek nie jest pusty. Nie używa schowka interaktywnego użytkownika.
+100 próbek/kierunek mierzy od kopiowania w OS do Applied po zapisie drugiego
+OS (konserwatywna górna granica czasu kopiuj→wklej), osobno sprawdza odbiór
+Androida bez Activity, sensitive, akcję powiadomienia i brak echa po fokusie.
+Surowe próbki i zrzuty Light/Dark: `%TEMP%/windconnect-wn35-*`.
