@@ -1,8 +1,12 @@
 //! CCS/1 IO:real CF_UNICODETEXT / WM_CLIPBOARDUPDATE | SEC:privacy formats respected, bounded copies, no payload logs.
 #![cfg(windows)]
 use std::{
+    cell::Cell,
     io,
-    sync::{mpsc, OnceLock},
+    sync::{
+        atomic::{AtomicBool, AtomicU32},
+        mpsc, Arc, OnceLock,
+    },
     thread,
     time::Duration,
 };
@@ -129,7 +133,9 @@ fn read_inner(include_sensitive: bool, wait: bool) -> io::Result<Option<Capture>
         return Ok(None);
     };
     unsafe {
-        let _open = Open::acquire(std::ptr::null_mut())?;
+        // CCS/1 RULE:another process holding the clipboard is WouldBlock, the only error the listener retries.
+        let _open = Open::acquire(std::ptr::null_mut())
+            .map_err(|e| io::Error::new(io::ErrorKind::WouldBlock, e))?;
         let f = formats()?;
         if IsClipboardFormatAvailable(TEXT) == 0 {
             return Ok(None);
@@ -213,9 +219,70 @@ fn write(hwnd: HWND, text: &str, protected: bool) -> io::Result<()> {
         put(TEXT, &data)
     }
 }
+// CCS/1 RULE:a change missed because another process held the clipboard is re-read on the window thread by one
+// WM_TIMER with backoff (bounded, no queue). Only the sequence that raised it is retried; a newer change,
+// disabled monitoring and window teardown cancel it.
+const RETRY_TIMER: usize = 0x5752;
+const RETRY_DELAYS_MS: [u32; 6] = [50, 100, 200, 400, 800, 1600];
+const WM_CANCEL_RETRY: u32 = WM_APP + 1;
+/// Listener counters, readable by the isolated OS proof.
+#[derive(Default)]
+pub struct Stats {
+    pub delivered: AtomicU32,
+    pub retries: AtomicU32,
+    pub given_up: AtomicU32,
+    pub busy: AtomicU32,
+    pub pending: AtomicBool,
+}
+#[derive(Clone, Copy)]
+struct Retry {
+    sequence: u32,
+    next: usize,
+}
 struct Watcher {
     output: watch::Sender<Option<Capture>>,
-    enabled: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    enabled: Arc<AtomicBool>,
+    stats: Arc<Stats>,
+    retry: Cell<Option<Retry>>,
+}
+impl Watcher {
+    fn enabled(&self) -> bool {
+        self.enabled.load(std::sync::atomic::Ordering::SeqCst)
+    }
+    unsafe fn cancel(&self, hwnd: HWND) {
+        if self.retry.take().is_some() {
+            unsafe { KillTimer(hwnd, RETRY_TIMER) };
+        }
+        self.stats
+            .pending
+            .store(false, std::sync::atomic::Ordering::SeqCst);
+    }
+    unsafe fn read(&self, hwnd: HWND, sequence: u32, next: usize) {
+        use std::sync::atomic::Ordering::SeqCst;
+        match read_inner(false, false) {
+            Ok(Some(value)) => {
+                self.stats.delivered.fetch_add(1, SeqCst);
+                self.output.send_replace(Some(value));
+            }
+            Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
+                self.stats.busy.fetch_add(1, SeqCst);
+                match RETRY_DELAYS_MS.get(next) {
+                    Some(delay) if unsafe { SetTimer(hwnd, RETRY_TIMER, *delay, None) } != 0 => {
+                        self.retry.set(Some(Retry {
+                            sequence,
+                            next: next + 1,
+                        }));
+                        self.stats.pending.store(true, SeqCst);
+                    }
+                    _ => {
+                        self.stats.given_up.fetch_add(1, SeqCst);
+                    }
+                }
+            }
+            // Own operation busy (re-posted by Access), no text, or a non-transient error.
+            _ => {}
+        }
+    }
 }
 unsafe extern "system" fn procedure(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
     if msg == WM_NCCREATE {
@@ -224,24 +291,45 @@ unsafe extern "system" fn procedure(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) 
             SetWindowLongPtrW(hwnd, GWLP_USERDATA, create.lpCreateParams as isize);
         }
     }
-    if msg == WM_CLIPBOARDUPDATE {
-        let p = unsafe { GetWindowLongPtrW(hwnd, GWLP_USERDATA) } as *const Watcher;
-        if !p.is_null()
-            && unsafe { &*p }
-                .enabled
-                .load(std::sync::atomic::Ordering::SeqCst)
-        {
-            if let Ok(Some(value)) = read_inner(false, false) {
-                unsafe { &*p }.output.send_replace(Some(value));
-            }
-        }
+    let p = unsafe { GetWindowLongPtrW(hwnd, GWLP_USERDATA) } as *const Watcher;
+    let handled = matches!(msg, WM_CLIPBOARDUPDATE | WM_CANCEL_RETRY)
+        || (msg == WM_TIMER && w == RETRY_TIMER);
+    if !handled {
+        return unsafe { DefWindowProcW(hwnd, msg, w, l) };
+    }
+    if p.is_null() {
         return 0;
     }
-    unsafe { DefWindowProcW(hwnd, msg, w, l) }
+    let watcher = unsafe { &*p };
+    match msg {
+        WM_CLIPBOARDUPDATE => unsafe {
+            watcher.cancel(hwnd);
+            if watcher.enabled() {
+                watcher.read(hwnd, GetClipboardSequenceNumber(), 0);
+            }
+        },
+        WM_TIMER => unsafe {
+            let retry = watcher.retry.get();
+            watcher.cancel(hwnd);
+            if let Some(retry) = retry {
+                if watcher.enabled() && retry.sequence == GetClipboardSequenceNumber() {
+                    watcher
+                        .stats
+                        .retries
+                        .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    watcher.read(hwnd, retry.sequence, retry.next);
+                }
+            }
+        },
+        _ => unsafe { watcher.cancel(hwnd) },
+    }
+    0
 }
 pub struct Native {
-    monitoring: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    monitoring: Arc<AtomicBool>,
     output: watch::Sender<Option<Capture>>,
+    #[cfg_attr(not(debug_assertions), allow(dead_code))] // read only by the isolated OS proof
+    stats: Arc<Stats>,
     hwnd: usize,
     id: u32,
     worker: Option<thread::JoinHandle<()>>,
@@ -253,8 +341,10 @@ impl Native {
         } as usize;
         let (output, input) = watch::channel(None);
         let to_worker = output.clone();
-        let monitoring = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let monitoring = Arc::new(AtomicBool::new(false));
         let enabled = monitoring.clone();
+        let stats = Arc::new(Stats::default());
+        let worker_stats = stats.clone();
         let (ready, receive) = mpsc::sync_channel(1);
         let worker = thread::spawn(move || unsafe {
             // CCS/1 RULE:the message window belongs to the caller's desktop (also for isolated OS tests).
@@ -278,6 +368,8 @@ impl Native {
             let mut watcher = Box::new(Watcher {
                 output: to_worker,
                 enabled,
+                stats: worker_stats,
+                retry: Cell::new(None),
             });
             let hwnd = CreateWindowExW(
                 0,
@@ -310,6 +402,7 @@ impl Native {
                 DispatchMessageW(&message);
             }
             RemoveClipboardFormatListener(hwnd);
+            watcher.cancel(hwnd);
             let _ = WINDOW.compare_exchange(
                 hwnd as usize,
                 0,
@@ -324,6 +417,7 @@ impl Native {
                 Self {
                     monitoring,
                     output,
+                    stats,
                     hwnd,
                     id,
                     worker: Some(worker),
@@ -340,8 +434,31 @@ impl Native {
         self.monitoring
             .store(value, std::sync::atomic::Ordering::SeqCst);
         if !value {
+            unsafe {
+                PostMessageW(self.hwnd as HWND, WM_CANCEL_RETRY, 0, 0);
+            }
             self.output.send_replace(None);
         }
+    }
+    #[cfg(debug_assertions)]
+    #[allow(dead_code)]
+    pub fn stats_test(&self) -> Arc<Stats> {
+        self.stats.clone()
+    }
+    /// Holds this process's clipboard gate: listener reads defer until it drops (then re-posted).
+    #[cfg(debug_assertions)]
+    #[allow(dead_code)]
+    pub fn hold_gate_test(&self) -> GateHold {
+        GateHold(access(true).unwrap())
+    }
+    /// Keeps the clipboard open (no change) for `held`, as a slow foreign owner would; `opened` runs once it is.
+    #[cfg(debug_assertions)]
+    #[allow(dead_code)]
+    pub fn hold_open_test(&self, held: Duration, opened: impl FnOnce()) -> io::Result<()> {
+        let _open = Open::acquire(self.hwnd as HWND)?;
+        opened();
+        thread::sleep(held);
+        Ok(())
     }
     pub fn write_received(&self, text: &str) -> bool {
         write(self.hwnd as HWND, text, true).is_ok()
@@ -385,6 +502,9 @@ impl Native {
         }
     }
 }
+#[cfg(debug_assertions)]
+#[allow(dead_code)]
+pub struct GateHold(Access);
 impl Drop for Native {
     fn drop(&mut self) {
         unsafe {

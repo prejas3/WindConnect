@@ -7,7 +7,52 @@ pub struct PrivateClipboard {
     desktop: HDESK,
     station: HWINSTA,
 }
+fn object_name(handle: *mut std::ffi::c_void) -> io::Result<String> {
+    let mut name = [0u16; 256];
+    let mut needed = 0;
+    if unsafe {
+        GetUserObjectInformationW(handle, UOI_NAME, name.as_mut_ptr().cast(), 512, &mut needed)
+    } == 0
+    {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(String::from_utf16_lossy(
+        &name[..name.iter().position(|c| *c == 0).unwrap_or(name.len())],
+    ))
+}
+fn wide(s: &str) -> Vec<u16> {
+    s.encode_utf16().chain(Some(0)).collect()
+}
 impl PrivateClipboard {
+    /// Station and desktop names, so a second test process can join this private clipboard.
+    #[allow(dead_code)]
+    pub fn names(&self) -> io::Result<(String, String)> {
+        Ok((object_name(self.station)?, object_name(self.desktop)?))
+    }
+    /// Second test process: enter an existing private station by name (never WinSta0).
+    #[allow(dead_code)]
+    pub fn join(station: &str, desktop: &str) -> io::Result<()> {
+        if station.eq_ignore_ascii_case("WinSta0") {
+            return Err(io::Error::other("refusing interactive window station"));
+        }
+        unsafe {
+            let handle = OpenWindowStationW(wide(station).as_ptr(), 0, 0x000f037f);
+            if handle.is_null() || SetProcessWindowStation(handle) == 0 {
+                return Err(io::Error::other(format!(
+                    "join station: {}",
+                    io::Error::last_os_error()
+                )));
+            }
+            let desk = OpenDesktopW(wide(desktop).as_ptr(), 0, 0, 0x000f01ff);
+            if desk.is_null() || SetThreadDesktop(desk) == 0 {
+                return Err(io::Error::other(format!(
+                    "join desktop: {}",
+                    io::Error::last_os_error()
+                )));
+            }
+        }
+        Ok(())
+    }
     #[allow(dead_code)]
     pub fn desktop(&self) -> usize {
         self.desktop as usize
@@ -24,23 +69,6 @@ impl PrivateClipboard {
                     io::Error::last_os_error()
                 )));
             }
-            let object_name = |handle| -> io::Result<String> {
-                let mut name = [0u16; 256];
-                let mut needed = 0;
-                if GetUserObjectInformationW(
-                    handle,
-                    UOI_NAME,
-                    name.as_mut_ptr().cast(),
-                    512,
-                    &mut needed,
-                ) == 0
-                {
-                    return Err(io::Error::last_os_error());
-                }
-                Ok(String::from_utf16_lossy(
-                    &name[..name.iter().position(|c| *c == 0).unwrap_or(name.len())],
-                ))
-            };
             let name = object_name(station)?;
             if name.eq_ignore_ascii_case("WinSta0") || name == object_name(previous)? {
                 CloseWindowStation(station);
@@ -55,10 +83,7 @@ impl PrivateClipboard {
                     "SetProcessWindowStation: {error}"
                 )));
             }
-            let name: Vec<u16> = format!("WindConnectTest{}", std::process::id())
-                .encode_utf16()
-                .chain(Some(0))
-                .collect();
+            let name = wide(&format!("WindConnectTest{}", std::process::id()));
             let desktop = CreateDesktopW(
                 name.as_ptr(),
                 std::ptr::null(),

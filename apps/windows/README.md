@@ -313,6 +313,7 @@ Test panelu (IPC podstawione): `node apps/windows/scripts/check-sas-ui.cjs`.
 
 CCS/1
 FLOW:AddClipboardFormatListener/WM_CLIPBOARDUPDATE -> odczyt CF_UNICODETEXT -> clipboard/1 -> Applied po zapisie OS telefonu. Bez odpytywania. Własne operacje są serializowane, a procedura okna odracza zdarzenie przy zajętym adapterze, zamiast blokować komunikaty właściciela schowka.
+RETRY:schowek trzymany przez inny proces dłużej niż 30 ms -> jeden WM_TIMER na wątku okna, backoff 50/100/200/400/800/1600 ms (≈3,2 s), potem rezygnacja (zostaje ręczne wysłanie). Ponawia tylko sekwencję, która wywołała zdarzenie; nowa zmiana, wyłączenie monitorowania i zamknięcie okna kasują timer (WN-105).
 RULE:automat domyślny; ustawienie w clipboard.json obok tożsamości zawiera tylko bool. Uszkodzony plik oznacza wyłączenie. Przełącznik wyłącza automat wysyłania i odbioru. Kafelek „Schowek” i Ctrl+Alt+Shift+C wysyłają ręcznie; konflikt skrótu jest widoczny i nie wyłącza przycisku. Win+Shift+W pozostaje skrótem panelu.
 SEC:nie wysyłamy formatu ExcludeClipboardContentFromMonitorProcessing ani CanIncludeInClipboardHistory/CanUploadToCloudClipboard=0; dotyczy to także ręcznej akcji. Odbiór ustawia oba formaty opt-out=0, zanim zapisze tekst. Brak payloadu w IPC/front-endzie/logach/historii plikowej. Limit256 KiB, bez NUL (terminator Windows jest obcinany); link jest tekstem, nie poleceniem uruchomienia. Szczegóły PROTOCOL.md §9.3.
 LIMIT:PC -> telefon automatycznie także bez otwartej Activity. Telefon -> PC z innej aplikacji wymaga akcji powiadomienia i krótkiego fokusu WindConnect; bez dodatkowych uprawnień systemowych. Oznaczone hasła nie są synchronizowane. Brak odtwarzania schowka po reconnect.
@@ -321,7 +322,12 @@ Test natywny bez zmieniania schowka interaktywnego:
 `cargo run --locked -p windconnect-windows --example clipboard_probe`.
 Tworzy osobny pulpit w nieinteraktywnej stacji, wymaga pustego schowka tej
 stacji, sprawdza zdarzenia, Unicode i trzy flagi prywatności, usuwa własne
-syntetyczne dane i kończy wątki. Test Android/PC i pomiar100 próbek w obu
+syntetyczne dane i kończy wątki. Drugi proces (ten sam przykład,
+`--hold-child`) w tej samej stacji trzyma schowek swoim oknem dłużej niż 30 ms:
+sprawdza dostarczenie raz, brak tekstu sensitive, limit ponowień, anulowanie
+przy wyłączeniu i brak timera po zamknięciu. Stacja nieinteraktywna sesji
+przeżywa uruchomienia: przerwany test może zostawić syntetyczny tekst, a
+kolejny odmówi startu, dopóki ktoś go nie usunie. Test Android/PC i pomiar100 próbek w obu
 kierunkach opisano w `apps/android/README.md`, sekcja WN-35.
 
 Test UI: `node apps/windows/scripts/check-clipboard-ui.cjs` z zewnętrznym
