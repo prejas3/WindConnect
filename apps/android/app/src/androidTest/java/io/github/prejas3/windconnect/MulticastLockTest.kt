@@ -143,4 +143,5 @@ class MulticastLockTest {
         }
         instrumentation.sendStatus(0, results)
     }
+
 }

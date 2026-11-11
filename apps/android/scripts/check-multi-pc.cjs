@@ -25,8 +25,21 @@ function device(...args) {
   assert.equal(result.status, 0, result.stderr);
   return result.stdout;
 }
-function instrument(test, extra = []) {
-  return device('shell', 'am', 'instrument', '-w', '-r', '-e', 'class', `io.github.prejas3.windconnect.${test}`, ...extra, runner);
+function instrumentArgs(test, extra = []) {
+  return ['-s', serial, 'shell', 'am', 'instrument', '-w', '-r', '-e', 'class', `io.github.prejas3.windconnect.${test}`, ...extra, runner];
+}
+function instrument(test, extra = []) { return device(...instrumentArgs(test, extra).slice(2)); }
+// Asynchronous, so the packet timer keeps running while the test does (spawnSync blocks the event loop).
+function instrumentAsync(test, extra = []) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(adb, instrumentArgs(test, extra), { windowsHide: true });
+    let output = '';
+    child.stdout.on('data', data => { output += data; });
+    child.stderr.on('data', data => { output += data; });
+    const timeout = setTimeout(() => child.kill(), 180000);
+    child.on('error', reject);
+    child.on('close', () => { clearTimeout(timeout); resolve(output); });
+  });
 }
 let peer, socket, timer, redirected = false;
 (async () => {
@@ -55,11 +68,11 @@ let peer, socket, timer, redirected = false;
     const send = () => socket.send(packet, REDIR_PORT, '127.0.0.1');
     send(); timer = setInterval(send, HINT_PERIOD_MS);
 
-    const output = instrument('MulticastLockTest#otherPcFoundDuringSessionWithoutLock',
+    const output = await instrumentAsync('MulticastLockTest#otherPcFoundDuringSessionWithoutLock',
       ['-e', 'pcAddress', `10.0.2.2:${PC_PORT}`, '-e', 'pcKey', pcKey, '-e', 'otherPc', otherPc.toString('hex')]);
     await fs.writeFile(path.join(root, 'instrumentation.log'), output + '\n--- android_peer ---\n' + peerOutput);
     assert(output.includes('OK (1 test)'), output);
-    const number = name => Number(output.match(new RegExp(`${name}=(\d+)`))?.[1]);
+    const number = name => Number(output.match(new RegExp(`${name}=(\\d+)`))?.[1]);
     const report = {
       hintPeriodMs: HINT_PERIOD_MS,
       otherFoundInSessionMs: number('otherFoundInSessionMs'),
