@@ -88,4 +88,59 @@ class MulticastLockTest {
         until("shutdown", 2_000, wanted = false)
         instrumentation.sendStatus(0, results)
     }
+
+    /**
+     * WN-90: during a session with one PC, another PC is in [WindCore.network] within 5 s of a
+     * network change, and the lock stays released. `otherPc` is the second PC's fingerprint
+     * (64 hex); the runner (apps/android/scripts/check-multi-pc.cjs) sends its discovery packet
+     * every 2 s through the emulator's UDP redirect, like a PC's query period.
+     * LIMIT:on the emulator the packet comes in unsolicited through NAT; the phone's query and
+     * the PC's unicast answer are covered on the host
+     * (`query_is_answered_by_unicast_so_the_asker_needs_no_broadcast`).
+     */
+    @Test fun otherPcFoundDuringSessionWithoutLock() = runBlocking {
+        val args = InstrumentationRegistry.getArguments()
+        val key = args.getString("pcKey")
+        val address = args.getString("pcAddress")
+        val other = args.getString("otherPc")?.lowercase()
+        assumeTrue("requires pcKey, pcAddress and otherPc instrumentation arguments",
+            key != null && address != null && other != null)
+        val results = Bundle()
+        val core = WindCore.open(instrumentation.targetContext, "Android")
+        try {
+            val peerKey = key!!.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+            core.connect(address!!, peerKey)
+            withTimeout(20_000) { core.state.first { it is ConnectionState.Connected } }
+            until("active session", 2_000, wanted = false)
+
+            // Checks the lock every 200 ms while it waits: a session never takes it.
+            suspend fun otherFound(what: String, generation: ULong): Long {
+                val start = SystemClock.elapsedRealtime()
+                while (core.network.value.generation < generation ||
+                    core.network.value.peers.none { it.fingerprint == other }) {
+                    assertFalse("$what: the lock is taken during a session", held())
+                    assertTrue("$what: other PC not found after 5 s; network=${core.network.value}", SystemClock.elapsedRealtime() - start < 5_000)
+                    delay(200)
+                }
+                return SystemClock.elapsedRealtime() - start
+            }
+            results.putString("otherFoundInSessionMs", otherFound("session", 0uL).toString())
+
+            for (step in listOf("svc wifi disable", "svc wifi enable")) {
+                val before = core.network.value.generation
+                shell(step)
+                // The network change clears the cache; the PC must come back in it.
+                withTimeout(10_000) { core.network.first { it.generation > before } }
+                results.putString("otherFoundAfter${step.substringAfterLast(' ')}Ms",
+                    otherFound(step, before + 1uL).toString())
+            }
+            withTimeout(10_000) { core.state.first { it is ConnectionState.Connected } }
+            assertFalse("session after the network changes holds no lock", held())
+            results.putString("sessionKept", "true")
+        } finally {
+            shell("svc wifi enable")
+            core.shutdown()
+        }
+        instrumentation.sendStatus(0, results)
+    }
 }
