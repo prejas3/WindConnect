@@ -103,7 +103,10 @@ impl NetworkState {
     fn new() -> std::io::Result<Self> {
         let changes = Arc::new(NetworkChanges::default());
         #[cfg(windows)]
-        let monitor = wind_core::network::WindowsNetworkMonitor::start(changes.clone())?;
+        // Changes only (WN-89): an initial report would restart the mDNS
+        // advertisement that pairing's NetworkDiscovery has just started.
+        let monitor =
+            wind_core::network::WindowsNetworkMonitor::start_with(changes.clone(), false)?;
         Ok(Self {
             changes,
             #[cfg(windows)]

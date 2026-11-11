@@ -40,6 +40,26 @@ async fn windows_registers_receives_initial_callback_and_unregisters() {
     assert_eq!(changes.generation(), generation);
 }
 
+/// WN-89: NetworkDiscovery and the app register without the initial report,
+/// so starting does not restart mDNS.
+#[cfg(windows)]
+#[tokio::test]
+async fn windows_without_initial_report_signals_nothing_at_start() {
+    use wind_core::network::WindowsNetworkMonitor;
+    let changes = Arc::new(NetworkChanges::default());
+    let mut receiver = changes.subscribe();
+    let monitor = WindowsNetworkMonitor::start_with(changes.clone(), false).unwrap();
+    // The initial report arrives within milliseconds when asked for (the
+    // test above); none may come here.
+    assert!(
+        tokio::time::timeout(Duration::from_secs(1), receiver.changed())
+            .await
+            .is_err()
+    );
+    assert_eq!(changes.generation(), 0);
+    drop(monitor);
+}
+
 #[tokio::test]
 #[ignore = "requires multicast-capable host"]
 async fn event_restarts_discovery_immediately_with_the_current_endpoint_port() {

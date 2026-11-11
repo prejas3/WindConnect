@@ -207,8 +207,14 @@ impl NetworkDiscovery {
         let mut network = changes.subscribe();
         let pairing = Arc::new(watch::channel(None::<u16>).0);
         let mut pairing_changes = pairing.subscribe();
+        // CCS/1 RULE:no initial report (WN-89). The daemons start below, after
+        // registration, so every later change still arrives. Restarting mDNS
+        // for the initial report stopped the first daemon while it was still
+        // probing and started a second one with the same name; a browser
+        // started meanwhile (same host, measured on Windows) then missed the
+        // device for over 5 s in about half of the runs.
         #[cfg(windows)]
-        let windows = WindowsNetworkMonitor::start(changes.clone())?;
+        let windows = WindowsNetworkMonitor::start_with(changes.clone(), false)?;
         let port = endpoint.local_addr()?.port();
         let discovery = options.mdns.then(|| Discovery::start(&key, port));
         let broadcast = options
@@ -406,7 +412,15 @@ mod windows {
     }
 
     impl WindowsNetworkMonitor {
+        /// Signals every connectivity change, and the current state once at
+        /// registration.
         pub fn start(changes: Arc<NetworkChanges>) -> io::Result<Self> {
+            Self::start_with(changes, true)
+        }
+
+        /// [`start`](Self::start); `report_current: false` signals only
+        /// changes after registration.
+        pub fn start_with(changes: Arc<NetworkChanges>, report_current: bool) -> io::Result<Self> {
             let context = changes;
             let mut handle: HANDLE = ptr::null_mut();
             // CCS/1 RULE:stable Arc context until cancellation drains in-flight callbacks.
@@ -414,7 +428,7 @@ mod windows {
                 NotifyNetworkConnectivityHintChange(
                     Some(on_change),
                     Arc::as_ptr(&context).cast(),
-                    true,
+                    report_current,
                     &mut handle,
                 )
             };
