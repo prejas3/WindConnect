@@ -51,6 +51,7 @@ class WindCore private constructor(
     private val pairedDirectory: String,
     val skippedPairingRecords: ULong,
     private val settings: SharedPreferences,
+    context: Context,
 ) {
     suspend fun pairedDevices(): List<io.github.prejas3.windconnect.bindings.PeerInfo> = withContext(Dispatchers.IO) {
         gate.withLock { check(!stopped); client.loadPaired(pairedDirectory).devices }
@@ -116,6 +117,16 @@ class WindCore private constructor(
     private var lanReturn: Job? = null
     @Volatile private var multicast: MulticastPolicy? = null
     private var multicastTimer: Job? = null
+    private val systemClipboard = SystemClipboard(context, settings, scope, client::setClipboardEnabled, { state.value is ConnectionState.Connected }) { text, sensitive, manual ->
+        withContext(Dispatchers.IO) {
+            val current = gate.withLock { connection }
+            if (current == null) "unavailable" else current.sendClipboard(text, sensitive, manual)
+        }
+    }
+    val clipboardUi = systemClipboard.ui
+    fun clipboardFocus(focused: Boolean) = systemClipboard.focus(focused)
+    fun setClipboardEnabled(enabled: Boolean) = systemClipboard.setEnabled(enabled)
+    suspend fun sendCurrentClipboard(): String = systemClipboard.send(true)
 
     /**
      * Turns the E2E relay on (`wss://…`, PROTOCOL.md §13) or off (null) and remembers it. Off by
@@ -159,6 +170,7 @@ class WindCore private constructor(
         scope.launch {
             // CCS/1 RULE:an active session needs no multicast; a lost one looks again (WN-83).
             state.collect { value ->
+                systemClipboard.connectionChanged()
                 withMulticast { policy, now -> policy.connected(now, value is ConnectionState.Connected) }
             }
         }
@@ -234,6 +246,8 @@ class WindCore private constructor(
     private suspend fun adopt(opened: CoreConnection) {
         val rtt = opened.ping().toLong()
         val peer = opened.peer()
+        opened.activateClipboard()
+        systemClipboard.sessionStarted()
         connection = opened
         mutableState.value = ConnectionState.Connected(peer.name, peer.fingerprint, rtt, opened.route())
         watcher = scope.launch {
@@ -287,6 +301,7 @@ class WindCore private constructor(
         gate.withLock {
             if (!stopped) {
                 stopped = true
+                systemClipboard.close()
                 desiredPeer = null
                 networkRetry?.cancel()
                 lanReturn?.cancel()
@@ -351,8 +366,10 @@ class WindCore private constructor(
                     val pairedDirectory = context.noBackupFilesDir.absolutePath
                     val paired = client.loadPaired(pairedDirectory)
                     val settings = context.applicationContext.getSharedPreferences(SETTINGS, Context.MODE_PRIVATE)
-                    WindCore(client, pairedDirectory, paired.skippedRecords, settings).also {
+                    WindCore(client, pairedDirectory, paired.skippedRecords, settings, context.applicationContext).also {
                         opened = it
+                        client.setClipboardSink(it.systemClipboard)
+                        client.setClipboardEnabled(it.clipboardUi.value.enabled)
                         it.restoreRelay()
                         it.observeNetwork(context.applicationContext)
                     }

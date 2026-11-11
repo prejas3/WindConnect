@@ -234,6 +234,9 @@ async fn run(
     let loaded = store.load()?;
     loaded.pin_all(&trust);
     if let Some(dir) = key_store.path().parent() {
+        if let Err(error) = crate::clipboard::init(&app, dir) {
+            eprintln!("clipboard unavailable: {error}");
+        }
         if let Err(error) = crate::files::init(&app, dir) {
             eprintln!("file sending unavailable: {error}");
         }
@@ -265,6 +268,7 @@ async fn run(
             if let Ok(connection) = incoming {
                 // CCS/1 SEC:actions/1 accepted from pinned phones only; each request re-checks the pin (WN-54).
                 let mut router = Router::new();
+                let clipboard_input = wind_core::clipboard::Clipboard::route(&mut router);
                 let action_streams = router.route_actions(8);
                 if let Ok(Ok(session)) = tokio::time::timeout(
                     std::time::Duration::from_secs(6),
@@ -279,7 +283,11 @@ async fn run(
                         session.0.clone(),
                         action_streams,
                     );
-                    if session_sender.send(session).await.is_err() {
+                    if session_sender
+                        .send((session.0, session.1, clipboard_input))
+                        .await
+                        .is_err()
+                    {
                         break;
                     }
                 }
@@ -387,9 +395,10 @@ async fn run(
                 _ => {},
             },
             incoming = sessions.recv() => {
-                if let Some((session, events)) = incoming {
+                if let Some((session, events, clipboard_input)) = incoming {
                     let generation = indicator.searching();
                             if let Some((previous, _)) = active.take() { previous.connection().close(ErrorCode::GoingAway, b"replaced"); }
+                            crate::clipboard::attach(&app,session.clone(),clipboard_input);
                             snapshot.phone = clean_name(&session.peer().hello.name);
                             snapshot.phase = "connected".into(); snapshot.qr = None;
                             snapshot.message = "Połączono · Wi-Fi".into();
@@ -399,7 +408,7 @@ async fn run(
                 } else { break; }
             },
             _ = async { match &active { Some((session, _)) => { session.closed().await; }, None => std::future::pending().await } } => {
-                active = None; indicator.unavailable(); snapshot.phase = "offline".into(); snapshot.message = "Telefon rozłączony".into();
+                crate::clipboard::detach(&app); active = None; indicator.unavailable(); snapshot.phase = "offline".into(); snapshot.message = "Telefon rozłączony".into();
             },
         }
     }

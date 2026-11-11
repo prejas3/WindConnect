@@ -12,11 +12,14 @@ class WindApplication : Application() {
 
 class ConnectionOwner(private val application: Application) {
     private val gate = Mutex()
-    private var core: WindCore? = null
+    @Volatile private var core: WindCore? = null
+    @Volatile private var focused = false
+    fun clipboardFocus(value: Boolean) { focused = value; core?.clipboardFocus(value) }
     private var leases = 0
 
     suspend fun acquire(): WindCore = gate.withLock {
         val opened = core ?: WindCore.open(application, android.os.Build.MODEL.take(64)).also { core = it }
+        opened.clipboardFocus(focused)
         leases++
         opened
     }

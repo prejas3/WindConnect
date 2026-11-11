@@ -96,6 +96,7 @@ class ConnectionService : Service() {
             else -> "Brak połączenia · ponawianie w tle"
         }
         val open = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val clipboard = PendingIntent.getActivity(this, 3, Intent(this, SendClipboardActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         fun command(action: String, request: Int) = PendingIntent.getService(this, request, Intent(this, ConnectionService::class.java).setAction(action), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         return Notification.Builder(this, CHANNEL)
             .setSmallIcon(R.drawable.ic_connection)
@@ -104,6 +105,7 @@ class ConnectionService : Service() {
             .setVisibility(Notification.VISIBILITY_PRIVATE).setCategory(Notification.CATEGORY_SERVICE)
             .addAction(Notification.Action.Builder(null, "Otwórz urządzenie", open).build())
             .apply { if (!connected) addAction(Notification.Action.Builder(null, "Połącz ponownie", command(RETRY, 1)).build()) }
+            .apply { if (connected) addAction(Notification.Action.Builder(null, "Wyślij schowek", clipboard).apply { if (android.os.Build.VERSION.SDK_INT >= 31) setAuthenticationRequired(true) }.build()) }
             .addAction(Notification.Action.Builder(null, "Zatrzymaj", command(STOP, 2)).build())
             .build()
     }
