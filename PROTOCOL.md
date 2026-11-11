@@ -99,6 +99,10 @@ QUIC v1 (RFC 9000) + TLS 1.3, ALPN "windconnect/1"
   a reszta ogłoszenia zostaje. Zmiana sieci nie usuwa pola.
 - Aktualizacja rozwiązanego ogłoszenia zastępuje jego poprzednie adresy;
   goodbye lub wygaśnięcie rekordów usuwa usługę. Własny odcisk jest pomijany.
+- Ponowne ogłoszenie tej samej nazwy (np. po zmianie sieci) nadawca wysyła
+  nie wcześniej niż 1 s po swoim goodbye, czyli po czasie, przez który odbiorca
+  trzyma goodbye (RFC 6762 §10.1). Odbiorca nie musi wtedy rozróżniać
+  „ratowania” rekordu od nowego urządzenia (WN-104).
 
 ### 2.0.1 Zapasowe odkrywanie IPv4 broadcast (WN-15)
 

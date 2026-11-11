@@ -2,6 +2,10 @@
 //! SEC:TXT fingerprints never grant trust; transport still verifies pinned keys.
 
 use std::net::{SocketAddr, SocketAddrV6};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Mutex,
+};
 use std::time::Duration;
 
 use mdns_sd::{Receiver, ResolvedService, ScopedIp, ServiceDaemon, ServiceEvent, ServiceInfo};
@@ -39,6 +43,8 @@ pub struct Discovery {
     instance: String,
     hex: String,
     port: u16,
+    pairing: Mutex<Option<u16>>,
+    advertised: AtomicBool,
 }
 
 impl Discovery {
@@ -55,6 +61,30 @@ impl Discovery {
         port: u16,
         pairing: Option<u16>,
     ) -> mdns_sd::Result<Self> {
+        Self::start_inner(key, port, pairing, true)
+    }
+
+    /// Browses at once but advertises only on [`advertise`](Self::advertise).
+    /// CCS/1 RULE:a receiver keeps our goodbye for 1 s (RFC 6762 §10.1). mdns-sd
+    /// 0.21.7 caches a goodbye for an instance it never saw and treats an
+    /// announcement inside that second as a TTL refresh: no ServiceFound or
+    /// ServiceResolved, and the record then suppresses answers as a known
+    /// answer. A browser started just before a restart missed the device for
+    /// over 5 s (WN-104). The caller advertises once that second is over.
+    pub fn start_unadvertised(
+        key: &PublicKey,
+        port: u16,
+        pairing: Option<u16>,
+    ) -> mdns_sd::Result<Self> {
+        Self::start_inner(key, port, pairing, false)
+    }
+
+    fn start_inner(
+        key: &PublicKey,
+        port: u16,
+        pairing: Option<u16>,
+        advertise: bool,
+    ) -> mdns_sd::Result<Self> {
         if port == 0 {
             return Err(mdns_sd::Error::Msg("QUIC port must be nonzero".into()));
         }
@@ -66,7 +96,9 @@ impl Discovery {
         let result = (|| {
             let monitor = daemon.monitor()?;
             let events = daemon.browse(SERVICE_TYPE)?;
-            daemon.register(service)?;
+            if advertise {
+                daemon.register(service)?;
+            }
             Ok((events, monitor))
         })();
         match result {
@@ -79,6 +111,8 @@ impl Discovery {
                 instance,
                 hex,
                 port,
+                pairing: Mutex::new(pairing),
+                advertised: AtomicBool::new(advertise),
             }),
             Err(error) => {
                 let _ = daemon.shutdown();
@@ -93,10 +127,34 @@ impl Discovery {
         if pairing == Some(0) {
             return Err(mdns_sd::Error::Msg("pairing port must be nonzero".into()));
         }
+        let mut current = self.pairing.lock().unwrap();
+        *current = pairing;
+        if !self.advertised.load(Ordering::SeqCst) {
+            return Ok(()); // advertise() uses it
+        }
         // Registering the same name again replaces its records (TXT is a
         // unique record set, so peers drop the old value).
         self.daemon
             .register(service_info(&self.instance, &self.hex, self.port, pairing)?)
+    }
+
+    /// Starts advertising (see [`start_unadvertised`](Self::start_unadvertised)); later calls do nothing.
+    pub fn advertise(&self) -> mdns_sd::Result<()> {
+        let pairing = self.pairing.lock().unwrap();
+        if self.advertised.swap(true, Ordering::SeqCst) {
+            return Ok(());
+        }
+        let result = service_info(&self.instance, &self.hex, self.port, *pairing)
+            .and_then(|service| self.daemon.register(service));
+        if result.is_err() {
+            self.advertised.store(false, Ordering::SeqCst);
+        }
+        result
+    }
+
+    /// Whether this daemon advertises, and so sends a goodbye when dropped.
+    pub fn is_advertised(&self) -> bool {
+        self.advertised.load(Ordering::SeqCst)
     }
 
     /// Cancellation safe; ignores malformed records and our own advertisement.
@@ -127,8 +185,11 @@ impl Discovery {
 impl Drop for Discovery {
     fn drop(&mut self) {
         // CCS/1 FLOW:goodbye acknowledged before shutdown | LIMIT:bounded waits
-        if let Ok(done) = self.daemon.unregister(&self.fullname) {
-            let _ = done.recv_timeout(Duration::from_secs(1));
+        // RULE:nothing advertised, no goodbye (WN-104).
+        if self.is_advertised() {
+            if let Ok(done) = self.daemon.unregister(&self.fullname) {
+                let _ = done.recv_timeout(Duration::from_secs(1));
+            }
         }
         if let Ok(done) = self.daemon.shutdown() {
             let _ = done.recv_timeout(Duration::from_secs(1));
