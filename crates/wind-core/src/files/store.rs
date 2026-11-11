@@ -67,6 +67,8 @@ impl Meta {
 
 /// A file being received.
 pub struct Partial {
+    /// Fingerprint of the sending device (its Mark-of-the-Web, WN-96).
+    peer: [u8; 32],
     part: PathBuf,
     state: PathBuf,
     meta: Meta,
@@ -121,6 +123,7 @@ impl Partial {
         let count = (0..chunks).filter(|i| wire::has(&have, *i)).count() as u64;
         Ok((
             Partial {
+                peer: *peer,
                 part,
                 state,
                 meta,
@@ -232,6 +235,9 @@ impl Partial {
             let _ = fs::remove_file(&self.part);
         }
         let _ = fs::remove_file(&self.state);
+        // Mark-of-the-Web (WN-96): best effort, never fails the transfer
+        // (FAT32, exFAT and network shares may have no streams).
+        let _ = mark_of_the_web(&target, &self.peer);
         Ok(target)
     }
 
@@ -240,6 +246,47 @@ impl Partial {
         self.file.write().unwrap_or_else(|e| e.into_inner()).take();
         let _ = fs::remove_file(&self.part);
         let _ = fs::remove_file(&self.state);
+    }
+}
+
+/// Contents of the `Zone.Identifier` stream of a file from `peer`
+/// (PROTOCOL.md §9.1): Internet zone, so SmartScreen and Office Protected
+/// View treat it as downloaded.
+pub fn zone_identifier(peer: &[u8; 32]) -> String {
+    format!(
+        "[ZoneTransfer]
+ZoneId=3
+HostUrl=windconnect:{}
+",
+        hex(peer)
+    )
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Makes `mark_of_the_web` fail as on a volume without streams.
+    static NO_STREAMS: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Writes the NTFS stream `<file>:Zone.Identifier` of a file received from
+/// `peer` (Windows; elsewhere nothing). Its error is the caller's to ignore.
+pub fn mark_of_the_web(file: &Path, peer: &[u8; 32]) -> io::Result<()> {
+    #[cfg(test)]
+    if NO_STREAMS.with(|n| n.get()) {
+        return Err(io::Error::from(io::ErrorKind::Unsupported));
+    }
+    #[cfg(windows)]
+    {
+        let mut stream = file.as_os_str().to_owned();
+        stream.push(":Zone.Identifier");
+        let mut f = File::create(PathBuf::from(stream))?;
+        f.write_all(zone_identifier(peer).as_bytes())?;
+        f.sync_all()
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (file, peer);
+        Ok(())
     }
 }
 
@@ -471,6 +518,66 @@ mod tests {
         assert_eq!(clean(inbox.path(), Duration::from_secs(7 * 24 * 3600)), 1);
         assert!(!dir.join(hex(&[1; 16]) + ".part").exists());
         assert!(dir.join(hex(&[2; 16]) + ".part").exists());
+    }
+
+    #[test]
+    fn zone_identifier_is_internet_zone_with_the_device() {
+        assert_eq!(
+            zone_identifier(&[0xAB; 32]),
+            format!(
+                "[ZoneTransfer]
+ZoneId=3
+HostUrl=windconnect:{}
+",
+                "ab".repeat(32)
+            )
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn received_file_has_zone_identifier_stream() {
+        let (inbox, root) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+        let o = offer(4, 10, None);
+        let (p, _) = Partial::open(root.path(), &[7; 32], &o).unwrap();
+        p.write_chunk(0, 0, b"0123456789").unwrap();
+        let f = p.finish(inbox.path(), &["setup.exe"]).unwrap();
+        assert_eq!(read_all(&f).unwrap(), b"0123456789");
+        let mut stream = f.as_os_str().to_owned();
+        stream.push(":Zone.Identifier");
+        let zone = String::from_utf8(read_all(Path::new(&stream)).unwrap()).unwrap();
+        assert!(
+            zone.starts_with(
+                "[ZoneTransfer]
+ZoneId=3
+"
+            ),
+            "{zone:?}"
+        );
+        assert_eq!(zone, zone_identifier(&[7; 32]));
+        // The stream is not part of the file's data.
+        assert_eq!(fs::metadata(&f).unwrap().len(), 10);
+    }
+
+    #[test]
+    fn transfer_finishes_on_a_volume_without_streams() {
+        let (inbox, root) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+        let (p, _) = Partial::open(root.path(), &[7; 32], &offer(5, 3, None)).unwrap();
+        p.write_chunk(0, 0, b"abc").unwrap();
+        NO_STREAMS.with(|n| n.set(true));
+        let f = p.finish(inbox.path(), &["a.txt"]);
+        NO_STREAMS.with(|n| n.set(false));
+        let f = f.unwrap();
+        assert_eq!(read_all(&f).unwrap(), b"abc");
+        assert!(mark_of_the_web(&f, &[7; 32]).is_ok());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn mark_of_the_web_error_is_returned_not_hidden() {
+        // A missing file: the stream can't be made, the error comes back.
+        let dir = tempfile::tempdir().unwrap();
+        assert!(mark_of_the_web(&dir.path().join("none").join("x"), &[1; 32]).is_err());
     }
 
     #[test]

@@ -1130,6 +1130,24 @@ nadpisuje: przy kolizji nazwy dodaje „ (1)”, „ (2)”… przed rozszerzeni
 rezerwując nazwę atomowo (utworzenie nowego pliku tylko wtedy, gdy go nie
 ma), więc dwa transfery kończące się naraz dostają różne nazwy.
 
+**Znacznik pochodzenia (Windows, WN-96).** Plik od drugiego urządzenia
+może być programem albo dokumentem z makrami, więc odbiorca w Windows po
+przeniesieniu pliku pod nazwę docelową dopisuje mu strumień NTFS
+`<plik>:Zone.Identifier` (Mark-of-the-Web), tak jak przeglądarka:
+
+```
+[ZoneTransfer]
+ZoneId=3
+HostUrl=windconnect:<odcisk nadawcy, 64 znaki hex>
+```
+
+z końcami linii CRLF. `ZoneId=3` (strefa Internet) sprawia, że SmartScreen
+i Widok chroniony pakietu Office ostrzegają przed otwarciem. Zapis jest
+najlepszym staraniem: wolumin bez strumieni (FAT32, exFAT, część udziałów
+sieciowych) albo inny błąd zapisu niczego nie zmienia, transfer kończy się
+`Complete` jak zwykle. Znacznik nie należy do protokołu (nie idzie przez
+sieć); w Androidzie go nie ma.
+
 **Miejsce.** Przed `Accept` odbiorca sprawdza wolne miejsce na brakującą
 część pliku z zapasem (zalecane 64 MiB); za mało to `NO_SPACE`. Nadawca nie
 ponawia takiego transferu sam.
