@@ -51,6 +51,8 @@ function renderPairing(state) {
     context.fillStyle = '#000';
     dark.forEach((value, index) => { if (value) context.fillRect((index % width + 4) * scale, (Math.floor(index / width) + 4) * scale, scale, scale); });
   } else { canvas.width = canvas.height = 0; }
+  // CCS/1 SEC:the payload is not kept; zero its modules once drawn (WN-94). The IPC JSON and GC copies are beyond reach.
+  if (state.qr && Array.isArray(state.qr.dark)) state.qr.dark.fill(false);
 }
 // CCS/1 FLOW:files-state (engine, <=10/s) -> summary + newest rows; files-drag -> drop zone; files-notice -> status line.
 const units = ['B', 'KB', 'MB', 'GB', 'TB'];

@@ -16,10 +16,40 @@ use wind_core::{
     transport::{Endpoint, PinnedKeys},
 };
 
+/// The modules of the pairing QR, which encode the window's one-time secret.
+///
+/// CCS/1 SEC:every copy is wiped on drop (WN-94): the loop's snapshot, the
+/// watch value (send_replace drops the old one), publish's clones and
+/// pairing_snapshot's clone. Closing, refreshing or expiry sets qr = None, so
+/// no app-held copy outlives its window. Beyond reach: the JSON that Tauri
+/// serializes for IPC (emit and command reply) and the WebView's copy (JS
+/// heap, GC); the panel zeroes its array and clears the canvas.
 #[derive(Clone, PartialEq, serde::Serialize)]
 pub struct QrBits {
     pub width: usize,
     pub dark: Vec<bool>,
+}
+impl QrBits {
+    fn wipe(&mut self) {
+        use zeroize::Zeroize;
+        self.dark.zeroize();
+        self.width.zeroize();
+    }
+}
+impl Drop for QrBits {
+    fn drop(&mut self) {
+        self.wipe();
+    }
+}
+/// Overwrites the modules `qrcode` handed over (its `Color` is not Zeroize).
+fn wipe_colors(colors: &mut [qrcode::Color]) {
+    for c in colors.iter_mut() {
+        // SAFETY: `c` is a valid, aligned, exclusive reference; a volatile
+        // write keeps the compiler from dropping a store to memory about to
+        // be freed.
+        unsafe { std::ptr::write_volatile(c, qrcode::Color::Light) };
+    }
+    std::sync::atomic::compiler_fence(std::sync::atomic::Ordering::SeqCst);
 }
 #[derive(Clone, PartialEq, serde::Serialize)]
 pub struct Snapshot {
@@ -151,15 +181,18 @@ fn open_window(
     }
     let offer = listener.open_qr(addresses);
     let link = offer.to_link();
+    // `link` and the offer's secret are Zeroizing (wind-core). The encoder's
+    // own working buffers are dropped inside qrcode, beyond reach.
     let code = qrcode::QrCode::with_error_correction_level(link.as_bytes(), qrcode::EcLevel::M)?;
-    Ok(QrBits {
-        width: code.width(),
-        dark: code
-            .into_colors()
-            .into_iter()
-            .map(|c| c == qrcode::Color::Dark)
-            .collect(),
-    })
+    Ok(qr_bits(code))
+}
+/// The modules of `code`, its module buffer wiped once copied.
+fn qr_bits(code: qrcode::QrCode) -> QrBits {
+    let width = code.width();
+    let mut colors = code.into_colors();
+    let dark = colors.iter().map(|c| *c == qrcode::Color::Dark).collect();
+    wipe_colors(&mut colors);
+    QrBits { width, dark }
 }
 
 pub fn start(app: tauri::AppHandle, changes: Arc<NetworkChanges>) {
@@ -371,6 +404,8 @@ async fn run(
         }
     }
     listener.close_window();
+    // The last published QR would stay in the watch until the app exits.
+    state.send_modify(|s| s.qr = None);
     discovery.shutdown().await;
     endpoint.close();
     endpoint.wait_idle().await;
@@ -416,5 +451,74 @@ pub fn dev_pairing_address(state: tauri::State<'_, Runtime>) -> Result<String, S
     {
         let _ = state;
         Err("debug only".into())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn code() -> qrcode::QrCode {
+        qrcode::QrCode::with_error_correction_level(
+            b"windconnect://pair?v=1&s=AAAA",
+            qrcode::EcLevel::M,
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn qr_bits_keep_every_module() {
+        let reference = code();
+        let width = reference.width();
+        let bits = qr_bits(code());
+        assert_eq!(bits.width, width);
+        assert_eq!(bits.dark.len(), width * width);
+        for y in 0..width {
+            for x in 0..width {
+                assert_eq!(
+                    bits.dark[y * width + x],
+                    reference[(x, y)] == qrcode::Color::Dark
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn wipe_clears_the_modules() {
+        let mut bits = qr_bits(code());
+        assert!(bits.dark.iter().any(|d| *d));
+        let len = bits.dark.len();
+        bits.wipe();
+        assert_eq!(bits.width, 0);
+        assert!(bits.dark.is_empty());
+        // Vec::zeroize also overwrote the spare capacity; the buffer is kept.
+        assert!(bits.dark.capacity() >= len);
+    }
+
+    #[test]
+    fn wipe_colors_overwrites_every_module() {
+        let mut colors = code().into_colors();
+        assert!(colors.contains(&qrcode::Color::Dark));
+        wipe_colors(&mut colors);
+        assert!(colors.iter().all(|c| *c == qrcode::Color::Light));
+    }
+
+    #[test]
+    fn closing_the_window_clears_the_published_qr() {
+        // The watch keeps one value; replacing it drops (and wipes) the old.
+        let (state, _) = watch::channel(Snapshot {
+            phase: "waiting".into(),
+            qr: Some(qr_bits(code())),
+            ..Default::default()
+        });
+        let old = state.send_replace(Snapshot {
+            phase: "offline".into(),
+            ..Default::default()
+        });
+        assert!(old.qr.is_some());
+        assert!(state.borrow().qr.is_none());
+        state.send_modify(|s| s.qr = Some(qr_bits(code())));
+        state.send_modify(|s| s.qr = None);
+        assert!(state.borrow().qr.is_none());
     }
 }
