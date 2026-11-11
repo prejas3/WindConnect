@@ -83,9 +83,8 @@ async fn sas_window_advertises_the_pairing_port() {
     let pairing = listener.local_addr().unwrap().port();
 
     // No wait before browsing (WN-89): NetworkDiscovery no longer restarts
-    // mDNS for the initial Windows network report.
-    // CCS/1 LIMIT:after a network change the restarted daemon is probing; let it settle.
-    let settle = || tokio::time::sleep(Duration::from_secs(3));
+    // mDNS for the initial Windows network report, and none after a network
+    // change either (WN-104: the restart re-advertises after its goodbye).
     let pc_fingerprint = *pc.fingerprint().as_bytes();
     async fn seen(browser: &Discovery, pc: [u8; 32], wanted: Option<u16>, step: &str) {
         tokio::time::timeout(Duration::from_secs(5), async {
@@ -110,7 +109,6 @@ async fn sas_window_advertises_the_pairing_port() {
     // Unchanged records raise no new event; a browser started after the
     // network change must still learn the port.
     changes.notify();
-    settle().await;
     let tablet = DeviceIdentity::generate().unwrap();
     let late = Discovery::start(&tablet.public_key(), 47822).unwrap();
     seen(
@@ -121,6 +119,8 @@ async fn sas_window_advertises_the_pairing_port() {
     )
     .await;
 
+    // ~1 s after the restart advertised again: the TXT change waits for its
+    // probe to settle (WN-104, PROBE_SETTLE) and still reaches both browsers.
     listener.close_window();
     seen(&browser, pc_fingerprint, None, "closed").await;
     seen(&late, pc_fingerprint, None, "closed, late browser").await;
@@ -184,6 +184,84 @@ async fn browser_started_right_after_network_discovery_sees_the_device() {
         .await;
         println!(
             "run {run}: {} after {:?}, generation {}, removed {removed}",
+            if found.is_ok() { "seen" } else { "NOT seen" },
+            started.elapsed(),
+            changes.generation(),
+        );
+        if found.is_err() {
+            failures.push(run);
+        }
+        drop(browser);
+        discovery.shutdown().await;
+        endpoint.close();
+        endpoint.wait_idle().await;
+    }
+    assert!(failures.is_empty(), "runs without the device: {failures:?}");
+}
+
+/// WN-104: a browser started right after a network change (`changes.notify()`)
+/// sees the device within 5 s, ten runs in a row. Runs alternate between one
+/// notification and a second one 300 or 800 ms later, while the first restart is
+/// still under way (two monitors on one `NetworkChanges`, or a network settling
+/// in steps); `WN104_SECOND_NOTIFY_MS` fixes the delay for every run.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "requires LAN multicast (UDP 5353) and firewall permission"]
+async fn browser_started_right_after_a_network_change_sees_the_device() {
+    use std::sync::Arc;
+    use wind_core::network::{DiscoveryOptions, NetworkChanges, NetworkDiscovery};
+    use wind_core::transport::{Endpoint, PinnedKeys};
+
+    let fixed: Option<u64> = std::env::var("WN104_SECOND_NOTIFY_MS")
+        .ok()
+        .and_then(|value| value.parse().ok());
+    let mut failures = Vec::new();
+    for run in 0..10 {
+        let second = fixed.or([None, Some(300), Some(800)][run % 3]);
+        let pc = DeviceIdentity::generate().unwrap();
+        let endpoint = Endpoint::bind(
+            "0.0.0.0:0".parse().unwrap(),
+            &pc,
+            Arc::new(PinnedKeys::new()),
+        )
+        .unwrap();
+        let changes = Arc::new(NetworkChanges::default());
+        let mut discovery = NetworkDiscovery::start_with_options(
+            pc.public_key(),
+            endpoint.clone(),
+            changes.clone(),
+            DiscoveryOptions {
+                mdns: true,
+                broadcast: None,
+                paired: None,
+            },
+        )
+        .unwrap();
+        // The device has announced itself; then the network changes.
+        tokio::time::sleep(Duration::from_secs(2)).await;
+        changes.notify();
+        let started = Instant::now();
+        let phone = DeviceIdentity::generate().unwrap();
+        let browser = Discovery::start(&phone.public_key(), 47821).unwrap();
+        if let Some(ms) = second {
+            let changes = changes.clone();
+            tokio::spawn(async move {
+                tokio::time::sleep(Duration::from_millis(ms)).await;
+                changes.notify();
+            });
+        }
+        let pc_fingerprint = *pc.fingerprint().as_bytes();
+        let found = tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                if let DiscoveryEvent::Resolved(peer) = browser.next().await.unwrap() {
+                    if peer.fingerprint == pc_fingerprint {
+                        break;
+                    }
+                }
+            }
+        })
+        .await;
+        println!(
+            "run {run}: {} after {:?}, generation {}, second notification {second:?} ms",
             if found.is_ok() { "seen" } else { "NOT seen" },
             started.elapsed(),
             changes.generation(),

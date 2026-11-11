@@ -66,6 +66,18 @@ impl Default for DiscoveryOptions {
     }
 }
 
+/// CCS/1 RULE:our name is advertised again no sooner than this after our last
+/// goodbye for it; mdns-sd probing adds ~0.8 s, so the announcement lands well
+/// after the second a receiver keeps the goodbye (WN-104, `Discovery::start_unadvertised`).
+const GOODBYE_HOLD: Duration = Duration::from_secs(1);
+
+/// CCS/1 RULE:a TXT change (pairing port) waits until this long after our last
+/// registration. mdns-sd 0.21.7 announces a service whose earlier probe just
+/// finished without the TXT still being probed, marks the interface announced,
+/// and so never sends that TXT there (`probing_handler`): a SAS window closed
+/// ~1 s after a restart stayed advertised as open (WN-104).
+const PROBE_SETTLE: Duration = Duration::from_secs(2);
+
 /// Most fingerprints the broadcast cache holds (§2.0.1).
 pub const BROADCAST_CACHE_LIMIT: usize = 128;
 
@@ -247,6 +259,11 @@ impl NetworkDiscovery {
                 .as_ref()
                 .map(|config| config.interval)
                 .unwrap_or(Duration::from_secs(2));
+            // CCS/1 FLOW:network change -> new daemon browses now; advertises at last goodbye + GOODBYE_HOLD.
+            let mut last_goodbye: Option<Instant> = None;
+            let mut advertise_at: Option<Instant> = None;
+            let mut registered_at: Option<Instant> = discovery.as_ref().map(|_| Instant::now());
+            let mut pairing_due: Option<Instant> = None;
             let mut tick = tokio::time::interval(period.max(Duration::from_millis(10)));
             tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
             loop {
@@ -259,7 +276,7 @@ impl NetworkDiscovery {
                         replied.clear();
                         sender.send_replace(DiscoverySnapshot { generation, ..Default::default() });
                         let result = if options.mdns { endpoint.local_addr().map_err(std::io::Error::other)
-                            .and_then(|addr| Discovery::start_with_pairing(&key, addr.port(), *pairing_changes.borrow()).map_err(std::io::Error::other))
+                            .and_then(|addr| Discovery::start_unadvertised(&key, addr.port(), *pairing_changes.borrow()).map_err(std::io::Error::other))
                             } else { Err(std::io::Error::other("mDNS disabled")) };
                         if let Some(config) = &options.broadcast {
                             if broadcast.is_none() { broadcast = BroadcastDiscovery::bind(*key.fingerprint().as_bytes(), config.clone()).ok(); }
@@ -271,17 +288,53 @@ impl NetworkDiscovery {
                             Ok(new) => {
                                 // CCS/1 RULE:new browse is sent before waiting for old goodbye cleanup.
                                 let old = discovery.replace(new);
+                                // A daemon replaced before it advertised retracts nothing: a burst of changes sends one goodbye.
+                                let goodbye = old.as_ref().is_some_and(Discovery::is_advertised);
                                 let _ = tokio::task::spawn_blocking(move || drop(old)).await;
+                                if goodbye { last_goodbye = Some(Instant::now()); }
+                                advertise_at = Some(last_goodbye.map_or_else(Instant::now, |at| at + GOODBYE_HOLD));
+                                // The new daemon starts with the current pairing port; advertise() registers it.
+                                registered_at = None;
+                                pairing_due = None;
                             }
                             Err(error) if options.mdns => { sender.send_modify(|state| state.error = Some(error.to_string())); }
                             _ => {},
+                        }
+                    }
+                    _ = async { match advertise_at {
+                        Some(at) => tokio::time::sleep_until(at.into()).await,
+                        None => std::future::pending().await,
+                    }} => {
+                        advertise_at = None;
+                        if let Some(discovery) = &discovery {
+                            match discovery.advertise() {
+                                Ok(()) => registered_at = Some(Instant::now()),
+                                Err(error) => sender.send_modify(|state| state.error = Some(error.to_string())),
+                            }
                         }
                     }
                     changed = pairing_changes.changed() => {
                         if changed.is_err() { break; }
                         let port = *pairing_changes.borrow_and_update();
                         if let Some(discovery) = &discovery {
-                            if let Err(error) = discovery.set_pairing_port(port) { sender.send_modify(|state| state.error = Some(error.to_string())); }
+                            match registered_at {
+                                Some(at) if discovery.is_advertised() && at.elapsed() < PROBE_SETTLE => pairing_due = Some(at + PROBE_SETTLE),
+                                _ => {
+                                    if let Err(error) = discovery.set_pairing_port(port) { sender.send_modify(|state| state.error = Some(error.to_string())); }
+                                    if discovery.is_advertised() { registered_at = Some(Instant::now()); }
+                                }
+                            }
+                        }
+                    }
+                    _ = async { match pairing_due {
+                        Some(at) => tokio::time::sleep_until(at.into()).await,
+                        None => std::future::pending().await,
+                    }} => {
+                        pairing_due = None;
+                        if let Some(discovery) = &discovery {
+                            // The latest value: several changes inside the window become one registration.
+                            if let Err(error) = discovery.set_pairing_port(*pairing_changes.borrow()) { sender.send_modify(|state| state.error = Some(error.to_string())); }
+                            registered_at = Some(Instant::now());
                         }
                     }
                     event = async { match &discovery {

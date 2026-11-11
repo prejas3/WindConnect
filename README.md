@@ -28,6 +28,13 @@ Na Windows właściciel automatycznie rejestruje `NotifyNetworkConnectivityHintC
 i wyrejestrowuje callback przy zamykaniu. Rejestruje go bez początkowego
 powiadomienia (WN-89): odkrywanie startuje już po rejestracji, a restart mDNS
 zaraz po starcie ukrywał urządzenie przed przeglądarką uruchomioną w tej chwili.
+Po prawdziwej zmianie sieci nowy demon przegląda od razu, a ogłasza się dopiero
+1 s po goodbye poprzedniego (WN-104): mdns-sd 0.21.7 traktuje ogłoszenie w
+sekundzie po goodbye jako odświeżenie i nie zgłasza urządzenia przeglądarce,
+która go wcześniej nie znała. Seria zmian daje jedno goodbye i jedno ogłoszenie;
+nowa przeglądarka widzi urządzenie po ok. 1,8 s. Zmiana TXT `pair` czeka do 2 s
+od ostatniej rejestracji, bo wcześniejsza nie dochodziła na część interfejsów.
+Test ręczny: `cargo test --locked -p wind-core --test discovery -- --ignored --test-threads=1`.
 `windctl discover` oraz
 `serve --advertise` korzystają z tego mechanizmu. Szkielet Tauri utrzymuje
 rejestrację przez życie aplikacji i udostępnia diagnostyczne `network_generation`;
