@@ -25,7 +25,10 @@ Budowanie: `cargo build --locked -p windctl`.
 `wind_core::network::NetworkChanges` rozsyła sygnały zmiany sieci;
 `NetworkDiscovery` natychmiast odtwarza odkrywanie na aktualnych interfejsach.
 Na Windows właściciel automatycznie rejestruje `NotifyNetworkConnectivityHintChange`
-i wyrejestrowuje callback przy zamykaniu. `windctl discover` oraz
+i wyrejestrowuje callback przy zamykaniu. Rejestruje go bez początkowego
+powiadomienia (WN-89): odkrywanie startuje już po rejestracji, a restart mDNS
+zaraz po starcie ukrywał urządzenie przed przeglądarką uruchomioną w tej chwili.
+`windctl discover` oraz
 `serve --advertise` korzystają z tego mechanizmu. Szkielet Tauri utrzymuje
 rejestrację przez życie aplikacji i udostępnia diagnostyczne `network_generation`;
 uruchamianie sesji desktopu należy do dalszej integracji aplikacji.
