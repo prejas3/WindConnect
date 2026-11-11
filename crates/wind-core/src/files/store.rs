@@ -67,6 +67,8 @@ impl Meta {
 
 /// A file being received.
 pub struct Partial {
+    /// Fingerprint of the sending device (its Mark-of-the-Web, WN-96).
+    peer: [u8; 32],
     part: PathBuf,
     state: PathBuf,
     meta: Meta,
@@ -121,6 +123,7 @@ impl Partial {
         let count = (0..chunks).filter(|i| wire::has(&have, *i)).count() as u64;
         Ok((
             Partial {
+                peer: *peer,
                 part,
                 state,
                 meta,
@@ -219,6 +222,11 @@ impl Partial {
         drop(file);
         let (target, claimed) = path::claim(inbox, parts)?;
         drop(claimed);
+        // Mark-of-the-Web (WN-96) before the file gets its name, so it is
+        // never in the inbox unmarked (an NTFS rename keeps the streams).
+        // Best effort, never fails the transfer: FAT32, exFAT and network
+        // shares may have no streams.
+        let _ = mark_of_the_web(&self.part, &self.peer);
         // Replaces only the empty file just claimed (create_new), never
         // anything else.
         if let Err(e) = fs::rename(&self.part, &target) {
@@ -230,6 +238,8 @@ impl Partial {
                 return Err(e);
             }
             let _ = fs::remove_file(&self.part);
+            // The copy may not have carried the stream over.
+            let _ = mark_of_the_web(&target, &self.peer);
         }
         let _ = fs::remove_file(&self.state);
         Ok(target)
@@ -240,6 +250,46 @@ impl Partial {
         self.file.write().unwrap_or_else(|e| e.into_inner()).take();
         let _ = fs::remove_file(&self.part);
         let _ = fs::remove_file(&self.state);
+    }
+}
+
+/// Contents of the `Zone.Identifier` stream of a file from `peer`
+/// (PROTOCOL.md §9.1): Internet zone, so SmartScreen and Office Protected
+/// View treat it as downloaded.
+pub fn zone_identifier(peer: &[u8; 32]) -> String {
+    // Explicit escapes: the bytes must not depend on the checkout's line
+    // endings (.gitattributes eol=lf).
+    format!(
+        "[ZoneTransfer]\r\nZoneId=3\r\nHostUrl=windconnect:{}\r\n",
+        hex(peer)
+    )
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Makes `mark_of_the_web` fail as on a volume without streams.
+    static NO_STREAMS: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Writes the NTFS stream `<file>:Zone.Identifier` of a file received from
+/// `peer` (Windows; elsewhere nothing). Its error is the caller's to ignore.
+pub fn mark_of_the_web(file: &Path, peer: &[u8; 32]) -> io::Result<()> {
+    #[cfg(test)]
+    if NO_STREAMS.with(|n| n.get()) {
+        return Err(io::Error::from(io::ErrorKind::Unsupported));
+    }
+    #[cfg(windows)]
+    {
+        let mut stream = file.as_os_str().to_owned();
+        stream.push(":Zone.Identifier");
+        let mut f = File::create(PathBuf::from(stream))?;
+        f.write_all(zone_identifier(peer).as_bytes())?;
+        f.sync_all()
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (file, peer);
+        Ok(())
     }
 }
 
@@ -471,6 +521,61 @@ mod tests {
         assert_eq!(clean(inbox.path(), Duration::from_secs(7 * 24 * 3600)), 1);
         assert!(!dir.join(hex(&[1; 16]) + ".part").exists());
         assert!(dir.join(hex(&[2; 16]) + ".part").exists());
+    }
+
+    #[test]
+    fn zone_identifier_is_internet_zone_with_the_device() {
+        let mut want = b"[ZoneTransfer]\x0d\x0aZoneId=3\x0d\x0aHostUrl=windconnect:".to_vec();
+        want.extend_from_slice("ab".repeat(32).as_bytes());
+        want.extend_from_slice(b"\x0d\x0a");
+        assert_eq!(zone_identifier(&[0xAB; 32]).as_bytes(), want);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn received_file_has_zone_identifier_stream() {
+        let (inbox, root) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+        let o = offer(4, 10, None);
+        let (p, _) = Partial::open(root.path(), &[7; 32], &o).unwrap();
+        p.write_chunk(0, 0, b"0123456789").unwrap();
+        let f = p.finish(inbox.path(), &["setup.exe"]).unwrap();
+        assert_eq!(read_all(&f).unwrap(), b"0123456789");
+        let mut stream = f.as_os_str().to_owned();
+        stream.push(":Zone.Identifier");
+        let zone = read_all(Path::new(&stream)).unwrap();
+        let mut want = b"[ZoneTransfer]\x0d\x0aZoneId=3\x0d\x0aHostUrl=windconnect:".to_vec();
+        want.extend_from_slice("07".repeat(32).as_bytes());
+        want.extend_from_slice(b"\x0d\x0a");
+        assert_eq!(zone, want, "{:?}", String::from_utf8_lossy(&zone));
+        // Nothing left behind in the partials.
+        assert!(!root
+            .path()
+            .join(hex(&[7; 32]))
+            .join(hex(&[4; 16]) + ".part")
+            .exists());
+        // The stream is not part of the file's data.
+        assert_eq!(fs::metadata(&f).unwrap().len(), 10);
+    }
+
+    #[test]
+    fn transfer_finishes_on_a_volume_without_streams() {
+        let (inbox, root) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+        let (p, _) = Partial::open(root.path(), &[7; 32], &offer(5, 3, None)).unwrap();
+        p.write_chunk(0, 0, b"abc").unwrap();
+        NO_STREAMS.with(|n| n.set(true));
+        let f = p.finish(inbox.path(), &["a.txt"]);
+        NO_STREAMS.with(|n| n.set(false));
+        let f = f.unwrap();
+        assert_eq!(read_all(&f).unwrap(), b"abc");
+        assert!(mark_of_the_web(&f, &[7; 32]).is_ok());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn mark_of_the_web_error_is_returned_not_hidden() {
+        // A missing file: the stream can't be made, the error comes back.
+        let dir = tempfile::tempdir().unwrap();
+        assert!(mark_of_the_web(&dir.path().join("none").join("x"), &[1; 32]).is_err());
     }
 
     #[test]
