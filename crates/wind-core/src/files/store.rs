@@ -222,6 +222,11 @@ impl Partial {
         drop(file);
         let (target, claimed) = path::claim(inbox, parts)?;
         drop(claimed);
+        // Mark-of-the-Web (WN-96) before the file gets its name, so it is
+        // never in the inbox unmarked (an NTFS rename keeps the streams).
+        // Best effort, never fails the transfer: FAT32, exFAT and network
+        // shares may have no streams.
+        let _ = mark_of_the_web(&self.part, &self.peer);
         // Replaces only the empty file just claimed (create_new), never
         // anything else.
         if let Err(e) = fs::rename(&self.part, &target) {
@@ -233,11 +238,10 @@ impl Partial {
                 return Err(e);
             }
             let _ = fs::remove_file(&self.part);
+            // The copy may not have carried the stream over.
+            let _ = mark_of_the_web(&target, &self.peer);
         }
         let _ = fs::remove_file(&self.state);
-        // Mark-of-the-Web (WN-96): best effort, never fails the transfer
-        // (FAT32, exFAT and network shares may have no streams).
-        let _ = mark_of_the_web(&target, &self.peer);
         Ok(target)
     }
 
@@ -253,11 +257,10 @@ impl Partial {
 /// (PROTOCOL.md §9.1): Internet zone, so SmartScreen and Office Protected
 /// View treat it as downloaded.
 pub fn zone_identifier(peer: &[u8; 32]) -> String {
+    // Explicit escapes: the bytes must not depend on the checkout's line
+    // endings (.gitattributes eol=lf).
     format!(
-        "[ZoneTransfer]
-ZoneId=3
-HostUrl=windconnect:{}
-",
+        "[ZoneTransfer]\r\nZoneId=3\r\nHostUrl=windconnect:{}\r\n",
         hex(peer)
     )
 }
@@ -522,16 +525,10 @@ mod tests {
 
     #[test]
     fn zone_identifier_is_internet_zone_with_the_device() {
-        assert_eq!(
-            zone_identifier(&[0xAB; 32]),
-            format!(
-                "[ZoneTransfer]
-ZoneId=3
-HostUrl=windconnect:{}
-",
-                "ab".repeat(32)
-            )
-        );
+        let mut want = b"[ZoneTransfer]\x0d\x0aZoneId=3\x0d\x0aHostUrl=windconnect:".to_vec();
+        want.extend_from_slice("ab".repeat(32).as_bytes());
+        want.extend_from_slice(b"\x0d\x0a");
+        assert_eq!(zone_identifier(&[0xAB; 32]).as_bytes(), want);
     }
 
     #[cfg(windows)]
@@ -545,16 +542,17 @@ HostUrl=windconnect:{}
         assert_eq!(read_all(&f).unwrap(), b"0123456789");
         let mut stream = f.as_os_str().to_owned();
         stream.push(":Zone.Identifier");
-        let zone = String::from_utf8(read_all(Path::new(&stream)).unwrap()).unwrap();
-        assert!(
-            zone.starts_with(
-                "[ZoneTransfer]
-ZoneId=3
-"
-            ),
-            "{zone:?}"
-        );
-        assert_eq!(zone, zone_identifier(&[7; 32]));
+        let zone = read_all(Path::new(&stream)).unwrap();
+        let mut want = b"[ZoneTransfer]\x0d\x0aZoneId=3\x0d\x0aHostUrl=windconnect:".to_vec();
+        want.extend_from_slice("07".repeat(32).as_bytes());
+        want.extend_from_slice(b"\x0d\x0a");
+        assert_eq!(zone, want, "{:?}", String::from_utf8_lossy(&zone));
+        // Nothing left behind in the partials.
+        assert!(!root
+            .path()
+            .join(hex(&[7; 32]))
+            .join(hex(&[4; 16]) + ".part")
+            .exists());
         // The stream is not part of the file's data.
         assert_eq!(fs::metadata(&f).unwrap().len(), 10);
     }

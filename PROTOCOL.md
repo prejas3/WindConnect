@@ -1131,9 +1131,11 @@ rezerwując nazwę atomowo (utworzenie nowego pliku tylko wtedy, gdy go nie
 ma), więc dwa transfery kończące się naraz dostają różne nazwy.
 
 **Znacznik pochodzenia (Windows, WN-96).** Plik od drugiego urządzenia
-może być programem albo dokumentem z makrami, więc odbiorca w Windows po
-przeniesieniu pliku pod nazwę docelową dopisuje mu strumień NTFS
-`<plik>:Zone.Identifier` (Mark-of-the-Web), tak jak przeglądarka:
+może być programem albo dokumentem z makrami, więc odbiorca w Windows
+dopisuje mu strumień NTFS `<plik>:Zone.Identifier` (Mark-of-the-Web), tak
+jak przeglądarka. Robi to przed nadaniem nazwy docelowej (zmiana nazwy w
+NTFS zachowuje strumienie), więc plik nigdy nie leży w folderze docelowym
+bez znacznika; po kopiowaniu z innego woluminu dopisuje go jeszcze raz:
 
 ```
 [ZoneTransfer]
