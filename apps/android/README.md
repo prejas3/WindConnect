@@ -215,7 +215,7 @@ potwierdza x86_64 i Keystore programowy. arm64-v8a jest kompilowane do AAR/APK.
 
 Właściciel `WindCore` rejestruje `ConnectivityManager.NetworkCallback` dla
 sieci niewymagających ograniczonych uprawnień, również Wi-Fi bez Internetu.
-`onAvailable`, `onLost` i zmiany `LinkProperties` trafiają do kanału
+`onLost` i zmiany `LinkProperties` trafiają do kanału
 `CONFLATED`; callback nie wykonuje operacji sieciowych. Obsługa na IO wywołuje
 zawieszalne `CoreClient.networkChanged()` w kontekście Tokio: zmienia gniazdo
 QUIC, sygnalizuje nową generację i budzi bieżącą próbę połączenia.
@@ -225,6 +225,32 @@ odciskami/adresami i ewentualnym błędem. Każda generacja usuwa stary widok
 adresów i tworzy nowy daemon mDNS z aktualnymi interfejsami i portem endpointu,
 bez czekania na okresowy timer. Brak sieci lub błąd mDNS pozostaje widoczny
 w stanie; kolejna zmiana sieci ponawia odkrywanie.
+
+Zmiana to różnica interfejsu albo adresów sieci względem tego, czego używa
+odkrywanie (WN-103, `NetworkChangeFilter`). Android zaraz po rejestracji
+callbacku powtarza sieci, które już ma (`onAvailable`, `onLinkPropertiesChanged`);
+wcześniej restartowało to mDNS ok. 1 s po starcie, w trakcie sondowania, i
+przeglądarka uruchomiona od razu nie widziała telefonu w 5 s w 8 z 10
+przebiegów. Obserwator czyta stan sieci przed startem odkrywania, więc zmiana
+między odczytem a powtórką nadal się liczy. `onAvailable` nie decyduje (od API
+26 zawsze idzie po nim `onLinkPropertiesChanged`). Sprawdzenie:
+`NetworkChangeFilterTest` (`./gradlew :wind-core:testDebugUnitTest`) i na
+emulatorze lub telefonie z połączonym Wi-Fi (NsdManager nie robi mDNS na
+komórkowej):
+
+```powershell
+adb shell am instrument -w -r -e class io.github.prejas3.windconnect.MdnsStartupTest $runner
+```
+
+`a_browserSeesPhoneRightAfterStart` 10 razy otwiera `WindCore` i od razu
+przegląda `_windconnect._udp` systemowym NsdManager (`-e runs N`); wymaga
+znalezienia w 5 s i generacji 0 po 3 s. `b_networkChangeStillRestartsDiscovery`
+wyłącza i włącza Wi-Fi, wymaga nowej generacji po obu zmianach i czeka na
+powrót Wi-Fi. LIMIT: po włączeniu Wi-Fi sieć dochodzi do siebie krokami
+(restarty co ok. 0,6 s), więc telefon wraca w przeglądarce różnie (5,5 s – ponad
+20 s), tak samo przed WN-103; test to raportuje (`seenAfterWifiOnMs`). Emulator
+po kilku przełączeniach Wi-Fi bywa bez połączenia; test zgłasza to jako
+warunek wstępny, nie regresję.
 
 Jeśli poprzednia próba wskazanego ręcznie peera się nie powiodła albo sesja
 już się zamknęła, zdarzenie sieci uruchamia nową próbę. Trwająca próba jest

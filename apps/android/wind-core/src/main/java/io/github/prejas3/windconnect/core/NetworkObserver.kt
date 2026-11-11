@@ -21,11 +21,28 @@ internal class NetworkObserver(context: Context) : AutoCloseable {
         override fun release() = lock.release()
     }
     val events = Channel<Unit>(Channel.CONFLATED)
+    // CCS/1 RULE:create before discovery starts; the baseline is read before registering (WN-103).
+    private val changes = NetworkChangeFilter(current())
     private val callback = object : ConnectivityManager.NetworkCallback() {
-        override fun onAvailable(network: Network) { events.trySend(Unit) }
-        override fun onLost(network: Network) { events.trySend(Unit) }
-        override fun onLinkPropertiesChanged(network: Network, properties: LinkProperties) { events.trySend(Unit) }
+        // From API 26 onAvailable is always followed by onLinkPropertiesChanged, which decides.
+        override fun onLost(network: Network) { if (changes.lost(network)) events.trySend(Unit) }
+        override fun onLinkPropertiesChanged(network: Network, properties: LinkProperties) {
+            if (changes.linkChanged(network, summary(properties))) events.trySend(Unit)
+        }
     }
+
+    /** The networks the callback below would report now (same capabilities as its request). */
+    @Suppress("DEPRECATION") // allNetworks: the one synchronous list; the callback replays it later.
+    private fun current(): Map<Network, String> = connectivity.allNetworks.mapNotNull { network ->
+        val capabilities = connectivity.getNetworkCapabilities(network) ?: return@mapNotNull null
+        val properties = connectivity.getLinkProperties(network) ?: return@mapNotNull null
+        if (!capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_RESTRICTED) ||
+            !capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_TRUSTED)) return@mapNotNull null
+        network to summary(properties)
+    }.toMap()
+
+    private fun summary(properties: LinkProperties) =
+        NetworkChangeFilter.summary(properties.interfaceName, properties.linkAddresses.map { it.toString() })
 
     init {
         try {

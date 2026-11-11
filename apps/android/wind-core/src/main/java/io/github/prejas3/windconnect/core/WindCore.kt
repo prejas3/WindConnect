@@ -162,9 +162,11 @@ class WindCore private constructor(
     }
 
     private suspend fun observeNetwork(context: Context) {
-        client.startDiscovery()
+        // CCS/1 RULE:observer first: its baseline predates discovery, so the replay of the current
+        // networks restarts nothing and a change in between still does (WN-103). shutdown() closes it.
         val observer = NetworkObserver(context)
         this.observer = observer
+        client.startDiscovery()
         multicast = MulticastPolicy(observer.multicast)
         refreshDiscovery()
         scope.launch {
