@@ -13,7 +13,61 @@ document.addEventListener('keydown', event => { if (event.key === 'Escape') { ev
 document.addEventListener('contextmenu', event => event.preventDefault());
 window.addEventListener('storage', theme); system.addEventListener('change', theme);
 theme();
+// CCS/1 FLOW:device list (WC-28) -> device_action(rename|unpair|disconnect, key) -> the pairing actor; one row edits at a time.
+let editing = null;
+function deviceRow(row) {
+  const item = document.createElement('li');
+  const head = document.createElement('div'); head.className = 'device-head';
+  const text = document.createElement('div');
+  const name = document.createElement('span'); name.className = 'name'; name.textContent = row.name; name.title = row.name;
+  const detail = document.createElement('small');
+  const when = new Date(row.paired_at * 1000).toLocaleDateString('pl-PL');
+  detail.textContent = row.owed ? `Usunięto · telefon dowie się przy następnym połączeniu` : `${row.connected ? 'Połączony' : 'Niepołączony'} · sparowano ${when} · ${row.fingerprint}`;
+  detail.className = row.owed ? 'owed' : row.connected ? 'connected' : '';
+  text.append(name, detail);
+  const actions = document.createElement('div'); actions.className = 'device-actions';
+  const button = (label, kind, onClick, aria) => { const b = document.createElement('button'); b.className = `button ${kind} small`; b.textContent = label; b.setAttribute('aria-label', `${aria || label}: ${row.name}`); b.addEventListener('click', onClick); return b; };
+  const send = (action, extra = {}) => invoke?.('device_action', { action, key: row.key, ...extra }).catch(error);
+  if (!row.owed) {
+    actions.append(button('Zmień nazwę', 'quiet', () => { editing = { key: row.key, mode: 'rename' }; renderDevices(lastDevices); }));
+    if (row.connected) actions.append(button('Rozłącz', 'quiet', () => send('disconnect')));
+    actions.append(button('Usuń', 'quiet', () => { editing = { key: row.key, mode: 'unpair' }; renderDevices(lastDevices); }, 'Usuń parowanie'));
+  }
+  head.append(text, actions);
+  item.append(head);
+  if (editing?.key === row.key && editing.mode === 'rename') {
+    const label = document.createElement('label'); label.className = 'field';
+    const caption = document.createElement('span'); caption.textContent = 'Nazwa widoczna na tym komputerze';
+    const input = document.createElement('input'); input.value = editing.value ?? row.name; input.maxLength = 64;
+    input.addEventListener('input', () => { editing.value = input.value; input.removeAttribute('aria-invalid'); });
+    const buttons = document.createElement('div'); buttons.className = 'button-row';
+    const save = () => { const value = input.value.trim(); if (!value) { input.setAttribute('aria-invalid', 'true'); return; } editing = null; send('rename', { name: value }); };
+    input.addEventListener('keydown', e => { if (e.key === 'Enter') save(); if (e.key === 'Escape') { e.stopPropagation(); editing = null; renderDevices(lastDevices); } });
+    buttons.append(button('Zapisz', 'primary', save), button('Anuluj', 'quiet', () => { editing = null; renderDevices(lastDevices); }));
+    label.append(caption, input, buttons);
+    item.append(label);
+    queueMicrotask(() => input.focus());
+  } else if (editing?.key === row.key && editing.mode === 'unpair') {
+    const confirm = document.createElement('div'); confirm.className = 'confirm'; confirm.setAttribute('role', 'group');
+    const question = document.createElement('p');
+    question.textContent = `Usunąć parowanie z: ${row.name}? Telefon też je usunie${row.connected ? '' : ' przy następnym połączeniu'}. Ponowne połączenie wymaga nowego parowania.`;
+    const buttons = document.createElement('div'); buttons.className = 'button-row';
+    buttons.append(button('Usuń parowanie', 'danger', () => { editing = null; send('unpair'); }), button('Anuluj', 'quiet', () => { editing = null; renderDevices(lastDevices); }));
+    confirm.append(question, buttons);
+    item.append(confirm);
+  }
+  return item;
+}
+let lastDevices = [];
+function renderDevices(rows) {
+  lastDevices = rows || [];
+  if (editing && !lastDevices.some(r => r.key === editing.key)) editing = null;
+  document.querySelector('#devices').hidden = lastDevices.length === 0;
+  document.querySelector('#device-list').replaceChildren(...lastDevices.map(deviceRow));
+}
+document.querySelector('#device-add').addEventListener('click', () => invoke?.('pairing_action', { action: 'refresh' }).catch(error));
 function renderPairing(state) {
+  renderDevices(state.devices);
   const waiting = state.phase === 'waiting';
   const connected = state.phase === 'connected';
   const sas = state.phase.startsWith('sas-');
@@ -29,7 +83,8 @@ function renderPairing(state) {
   document.querySelector('#pairing-reject').hidden = !asking;
   document.querySelector('#pairing-sas').hidden = !(waiting || state.phase === 'expired' || state.phase === 'no-network');
   document.querySelector('#pairing-message').textContent = state.message;
-  document.querySelector('#quick-actions').hidden = !connected;
+  // A phone keeps its session (and these actions) while another one is being paired (WC-28).
+  document.querySelector('#quick-actions').hidden = !(state.connected || connected);
   document.querySelector('#pairing-instructions').hidden = !waiting;
   document.querySelector('#pairing-hint').hidden = !connected;
   const refresh = document.querySelector('#pairing-refresh');

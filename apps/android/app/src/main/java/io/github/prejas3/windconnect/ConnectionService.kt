@@ -54,7 +54,8 @@ class ConnectionService : Service() {
                             try {
                                 val peer = opened.pairedDevices().lastOrNull()
                                 if (peer == null) { stopSelf(); break }
-                                opened.connectPaired(peer); backoff = 3_000
+                                // WC-28: automatic, so it waits out BUSY/refusals until a network change or the user.
+                                opened.connectPaired(peer, user = false); backoff = 3_000
                             }
                             catch (error: Exception) {
                                 if (error is CancellationException && error !is TimeoutCancellationException) throw error

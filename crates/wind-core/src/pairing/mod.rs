@@ -22,6 +22,7 @@
 
 pub mod crypto;
 mod store;
+mod unpair;
 pub mod wire;
 
 use std::fmt;
@@ -39,6 +40,7 @@ use zeroize::Zeroizing;
 pub use store::{
     parse_paired, PairedDevice, PairedDevicesFile, PairedList, PairedStore, PAIRED_FILE,
 };
+pub use unpair::Unpairing;
 pub use wire::{clean_name, LinkError, Mode, PairingOffer, MAX_NAME, MAX_PAIR_FRAME};
 
 use crate::identity::{DeviceIdentity, PublicKey, CERT_SERVER_NAME};

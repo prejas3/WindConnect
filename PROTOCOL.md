@@ -1356,8 +1356,10 @@ kody aplikacji QUIC w `CONNECTION_CLOSE`, `RESET_STREAM` i `STOP_SENDING`.
 | `0c` | `CANCELLED` | anulowane przez użytkownika lub stronę | strumień |
 | `0d` | `GOING_AWAY` | wyjście, uśpienie, rozparowanie | `Goodbye`, połączenie |
 | `0e` | `NO_SPACE` | brak miejsca na plik (§9.1) | strumień `files` |
+| `0f` | `UNPAIRED` | nadawca usunął parowanie (§12.10) | `Goodbye`, połączenie |
+| `10` | `BUSY` | nadawca ma sesję z innym urządzeniem i ją zachowuje (§12.10) | `Goodbye`, połączenie |
 
-Kody `0f`–`ff` są zarezerwowane dla v1; nieznany kod odbiorca traktuje jak
+Kody `11`–`ff` są zarezerwowane dla v1; nieznany kod odbiorca traktuje jak
 `INTERNAL_ERROR`. Błąd w ramce strumienia innego niż `control` zamyka tylko
 ten strumień (`STOP_SENDING` po stronie odbiorcy), nie połączenie.
 
@@ -1605,13 +1607,21 @@ Każdy rekord **zaczyna się** od znaku nowej linii, więc rekord urwany przez
 awarię zostaje sam w swojej linii, a następny zaczyna się czysto. Dwa
 procesy dopisujące naraz nie gubią swoich rekordów. Późniejszy rekord
 tego samego klucza zmienia nazwę i czas. Odczyt pomija linie, których nie
-da się odczytać, zgłasza je i nigdy nie przepisuje pliku. Usuwanie i
-porządkowanie należą do listy urządzeń (WC-28).
+da się odczytać, zgłasza je i nigdy nie przepisuje pliku.
+
+Usunięcie też jest dopisywane (WC-28): rekord `\n-<klucz hex> <sekundy>`
+usuwa klucz i oznacza, że jego urządzeniu należy się powiadomienie
+(§12.10); `\n=<klucz hex> <sekundy>` kończy sprawę (powiadomienie
+doręczone albo to tamto urządzenie usunęło parowanie). Późniejszy zwykły
+rekord tego klucza paruje go ponownie. Zmiana nazwy to zwykły rekord z tym
+samym czasem parowania i nową nazwą; nazwa jest lokalna i nigdy nie jest
+wysyłana. Starsza wersja aplikacji uzna `-`/`=` za uszkodzone linie i
+zachowa klucz: wersje się nie cofają.
 
 Serwer zapisuje klienta w kroku 2 (QR) albo po obu zgodach (SAS), zanim
 wyśle wynik. Jeśli połączenie zerwie się później, serwer ma zapisany klucz,
 a klient nie. Taki klucz nic nie otwiera (klient go nie przypiął), a
-ponowne parowanie lub rozparowanie (WC-28) porządkuje stan.
+ponowne parowanie lub rozparowanie (§12.10) porządkuje stan.
 
 ### 12.9 Kody błędów
 
@@ -1629,6 +1639,55 @@ Zamknięcie połączenia parowania niesie tylko kod z §10, z pustym powodem.
 | kod odrzucony, brak decyzji, rozłączenie | `CANCELLED` |
 | błąd zapisu po stronie serwera | `INTERNAL_ERROR` (nie liczy się jako próba) |
 | sukces (zamyka klient) | `NO_ERROR` |
+
+### 12.10 Rozparowanie i jedna sesja (WC-28)
+
+Rozparowanie na jednym końcu usuwa klucz na drugim, także gdy drugi koniec
+jest akurat poza siecią. Jedna droga dla obu przypadków:
+
+1. Strona A zapisuje `-<klucz B>` (§12.8), odpina klucz B i oznacza go jako
+   **odwołany**, a końcówka zapomina bilety TLS B (żadne wznowienie ani
+   0-RTT z biletu sprzed rozparowania).
+2. A wysyła `Goodbye` z kodem `UNPAIRED`: od razu w trwającej sesji z B
+   albo przy najbliższym połączeniu B (punkt 4). Potem zamyka połączenie
+   tym samym kodem.
+3. B po `Goodbye UNPAIRED` (albo zamknięciu z tym kodem) usuwa **klucz
+   rozmówcy z uzgadniania TLS** tego połączenia (zapis `=`), odpina go i
+   nie łączy się ponownie. Wiadomość nie niesie żadnego klucza, a jej
+   `message` jest ignorowane.
+4. **Tryb powiadomienia.** Połączenie z kluczem odwołanym kończy
+   uzgadnianie (dowód posiadania klucza), ale nie jest sesją: aplikacja
+   widzi je dopiero po pełnym uzgadnianiu i sprawdzeniu klucza, więc nie
+   czyta danych 0-RTT przed tą decyzją. Strona odwołująca nie instaluje
+   routera, nie przyjmuje strumieni poza `control`, odpowiada na `Hello`
+   swoją nazwą i pustą listą możliwości (nic nowego), wysyła
+   `Goodbye UNPAIRED` i zamyka. Jeśli to ona dzwoni (telefon, który usunął
+   komputer, gdy ten był poza siecią), robi pełne uzgadnianie bez 0-RTT
+   po zobaczeniu komputera w odkrywaniu (LAN albo przekaźnik §13).
+5. A zapisuje `=<klucz B>` dopiero, gdy B potwierdził odbiór całego
+   `control` po jego końcu (potwierdzenie QUIC, nie lokalne wysłanie).
+   Zerwanie wcześniej zostawia `-` i powiadomienie idzie ponownie.
+   „Doręczone” znaczy więc: transport B przyjął te bajty, nie że aplikacja
+   B je przetworzyła. Dlatego odbiorca MUSI obsłużyć `UNPAIRED` w każdej
+   przyjętej sesji, także odrzuconej (`BUSY`) i takiej, która skończyła
+   się przed użyciem: komputer, zanim odpowie `BUSY`, czeka do 500 ms na
+   `Goodbye UNPAIRED` tej sesji, a telefon sprawdza kod zamknięcia
+   połączenia, które nie zostało sesją.
+6. Powiadomienie należy się przez **30 dni**. Potem, albo gdy B usunie
+   klucz A w inny sposób, próby B kończą się odmową TLS (§2,
+   `UNTRUSTED_PEER`); B pokazuje „Komputer odrzuca połączenie — sparuj
+   ponownie” i przestaje ponawiać sam.
+
+Kilka telefonów sparowanych z jednym komputerem: komputer ma jedną sesję
+naraz. Ta sama strona (ten sam klucz) zastępuje swoje stare połączenie
+(np. po zmianie sieci). Inny telefon dostaje `Goodbye BUSY` i nie ponawia
+sam, aż zmieni się jego sieć albo użytkownik wybierze „Połącz”, więc dwa
+telefony nie wyrzucają się nawzajem. Wyjątki są wyborem człowieka przy
+komputerze: telefon sparowany na nim przed chwilą (2 min) przejmuje sesję,
+a „Rozłącz” w panelu zamyka sesję `GOING_AWAY` i przez 10 min (albo do
+sesji innego telefonu) odpowiada temu telefonowi `BUSY`, żeby inny mógł się
+połączyć. LIMIT: telefon po `BUSY` nie wraca sam także wtedy, gdy komputer
+się zwolni; czeka na zmianę sieci albo „Połącz”.
 
 ## 13. Przekaźnik poza domem (`/v1/relay`, WN-59)
 

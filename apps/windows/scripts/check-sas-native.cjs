@@ -74,7 +74,8 @@ function runPeer(decision, dir) {
     await second.line('SESSION');
     const connected = await waitState(s => s.phase === 'connected');
     assert.equal(connected.phone, 'Testowy telefon');
-    assert.match(await fs.readFile(path.join(root, 'pc', 'paired.txt'), 'utf8'), /Testowy telefon/);
+    // §12.8: the name is stored percent-encoded (a space is %20).
+    assert.match(await fs.readFile(path.join(root, 'pc', 'paired.txt'), 'utf8'), /Testowy%20telefon/);
     await panel.screenshot({ path: path.join(root, 'connected.png') });
     await fs.writeFile(path.join(root, 'phone-2', 'done'), 'done');
     await second.exited();

@@ -104,6 +104,11 @@ pub enum ErrorCode {
     GoingAway,
     /// No room for an incoming file (§9.1, WC-38).
     NoSpace,
+    /// The sender removed the pairing (`Goodbye`, WC-28): the receiver
+    /// drops the sender's key, the one from the TLS handshake.
+    Unpaired,
+    /// The sender has a session with another device and keeps it (WC-28).
+    Busy,
 }
 
 impl ErrorCode {
@@ -125,6 +130,8 @@ impl ErrorCode {
             Self::Cancelled => 0x0c,
             Self::GoingAway => 0x0d,
             Self::NoSpace => 0x0e,
+            Self::Unpaired => 0x0f,
+            Self::Busy => 0x10,
         }
     }
 
@@ -145,6 +152,8 @@ impl ErrorCode {
             0x0c => Self::Cancelled,
             0x0d => Self::GoingAway,
             0x0e => Self::NoSpace,
+            0x0f => Self::Unpaired,
+            0x10 => Self::Busy,
             _ => Self::InternalError,
         }
     }
@@ -237,10 +246,10 @@ mod tests {
 
     #[test]
     fn error_codes_round_trip_and_unknown_is_internal() {
-        for c in 0..=0x0d {
+        for c in 0..=0x10 {
             assert_eq!(ErrorCode::from_code(c).code(), c);
         }
-        assert_eq!(ErrorCode::from_code(0x0f), ErrorCode::InternalError);
+        assert_eq!(ErrorCode::from_code(0x11), ErrorCode::InternalError);
         assert_eq!(ErrorCode::from_code(u64::MAX), ErrorCode::InternalError);
     }
 }

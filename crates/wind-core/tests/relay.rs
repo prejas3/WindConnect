@@ -319,3 +319,75 @@ async fn relay_link_errors_are_reported() {
         "own key as peer: {error}"
     );
 }
+
+/// WC-28 (§12.10) over the relay: the PC removed the phone while it was
+/// away; the phone reaches the PC only through the relay, and that
+/// connection is in notice mode like on the LAN: no session, only
+/// `Goodbye UNPAIRED`, acknowledged.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "needs the relay Worker running locally (wrangler dev) and RELAY_URL"]
+async fn unpair_notice_through_the_relay() {
+    use wind_core::protocol::ErrorCode;
+    use wind_core::session::{SessionError, SessionEvent};
+
+    let url = std::env::var("RELAY_URL").unwrap_or_else(|_| "ws://127.0.0.1:8787".into());
+    let (phone, pc) = (Device::new(), Device::new());
+    phone.pins.pin(pc.id.public_key());
+    // The PC unpaired the phone: revoked, notice owed.
+    pc.pins.revoke(phone.id.public_key());
+
+    let pc_link =
+        relay::RelayLink::connect(&url, &pc.id, phone.id.public_key(), pc.endpoint.clone())
+            .await
+            .unwrap();
+    let endpoint = pc.endpoint.clone();
+    let accepted = tokio::spawn(async move {
+        let conn = endpoint.accept().await.unwrap().unwrap();
+        assert!(
+            conn.is_notice(),
+            "revoked phone: notice mode over the relay too"
+        );
+        Session::accept(conn, info(NAMES[0]), Router::new()).await
+    });
+    let phone_link =
+        relay::RelayLink::connect(&url, &phone.id, pc.id.public_key(), phone.endpoint.clone())
+            .await
+            .unwrap();
+    let (_session, mut events) = tokio::time::timeout(
+        T,
+        Session::dial(
+            &phone.endpoint,
+            phone_link.addr(),
+            pc.id.public_key(),
+            info(NAMES[1]),
+            Router::new(),
+        ),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    let code = tokio::time::timeout(T, async {
+        loop {
+            match events.recv().await {
+                Some(SessionEvent::Goodbye(g)) => return g.code,
+                Some(_) => {}
+                None => panic!("no Goodbye"),
+            }
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(code, ErrorCode::Unpaired);
+    let error = accepted.await.unwrap().unwrap_err();
+    assert!(
+        matches!(
+            error,
+            SessionError::Unpaired {
+                delivered: true,
+                ..
+            }
+        ),
+        "{error}"
+    );
+    drop(pc_link);
+}

@@ -322,6 +322,7 @@ fn main() {
             panel::panel_snapshot,
             pairing::pairing_snapshot,
             pairing::pairing_action,
+            pairing::device_action,
             pairing::dev_pairing_address,
             actions::actions_snapshot,
             actions::set_action_enabled,

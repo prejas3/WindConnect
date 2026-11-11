@@ -48,12 +48,17 @@ fun PairingScreen(model: PairingViewModel, diagnostic: @Composable () -> Unit) {
     if (diagnostics && state.screen == "home") { diagnostic(); return }
     Column(Modifier.fillMaxSize().verticalScroll(scroll).padding(24.dp).testTag("pairingScreen"), verticalArrangement = Arrangement.spacedBy(18.dp)) {
         when (state.screen) {
-            "home" -> HomeScreen(state, model::scan, onDiagnostics = { diagnostics = true }, onNearby = model::nearby, onClipboard = model::sendClipboard, onClipboardEnabled = model::setClipboardEnabled)
+            "home" -> {
+                HomeScreen(state, model::scan, onDiagnostics = { diagnostics = true }, onNearby = model::nearby, onClipboard = model::sendClipboard, onClipboardEnabled = model::setClipboardEnabled)
+                if (state.devices.isNotEmpty()) WindButton("Sparowane komputery", model::devices, Modifier.fillMaxWidth().testTag("openDevices"), kind = ButtonKind.Secondary)
+            }
+            "devices" -> DevicesScreen(state, onBack = model::cancel, onConnect = model::connectDevice, onRename = model::renameDevice, onUnpair = model::unpairDevice)
             "settings" -> {
                 Text("Ustawienia", style = MaterialTheme.typography.headlineSmall)
                 WindButton("Powrót", model::cancel, Modifier.testTag("closeSettings"), kind = ButtonKind.Quiet)
                 BackgroundControls(state.hasPairedDevice)
                 ClipboardControls(state, model::sendClipboard, model::setClipboardEnabled)
+                if (state.devices.isNotEmpty()) WindButton("Sparowane komputery", model::devices, Modifier.testTag("openDevices"), kind = ButtonKind.Secondary)
                 WindButton("Sparuj kolejny komputer", model::scan, Modifier.testTag("scanQr"), enabled = state.ready, kind = ButtonKind.Secondary)
                 WindButton("Paruj bez aparatu", model::nearby, Modifier.testTag("pairNearby"), enabled = state.ready, kind = ButtonKind.Secondary)
             }

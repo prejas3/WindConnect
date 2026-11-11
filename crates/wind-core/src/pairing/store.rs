@@ -10,7 +10,12 @@
 //!
 //! Reading never rewrites the file and never drops a good record: a line
 //! that can't be read is skipped and reported in [`PairedList::skipped`].
-//! Removing devices and compacting the file are the device list's (WC-28).
+//!
+//! Removal is appended too (WC-28): `\n-<key hex> <seconds>` removes the
+//! key and owes its device a notice (`Goodbye` `UNPAIRED`, PROTOCOL.md
+//! §12.10), `\n=<key hex> <seconds>` settles it (notice delivered, or the
+//! removal came from that device). A later pairing record pairs the key
+//! again. Renaming appends an ordinary record with the new name.
 
 use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
@@ -23,6 +28,17 @@ use crate::transport::PinnedKeys;
 
 /// File name of the paired-device list, beside the identity key.
 pub const PAIRED_FILE: &str = "paired.txt";
+
+/// How long a removed device is owed its unpair notice (§12.10). After
+/// that the key is simply gone: the device's attempts fail in TLS.
+pub const NOTICE_DAYS: u64 = 30;
+
+fn unix_now() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
 
 /// A paired device: its pinned key and what we know to show for it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -41,10 +57,7 @@ impl PairedDevice {
         PairedDevice {
             key,
             name: name.as_deref().and_then(clean_name),
-            paired_at: SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .map(|d| d.as_secs())
-                .unwrap_or(0),
+            paired_at: unix_now(),
         }
     }
 }
@@ -62,14 +75,36 @@ pub struct PairedList {
     pub devices: Vec<PairedDevice>,
     /// Lines that couldn't be read: 1-based line number and why.
     pub skipped: Vec<(usize, &'static str)>,
+    /// Removed devices still owed their unpair notice, with the time of
+    /// removal (seconds since the Unix epoch). See [`PairedList::owed`].
+    pub revoked: Vec<(PublicKey, u64)>,
 }
 
 impl PairedList {
-    /// Pins every device's key.
+    /// Pins every device's key, and marks the keys still owed an unpair
+    /// notice as revoked (notice only, never a session; §12.10).
     pub fn pin_all(&self, pins: &PinnedKeys) {
         for d in &self.devices {
             pins.pin(d.key);
         }
+        for key in self.owed(unix_now()) {
+            pins.revoke(key);
+        }
+    }
+
+    /// Keys removed less than [`NOTICE_DAYS`] before `now` whose notice
+    /// isn't settled yet.
+    pub fn owed(&self, now: u64) -> Vec<PublicKey> {
+        self.revoked
+            .iter()
+            .filter(|(_, at)| now.saturating_sub(*at) < NOTICE_DAYS * 24 * 3600)
+            .map(|(key, _)| *key)
+            .collect()
+    }
+
+    /// The paired device with `key`, if it is paired.
+    pub fn get(&self, key: &PublicKey) -> Option<&PairedDevice> {
+        self.devices.iter().find(|d| &d.key == key)
     }
 }
 
@@ -112,10 +147,38 @@ impl PairedDevicesFile {
             Err(e) => Err(e),
         }
     }
-}
 
-impl PairedStore for PairedDevicesFile {
-    fn add(&self, device: &PairedDevice) -> io::Result<()> {
+    /// Removes `key` and owes its device the unpair notice (§12.10). The
+    /// caller also revokes it in the pinned keys ([`PinnedKeys::revoke`]).
+    pub fn remove(&self, key: &PublicKey) -> io::Result<()> {
+        self.append(&mark('-', key))
+    }
+
+    /// The unpair notice to `key` is delivered, or `key`'s device removed
+    /// the pairing itself: nothing is owed and the key stays removed.
+    pub fn settle(&self, key: &PublicKey) -> io::Result<()> {
+        self.append(&mark('=', key))
+    }
+
+    /// Gives the paired device `key` the local name `name` (an alias shown
+    /// on this device only; it is never sent). `InvalidInput` for a name
+    /// that is empty once cleaned, `NotFound` for a key that isn't paired.
+    pub fn rename(&self, key: &PublicKey, name: &str) -> io::Result<()> {
+        let name = clean_name(name)
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "empty name"))?;
+        let list = self.load()?;
+        let device = list
+            .get(key)
+            .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "not paired"))?;
+        self.append(&record(&PairedDevice {
+            key: *key,
+            name: Some(name),
+            paired_at: device.paired_at,
+        }))
+    }
+
+    /// One append, synced (see the module docs).
+    fn append(&self, line: &str) -> io::Result<()> {
         if let Some(dir) = self.path.parent().filter(|d| !d.as_os_str().is_empty()) {
             fs::create_dir_all(dir)?;
         }
@@ -128,9 +191,26 @@ impl PairedStore for PairedDevicesFile {
         }
         let mut file = options.open(&self.path)?;
         // One write: appends are atomic with respect to other appenders.
-        file.write_all(record(device).as_bytes())?;
+        file.write_all(line.as_bytes())?;
         file.sync_all()
     }
+}
+
+impl PairedStore for PairedDevicesFile {
+    fn add(&self, device: &PairedDevice) -> io::Result<()> {
+        self.append(&record(device))
+    }
+}
+
+/// `\n<mark><key hex> <seconds>`: removal (`-`) or settled notice (`=`).
+fn mark(kind: char, key: &PublicKey) -> String {
+    let mut line = format!("\n{kind}");
+    for b in key.as_bytes() {
+        line.push_str(&format!("{b:02x}"));
+    }
+    line.push(' ');
+    line.push_str(&unix_now().to_string());
+    line
 }
 
 /// `\n<key hex> <seconds>[ <name>]`, the name percent-encoded so that it
@@ -167,18 +247,79 @@ fn parse(bytes: &[u8]) -> PairedList {
         if line.is_empty() {
             continue;
         }
-        match parse_line(line) {
-            Ok(device) => match list.devices.iter_mut().find(|d| d.key == device.key) {
-                Some(known) => {
-                    known.name = device.name;
-                    known.paired_at = device.paired_at;
+        match parse_entry(line) {
+            Ok(Entry::Paired(device)) => {
+                list.revoked.retain(|(k, _)| *k != device.key);
+                match list.devices.iter_mut().find(|d| d.key == device.key) {
+                    Some(known) => {
+                        known.name = device.name;
+                        known.paired_at = device.paired_at;
+                    }
+                    None => list.devices.push(device),
                 }
-                None => list.devices.push(device),
-            },
+            }
+            Ok(Entry::Removed(key, at)) => {
+                list.devices.retain(|d| d.key != key);
+                list.revoked.retain(|(k, _)| *k != key);
+                list.revoked.push((key, at));
+            }
+            Ok(Entry::Settled(key)) => {
+                list.devices.retain(|d| d.key != key);
+                list.revoked.retain(|(k, _)| *k != key);
+            }
             Err(why) => list.skipped.push((i + 1, why)),
         }
     }
     list
+}
+
+enum Entry {
+    Paired(PairedDevice),
+    Removed(PublicKey, u64),
+    Settled(PublicKey),
+}
+
+fn parse_entry(line: &[u8]) -> Result<Entry, &'static str> {
+    match line.first() {
+        Some(b'-') | Some(b'=') => {
+            let text = std::str::from_utf8(&line[1..]).map_err(|_| "not UTF-8")?;
+            let mut fields = text.split(' ');
+            let key_hex = fields.next().ok_or("empty")?;
+            let seconds = fields.next().ok_or("no time")?;
+            if fields.next().is_some() {
+                return Err("too many fields");
+            }
+            let key = parse_key(key_hex)?;
+            let at = parse_seconds(seconds)?;
+            Ok(if line[0] == b'-' {
+                Entry::Removed(key, at)
+            } else {
+                Entry::Settled(key)
+            })
+        }
+        _ => parse_line(line).map(Entry::Paired),
+    }
+}
+
+fn parse_seconds(seconds: &str) -> Result<u64, &'static str> {
+    if seconds.is_empty() || !seconds.bytes().all(|b| b.is_ascii_digit()) {
+        return Err("bad time");
+    }
+    seconds.parse().map_err(|_| "bad time")
+}
+
+fn parse_key(key_hex: &str) -> Result<PublicKey, &'static str> {
+    // Decoded byte by byte: a field of 64 bytes that isn't ASCII hex (a
+    // damaged file) is a bad line, never a slice through a character.
+    let hex = key_hex.as_bytes();
+    if hex.len() != 64 {
+        return Err("bad key");
+    }
+    let mut key = [0u8; 32];
+    for (b, pair) in key.iter_mut().zip(hex.chunks_exact(2)) {
+        *b = hex_byte(pair[0], pair[1]).ok_or("bad key")?;
+    }
+    PublicKey::from_bytes(&key).ok_or("bad key")
 }
 
 fn parse_line(line: &[u8]) -> Result<PairedDevice, &'static str> {
@@ -190,21 +331,8 @@ fn parse_line(line: &[u8]) -> Result<PairedDevice, &'static str> {
     if fields.next().is_some() {
         return Err("too many fields");
     }
-    // Decoded byte by byte: a field of 64 bytes that isn't ASCII hex (a
-    // damaged file) is a bad line, never a slice through a character.
-    let hex = key_hex.as_bytes();
-    if hex.len() != 64 {
-        return Err("bad key");
-    }
-    let mut key = [0u8; 32];
-    for (b, pair) in key.iter_mut().zip(hex.chunks_exact(2)) {
-        *b = hex_byte(pair[0], pair[1]).ok_or("bad key")?;
-    }
-    let key = PublicKey::from_bytes(&key).ok_or("bad key")?;
-    if seconds.is_empty() || !seconds.bytes().all(|b| b.is_ascii_digit()) {
-        return Err("bad time");
-    }
-    let paired_at = seconds.parse().map_err(|_| "bad time")?;
+    let key = parse_key(key_hex)?;
+    let paired_at = parse_seconds(seconds)?;
     let name = match name {
         None => None,
         Some(raw) => {
@@ -389,5 +517,91 @@ mod tests {
         store.add(&PairedDevice::now(key(), None)).unwrap();
         let mode = fs::metadata(store.path()).unwrap().permissions().mode();
         assert_eq!(mode & 0o777, 0o600);
+    }
+
+    #[test]
+    fn removal_owes_a_notice_until_settled_and_pairing_again_clears_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = PairedDevicesFile::in_dir(dir.path());
+        let (a, b) = (key(), key());
+        store.add(&PairedDevice::now(a, Some("A".into()))).unwrap();
+        store.add(&PairedDevice::now(b, Some("B".into()))).unwrap();
+        store.remove(&a).unwrap();
+        let list = store.load().unwrap();
+        assert_eq!(
+            list.devices.iter().map(|d| d.key).collect::<Vec<_>>(),
+            vec![b]
+        );
+        assert_eq!(
+            list.revoked.iter().map(|(k, _)| *k).collect::<Vec<_>>(),
+            vec![a]
+        );
+        assert_eq!(list.owed(unix_now()), vec![a]);
+        store.settle(&a).unwrap();
+        let list = store.load().unwrap();
+        assert!(list.revoked.is_empty() && list.get(&a).is_none());
+        store.remove(&b).unwrap();
+        store
+            .add(&PairedDevice::now(b, Some("again".into())))
+            .unwrap();
+        let list = store.load().unwrap();
+        assert!(list.revoked.is_empty());
+        assert_eq!(list.get(&b).unwrap().name.as_deref(), Some("again"));
+        assert_eq!(list.skipped, vec![]);
+    }
+
+    #[test]
+    fn a_notice_expires_after_notice_days() {
+        let k = key();
+        let mut list = PairedList::default();
+        list.revoked.push((k, 1_000));
+        assert_eq!(list.owed(1_000 + NOTICE_DAYS * 86_400 - 1), vec![k]);
+        assert!(list.owed(1_000 + NOTICE_DAYS * 86_400).is_empty());
+        let pins = PinnedKeys::new();
+        list.pin_all(&pins);
+        use crate::transport::PeerTrust;
+        assert!(!pins.is_revoked(&k), "1970 + a bit is long expired");
+    }
+
+    #[test]
+    fn rename_keeps_the_pairing_time_and_refuses_bad_input() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = PairedDevicesFile::in_dir(dir.path());
+        let k = key();
+        let device = PairedDevice {
+            key: k,
+            name: Some("Pixel".into()),
+            paired_at: 42,
+        };
+        store.add(&device).unwrap();
+        store.rename(&k, "  Telefon Oli  ").unwrap();
+        let list = store.load().unwrap();
+        assert_eq!(list.get(&k).unwrap().paired_at, 42);
+        assert_eq!(list.get(&k).unwrap().name.as_deref(), Some("Telefon Oli"));
+        assert_eq!(
+            store.rename(&k, " \n ").unwrap_err().kind(),
+            io::ErrorKind::InvalidInput
+        );
+        assert_eq!(
+            store.rename(&key(), "x").unwrap_err().kind(),
+            io::ErrorKind::NotFound
+        );
+    }
+
+    #[test]
+    fn damaged_marks_are_skipped_not_applied() {
+        let k = key();
+        let mut hex = String::new();
+        for b in k.as_bytes() {
+            hex.push_str(&format!("{b:02x}"));
+        }
+        let text = format!(
+            "\n{hex} 1 A\n-{hex}\n={} 5\n-{hex} 7 extra\n-{hex} x",
+            &hex[..10]
+        );
+        let list = parse_paired(text.as_bytes());
+        assert_eq!(list.devices.len(), 1, "no damaged mark removed the device");
+        assert!(list.revoked.is_empty());
+        assert_eq!(list.skipped.len(), 4);
     }
 }
