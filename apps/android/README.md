@@ -1,5 +1,14 @@
 # Android
 
+## Skróty launchera (WN-72)
+
+CCS/1
+DEC:wariant A zatwierdzony przez użytkownika. „Wyślij schowek” działa; pliki i touchpad są jawnie niedostępne do WN-40/WN-51. Podłączenie istniejących skrótów: WN-116.
+FLOW:przytrzymanie ikony -> statyczny send_clipboard (dostępny od instalacji) i dynamiczne send_file/touchpad (publikowane przy starcie procesu). Ustawienia -> „Przypnij: …” -> requestPinShortcut; można też przeciągnąć pozycję z menu launchera na pulpit. Dialog przypięcia renderuje launcher; treść aplikacji używa własnych komponentów motywu.
+RULE:stabilne ID; schowek immutable, przypinany przez samo ID. Pliki/touchpad mają „niedostępne” w etykiecie i osobny ekran wyjaśnienia zamiast pozorowania działania. Prośba do launchera nie jest potwierdzeniem przypięcia: UI mówi tylko o przekazaniu prośby. Limit dynamicznych pozycji uwzględnia statyczny schowek.
+SEC:eksportowany LauncherShortcutActivity akceptuje wyłącznie trzy stałe action; ignoruje URI/extras. Schowek -> istniejący SendClipboardActivity, bez Home, odczyt dopiero przy fokusie/odblokowaniu; offline/sensitive/limity jak WN-35. Informacja o niegotowych funkcjach nie otwiera nowego klienta i nie uruchamia połączenia.
+TEST:LauncherActionTest, LauncherShortcutsTest (rejestracja, brak duplikatów, bezpośrednie cele/offline, odrzucenie obcej akcji). Fizyczny S25 Ultra/One UI: przytrzymanie ikony, trzy pozycje, przeciąganie i przypięcie z Ustawień; działający schowek do PC i powrót do poprzedniej aplikacji, offline, blokada/anulowanie odblokowania; dwa niegotowe skróty z uczciwym komunikatem, bez Home. Jasny/ciemny,150% tekstu i TalkBack. Emulator nie zastępuje launchera Samsunga.
+
 ## Kafelek szybkich ustawień (WN-32)
 
 CCS/1

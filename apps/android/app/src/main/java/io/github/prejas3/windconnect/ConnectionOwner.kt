@@ -12,6 +12,10 @@ import kotlinx.coroutines.sync.withLock
 /** CCS/1 RULE:Activity and service lease one native client; only the final release shuts it down. */
 class WindApplication : Application() {
     val connections = ConnectionOwner(this)
+    override fun onCreate() {
+        super.onCreate()
+        LauncherShortcuts.publish(this)
+    }
 }
 
 class ConnectionOwner(private val application: Application) {
