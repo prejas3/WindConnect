@@ -646,3 +646,44 @@ RULE:sesja nie odtwarza dźwięku i nie ma odbiornika przycisków multimediów (
 RULE:echo: `PhoneMedia` (WN-46) pomija własną sesję-lustro odtwarzacza komputera (po jej tokenie), więc odtwarzacz komputera nigdy nie wraca na PC jako „Na telefonie”.
 RULE:sprzątanie: `Gone`, koniec sesji, wyłączone „Pokaż odtwarzacz komputera” i zamknięcie rdzenia zwalniają sesję i usuwają powiadomienie; po śmierci procesu sesja znika z nim, a pozostawione powiadomienie usuwa następny start. Teksty z komputera: jedna linia, bez znaków sterujących i dwukierunkowych; okładka tylko JPEG/PNG po magicznych bajtach, dekodowana do ≤ 512 px.
 RULE:prywatność: tytuły odtwarzacza komputera widać na ekranie blokady, jak przy innych odtwarzaczach; mówi to opis przełącznika.
+
+## Powiadomienia na komputerze (WN-42)
+
+`NotifyListenerService` czyta nowe powiadomienia i przez `WindCore` wysyła je
+na kanale `notify` (PROTOCOL.md §9.7) do komputera, który ogłosił `notify/1`
+(Windows od WN-43). Osobna zgoda (§9.6, zasada 6): własny wpis
+„WindConnect: powiadomienia na komputerze” w systemowym dostępie do
+powiadomień oraz przełącznik w Ustawieniach, domyślnie wyłączony; wyłączony
+usługa sama się odłącza i nic nie czyta. Dostęp dla multimediów (WN-46) nie
+wystarcza.
+
+Pomijane: stałe (trwające, usług pierwszoplanowych, nieusuwalne),
+podsumowania grup, odtwarzacze, `VISIBILITY_SECRET`, własne i puste. Tytuł:
+tytuł rozmowy, duży tytuł albo tytuł; treść: ostatnia wiadomość rozmowy
+(„nadawca: tekst”, gdy nadawca nie jest tytułem), duży tekst albo tekst. Bez
+formatowania, znaków sterujących i dwukierunkowych, przycięte do bajtów
+protokołu. Ikona aplikacji: PNG 64 px, raz na sesję. Identyfikator: SHA-256
+losowej soli instalacji i klucza powiadomienia (16 B). Rdzeń pilnuje tempa:
+najwyżej jedno `Posted` na sekundę na powiadomienie, pasek postępu tylko na
+początku i na końcu. Powiadomienia sprzed połączenia nie są wysyłane.
+
+Android 15+ ukrywa przed aplikacjami słuchającymi treść wrażliwą (kody
+jednorazowe i podobne): komputer zobaczy wtedy to, co dał system, np. „Treść
+ukryta” zamiast tekstu, albo nic. WindConnect tego nie obchodzi. Na emulatorze
+z asystentem powiadomień ukrywane bywają nawet zwykłe teksty z liczbami.
+
+Opóźnienie: z asystentem powiadomień (Google, Samsung) Android trzyma nowe
+powiadomienie ok. 200 ms, zanim dostanie je którykolwiek słuchacz, także
+systemowy pasek powiadomień; od wywołania słuchacza do zapisu w strumieniu
+QUIC mija p95 ok. 10 ms. Pomiar na emulatorze (najpierw
+`gradlew :app:assembleDebug :app:assembleDebugAndroidTest` i
+`cargo build --locked -p wind-ffi --example notify_peer`, potem z katalogu
+głównego):
+
+```powershell
+$env:ANDROID_SERIAL = "emulator-5590"; node apps/android/scripts/check-notify-android.cjs
+```
+
+`notify_peer` udaje komputer z `notify/1`. Pierwszy przebieg mierzy
+wywołanie słuchacza → zapis, drugi (asystent wyłączony na czas testu)
+`postTime` → zapis; oba p95 < 50 ms.

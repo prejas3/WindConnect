@@ -18,6 +18,11 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
@@ -49,6 +54,12 @@ sealed interface ConnectionState {
     data class Failed(val message: String) : ConnectionState
     data object Stopped : ConnectionState
 }
+
+/**
+ * One notification handed to the core (WN-42): [outcome] "sent" / "held" / "dropped" / "not-accepted"; [postTimeMs] Android's
+ * postTime and [doneMs] the wall clock when the core returned; [listenerToDoneMs] from the listener's callback to then.
+ */
+data class NotifySend(val outcome: String, val postTimeMs: Long, val doneMs: Long, val listenerToDoneMs: Long, val packageName: String)
 
 /** CCS/1 M:WindCore | IO:coroutines + StateFlow -> UniFFI -> authenticated QUIC session */
 class WindCore private constructor(
@@ -220,6 +231,19 @@ class WindCore private constructor(
         val live = gate.withLock { connection }
         try { live?.setPcMediaAccepted(value) } catch (error: Exception) { if (error is CancellationException) throw error }
     }
+    // WN-42: the phone's notifications for the PC. Their own consent (§9.6 rule 6): NotifyListenerService's access and this
+    // setting, off by default; only notifications posted while a session runs (§9.7).
+    private val mutableNotifyAllowed = MutableStateFlow(settings.getBoolean(NOTIFY_ALLOWED, false))
+    /** "Powiadomienia na komputerze" (default off). */
+    val notifyAllowed: StateFlow<Boolean> = mutableNotifyAllowed.asStateFlow()
+    private val mutableNotifyAccess = MutableStateFlow(NotifyListenerService.granted(appContext))
+    /** Android's access for [NotifyListenerService] (re-read by [refreshNotify]). */
+    val notifyAccess: StateFlow<Boolean> = mutableNotifyAccess.asStateFlow()
+    private val icons = AppIcons(appContext)
+    private var notifyJob: Job? = null
+    private val mutableNotifySends = MutableSharedFlow<NotifySend>(extraBufferCapacity = 64, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+    /** Each notification handed to the core and what came of it (diagnostics and the WN-42 latency proof; no content). */
+    val notifySends: SharedFlow<NotifySend> = mutableNotifySends.asSharedFlow()
     /** The phone is ringing for the PC; [stopRinging] ends it (the PC sees "stopped on the phone"). */
     val ringing: StateFlow<Boolean> = ringer.ringing
     fun stopRinging() = client.stopRinging()
@@ -424,6 +448,7 @@ class WindCore private constructor(
         mutableState.value = ConnectionState.Connected(peer.name, peer.fingerprint, rtt, opened.route())
         startBattery(opened)
         startMedia(opened)
+        startNotify(opened)
         watcher = scope.launch {
             // CCS/1 FLOW:end code -> unpaired: forget this connection's TLS peer | busy/untrusted: hold retries (WC-28).
             val end = opened.waitEnd()
@@ -432,6 +457,7 @@ class WindCore private constructor(
                     connection = null
                     stopBattery()
                     stopMedia()
+                    stopNotify()
                     pcPlayer.clear()
                     when (end) {
                         "unpaired" -> {
@@ -492,6 +518,7 @@ class WindCore private constructor(
                 systemClipboard.close()
                 ringer.stop()
                 stopMedia()
+                stopNotify()
                 pcPlayer.clear()
                 desiredPeer = null
                 networkRetry?.cancel()
@@ -575,9 +602,65 @@ class WindCore private constructor(
         refreshMedia()
     }
 
+    /**
+     * Forwards new notifications to [opened] while allowed and granted. Events queue in order (posted then removed); the core
+     * applies §9.7's window. The app's label and icon are made here, off the listener's thread.
+     */
+    private fun startNotify(opened: CoreConnection) {
+        stopNotify()
+        if (!(mutableNotifyAllowed.value && mutableNotifyAccess.value)) return
+        val events = Channel<NotificationEvent>(256, BufferOverflow.DROP_OLDEST)
+        NotifyListenerService.sink = { events.trySend(it) }
+        notifyJob = scope.launch {
+            try {
+                for (event in events) {
+                    try {
+                        when (event) {
+                            is NotificationEvent.Posted -> {
+                                val n = event.notification.copy(app = icons.label(event.packageName))
+                                val outcome = opened.sendNotification(n, icons.icon(event.packageName))
+                                mutableNotifySends.tryEmit(NotifySend(outcome, n.timeMs.toLong(), System.currentTimeMillis(),
+                                    SystemClock.elapsedRealtime() - event.posted, n.packageName))
+                            }
+                            is NotificationEvent.Removed -> opened.notificationRemoved(event.id)
+                        }
+                    } catch (error: Exception) {
+                        if (error is CancellationException) throw error
+                        // The session is ending; its watcher stops this.
+                    }
+                }
+            } finally { events.close() }
+        }
+    }
+
+    private fun stopNotify() {
+        NotifyListenerService.sink = null
+        notifyJob?.cancel()
+        notifyJob = null
+    }
+
+    /** Re-reads access (the person may have changed it in system settings) and applies it, live too. */
+    suspend fun refreshNotify() = withContext(Dispatchers.IO) {
+        mutableNotifyAccess.value = NotifyListenerService.granted(appContext)
+        val enabled = mutableNotifyAllowed.value && mutableNotifyAccess.value
+        gate.withLock {
+            val live = connection ?: return@withLock
+            if (enabled && notifyJob == null) startNotify(live)
+            if (!enabled && notifyJob != null) stopNotify()
+        }
+    }
+
+    suspend fun setNotifyAllowed(value: Boolean) {
+        settings.edit().putBoolean(NOTIFY_ALLOWED, value).apply()
+        mutableNotifyAllowed.value = value
+        NotifyListenerService.follow(appContext, value)
+        refreshNotify()
+    }
+
     private suspend fun releaseConnection() {
         stopBattery()
         stopMedia()
+        stopNotify()
         pcPlayer.clear()
         watcher?.cancel()
         watcher = null
@@ -598,6 +681,7 @@ class WindCore private constructor(
         private const val SETTINGS = "windconnect.core"
         internal const val SETTINGS_FILE = SETTINGS
         internal const val MEDIA_ALLOWED = "media_allowed"
+        internal const val NOTIFY_ALLOWED = "notify_allowed"
         private const val PC_MEDIA_ALLOWED = "pc_media_allowed"
         private const val RELAY_URL = "relay_url"
         private const val FIND_ALLOWED = "find_allowed"
