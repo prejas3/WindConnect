@@ -19,6 +19,8 @@ qrcode = { version = "=0.14.1", default-features = false }
 if-addrs = "0.15"
 # Wipes the QR modules of a closed pairing window (WN-94); already in the tree via wind-core.
 zeroize = "1"
+# PNG for clipboard images (WN-36); already in the tree via Tauri (0.18.1, MIT OR Apache-2.0).
+png = "0.18"
 
 [target.'cfg(windows)'.dependencies]
 window-vibrancy = "0.8.1"

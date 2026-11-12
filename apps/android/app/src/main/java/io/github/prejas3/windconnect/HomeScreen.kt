@@ -3,7 +3,11 @@ package io.github.prejas3.windconnect
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -87,12 +91,24 @@ fun HomeScreen(state: PairingUi, onScan: () -> Unit, onDiagnostics: () -> Unit, 
 }
 
 @Composable
-fun ClipboardControls(state: PairingUi, onSend: () -> Unit, onEnabled: (Boolean) -> Unit) {
+@OptIn(ExperimentalMaterial3Api::class)
+fun ClipboardControls(state: PairingUi, onSend: () -> Unit, onEnabled: (Boolean) -> Unit, onImageLimit: ((Int) -> Unit)? = null) {
     WindCard(Modifier.fillMaxWidth().testTag("clipboardCard")) {
         Text("Wspólny schowek", style = MaterialTheme.typography.titleMedium)
         WindSwitch("Synchronizacja automatyczna", state.clipboard.enabled, onEnabled, Modifier.testTag("clipboardEnabled"))
         Text(state.clipboard.status, style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("clipboardStatus"))
-        Text("PC → telefon także w tle. Telefon → PC po otwarciu aplikacji lub z akcji powiadomienia. Treści oznaczone jako wrażliwe nie są wysyłane.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("Tekst, linki i obrazy. PC → telefon także w tle. Telefon → PC po otwarciu aplikacji lub z akcji powiadomienia. Treści oznaczone jako wrażliwe nie są wysyłane.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (onImageLimit != null) {
+            // WN-36: images over this size are neither sent nor taken.
+            Text("Maks. rozmiar obrazu", style = MaterialTheme.typography.bodyMedium)
+            val limits = listOf(5, 16, 50)
+            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().testTag("clipboardImageLimit")) {
+                limits.forEachIndexed { index, mb ->
+                    SegmentedButton(selected = state.clipboard.imageLimitMb == mb, onClick = { onImageLimit(mb) },
+                        shape = SegmentedButtonDefaults.itemShape(index, limits.size), modifier = Modifier.testTag("imageLimit$mb")) { Text("$mb MB") }
+                }
+            }
+        }
         WindButton("Wyślij schowek", onSend, Modifier.fillMaxWidth().testTag("sendClipboard"), enabled = state.connection is ConnectionState.Connected && !state.clipboard.busy, kind = ButtonKind.Secondary)
     }
 }

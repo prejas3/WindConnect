@@ -4,7 +4,9 @@ use std::{
     time::{Duration, Instant},
 };
 use wind_core::{
-    clipboard::{Clipboard, Connection, Message, Sink, Status},
+    clipboard::{
+        Clipboard, Connection, ImageError, IncomingImage, Message, OutgoingImage, Sink, Status,
+    },
     identity::DeviceIdentity,
     protocol::{Channel, DeviceKind, ErrorCode},
     session::{LocalInfo, Router, Session},
@@ -16,6 +18,7 @@ struct Memory {
     writes: Mutex<usize>,
     fail: Mutex<bool>,
     delay: Mutex<Duration>,
+    image: Mutex<Option<Arc<IncomingImage>>>,
 }
 impl Sink for Memory {
     fn apply(&self, text: &str) -> bool {
@@ -24,6 +27,14 @@ impl Sink for Memory {
             return false;
         }
         *self.value.lock().unwrap() = text.into();
+        *self.writes.lock().unwrap() += 1;
+        true
+    }
+    fn apply_image(&self, image: Arc<IncomingImage>) -> bool {
+        if *self.fail.lock().unwrap() {
+            return false;
+        }
+        *self.image.lock().unwrap() = Some(image);
         *self.writes.lock().unwrap() += 1;
         true
     }
@@ -47,6 +58,10 @@ async fn pair() -> Pair {
     .await
 }
 async fn pair_hubs(ha: Arc<Clipboard>, hb: Arc<Clipboard>) -> Pair {
+    pair_versions(ha, hb, 2).await
+}
+/// B routes clipboard up to `b_version` (1: an app from before images).
+async fn pair_versions(ha: Arc<Clipboard>, hb: Arc<Clipboard>, b_version: u64) -> Pair {
     let ia = DeviceIdentity::generate().unwrap();
     let ib = DeviceIdentity::generate().unwrap();
     let pa = Arc::new(PinnedKeys::new());
@@ -70,7 +85,7 @@ async fn pair_hubs(ha: Arc<Clipboard>, hb: Arc<Clipboard>) -> Pair {
     let mut ra = Router::new();
     let mut rb = Router::new();
     let qa = Clipboard::route(&mut ra);
-    let qb = Clipboard::route(&mut rb);
+    let qb = rb.route(Channel::Clipboard, b_version, 4);
     let accepting = tokio::spawn(Session::accept(server, info("B"), rb));
     let (sa, _) = Session::connect(client, info("A"), ra).await.unwrap();
     let (sb, _) = accepting.await.unwrap().unwrap();
@@ -280,4 +295,175 @@ async fn duplicate_stale_invalid_and_withdrawn_sets_do_not_apply() {
         p.a.send("withdrawn".into(), false, true).await,
         Status::Unavailable
     );
+}
+
+/// Bytes that stand in for a PNG (the core doesn't decode images).
+fn picture(size: usize, seed: u8) -> OutgoingImage {
+    OutgoingImage {
+        png: (0..size)
+            .map(|i| (i as u8).wrapping_mul(31).wrapping_add(seed))
+            .collect(),
+        thumbnail: vec![seed; 4096],
+        width: 1920,
+        height: 1080,
+    }
+}
+fn received(memory: &Memory) -> Arc<IncomingImage> {
+    memory
+        .image
+        .lock()
+        .unwrap()
+        .clone()
+        .expect("an image on the clipboard")
+}
+
+/// WN-36: the receiver has the image on its clipboard (thumbnail, size)
+/// before the PNG is in, the sender learns "pasteable" then "all there",
+/// and a reader gets exactly the bytes sent.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn image_is_pasteable_first_and_complete_later() {
+    let p = pair().await;
+    let image = picture(3 * 1024 * 1024 + 17, 1);
+    let (png, thumbnail) = (image.png.clone(), image.thumbnail.clone());
+    let applied = Arc::new(Mutex::new(None));
+    let at = applied.clone();
+    let started = Instant::now();
+    let status =
+        p.a.send_image(image, false, false, move || {
+            *at.lock().unwrap() = Some(started.elapsed())
+        })
+        .await;
+    assert_eq!(status, Status::Applied, "the whole PNG arrived");
+    assert!(
+        applied.lock().unwrap().is_some(),
+        "pasteable was reported first"
+    );
+    let got = received(&p.mb);
+    assert_eq!(got.thumbnail(), &thumbnail[..]);
+    assert_eq!(
+        (got.width(), got.height(), got.size()),
+        (1920, 1080, png.len() as u64)
+    );
+    assert!(got.is_complete());
+    assert!(got.wait_complete(Duration::from_secs(1)).unwrap() == png);
+    // The same PNG again is no news (hash memo).
+    assert_eq!(
+        p.a.send_image(picture(3 * 1024 * 1024 + 17, 1), false, false, || {})
+            .await,
+        Status::Unchanged
+    );
+    println!(
+        "image 3 MiB: pasteable after {:?}, complete after {:?}",
+        applied.lock().unwrap().unwrap(),
+        started.elapsed()
+    );
+}
+
+/// Limits: over the sender's own limit nothing goes; over the receiver's
+/// limit it is refused with that limit (so the sender can say it), nothing
+/// lands on the receiver, and a later small item still wins.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn image_limits_on_both_sides() {
+    let p = pair().await;
+    p.ha.set_image_limit(1_000_000);
+    assert_eq!(
+        p.a.send_image(picture(1_000_001, 2), false, true, || {})
+            .await,
+        Status::TooLarge
+    );
+    p.ha.set_image_limit(16_000_000);
+    p.hb.set_image_limit(2_000_000);
+    assert_eq!(
+        p.a.send_image(picture(2_000_001, 3), false, true, || {})
+            .await,
+        Status::PeerLimit(2_000_000)
+    );
+    assert!(p.mb.image.lock().unwrap().is_none(), "nothing applied");
+    assert_eq!(
+        p.a.send_image(picture(2_000_000, 4), false, true, || {})
+            .await,
+        Status::Applied
+    );
+    assert_eq!(received(&p.mb).size(), 2_000_000);
+    // Sensitive images never go, manual or not.
+    assert_eq!(
+        p.a.send_image(picture(10, 5), true, true, || {}).await,
+        Status::Sensitive
+    );
+}
+
+/// A newer item while an image is still coming: the receiver's readers end
+/// with an error (never a mix of two images), the sender stops with
+/// Replaced, and the newer item is what's on the clipboard.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_newer_item_ends_an_image_still_arriving() {
+    let p = pair().await;
+    p.ha.set_image_limit(64 * 1024 * 1024);
+    p.hb.set_image_limit(64 * 1024 * 1024);
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    let a = p.a.clone();
+    let sending = tokio::spawn(async move {
+        a.send_image(picture(60 * 1024 * 1024, 6), false, false, move || {
+            let _ = tx.send(());
+        })
+        .await
+    });
+    rx.await.unwrap();
+    let image = received(&p.mb);
+    // A paste reading the image as it comes.
+    let reader = {
+        let image = image.clone();
+        std::thread::spawn(move || image.wait_complete(Duration::from_secs(5)))
+    };
+    assert_eq!(
+        p.b.send("newer text".into(), false, false).await,
+        Status::Applied
+    );
+    assert_eq!(sending.await.unwrap(), Status::Replaced);
+    assert_eq!(reader.join().unwrap(), Err(ImageError::Failed));
+    assert!(image.is_failed() && !image.is_complete());
+    assert!(p.hb.current_image().is_none());
+    assert_eq!(*p.ma.value.lock().unwrap(), "newer text");
+}
+
+/// An image to a peer from before clipboard/2: not sent (Unsupported),
+/// while text still works.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn images_need_clipboard_2() {
+    let p = pair_versions(
+        Arc::new(Clipboard::default()),
+        Arc::new(Clipboard::default()),
+        1,
+    )
+    .await;
+    assert_eq!(
+        p.a.send_image(picture(100, 7), false, true, || {}).await,
+        Status::Unsupported
+    );
+    assert_eq!(p.a.send("text".into(), false, false).await, Status::Applied);
+    assert!(p.mb.image.lock().unwrap().is_none());
+}
+
+/// The session ends mid-image: the reader on the receiver gets an error.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_closed_session_fails_an_unfinished_image() {
+    let p = pair().await;
+    p.ha.set_image_limit(64 * 1024 * 1024);
+    p.hb.set_image_limit(64 * 1024 * 1024);
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    let a = p.a.clone();
+    let sending = tokio::spawn(async move {
+        a.send_image(picture(60 * 1024 * 1024, 8), false, false, move || {
+            let _ = tx.send(());
+        })
+        .await
+    });
+    rx.await.unwrap();
+    let image = received(&p.mb);
+    p.sa.connection().quinn().close(0u32.into(), b"");
+    assert_ne!(sending.await.unwrap(), Status::Applied);
+    let result = tokio::task::spawn_blocking(move || image.wait_complete(Duration::from_secs(5)))
+        .await
+        .unwrap();
+    assert_eq!(result, Err(ImageError::Failed));
 }

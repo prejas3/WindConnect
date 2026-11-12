@@ -76,8 +76,8 @@ impl Router {
         Self::default()
     }
 
-    /// Routes the messages of uni `channel` (capability version `version`)
-    /// to the returned queue. A full queue holds back that channel's
+    /// Routes the messages of uni `channel` (capability versions 1 to
+    /// `version`) to the returned queue. A full queue holds back that channel's
     /// stream only (QUIC flow control), never other channels.
     ///
     /// Panics for `control` (the session's own), `files` (use
@@ -124,7 +124,8 @@ impl Router {
         rx
     }
 
-    /// What the session announces: one capability per routed channel.
+    /// What the session announces: per routed channel, every version up to
+    /// the routed one (a module that takes version N takes 1..=N).
     pub fn capabilities(&self) -> Vec<Capability> {
         let mut caps: Vec<Capability> = self
             .uni
@@ -133,6 +134,7 @@ impl Router {
             .chain(self.files.as_ref().map(|(v, _)| (Channel::Files, *v)))
             .chain(self.actions.as_ref().map(|(v, _)| (Channel::Actions, *v)))
             .chain(self.input.as_ref().map(|_| (Channel::Input, 1)))
+            .flat_map(|(ch, v)| (1..=v).map(move |v| (ch, v)))
             .filter_map(|(ch, v)| Capability::new(capability_name(ch)?, v))
             .collect();
         caps.sort_by_key(|c| c.to_string());

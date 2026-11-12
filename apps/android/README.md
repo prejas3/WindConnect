@@ -552,3 +552,23 @@ jeśli jej schowek nie jest pusty. Nie używa schowka interaktywnego użytkownik
 OS (konserwatywna górna granica czasu kopiuj→wklej), osobno sprawdza odbiór
 Androida bez Activity, sensitive, akcję powiadomienia i brak echa po fokusie.
 Surowe próbki i zrzuty Light/Dark: `%TEMP%/windconnect-wn35-*`.
+
+## Wspólny schowek: obrazy (WN-36)
+
+CCS/1
+FLOW:PC -> telefon: ImageSet (miniatura, rozmiar) -> setPrimaryClip z `content://<pakiet>.clipimage/<id>` (image/png) -> Applied; pełny PNG dochodzi w tle. `ClipImageProvider` (moduł wind-core, nieeksportowany, grantUriPermissions) daje podglądom (EXTRA_SIZE, `loadThumbnail`) miniaturę od razu, a wklejeniu strumień pełnego PNG w miarę napływu.
+FLOW:telefon -> PC: przy fokusie klip z URI image/* innej aplikacji (uprawnienie klipu) -> PNG bez zmian albo ponownie zakodowany -> miniatura -> clipboard/2. Własny URI dostawcy nigdy nie wraca do PC.
+RULE:limit „Maks. rozmiar obrazu” 5 / 16 / 50 MB w Ustawieniach (domyślnie 16 MB), dla wysyłania i odbioru.
+SEC:odebrany obraz nie ma EXTRA_IS_SENSITIVE (inaczej niż tekst), żeby podgląd z miniatury działał; pochodzi z własnego PC, który treści prywatnych nie wysyła. Obraz z IS_SENSITIVE nie jest wysyłany. Tylko pamięć, tylko ostatni obraz; po restarcie procesu stary URI daje FileNotFoundException (wklejenie się nie udaje, bez awarii).
+LIMIT:wklejenie przed końcem przesyłu czeka do 10 s bez nowych bajtów; nowszy schowek albo przerwanie kończą je błędem, nigdy częściowym obrazem.
+
+Testy: `ClipImageProviderTest` (miniatura dla podglądu, pełny PNG w miarę
+napływu, błąd przy nowszym obrazie, nieznany obraz = FileNotFoundException).
+Pomiar „zrzut z PC wklejalny na telefonie < 500 ms” jest częścią testu OS
+WN-35 wyżej: PC kopiuje syntetyczny zrzut jako sam CF_DIB (kodowanie PNG po
+stronie PC) 10× 1080p i 3× 4K; raport podaje czas do Applied (wklejalny) i do
+ImageDone (cały PNG na telefonie), a telefon czyta pełny PNG przez URI i
+podgląd. Czas zależy od profilu: uruchom `clipboard_peer` zbudowany
+`CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS=true cargo build --release
+--example clipboard_peer` i `PEER_PROFILE=release` (debugowy enkoder PNG jest
+~10× wolniejszy niż wysyłana aplikacja).

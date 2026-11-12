@@ -1,5 +1,9 @@
 //! CCS/1 PURPOSE:finite native OS/privacy proof, isolated from the user's clipboard and installed app.
+#[path = "../src/clipboard_image.rs"]
+#[allow(dead_code)]
+mod clipboard_image;
 #[path = "../src/clipboard_native.rs"]
+#[allow(dead_code)]
 mod clipboard_native;
 #[path = "support/private_clipboard.rs"]
 mod private_clipboard;
@@ -211,6 +215,147 @@ fn retry_proof(
     println!("{{\"heldClipboardRetry\":true,\"deliveredOnce\":true,\"sensitiveNeverRead\":true,\"retryBounded\":true,\"cancelOnDisable\":true,\"cleanShutdown\":true}}");
     Ok(())
 }
+/// Another app pasting `format` on its own thread: what it got, and how long it took.
+fn paste(desktop: usize, format: u32) -> std::thread::JoinHandle<(Option<Vec<u8>>, Duration)> {
+    use windows_sys::Win32::System::{DataExchange::*, Memory::*};
+    std::thread::spawn(move || unsafe {
+        assert_ne!(
+            windows_sys::Win32::System::StationsAndDesktops::SetThreadDesktop(desktop as _),
+            0
+        );
+        let started = Instant::now();
+        let mut open = false;
+        for _ in 0..200 {
+            if OpenClipboard(std::ptr::null_mut()) != 0 {
+                open = true;
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert!(open, "paster opens the clipboard");
+        let handle = GetClipboardData(format);
+        let bytes = if handle.is_null() {
+            None
+        } else {
+            let size = GlobalSize(handle);
+            let p = GlobalLock(handle);
+            let out = std::slice::from_raw_parts(p.cast::<u8>(), size).to_vec();
+            GlobalUnlock(handle);
+            Some(out)
+        };
+        CloseClipboard();
+        (bytes, started.elapsed())
+    })
+}
+fn png_format() -> u32 {
+    let name: Vec<u16> = "PNG".encode_utf16().chain(Some(0)).collect();
+    unsafe { windows_sys::Win32::System::DataExchange::RegisterClipboardFormatW(name.as_ptr()) }
+}
+/// WN-36: images in and out of the real clipboard (private station).
+fn image_proof(desktop: usize, native: &clipboard_native::Native) -> Result<()> {
+    use clipboard_native::ImagePayload;
+    use wind_core::clipboard::IncomingImage;
+    let pixels: Vec<u8> = (0..64u32 * 48)
+        .flat_map(|i| [(i % 64 * 4) as u8, (i / 64 * 5) as u8, 90, 255])
+        .collect();
+    let rgba = clipboard_image::Rgba {
+        width: 64,
+        height: 48,
+        pixels: pixels.clone(),
+    };
+    let png = clipboard_image::encode_png(&rgba);
+    let dib = clipboard_image::encode_dib(&rgba);
+    // Read: the "PNG" format as it is; a DIB alone; an image marked private is not copied.
+    native.put_image_test(&png, &dib)?;
+    let captured = clipboard_native::read()?.expect("an image");
+    assert!(captured.text.is_empty() && !captured.sensitive);
+    assert!(matches!(&captured.image, Some(ImagePayload::Png(b)) if **b == png));
+    native.put_image_test(&[], &dib)?;
+    let Some(ImagePayload::Dib(read_dib)) = clipboard_native::read()?.unwrap().image else {
+        panic!("a DIB");
+    };
+    let out = clipboard_image::outgoing_from_dib(&read_dib).unwrap();
+    assert_eq!((out.width, out.height), (64, 48));
+    assert!(clipboard_image::decode_png(&out.png).unwrap().pixels == pixels);
+    native.put_image_test(&png, &dib)?;
+    native.mark_test("ExcludeClipboardContentFromMonitorProcessing", 0)?;
+    let private = clipboard_native::read()?.unwrap();
+    assert!(
+        private.sensitive && private.image.is_none(),
+        "private image not copied"
+    );
+
+    // Delayed rendering: pasteable at once, rendered when the bytes are in.
+    let image = Arc::new(IncomingImage::new(
+        [1; 16],
+        png.len() as u64,
+        64,
+        48,
+        vec![1],
+    ));
+    let half = png.len() / 2;
+    image.push(0, &png[..half]).unwrap();
+    native.write_image_test(image.clone(), true)?;
+    assert!(
+        clipboard_native::read()?.is_none(),
+        "own received image is never read back (no echo)"
+    );
+    let pasting = paste(desktop, png_format());
+    std::thread::sleep(Duration::from_millis(150));
+    image.push(half as u64, &png[half..]).unwrap();
+    let (got, took) = pasting.join().unwrap();
+    assert!(got.as_deref() == Some(&png[..]), "the full PNG");
+    assert!(took >= Duration::from_millis(100) && took < Duration::from_secs(2));
+    let (got_dib, _) = paste(desktop, 8).join().unwrap();
+    let decoded = clipboard_image::decode_dib(&got_dib.expect("CF_DIB rendered")).unwrap();
+    assert!(decoded.pixels == pixels, "CF_DIB from the PNG");
+
+    // Replaced while a paste waits: that paste fails at once, no partial image.
+    let replaced = Arc::new(IncomingImage::new(
+        [2; 16],
+        png.len() as u64,
+        64,
+        48,
+        vec![1],
+    ));
+    replaced.push(0, &png[..half]).unwrap();
+    native.write_image_test(replaced.clone(), true)?;
+    let pasting = paste(desktop, png_format());
+    std::thread::sleep(Duration::from_millis(150));
+    replaced.fail();
+    let (got, took) = pasting.join().unwrap();
+    assert!(
+        got.is_none() && took < Duration::from_secs(1),
+        "replaced: fails at once"
+    );
+
+    // Stalled: the paste fails after the stall time; the window answers afterwards.
+    let stalled = Arc::new(IncomingImage::new(
+        [3; 16],
+        png.len() as u64,
+        64,
+        48,
+        vec![1],
+    ));
+    native.write_image_test(stalled, true)?;
+    let (got, took) = paste(desktop, png_format()).join().unwrap();
+    assert!(got.is_none(), "stalled: nothing pasted");
+    assert!(
+        took >= Duration::from_secs(9) && took < Duration::from_secs(12),
+        "stalled paste ends in ~10 s: {took:?}"
+    );
+    native.write_test("after a stalled paste", false)?;
+    assert_eq!(
+        clipboard_native::read()?.unwrap().text,
+        "after a stalled paste",
+        "the window is responsive again"
+    );
+    println!(
+        r#"{{"imageRead":true,"privateImageNotCopied":true,"delayedRender":true,"dibFromPng":true,"replacedPasteFails":true,"stalledPasteMs":{},"responsiveAfterStall":true,"noEcho":true}}"#,
+        took.as_millis()
+    );
+    Ok(())
+}
 fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
     if args.get(1).map(String::as_str) == Some("--hold-child") {
@@ -287,6 +432,7 @@ fn main() -> Result<()> {
     native.write_test("WN35 disabled monitoring", false)?;
     std::thread::sleep(std::time::Duration::from_millis(50));
     assert!(!changed.has_changed()?, "disabled monitor reads nothing");
+    image_proof(desktop, &native)?;
     native.clear_test()?;
     drop(native);
     // WN-105: a fresh listener for the held-clipboard retry proof (it ends by dropping it).

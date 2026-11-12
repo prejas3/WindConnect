@@ -14,10 +14,18 @@ use wind_ffi::{open_client, CoreError, IdentityStorage};
 struct MemoryStorage(Arc<Mutex<Option<Vec<u8>>>>);
 
 #[derive(Clone, Default)]
-struct TestClipboard(Arc<Mutex<String>>);
+struct TestClipboard(
+    Arc<Mutex<String>>,
+    Arc<Mutex<Option<Arc<wind_ffi::ClipboardImage>>>>,
+    Arc<Mutex<Option<Arc<wind_core::clipboard::IncomingImage>>>>,
+);
 impl wind_core::clipboard::Sink for TestClipboard {
     fn apply(&self, text: &str) -> bool {
         *self.0.lock().unwrap() = text.into();
+        true
+    }
+    fn apply_image(&self, image: Arc<wind_core::clipboard::IncomingImage>) -> bool {
+        *self.2.lock().unwrap() = Some(image);
         true
     }
 }
@@ -25,6 +33,16 @@ impl wind_ffi::ClipboardSink for TestClipboard {
     fn apply_text(&self, text: String) -> bool {
         *self.0.lock().unwrap() = text;
         true
+    }
+    fn apply_image(&self, image: Arc<wind_ffi::ClipboardImage>) -> bool {
+        *self.1.lock().unwrap() = Some(image);
+        true
+    }
+}
+struct Progress(Arc<Mutex<bool>>);
+impl wind_ffi::ClipboardImageProgress for Progress {
+    fn applied(&self) {
+        *self.0.lock().unwrap() = true;
     }
 }
 
@@ -98,6 +116,69 @@ async fn ffi_clipboard_uses_sink_and_applied_ack_in_both_directions() {
             .await,
         "sensitive"
     );
+    // WN-36: an image PC -> phone reaches the sink at once and reads in full
+    // through ClipboardImage::read; phone -> PC goes with send_clipboard_image.
+    let png: Vec<u8> = (0..700_000u32).map(|i| (i % 251) as u8).collect();
+    let image = |png: &Vec<u8>| wind_core::clipboard::OutgoingImage {
+        png: png.clone(),
+        thumbnail: vec![7; 100],
+        width: 640,
+        height: 480,
+    };
+    assert_eq!(
+        pc.send_image(image(&png), false, false, || {}).await,
+        wind_core::clipboard::Status::Applied
+    );
+    let got = local.1.lock().unwrap().clone().expect("image applied");
+    assert_eq!((got.width(), got.height(), got.size()), (640, 480, 700_000));
+    assert_eq!(got.thumbnail(), vec![7; 100]);
+    assert_eq!(got.id().len(), 32);
+    let read = tokio::task::spawn_blocking(move || {
+        let mut out = Vec::new();
+        loop {
+            let part = got.read(out.len() as u64, 65_536).unwrap();
+            if part.is_empty() {
+                return out;
+            }
+            out.extend(part);
+        }
+    })
+    .await
+    .unwrap();
+    assert!(read == png);
+    let applied = Arc::new(Mutex::new(false));
+    let back: Vec<u8> = png.iter().rev().copied().collect();
+    let result = connection
+        .send_clipboard_image(
+            back.clone(),
+            vec![1; 10],
+            480,
+            640,
+            false,
+            false,
+            Box::new(Progress(applied.clone())),
+        )
+        .await;
+    assert_eq!(
+        (result.status.as_str(), result.peer_limit),
+        ("applied", None)
+    );
+    assert!(*applied.lock().unwrap());
+    let at_pc = remote.2.lock().unwrap().clone().unwrap();
+    assert!(at_pc.wait_complete(Duration::from_secs(1)).unwrap() == back);
+    // The phone's limit refuses a PC image over it, and says the limit.
+    client.set_clipboard_image_limit(500_000);
+    assert_eq!(
+        pc.send_image(
+            image(&png.iter().map(|b| b ^ 1).collect()),
+            false,
+            true,
+            || {}
+        )
+        .await,
+        wind_core::clipboard::Status::PeerLimit(500_000)
+    );
+
     client.set_clipboard_enabled(false);
     assert_eq!(
         pc.send("disabled".into(), false, false).await,

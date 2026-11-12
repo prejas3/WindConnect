@@ -406,7 +406,8 @@ Możliwości v1.0:
 
 | możliwość | znaczenie |
 |---|---|
-| `clipboard/1` | strona obsługuje kanał `clipboard` |
+| `clipboard/1` | strona obsługuje kanał `clipboard` (tekst) |
+| `clipboard/2` | jak `clipboard/1` oraz obrazy PNG (§9.3.1, WN-36) |
 | `notify/1` | strona obsługuje kanał `notify` |
 | `media/1` | strona obsługuje kanał `media` |
 | `input/1` | strona przyjmuje zdarzenia wejścia (kanał `input`, sekcja 8) |
@@ -1333,6 +1334,73 @@ Odbiór PC→telefon działa w usłudze połączenia także bez Activity.
 Przykład Set, id=16 zer, licznik=1, tekst `hi` (bez nagłówka/ramki):
 `82 00 a3 00 50 00000000000000000000000000000000 01 01 02 62 6869`.
 Applied dla tego ID: `82 01 a2 00 50 00000000000000000000000000000000 01 00`.
+
+#### 9.3.1 Obrazy (`clipboard/2`, WN-36)
+
+CCS/1
+PURPOSE:obraz ze schowka (zrzut ekranu) wklejalny po drugiej stronie od razu: najpierw miniatura i rozmiar, pełny PNG w tle.
+RULE:strona, która przyjmuje obrazy, ogłasza `clipboard/1` i `clipboard/2` (§6, zasada 2: wersja N obejmuje 1..N). Obraz idzie tylko do strony z `clipboard/2`; starszej strona mówi „nie obsługuje obrazów”, tekst działa dalej.
+
+| typ | nazwa | pola mapy body |
+| --- | --- | --- |
+| 2 | ImageSet | `0`: id 16 B; `1`: licznik Lamporta (ten sam co dla tekstu); `2`: `"image/png"` (jedyny w v1); `3`: rozmiar PNG uint, 1 B–64 MiB; `4`, `5`: szerokość i wysokość uint, 1–16384; `6`: miniatura PNG (bytes), 1 B–128 KiB, dłuższy bok ≤ 512 px |
+| 3 | ImageChunk | `0`: id obrazu; `1`: offset uint; `2`: bajty 1 B–256 KiB |
+| 4 | ImageDone | `0`: id obrazu; `1`: 0 komplet, 2 nieudany |
+| 1 | Applied | jak wyżej; przy `refused` obrazu ponad limit odbiorcy opcjonalne pole `2`: ten limit w bajtach |
+
+Przebieg: nadawca wysyła `ImageSet`, a po `Applied` kolejne `ImageChunk`
+po kolei (offset = suma poprzednich) na tym samym strumieniu kanału.
+Odbiorca daje `Applied`, gdy obraz jest już w schowku OS (wklejalny), a
+nie po ostatnim bajcie: Android zapisuje URI `content://` swojego
+dostawcy, Windows formaty z opóźnionym renderowaniem. `ImageDone` idzie,
+gdy przyszedł cały PNG (0) albo bajty były błędne (2: luka, nadmiar).
+Nadawca pokazuje „wysłano” dopiero po `ImageDone` 0; po `Applied` tylko
+„wysyłanie”. Czekanie na `ImageDone` kończy się po 10 s od ostatniego
+fragmentu.
+
+Kolejność i echo: obraz i tekst dzielą jeden „ostatni schowek” i klucz
+`(licznik, id)` z §9.3. Nowsza zmiana po którejkolwiek stronie kończy
+obraz w drodze: odbiorca porzuca go (czytelnik dostaje błąd, nigdy
+mieszanki dwóch obrazów), fragmenty starego id pomija, a nadawca
+przerywa wysyłanie (`replaced`). Hash zapamiętany przez nadawcę to SHA-256
+PNG. Własnego zapisu odebranego obrazu strona nie odsyła: Windows pomija
+schowek, którego właścicielem jest jego okno, Android pomija klip z URI
+własnego dostawcy (ponowne kodowanie zmieniłoby bajty, więc nie hash).
+
+Limit: ustawienie użytkownika 5 / 16 / 50 MB PNG (domyślnie 16 MB).
+Nadawca nie wysyła obrazu ponad własny limit (`too-large`), także
+ręcznie. Odbiorca odrzuca `ImageSet` ponad swój limit (`refused` z polem
+`2`), zanim cokolwiek trafi do schowka; klucz nie przesuwa się, więc
+późniejsza mniejsza zmiana nadal wygrywa.
+
+Wklejanie przed końcem przesyłu czeka na bajty; brak nowych bajtów przez
+10 s, przerwanie sesji albo nowszy schowek kończą je błędem (wklejenie
+się nie udaje, bez częściowego obrazu). Miniatura służy tylko podglądom
+(Android: `ContentResolver.EXTRA_SIZE`, np. nakładka schowka, klawiatura);
+nigdy nie jest wklejana zamiast obrazu. Obraz żyje tylko w pamięci, jeden
+naraz; po restarcie procesu stary URI daje `FileNotFoundException`.
+
+Prywatność: nadawca stosuje te same flagi co dla tekstu (Windows: formaty
+prywatności, Android: `IS_SENSITIVE`) i wtedy nie kopiuje obrazu z OS.
+Windows zapisuje odebrany obraz z `CanIncludeInClipboardHistory` = 0 i
+`CanUploadToCloudClipboard` = 0, jak tekst. Android **nie** oznacza
+odebranego obrazu jako wrażliwego (inaczej niż tekst): obraz pochodzi z
+własnego komputera użytkownika, który nie wysyła treści prywatnych, a
+oznaczenie ukryłoby podgląd z miniatury w nakładce Androida 13+. Telefon
+czyta obraz innej aplikacji tylko z fokusem (uprawnienie URI klipu), bez
+innych uprawnień. Nic z treści nie trafia do logów, IPC ani plików.
+
+Przykłady (z nagłówkiem długości ramki):
+
+```text
+ImageSet id 0×16, licznik 1, 2×1 px, rozmiar 3, miniatura [01 02]:
+2c 82 02 a7 00 50 00…00 01 01 02 69 "image/png" 03 03 04 02 05 01 06 42 01 02
+ImageChunk offset 0, bajty [07 08 09]:
+1c 82 03 a3 00 50 00…00 01 00 02 43 07 08 09
+ImageDone komplet:          17 82 04 a2 00 50 00…00 01 00
+Applied refused, limit 16 000 000:
+1d 82 01 a3 00 50 00…00 01 01 02 1a 00 f4 24 00
+```
 
 ## 10. Kody błędów
 

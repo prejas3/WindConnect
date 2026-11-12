@@ -273,7 +273,10 @@ fn capabilities_of(accepts: &[Accept]) -> Vec<Capability> {
     let mut caps: Vec<Capability> = accepts
         .iter()
         .filter(|a| a.enabled)
-        .filter_map(|a| Capability::new(capability_name(a.channel)?, a.version))
+        // A routed version N accepts every version up to N (§6, rule 2:
+        // clipboard/2 extends clipboard/1), so each is announced.
+        .flat_map(|a| (1..=a.version).map(move |v| (a.channel, v)))
+        .filter_map(|(channel, v)| Capability::new(capability_name(channel)?, v))
         .collect();
     caps.sort_by_key(|c| c.to_string());
     caps
