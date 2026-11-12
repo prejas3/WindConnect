@@ -6,6 +6,7 @@ mod actions;
 mod autostart;
 mod brand_icon;
 mod clipboard;
+mod clipboard_history;
 mod clipboard_image;
 mod clipboard_native;
 mod files;
@@ -336,7 +337,8 @@ fn main() {
             files::files_snapshot,
             files::files_action,
             clipboard::clipboard_snapshot,
-            clipboard::clipboard_action
+            clipboard::clipboard_action,
+            clipboard::clipboard_history
         ])
         .run(tauri::generate_context!())
         .expect("failed to run WindConnect");

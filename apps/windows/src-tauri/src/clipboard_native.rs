@@ -1,4 +1,4 @@
-//! CCS/1 IO:real CF_UNICODETEXT, images (the "PNG" format, CF_DIBV5/CF_DIB; WN-36) / WM_CLIPBOARDUPDATE, delayed rendering of received images | SEC:privacy formats respected, bounded copies, no payload logs.
+//! CCS/1 IO:real CF_UNICODETEXT, images (the "PNG" format, CF_DIBV5/CF_DIB; WN-36) / WM_CLIPBOARDUPDATE, delayed rendering of received images | SEC:privacy formats (and "Clipboard Viewer Ignore", WN-37) respected, bounded copies, no payload logs.
 #![cfg(windows)]
 use std::{
     cell::Cell,
@@ -64,6 +64,8 @@ fn wide(s: &str) -> Vec<u16> {
 }
 struct Formats {
     exclude: u32,
+    /// "Clipboard Viewer Ignore": KeePass, Password Safe and other managers mark passwords with it (WN-37).
+    ignore: u32,
     history: u32,
     cloud: u32,
     png: u32,
@@ -75,12 +77,13 @@ fn formats() -> io::Result<&'static Formats> {
             exclude: RegisterClipboardFormatW(
                 wide("ExcludeClipboardContentFromMonitorProcessing").as_ptr(),
             ),
+            ignore: RegisterClipboardFormatW(wide("Clipboard Viewer Ignore").as_ptr()),
             history: RegisterClipboardFormatW(wide("CanIncludeInClipboardHistory").as_ptr()),
             cloud: RegisterClipboardFormatW(wide("CanUploadToCloudClipboard").as_ptr()),
             png: RegisterClipboardFormatW(wide("PNG").as_ptr()),
         }
     });
-    if f.exclude == 0 || f.history == 0 || f.cloud == 0 || f.png == 0 {
+    if f.exclude == 0 || f.ignore == 0 || f.history == 0 || f.cloud == 0 || f.png == 0 {
         Err(io::Error::last_os_error())
     } else {
         Ok(f)
@@ -187,6 +190,7 @@ fn read_inner(include_sensitive: bool, wait: bool) -> io::Result<Option<Capture>
             return Ok(None);
         }
         let sensitive = IsClipboardFormatAvailable(f.exclude) != 0
+            || IsClipboardFormatAvailable(f.ignore) != 0
             || private_flag(f.history)
             || private_flag(f.cloud);
         // CCS/1 SEC:never even copy a password payload out of the OS when marked private.
@@ -620,6 +624,35 @@ impl Native {
     pub fn write_received(&self, text: &str) -> bool {
         write(self.hwnd as HWND, text, true).is_ok()
     }
+    /// A history entry the user picked (WN-37), written with the flags it had:
+    /// `protected` (it came from the phone) keeps it out of Win+V history and
+    /// the cloud, as when it was received. The caller sends it.
+    pub fn write_history_text(&self, text: &str, protected: bool) -> bool {
+        write(self.hwnd as HWND, text, protected).is_ok()
+    }
+    /// A history image: on the clipboard at once, "PNG" and CF_DIB rendered on
+    /// request from the bytes in memory. Owned by this window, so it isn't read
+    /// back: the caller sends it.
+    pub fn write_history_image(
+        &self,
+        png: &[u8],
+        thumbnail: Vec<u8>,
+        width: u32,
+        height: u32,
+        protected: bool,
+    ) -> bool {
+        let image = wind_core::clipboard::IncomingImage::new(
+            [0x37; 16],
+            png.len() as u64,
+            width.into(),
+            height.into(),
+            thumbnail,
+        );
+        if image.push(0, png).is_err() || !image.is_complete() {
+            return false;
+        }
+        write_image(self.hwnd as HWND, Arc::new(image), protected).is_ok()
+    }
     /// A received image, pasteable at once (delayed rendering, WN-36).
     pub fn write_received_image(&self, image: Arc<wind_core::clipboard::IncomingImage>) -> bool {
         write_image(self.hwnd as HWND, image, true).is_ok()
@@ -651,6 +684,30 @@ impl Native {
                 put(DIB, dib)?;
             }
             Ok(())
+        }
+    }
+    /// Puts `text` as a password manager would, with one privacy `marker`
+    /// ("exclude", "ignore", "history", "cloud"), from no window (another app).
+    #[cfg(debug_assertions)]
+    #[allow(dead_code)]
+    pub fn write_marked_test(&self, text: &str, marker: &str) -> io::Result<()> {
+        let _gate = access(true).unwrap();
+        unsafe {
+            let f = formats()?;
+            let format = match marker {
+                "exclude" => f.exclude,
+                "ignore" => f.ignore,
+                "history" => f.history,
+                "cloud" => f.cloud,
+                _ => return Err(io::Error::other("unknown marker")),
+            };
+            let _open = Open::acquire(std::ptr::null_mut())?;
+            if EmptyClipboard() == 0 {
+                return Err(io::Error::last_os_error());
+            }
+            put(format, &0u32.to_ne_bytes())?;
+            let data: Vec<u8> = wide(text).iter().flat_map(|u| u.to_ne_bytes()).collect();
+            put(TEXT, &data)
         }
     }
     #[cfg(debug_assertions)]

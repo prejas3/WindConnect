@@ -258,8 +258,15 @@ impl Drop for LocalBlob {
 
 /// Encrypts `data` for the current user.
 pub fn protect(data: &[u8]) -> io::Result<Vec<u8>> {
+    protect_with(data, ENTROPY)
+}
+
+/// Encrypts `data` for the current user, bound to `purpose` (DPAPI optional
+/// entropy): a blob for one purpose doesn't decrypt as another's (WN-37's
+/// clipboard pins use their own).
+pub fn protect_with(data: &[u8], purpose: &[u8]) -> io::Result<Vec<u8>> {
     let input = blob_in(data)?;
-    let entropy = blob_in(ENTROPY)?;
+    let entropy = blob_in(purpose)?;
     let mut out = LocalBlob(CRYPT_INTEGER_BLOB {
         cbData: 0,
         pbData: ptr::null_mut(),
@@ -285,8 +292,13 @@ pub fn protect(data: &[u8]) -> io::Result<Vec<u8>> {
 
 /// Decrypts `blob`, which only the user who encrypted it can do.
 pub fn unprotect(blob: &[u8]) -> io::Result<Zeroizing<Vec<u8>>> {
+    unprotect_with(blob, ENTROPY)
+}
+
+/// Decrypts a [`protect_with`] blob made for the same `purpose`.
+pub fn unprotect_with(blob: &[u8], purpose: &[u8]) -> io::Result<Zeroizing<Vec<u8>>> {
     let input = blob_in(blob)?;
-    let entropy = blob_in(ENTROPY)?;
+    let entropy = blob_in(purpose)?;
     let mut out = LocalBlob(CRYPT_INTEGER_BLOB {
         cbData: 0,
         pbData: ptr::null_mut(),
@@ -307,7 +319,7 @@ pub fn unprotect(blob: &[u8]) -> io::Result<Zeroizing<Vec<u8>>> {
         let os = io::Error::last_os_error();
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
-            format!("identity key can't be decrypted for this user: {os}"),
+            format!("data can't be decrypted for this user: {os}"),
         ));
     }
     Ok(Zeroizing::new(out.as_slice().to_vec()))

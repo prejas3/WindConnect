@@ -553,6 +553,11 @@ OS (konserwatywna górna granica czasu kopiuj→wklej), osobno sprawdza odbiór
 Androida bez Activity, sensitive, akcję powiadomienia i brak echa po fokusie.
 Surowe próbki i zrzuty Light/Dark: `%TEMP%/windconnect-wn35-*`.
 
+## Hasła w schowku (WN-37)
+
+CCS/1
+SEC:klip z `ClipDescription.EXTRA_IS_SENSITIVE` (`android.content.extra.IS_SENSITIVE`) nie jest wysyłany na PC, także ręcznie (test: `ClipboardProof`, „WN35-PRIVATE-ANDROID”). Telefon czyta schowek tylko z fokusem albo ręcznie, nigdy w tle. W drugą stronę hasła z menedżerów na PC nie dochodzą (test OS z 4 znacznikami Windows, `apps/windows/README.md`, WN-37).
+LIMIT:menedżery ustawiają IS_SENSITIVE na Androidzie 13+; starsze lub źle napisane go nie ustawiają, a hasło skopiowane z nich wygląda jak zwykły tekst. Nie rozpoznajemy haseł po treści. Historia schowka jest tylko na Windows (Android: osobna karta).
 ## Wspólny schowek: obrazy (WN-36)
 
 CCS/1

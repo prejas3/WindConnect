@@ -390,6 +390,8 @@ async fn run(
                 "fullHd":report(0,10),"uhd4k":report(10,13)})).unwrap()).unwrap();
         }else if command=="WN35-CONTROL-PC-PRIVATE"{
             tokio::time::sleep(Duration::from_millis(100)).await;writer.write_test("WN35-PRIVATE-PC",true).unwrap();
+            // WN-37 done-when: a password as each kind of manager marks it (one marker alone) never leaves the PC.
+            for marker in ["exclude","ignore","history","cloud"] { tokio::time::sleep(Duration::from_millis(100)).await; writer.write_marked_test(&format!("WN37-PASSWORD-{marker}"),marker).unwrap(); }
             tokio::time::sleep(Duration::from_millis(200)).await;writer.write_test("WN35-PC-PRIVATE-CHECK",false).unwrap();
         }
     }});
