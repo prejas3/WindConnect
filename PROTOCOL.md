@@ -411,7 +411,7 @@ Możliwości v1.0:
 |---|---|
 | `clipboard/1` | strona obsługuje kanał `clipboard` (tekst) |
 | `clipboard/2` | jak `clipboard/1` oraz obrazy PNG (§9.3.1, WN-36) |
-| `notify/1` | strona obsługuje kanał `notify` |
+| `notify/1` | strona pokazuje powiadomienia drugiej strony: przyjmuje `Posted`, `Icon`, `Removed` na kanale `notify` (§9.7, WN-42) |
 | `media/1` | strona pokazuje odtwarzacz drugiej strony: przyjmuje `Now`, `Art`, `Gone` na kanale `media` (§9.6, WN-46) |
 | `media-control/1` | odtwarzaczem strony można sterować: przyjmuje `Command` na kanale `media-control` (§9.6, WN-46) |
 | `input/1` | strona przyjmuje zdarzenia wejścia (kanał `input`, sekcja 8) |
@@ -1016,7 +1016,7 @@ i `InputSession` z `s` 0, `g` 0 (`input/1` z `HelloAck`), razem 10 B:
 
 Kanały `clipboard`, `notify`, `media` i `files` mają w v1.0 tylko numer,
 możliwość i zasady strumieni (sekcja 3). Typy ich wiadomości dopisują
-karty funkcji (WC-35, WC-38, WC-42, WC-46 i dalsze) jako zmiany tego
+karty funkcji (WC-35, WC-38, WC-42 (§9.7), WC-46 i dalsze) jako zmiany tego
 dokumentu:
 
 1. Nowy typ lub pole opcjonalne: kolejna wersja minor (1.1, 1.2, …),
@@ -1572,6 +1572,65 @@ Command next:                05 82 00 a1 00 03
 Command seek 61 000 ms:      09 82 00 a2 00 05 01 19 ee 48
 ```
 
+### 9.7 Kanał `notify` (`02`, WN-42)
+
+Powiadomienia jednej strony pokazane na drugiej. W WN-42 wysyła telefon;
+komputer ogłasza `notify/1`, gdy potrafi je pokazać (toasty, WN-43). Kanał
+uni z kolejką jak w §3.1. Kanał nie miał wcześniej typów wiadomości, więc
+wersjonuje je sama możliwość `notify/1` (sekcja 9, zasada 2).
+
+Od strony z powiadomieniami:
+
+| typ | nazwa | pola `body` |
+|---|---|---|
+| 0 | `Posted` | `0 id` 16 B; `1 app` tekst ≤ 64 B (nazwa aplikacji); `2 package` tekst ≤ 128 B (identyfikator aplikacji, dla pamięci ikon i filtrów WN-45); `3 title`? tekst ≤ 256 B; `4 text`? tekst ≤ 1024 B; `5 time` uint (ms od epoki Uniksa, chwila opublikowania); `6 icon`? 8 B, klucz `Icon` |
+| 1 | `Icon` | `0 key` 8 B (pierwsze 8 B SHA-256 obrazu); `1 png` PNG ≤ 16 KiB (nadawca: 64 px na bok) |
+| 2 | `Removed` | `0 id` 16 B: powiadomienie zniknęło u nadawcy (odrzucone albo anulowane) |
+
+Zasady:
+
+1. `id` jest stały dla jednego powiadomienia u nadawcy i nic nie znaczy
+   poza nim: na Androidzie to pierwsze 16 B SHA-256 losowej soli instalacji
+   i klucza powiadomienia, więc ze znanej aplikacji nie da się go odgadnąć.
+   `Posted` ze znanym `id` zastępuje to powiadomienie.
+2. Wysyłane są tylko powiadomienia opublikowane w trakcie sesji: na
+   początku sesji nadawca NIE wysyła tych, które już są (bez zalewu
+   powiadomień po każdym ponownym połączeniu). Lista bieżących, gdyby była
+   potrzebna, to osobna wiadomość w przyszłej wersji.
+3. Nadawca pomija powiadomienia stałe (trwające, usług pierwszoplanowych,
+   nieusuwalne), podsumowania grup, odtwarzacze (§9.6), tajne
+   (`VISIBILITY_SECRET`), własne i puste (bez tytułu i treści).
+4. **Tempo.** Dla jednego `id` najwyżej jedno `Posted` na sekundę: zmiana w
+   ciągu sekundy od poprzedniego czeka do jej końca i wychodzi tylko
+   najnowsza. Powiadomienie z paskiem postępu wychodzi tylko na początku i
+   na końcu (gdy pasek znika). `Posted` o treści takiej jak ostatnio wysłana
+   (poza `time`) nie wychodzi.
+5. `Icon` przed pierwszym `Posted`, które w tej sesji wskazuje nowy klucz;
+   odbiorca trzyma ikony przynajmniej do końca sesji. Gdy odbiorca wycofa
+   `notify/1` (§6, zasada 5), nadawca wysyła ikony od nowa po ponownym
+   włączeniu. Typ obrazu odbiorca ustala z pierwszych bajtów (PNG
+   `89 50 4E 47`); inny albo większy obraz to błędna wiadomość.
+6. `Removed` tylko dla `id`, którego `Posted` wyszło w tej sesji (nie dla
+   pominiętych ani sprzed sesji).
+7. Teksty i ikony pochodzą z innych aplikacji nadawcy: nadawca usuwa
+   formatowanie, znaki sterujące i dwukierunkowe oraz ciągi białych znaków;
+   odbiorca pokazuje je wyłącznie jako tekst. Nic nie jest zapisywane ani
+   logowane. Treść, którą system nadawcy ukrył (Android 15+: kody
+   jednorazowe i inna treść wrażliwa), wychodzi w postaci, w jakiej dał ją
+   system; nadawca tego nie obchodzi.
+8. Błędna wiadomość (za długi tekst, zły typ pola, brak pola) jest
+   pomijana; strumień trwa.
+9. **Zgoda.** Na Androidzie odczyt wymaga osobnej zgody (§9.6, zasada 6):
+   własny wpis w systemowym dostępie do powiadomień i ustawienie
+   „Powiadomienia na komputerze”, domyślnie wyłączone.
+
+Przykład (z nagłówkiem długości ramki): nagłówek strumienia `01 02`;
+`Removed` z `id` = 16 × `07`, 22 B:
+
+```text
+15 82 02 a1 00 50 07 07 07 07 07 07 07 07 07 07 07 07 07 07 07 07
+```
+
 ## 10. Kody błędów
 
 Te same kody służą w polu `code` wiadomości `Error` / `Goodbye` oraz jako
@@ -1625,6 +1684,7 @@ ten strumień (`STOP_SENDING` po stronie odbiorcy), nie połączenie.
 | `Battery` 82 %, ładuje się | `08 82 00 a2 00 18 52 01 f5` (§9.4) |
 | wiadomości `find` | sekcja 9.5 |
 | wiadomości `media`, `media-control` | sekcja 9.6 |
+| wiadomości `notify` | sekcja 9.7 |
 
 Przykłady są wektorami testowymi kodera ramek (WC-06): koder MUSI
 produkować dokładnie te bajty, a dekoder odtwarzać z nich te wiadomości.

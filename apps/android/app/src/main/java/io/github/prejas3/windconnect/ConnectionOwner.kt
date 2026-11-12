@@ -51,6 +51,13 @@ class ConnectionOwner(private val application: Application) {
     fun setPcMediaAllowed(value: Boolean) { val opened = core ?: return; scope.launch { opened.setPcMediaAllowed(value) } }
     /** Access is granted in system settings: re-read it when the app comes back. */
     fun refreshMedia() { val opened = core ?: return; scope.launch { opened.refreshMedia() } }
+    // WN-42: the phone's notifications on the PC (own consent, default off).
+    private val mutableNotifyAllowed = MutableStateFlow(false)
+    val notifyAllowed = mutableNotifyAllowed.asStateFlow()
+    private val mutableNotifyAccess = MutableStateFlow(false)
+    val notifyAccess = mutableNotifyAccess.asStateFlow()
+    fun setNotifyAllowed(value: Boolean) { val opened = core ?: return; scope.launch { opened.setNotifyAllowed(value) } }
+    fun refreshNotify() { val opened = core ?: return; scope.launch { opened.refreshNotify() } }
     fun setFindAllowed(value: Boolean) { val opened = core ?: return; scope.launch { opened.setFindAllowed(value) } }
 
     suspend fun acquire(): WindCore = gate.withLock {
@@ -64,6 +71,8 @@ class ConnectionOwner(private val application: Application) {
                 launch { opened.mediaAccess.collect { mutableMediaAccess.value = it } }
                 launch { opened.pcMedia.collect { mutablePcMedia.value = it } }
                 launch { opened.pcMediaAllowed.collect { mutablePcMediaAllowed.value = it } }
+                launch { opened.notifyAllowed.collect { mutableNotifyAllowed.value = it } }
+                launch { opened.notifyAccess.collect { mutableNotifyAccess.value = it } }
                 opened.state.collect { mutableState.value = it }
             }
         }

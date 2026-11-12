@@ -88,6 +88,26 @@ pub struct MediaNow {
     pub actions: u64,
 }
 
+/// A notification on the phone, normalised (§9.7 `Posted`; WN-42).
+#[derive(uniffi::Record, Clone, Debug)]
+pub struct PhoneNotification {
+    /// 16 bytes, stable per notification (a salted hash of its key).
+    pub id: Vec<u8>,
+    pub app: String,
+    pub package_name: String,
+    pub title: Option<String>,
+    pub text: Option<String>,
+    pub time_ms: u64,
+    /// It shows a progress bar: only its start and end go out.
+    pub progress: bool,
+}
+
+fn notification_id(id: &[u8]) -> Result<[u8; 16], CoreError> {
+    id.try_into().map_err(|_| CoreError::InvalidInput {
+        reason: format!("notification id of {} bytes, not 16", id.len()),
+    })
+}
+
 fn action_name(action: wind_core::media::Action) -> (&'static str, Option<u64>) {
     use wind_core::media::Action;
     match action {
@@ -899,6 +919,7 @@ impl CoreClient {
             battery: wind_core::battery::Sender::default(),
             media: wind_core::media::Sender::default(),
             media_allowed,
+            notify: wind_core::notify::Sender::new(session.clone()),
             clipboard_input: std::sync::Mutex::new(Some(clipboard_input)),
             session,
             relay: Some(link),
@@ -1035,6 +1056,7 @@ impl CoreClient {
             battery: wind_core::battery::Sender::default(),
             media: wind_core::media::Sender::default(),
             media_allowed,
+            notify: wind_core::notify::Sender::new(session.clone()),
             clipboard_input: std::sync::Mutex::new(Some(clipboard_input)),
             session,
             relay: None,
@@ -1248,6 +1270,8 @@ pub struct CoreConnection {
     /// WN-46: the phone's player, sent only on a change; what its commands may do.
     media: wind_core::media::Sender,
     media_allowed: Arc<std::sync::atomic::AtomicU64>,
+    /// WN-42: the phone's notifications, by §9.7's rules (icons once, one a second per id).
+    notify: Arc<wind_core::notify::Sender>,
     session: Session,
     /// Held while the session runs through the relay.
     relay: Option<RelayLink>,
@@ -1350,6 +1374,37 @@ impl CoreConnection {
         self.media
             .now(&self.session, now, art.as_deref())
             .await
+            .map_err(session_error)
+    }
+    /// WN-42 (§9.7): a notification for the PC, with its app icon (PNG). "sent" (written to the
+    /// stream), "held" (goes out when its one-a-second window ends), "dropped" (unchanged or a progress
+    /// step) or "not-accepted" (the PC doesn't take notify/1).
+    pub async fn send_notification(
+        &self,
+        notification: PhoneNotification,
+        icon: Option<Vec<u8>>,
+    ) -> Result<String, CoreError> {
+        let posted = wind_core::notify::Posted {
+            id: notification_id(&notification.id)?,
+            app: notification.app,
+            package: notification.package_name,
+            title: notification.title,
+            text: notification.text,
+            time_ms: notification.time_ms,
+            icon: None,
+        };
+        self.notify
+            .posted(posted, icon, notification.progress)
+            .await
+            .map(|o| o.name().into())
+            .map_err(session_error)
+    }
+    /// WN-42: gone on the phone; `Removed` goes out only for an id sent in this session.
+    pub async fn notification_removed(&self, id: Vec<u8>) -> Result<String, CoreError> {
+        self.notify
+            .removed(notification_id(&id)?)
+            .await
+            .map(|o| o.name().into())
             .map_err(session_error)
     }
     /// No player on the phone any more.

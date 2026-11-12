@@ -11,6 +11,7 @@ pub mod identity;
 pub mod input;
 pub mod media;
 pub mod network;
+pub mod notify;
 pub mod pairing;
 pub mod protocol;
 pub mod relay;

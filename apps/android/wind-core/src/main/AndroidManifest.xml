@@ -16,6 +16,17 @@
                 <action android:name="android.service.notification.NotificationListenerService" />
             </intent-filter>
         </service>
+        <!-- WN-42: reads notifications for the PC, its own consent (PROTOCOL.md §9.6 rule 6, §9.7): a separate entry in the system's
+             notification access, and the in-app setting (off by default); off, it unbinds itself. Bound only by the system. -->
+        <service
+            android:name="io.github.prejas3.windconnect.core.NotifyListenerService"
+            android:label="WindConnect: powiadomienia na komputerze"
+            android:exported="true"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
         <!-- WN-47: the PC media notification's buttons; not exported, reached only through our PendingIntents. -->
         <receiver
             android:name="io.github.prejas3.windconnect.core.PcMediaActionReceiver"
