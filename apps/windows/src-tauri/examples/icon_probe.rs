@@ -9,6 +9,15 @@ mod indicator {
         Unavailable,
     }
 }
+// The proof has no phone: never a low-battery badge (WN-49).
+mod battery {
+    pub fn current() -> Option<()> {
+        None
+    }
+    pub fn is_low(_: Option<()>) -> bool {
+        false
+    }
+}
 mod tray {
     use tauri::Manager;
     pub fn refresh_icon(app: &tauri::AppHandle) {

@@ -66,6 +66,8 @@ pub struct Snapshot {
     pub connected: bool,
     /// Paired phones and those still owed an unpair notice (WC-28).
     pub devices: Vec<DeviceRow>,
+    /// The connected phone's battery (WN-49), pushed by the phone; None without a session or report.
+    pub battery: Option<crate::battery::Battery>,
     /// A phone is paired: [`has_paired_in`], the rule the first window
     /// follows too (WN-113). A phone owed an unpair notice doesn't count.
     pub paired: bool,
@@ -82,6 +84,7 @@ impl Default for Snapshot {
             code: None,
             connected: false,
             devices: Vec::new(),
+            battery: None,
             paired: false,
         }
     }
@@ -336,6 +339,7 @@ type Incoming = (
     mpsc::UnboundedReceiver<wind_core::session::SessionEvent>,
     mpsc::Receiver<wind_core::session::ChannelMessage>,
     mpsc::Receiver<wind_core::session::ActionStream>,
+    mpsc::Receiver<wind_core::session::ChannelMessage>,
 );
 
 async fn run(
@@ -397,6 +401,8 @@ async fn run(
                 let mut router = Router::new();
                 let clipboard_input = wind_core::clipboard::Clipboard::route(&mut router);
                 let action_streams = router.route_actions(8);
+                // CCS/1 IO:battery/1 from the phone (§9.4, WN-49): status only, never acted on beyond display and alerts.
+                let battery_input = wind_core::battery::route(&mut router);
                 match tokio::time::timeout(
                     std::time::Duration::from_secs(6),
                     Session::accept(connection, local.clone(), router),
@@ -405,7 +411,13 @@ async fn run(
                 {
                     Ok(Ok((session, events))) => {
                         if session_sender
-                            .send((session, events, clipboard_input, action_streams))
+                            .send((
+                                session,
+                                events,
+                                clipboard_input,
+                                action_streams,
+                                battery_input,
+                            ))
                             .await
                             .is_err()
                         {
@@ -450,6 +462,9 @@ async fn run(
     // The phone disconnected from the panel, and when (BUSY for DISMISSED_FOR).
     let mut dismissed: Option<(PublicKey, Instant)> = None;
     let mut active: Option<(Session, _)> = None;
+    // The active session's battery messages and its alerts (WN-49); both end with the session.
+    let mut battery_input: Option<mpsc::Receiver<wind_core::session::ChannelMessage>> = None;
+    let mut alerts = wind_core::battery::Alerts::default();
     let mut refresh = loaded.devices.is_empty();
     loop {
         if refresh {
@@ -470,6 +485,11 @@ async fn run(
         }
         let active_key = active.as_ref().map(|(s, _): &(Session, _)| s.peer().key);
         snapshot.connected = active_key.is_some();
+        if active.is_none() {
+            battery_input = None;
+            snapshot.battery = None;
+        }
+        crate::battery::set(&app, snapshot.battery);
         snapshot.devices = device_rows(&store, active_key.as_ref());
         snapshot.paired = has_paired_in(&store);
         publish(&app, &state, snapshot.clone());
@@ -573,7 +593,7 @@ async fn run(
                 _ => {},
             },
             incoming = sessions.recv() => {
-                let Some((session, mut events, clipboard_input, action_streams)) = incoming else { break };
+                let Some((session, mut events, clipboard_input, action_streams, session_battery)) = incoming else { break };
                 // CCS/1 RULE:one session; another phone gets BUSY unless just paired here (the person's choice) (WC-28).
                 let fresh = preferred.is_some_and(|(k, at)| k == session.peer().key && at.elapsed() < PAIRED_TAKES_OVER);
                 let sent_away = dismissed.is_some_and(|(k, at)| k == session.peer().key && at.elapsed() < DISMISSED_FOR);
@@ -606,7 +626,22 @@ async fn run(
                 }
                 if fresh { snapshot.pair_to_connected_ms = paired_at.map(|t| t.elapsed().as_millis() as u64); preferred = None; }
                 indicator.connected(generation);
+                battery_input = Some(session_battery);
+                alerts = wind_core::battery::Alerts::default();
+                snapshot.battery = None;
                 active = Some((session, events));
+            },
+            // CCS/1 FLOW:phone Battery -> snapshot (panel, pushed) + tray badge/tooltip + alert toast (WN-49).
+            message = async { match battery_input.as_mut() { Some(rx) => rx.recv().await, None => std::future::pending().await } } => match message {
+                Some(message) => {
+                    if let Some(status) = wind_core::battery::Status::decode(&message.message) {
+                        snapshot.battery = Some(status.into());
+                        if let Some(alert) = alerts.update(status) {
+                            crate::battery::notify(&app, alert, snapshot.phone.as_deref().unwrap_or("Telefon"));
+                        }
+                    }
+                }
+                None => battery_input = None,
             },
             end = async { match &active { Some((session, _)) => session.closed().await, None => std::future::pending().await } } => {
                 let (session, _) = active.take().expect("closed future implies a session");

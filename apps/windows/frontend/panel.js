@@ -66,6 +66,20 @@ function renderDevices(rows) {
   document.querySelector('#device-list').replaceChildren(...lastDevices.map(deviceRow));
 }
 document.querySelector('#device-add').addEventListener('click', () => invoke?.('pairing_action', { action: 'refresh' }).catch(error));
+// WN-49: level and charging from the phone (pushed in pairing-state, never polled). Not a live region: a label only.
+function renderBattery(battery) {
+  const box = document.querySelector('#phone-battery');
+  box.hidden = !battery;
+  if (!battery) return;
+  const level = Math.max(0, Math.min(100, Number(battery.level) || 0));
+  const charging = battery.charging === true;
+  box.classList.toggle('charging', charging);
+  box.classList.toggle('low', !charging && level <= 15);
+  box.querySelector('.level').setAttribute('width', String(Math.max(level > 0 ? 1.5 : 0, 16 * level / 100)));
+  box.querySelector('.battery-text').textContent = `${level}%`;
+  box.setAttribute('aria-label', `Bateria telefonu ${level}%${charging ? ', ładuje się' : ''}`);
+}
+
 function renderPairing(state) {
   renderDevices(state.devices);
   const waiting = state.phase === 'waiting';
@@ -85,6 +99,7 @@ function renderPairing(state) {
   document.querySelector('#pairing-message').textContent = state.message;
   // A phone keeps its session (and these actions) while another one is being paired (WC-28).
   document.querySelector('#quick-actions').hidden = !(state.connected || connected);
+  renderBattery(state.connected || connected ? state.battery : null);
   document.querySelector('#pairing-instructions').hidden = !waiting;
   document.querySelector('#pairing-hint').hidden = !connected;
   const refresh = document.querySelector('#pairing-refresh');

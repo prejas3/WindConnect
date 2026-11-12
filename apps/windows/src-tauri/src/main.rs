@@ -4,6 +4,7 @@ use tauri::{Emitter, Manager};
 use wind_core::network::NetworkChanges;
 mod actions;
 mod autostart;
+mod battery;
 mod brand_icon;
 mod clipboard;
 mod clipboard_history;
@@ -331,6 +332,8 @@ fn main() {
             pairing::pairing_action,
             pairing::device_action,
             pairing::dev_pairing_address,
+            #[cfg(debug_assertions)]
+            battery::dev_battery_alerts,
             actions::actions_snapshot,
             actions::set_action_enabled,
             actions::edit_custom_actions,
