@@ -17,6 +17,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -75,8 +76,8 @@ fun WindSwitch(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Un
 
 // CCS/1 DEP:own SVG paths from accepted WN-20 | RULE:decorative; parent supplies accessible label.
 @Composable
-fun WindIcon(name: String, modifier: Modifier = Modifier) {
-    val color = MaterialTheme.colorScheme.primary
+fun WindIcon(name: String, modifier: Modifier = Modifier, tint: Color? = null) {
+    val color = tint ?: MaterialTheme.colorScheme.primary
     val data = when (name) {
         "send" -> "M12 16V4M7 9l5-5 5 5M5 17v3h14v-3"
         "clipboard" -> "M6 5h12v16H6zM9 3h6v4H9zM9 12h6M9 16h4"
@@ -94,10 +95,18 @@ fun WindIcon(name: String, modifier: Modifier = Modifier) {
 
 @Composable
 fun WindAction(title: String, subtitle: String, icon: String, onClick: (() -> Unit)?, modifier: Modifier = Modifier) {
-    Column(modifier.heightIn(min = 96.dp).clip(RoundedCornerShape(13.dp)).background(MaterialTheme.colorScheme.surface)
-        .clickable(enabled = onClick != null, role = Role.Button, onClick = { onClick?.invoke() }).padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        WindIcon(icon)
-        Text(title, style = MaterialTheme.typography.labelLarge)
-        Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+    val colors = MaterialTheme.colorScheme
+    val enabled = onClick != null
+    val shape = RoundedCornerShape(13.dp)
+    // CCS/1 RULE:disabled is neutral + labelled, not global alpha (keep text readable at large font).
+    val surface = if (enabled) colors.surface else colors.surfaceVariant
+    val foreground = if (enabled) colors.onSurface else colors.onSurfaceVariant
+    val outline = if (enabled) Modifier else Modifier.border(1.dp, colors.outline, shape)
+    Column(modifier.heightIn(min = 96.dp).clip(shape).background(surface).then(outline)
+        .clickable(enabled = enabled, role = Role.Button, onClick = { onClick?.invoke() }).padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        WindIcon(icon, tint = if (enabled) colors.primary else colors.onSurfaceVariant)
+        Text(title, color = foreground, style = MaterialTheme.typography.labelLarge)
+        Text(subtitle, color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+        if (!enabled) Text("Niedostępne", modifier = Modifier.fillMaxWidth(), color = foreground, style = MaterialTheme.typography.labelSmall)
     }
 }
