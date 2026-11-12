@@ -1,5 +1,24 @@
 # Android
 
+## Kafelek szybkich ustawień (WN-32)
+
+CCS/1
+FLOW: Android13+: Ustawienia -> „Dodaj do szybkich ustawień” -> systemowy dialog requestAddTileService. Dodano/już dodany -> potwierdzenie; odmowa -> brak ponawiania, akcja pozostaje w Ustawieniach. Starszy Android: instrukcja ręcznej edycji panelu zamiast przycisku. Stuknięcie kafelka -> odblokowanie -> istniejący ekran wysyłania schowka -> powrót po dostarczeniu. Przytrzymanie -> aplikacja.
+STATE: aktywny = połączony komputer; nieaktywny = łączenie lub brak połączenia. Nazwa/stany są opisane dla TalkBack. SystemUI renderuje kafelek i kolory motywu systemowego; aplikacja dostarcza własną ikonę i tekst.
+RULE: panel obserwuje stan istniejącego ConnectionOwner, bez nowego klienta, połączenia, timera ani odczytu schowka. Obserwacja trwa tylko podczas nasłuchu TileService. Ostatnie zwolnienie klienta resetuje stan; ponowne otwarcie panelu od razu odczytuje aktualny stan. Usługa połączenia aktualizuje ten sam stan bez otwierania Activity.
+SEC: TileService jest eksportowany wyłącznie z systemowym BIND_QUICK_SETTINGS_TILE. Odczyt schowka odbywa się po odblokowaniu i uzyskaniu fokusu SendClipboardActivity; obowiązują istniejące limity/sensitive. Brak payloadu i surowych błędów w kafelku.
+
+Testy: `:app:testDebugUnitTest` (stany, utrata połączenia, prywatność),
+`ClipboardTileRegistrationTest` w `:app:connectedDebugAndroidTest` (deklaracja
+usługi, uprawnienie, odkrywanie, cel przytrzymania).
+Na S25 Ultra / One UI: dodaj kafelek, zamknij aplikację przy działającej usłudze,
+rozłącz/przywróć PC i sprawdź zmianę stanu w otwartym panelu oraz po jego
+ponownym otwarciu. Skopiuj tekst, stuknij kafelek, sprawdź schowek PC i powrót;
+powtórz z blokadą ekranu i anulowanym odblokowaniem (bez wysyłki), schowkiem
+wrażliwym oraz bez połączenia. Przytrzymanie otwiera WindConnect. Sprawdź
+jasny/ciemny motyw systemu, tekst 150% i odczyt TalkBack. Emulator nie
+potwierdza zachowania panelu Samsunga.
+
 Ikona WN-93 „Orbita” ma warstwy adaptive i monochrome, własny biały wektor
 powiadomienia oraz mipmapy mdpi–xxxhdpi. Źródła i odtwarzanie:
 `assets/brand/README.md`. Na S25 Ultra sprawdź launcher One UI przy włączonych
