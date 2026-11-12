@@ -185,7 +185,8 @@ od serwera, przykład w sekcji 7.1), `files` (odpowiedzi odbiorcy pliku) i
 | `06` | `actions` | bidi | proszący o akcję; 1 na prośbę (§9.2) | 5 |
 | `07` | `battery` | uni | nadawca stanu baterii (§9.4) | 6 |
 | `08` | `find` | bidi | proszący o dzwonienie; 1 na dzwonienie (§9.5) | 5 |
-| `09`–`3f` | zarezerwowane dla przyszłych kanałów | | | |
+| `09` | `media-control` | uni | nadawca poleceń dla odtwarzacza drugiej strony (§9.6) | 4 |
+| `0a`–`3f` | zarezerwowane dla przyszłych kanałów | | | |
 | `40`–`ff` | niedozwolone w v1 | | | |
 
 Zasady:
@@ -214,7 +215,7 @@ Przykład: nagłówek strumienia `control` to `01 00`, strumienia `input` to `01
 
 ### 3.1 Cykl życia strumieni uni
 
-Kanały `clipboard`, `notify`, `media`, `input` i `battery` mają w każdym kierunku
+Kanały `clipboard`, `notify`, `media`, `media-control`, `input` i `battery` mają w każdym kierunku
 **kolejkę wiadomości**: ciąg strumieni uni jednego nadawcy dla tego kanału.
 
 1. Nadawca ma naraz najwyżej **jeden otwarty do zapisu** strumień kanału.
@@ -411,7 +412,8 @@ Możliwości v1.0:
 | `clipboard/1` | strona obsługuje kanał `clipboard` (tekst) |
 | `clipboard/2` | jak `clipboard/1` oraz obrazy PNG (§9.3.1, WN-36) |
 | `notify/1` | strona obsługuje kanał `notify` |
-| `media/1` | strona obsługuje kanał `media` |
+| `media/1` | strona pokazuje odtwarzacz drugiej strony: przyjmuje `Now`, `Art`, `Gone` na kanale `media` (§9.6, WN-46) |
+| `media-control/1` | odtwarzaczem strony można sterować: przyjmuje `Command` na kanale `media-control` (§9.6, WN-46) |
 | `input/1` | strona przyjmuje zdarzenia wejścia (kanał `input`, sekcja 8) |
 | `files/1` | strona obsługuje kanał `files` |
 | `actions/1` | strona przyjmuje prośby o akcje (kanał `actions`, §9.2) |
@@ -1504,6 +1506,65 @@ State 0 (dzwoni):      05 82 00 a1 00 00
 State 1 (na telefonie): 05 82 00 a1 00 01
 ```
 
+### 9.6 Kanały `media` (`03`) i `media-control` (`09`, WN-46)
+
+Odtwarzacz jednej strony pokazany i sterowany na drugiej. Dwie możliwości,
+bo kierunki robią co innego: `media/1` (pokazuję odtwarzacz drugiej strony:
+przyjmuję `Now`, `Art`, `Gone` na `media`) i `media-control/1` (moim
+odtwarzaczem można sterować: przyjmuję `Command` na `media-control`). W
+WN-46 komputer ogłasza `media/1`, telefon `media-control/1`; kierunek
+odwrotny (WN-47) używa tych samych wiadomości bez zmiany protokołu. Oba
+kanały są uni z kolejką jak w §3.1.
+
+Kanał `media` (od strony z odtwarzaczem):
+
+| typ | nazwa | pola `body` |
+|---|---|---|
+| 0 | `Now` | `0 title` tekst ≤ 256 B; `1 artist`? ≤ 256 B; `2 album`? ≤ 256 B; `3 app` tekst ≤ 64 B (nazwa odtwarzacza); `4 duration_ms`? uint; `5 position_ms` uint (w chwili wysłania); `6 playing` bool; `7 speed_permille` uint (1000 = normalnie; CBOR bez liczb zmiennoprzecinkowych); `8 actions` uint, bity: 1 play, 2 pause, 4 next, 8 previous, 16 seek; `9 art`? 8 B, klucz `Art` |
+| 1 | `Art` | `0 key` 8 B (pierwsze 8 B SHA-256 obrazu); `1 image` JPEG albo PNG ≤ 96 KiB (nadawca: ≤ 256 px na bok) |
+| 2 | `Gone` | pusta mapa: brak aktywnego odtwarzacza |
+
+Kanał `media-control` (od strony sterującej):
+
+| typ | nazwa | pola `body` |
+|---|---|---|
+| 0 | `Command` | `0 action` uint: 0 play, 1 pause, 2 toggle, 3 next, 4 previous, 5 seek; `1 position_ms` uint, tylko i obowiązkowo przy seek |
+
+Zasady:
+
+1. `Now` na starcie sesji (gdy druga strona ogłosiła `media/1`) i przy
+   każdej zmianie metadanych, odtwarzania, szybkości, `actions` albo pozycji
+   innej niż wynikająca z upływu czasu (odchyłka > 2 s od ekstrapolacji).
+   Nigdy okresowo: odbiorca liczy postęp sam,
+   `position_ms + upływ × speed_permille / 1000`, do `duration_ms`.
+2. `Art` przed pierwszym `Now`, które wskazuje nowy klucz; odbiorca trzyma
+   tylko ostatni obraz. Typ obrazu odbiorca ustala z pierwszych bajtów
+   (JPEG `FF D8 FF`, PNG `89 50 4E 47`), nigdy ze słowa nadawcy; inny albo
+   większy obraz to błędna wiadomość.
+3. Teksty i obrazy pochodzą z innych aplikacji nadawcy: odbiorca pokazuje
+   je wyłącznie jako tekst (bez interpretacji znaczników), bez znaków
+   sterujących i dwukierunkowych. Nic nie jest zapisywane ani logowane.
+4. Błędna wiadomość (za długi tekst, zły typ pola, brak pola) jest
+   pomijana; strumień trwa. `Command` z akcją, której ostatni wysłany `Now`
+   nie dopuszcza w `actions`, strona pomija bez reakcji.
+5. Strona ogłasza `media-control/1` tylko wtedy, gdy rzeczywiście może
+   sterować odtwarzaczem (na Androidzie: dostęp do sesji multimediów i
+   włączone ustawienie), także w trakcie sesji (§6, zasada 5).
+6. **Zgoda.** Na Androidzie odczyt cudzych sesji multimediów wymaga
+   dostępu do powiadomień. WindConnect używa go wyłącznie do odtwarzacza i
+   nie czyta treści powiadomień. Funkcja czytająca powiadomienia (WN-42)
+   NIE MOŻE po cichu rozszerzyć tej zgody: ma własny przełącznik (domyślnie
+   wyłączony) i własne wyjaśnienie.
+
+Przykłady (z nagłówkiem długości ramki):
+
+```text
+nagłówki strumieni:          01 03 (media), 01 09 (media-control)
+Gone:                        03 82 02 a0
+Command next:                05 82 00 a1 00 03
+Command seek 61 000 ms:      09 82 00 a2 00 05 01 19 ee 48
+```
+
 ## 10. Kody błędów
 
 Te same kody służą w polu `code` wiadomości `Error` / `Goodbye` oraz jako
@@ -1556,6 +1617,7 @@ ten strumień (`STOP_SENDING` po stronie odbiorcy), nie połączenie.
 | wiadomości `actions` | sekcja 9.2 |
 | `Battery` 82 %, ładuje się | `08 82 00 a2 00 18 52 01 f5` (§9.4) |
 | wiadomości `find` | sekcja 9.5 |
+| wiadomości `media`, `media-control` | sekcja 9.6 |
 
 Przykłady są wektorami testowymi kodera ramek (WC-06): koder MUSI
 produkować dokładnie te bajty, a dekoder odtwarzać z nich te wiadomości.

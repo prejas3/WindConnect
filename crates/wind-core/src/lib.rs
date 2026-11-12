@@ -9,6 +9,7 @@ pub mod files;
 pub mod find;
 pub mod identity;
 pub mod input;
+pub mod media;
 pub mod network;
 pub mod pairing;
 pub mod protocol;

@@ -5,6 +5,23 @@ body { min-height: 100vh; overflow: auto; }
 .panel-heading p { font-size: 12px; margin-top: 5px; }
 .panel-heading > div { min-width: 0; flex: 1; }
 /* WN-49: the phone's battery; amber when low, the bolt while charging. No live region: alerts are toasts. */
+/* WN-46: the phone's player. Texts come from other apps: set as text only (panel.js). */
+.media-card { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-areas: "art body" "controls controls"; gap: 8px 12px; margin-top: 10px; padding: 12px; border-radius: 10px; background: var(--tile); }
+.media-card[hidden] { display: none; }
+.media-art { grid-area: art; width: 56px; height: 56px; border-radius: 6px; object-fit: cover; }
+.media-body { grid-area: body; min-width: 0; }
+.media-art[hidden] + .media-body { grid-column: 1 / -1; }
+.media-app, .media-sub, .media-time { font-size: 12px; margin: 0; }
+.media-title { font-size: 14px; font-weight: 600; margin: 2px 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.media-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.media-progress { height: 6px; border-radius: 3px; background: var(--border); margin: 8px 0 4px; cursor: pointer; overflow: hidden; }
+.media-progress[aria-disabled="true"] { cursor: default; }
+.media-progress span { display: block; height: 100%; width: 0; background: var(--accent); }
+.media-time { display: flex; justify-content: space-between; font-variant-numeric: tabular-nums; }
+.media-controls { grid-area: controls; display: flex; justify-content: center; gap: 12px; }
+.media-controls svg { width: 18px; height: 18px; fill: currentColor; stroke: currentColor; stroke-width: 1.5; }
+#media-toggle .pause, #media-toggle.playing .play { display: none; }
+#media-toggle.playing .pause { display: inline; }
 /* WN-50: the "Dzwoń" tile while the phone rings. */
 .quick-actions #find-phone[aria-pressed="true"] { background: var(--accent); color: var(--surface); }
 .quick-actions #find-phone[aria-pressed="true"] svg { stroke: currentColor; }

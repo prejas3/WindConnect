@@ -26,6 +26,8 @@ pub fn frame_limit(channel: Channel, first: bool) -> usize {
         Channel::Battery => MAX_CONTROL_FRAME,
         // Ring, stop and states (§9.5).
         Channel::Find => MAX_CONTROL_FRAME,
+        // One small command per message (§9.6).
+        Channel::MediaControl => MAX_CONTROL_FRAME,
         _ => MAX_STREAM_FRAME,
     }
 }

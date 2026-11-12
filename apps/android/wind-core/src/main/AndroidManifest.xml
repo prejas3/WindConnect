@@ -5,6 +5,17 @@
     <!-- WN-50: find my phone vibrates with its ring. -->
     <uses-permission android:name="android.permission.VIBRATE" />
     <application>
+        <!-- WN-46: only so Android lets WindConnect read media sessions (PROTOCOL.md §9.6 rule 6); it reads no notifications.
+             Bound only by the system (BIND_NOTIFICATION_LISTENER_SERVICE), after the person grants access in system settings. -->
+        <service
+            android:name="io.github.prejas3.windconnect.core.MediaListenerService"
+            android:label="WindConnect: odtwarzacz na komputerze"
+            android:exported="true"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
         <!-- WN-50: the ring notification's "Zatrzymaj"; not exported, reached only through our PendingIntent. -->
         <receiver
             android:name="io.github.prejas3.windconnect.core.FindStopReceiver"

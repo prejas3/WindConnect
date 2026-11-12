@@ -70,6 +70,8 @@ pub struct Snapshot {
     pub battery: Option<crate::battery::Battery>,
     /// Find my phone (WN-50).
     pub find: FindView,
+    /// The phone's player (WN-46); None without a session, access or player.
+    pub media: Option<crate::media::MediaView>,
     /// A phone is paired: [`has_paired_in`], the rule the first window
     /// follows too (WN-113). A phone owed an unpair notice doesn't count.
     pub paired: bool,
@@ -88,6 +90,7 @@ impl Default for Snapshot {
             devices: Vec::new(),
             battery: None,
             find: FindView::default(),
+            media: None,
             paired: false,
         }
     }
@@ -130,6 +133,8 @@ pub fn find_outcome(end: Option<wind_core::find::State>) -> &'static str {
 }
 
 enum Action {
+    /// A button of the phone's player in the panel (WN-46).
+    Media(wind_core::media::Action),
     /// Find my phone (WN-50): ring it, or stop the ring.
     Ring,
     StopRing,
@@ -383,6 +388,7 @@ type Incoming = (
     mpsc::Receiver<wind_core::session::ChannelMessage>,
     mpsc::Receiver<wind_core::session::ActionStream>,
     mpsc::Receiver<wind_core::session::ChannelMessage>,
+    mpsc::Receiver<wind_core::session::ChannelMessage>,
 );
 
 async fn run(
@@ -446,6 +452,8 @@ async fn run(
                 let action_streams = router.route_actions(8);
                 // CCS/1 IO:battery/1 from the phone (§9.4, WN-49): status only, never acted on beyond display and alerts.
                 let battery_input = wind_core::battery::route(&mut router);
+                // CCS/1 IO:media/1 from the phone (§9.6, WN-46): shown as text and checked images only.
+                let media_input = wind_core::media::route_player(&mut router);
                 match tokio::time::timeout(
                     std::time::Duration::from_secs(6),
                     Session::accept(connection, local.clone(), router),
@@ -460,6 +468,7 @@ async fn run(
                                 clipboard_input,
                                 action_streams,
                                 battery_input,
+                                media_input,
                             ))
                             .await
                             .is_err()
@@ -510,6 +519,9 @@ async fn run(
     // The active session's battery messages and its alerts (WN-49); both end with the session.
     let mut battery_input: Option<mpsc::Receiver<wind_core::session::ChannelMessage>> = None;
     let mut alerts = wind_core::battery::Alerts::default();
+    // The active session's player messages and what they built (WN-46).
+    let mut media_input: Option<mpsc::Receiver<wind_core::session::ChannelMessage>> = None;
+    let mut player = crate::media::Player::default();
     // The ring asked of the phone, and when it was asked (WN-50).
     let mut ring: Option<(wind_core::find::Ring, Instant)> = None;
     let mut refresh = loaded.devices.is_empty();
@@ -535,7 +547,10 @@ async fn run(
         if active.is_none() {
             battery_input = None;
             snapshot.battery = None;
+            media_input = None;
+            player = crate::media::Player::default();
         }
+        snapshot.media = player.view.clone();
         crate::battery::set(&app, snapshot.battery);
         snapshot.find.available = active.as_ref().is_some_and(|(s, _): &(Session, _)| {
             s.peer_capabilities()
@@ -550,6 +565,12 @@ async fn run(
                 snapshot.phase = "offline".into(); snapshot.message = "Telefon sparowany, ale brak połączenia. Sprawdź wspólną sieć Wi-Fi.".into();
             },
             command = commands.recv() => match command {
+                Some(Action::Media(action)) => {
+                    if let Some((session, _)) = &active {
+                        // The phone ignores what its player doesn't allow (§9.6, rule 4).
+                        let _ = wind_core::media::command(session, action).await;
+                    }
+                }
                 Some(Action::Ring) => {
                     if let (None, Some((session, _))) = (&ring, &active) {
                         snapshot.find.last = None;
@@ -657,7 +678,7 @@ async fn run(
                 _ => {},
             },
             incoming = sessions.recv() => {
-                let Some((session, mut events, clipboard_input, action_streams, session_battery)) = incoming else { break };
+                let Some((session, mut events, clipboard_input, action_streams, session_battery, session_media)) = incoming else { break };
                 // CCS/1 RULE:one session; another phone gets BUSY unless just paired here (the person's choice) (WC-28).
                 let fresh = preferred.is_some_and(|(k, at)| k == session.peer().key && at.elapsed() < PAIRED_TAKES_OVER);
                 let sent_away = dismissed.is_some_and(|(k, at)| k == session.peer().key && at.elapsed() < DISMISSED_FOR);
@@ -691,6 +712,8 @@ async fn run(
                 if fresh { snapshot.pair_to_connected_ms = paired_at.map(|t| t.elapsed().as_millis() as u64); preferred = None; }
                 indicator.connected(generation);
                 battery_input = Some(session_battery);
+                media_input = Some(session_media);
+                player = crate::media::Player::default();
                 alerts = wind_core::battery::Alerts::default();
                 snapshot.battery = None;
                 let changed = caps_changed.clone();
@@ -725,6 +748,11 @@ async fn run(
             },
             // The phone changed what it accepts (e.g. "Pozwól komputerowi dzwonić", WN-50): the loop recomputes.
             Some(()) = caps_changes.recv() => {},
+            // CCS/1 FLOW:phone Now/Art/Gone -> Player (sanitised) -> snapshot.media, pushed (WN-46).
+            message = async { match media_input.as_mut() { Some(rx) => rx.recv().await, None => std::future::pending().await } } => match message {
+                Some(message) => { if let Some(m) = wind_core::media::Message::decode(&message.message) { player.apply(m); } }
+                None => media_input = None,
+            },
             // CCS/1 FLOW:phone Battery -> snapshot (panel, pushed) + tray badge/tooltip + alert toast (WN-49).
             message = async { match battery_input.as_mut() { Some(rx) => rx.recv().await, None => std::future::pending().await } } => match message {
                 Some(message) => {
@@ -811,6 +839,24 @@ pub fn device_action(
     state
         .commands
         .send(action)
+        .map_err(|_| "pairing unavailable".into())
+}
+/// WN-46: a button of the phone's player ("play", "pause", "toggle", "next", "previous",
+/// "seek" with `position_ms`).
+#[tauri::command]
+pub fn media_action(
+    window: tauri::WebviewWindow,
+    state: tauri::State<'_, Runtime>,
+    action: &str,
+    position_ms: Option<u64>,
+) -> Result<(), String> {
+    if window.label() != "panel" {
+        return Err("unsupported window".into());
+    }
+    let action = crate::media::action(action, position_ms).ok_or("unsupported media action")?;
+    state
+        .commands
+        .send(Action::Media(action))
         .map_err(|_| "pairing unavailable".into())
 }
 #[tauri::command]

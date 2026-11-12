@@ -14,6 +14,7 @@ mod files;
 mod hotkey;
 pub mod indicator;
 mod instance;
+mod media;
 mod pairing;
 mod panel;
 mod send_pipe;
@@ -332,6 +333,7 @@ fn main() {
             pairing::pairing_action,
             pairing::device_action,
             pairing::dev_pairing_address,
+            pairing::media_action,
             #[cfg(debug_assertions)]
             battery::dev_battery_alerts,
             actions::actions_snapshot,

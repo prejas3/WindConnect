@@ -80,6 +80,70 @@ function renderBattery(battery) {
   box.setAttribute('aria-label', `Bateria telefonu ${level}%${charging ? ', ładuje się' : ''}`);
 }
 
+// WN-46: the phone's player. Every text from it goes in with textContent only (it comes from other apps); the art only as a
+// data: URL of JPEG/PNG (checked by the PC by magic bytes). Progress moves on a local timer from the pushed state: no polling.
+const MEDIA = { play: 1, pause: 2, next: 4, previous: 8, seek: 16 };
+let media = null;
+let mediaTimer = null;
+const clock = ms => { const s = Math.max(0, Math.floor(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
+function mediaPosition() {
+  if (!media) return 0;
+  const moved = media.playing ? (Date.now() - media.received_ms) * media.speed_permille / 1000 : 0;
+  const at = media.position_ms + Math.max(0, moved);
+  return media.duration_ms ? Math.min(at, media.duration_ms) : at;
+}
+function tickMedia() {
+  if (!media) return;
+  const at = mediaPosition();
+  const total = media.duration_ms || 0;
+  const bar = document.querySelector('#media-progress');
+  bar.firstElementChild.style.width = total ? `${(100 * at / total).toFixed(2)}%` : '0';
+  bar.setAttribute('aria-valuemax', String(Math.round(total / 1000)));
+  bar.setAttribute('aria-valuenow', String(Math.round(at / 1000)));
+  bar.setAttribute('aria-valuetext', total ? `${clock(at)} z ${clock(total)}` : clock(at));
+  document.querySelector('#media-elapsed').textContent = clock(at);
+  document.querySelector('#media-total').textContent = total ? clock(total) : '';
+}
+function renderMedia(next) {
+  media = next || null;
+  const card = document.querySelector('#media');
+  card.hidden = !media;
+  clearInterval(mediaTimer); mediaTimer = null;
+  if (!media) return;
+  document.querySelector('#media-app').textContent = media.app ? `Na telefonie · ${media.app}` : 'Na telefonie';
+  document.querySelector('#media-title').textContent = media.title || 'Bez tytułu';
+  document.querySelector('#media-sub').textContent = [media.artist, media.album].filter(Boolean).join(' · ');
+  const art = document.querySelector('#media-art');
+  const ok = typeof media.art === 'string' && /^data:image\/(jpeg|png);base64,[A-Za-z0-9+/=]+$/.test(media.art);
+  art.hidden = !ok;
+  if (ok) art.src = media.art; else art.removeAttribute('src');
+  const can = bit => (media.actions & bit) !== 0;
+  const toggle = document.querySelector('#media-toggle');
+  toggle.classList.toggle('playing', media.playing);
+  toggle.setAttribute('aria-label', media.playing ? 'Wstrzymaj' : 'Odtwórz');
+  toggle.disabled = !can(media.playing ? MEDIA.pause : MEDIA.play);
+  document.querySelector('#media-next').disabled = !can(MEDIA.next);
+  document.querySelector('#media-previous').disabled = !can(MEDIA.previous);
+  document.querySelector('#media-progress').setAttribute('aria-disabled', String(!can(MEDIA.seek) || !media.duration_ms));
+  tickMedia();
+  if (media.playing) mediaTimer = setInterval(() => { if (document.visibilityState === 'visible') tickMedia(); }, 1000);
+}
+const mediaAction = (action, position_ms) => invoke?.('media_action', position_ms === undefined ? { action } : { action, positionMs: Math.round(position_ms) }).catch(error);
+document.querySelector('#media-toggle').addEventListener('click', () => mediaAction('toggle'));
+document.querySelector('#media-next').addEventListener('click', () => mediaAction('next'));
+document.querySelector('#media-previous').addEventListener('click', () => mediaAction('previous'));
+const seekable = () => media && (media.actions & MEDIA.seek) && media.duration_ms;
+document.querySelector('#media-progress').addEventListener('click', event => {
+  if (!seekable()) return;
+  const box = event.currentTarget.getBoundingClientRect();
+  mediaAction('seek', media.duration_ms * Math.min(1, Math.max(0, (event.clientX - box.left) / box.width)));
+});
+document.querySelector('#media-progress').addEventListener('keydown', event => {
+  if (!seekable() || !['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+  event.preventDefault();
+  mediaAction('seek', Math.min(media.duration_ms, Math.max(0, mediaPosition() + (event.key === 'ArrowRight' ? 10_000 : -10_000))));
+});
+
 // WN-50: ring the phone; the tile turns into "Zatrzymaj" while it starts or rings. State comes pushed in pairing-state.
 function renderFind(find, connected) {
   const button = document.querySelector('#find-phone');
@@ -115,6 +179,7 @@ function renderPairing(state) {
   document.querySelector('#quick-actions').hidden = !(state.connected || connected);
   renderBattery(state.connected || connected ? state.battery : null);
   renderFind(state.find, !!(state.connected || connected));
+  renderMedia(state.connected || connected ? state.media : null);
   document.querySelector('#pairing-instructions').hidden = !waiting;
   document.querySelector('#pairing-hint').hidden = !connected;
   const refresh = document.querySelector('#pairing-refresh');

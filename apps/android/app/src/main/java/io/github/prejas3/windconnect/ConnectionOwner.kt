@@ -35,6 +35,14 @@ class ConnectionOwner(private val application: Application) {
     private val mutableFindAllowed = MutableStateFlow(true)
     val findAllowed = mutableFindAllowed.asStateFlow()
     fun stopRinging() { core?.stopRinging() }
+    // WN-46: the phone's player on the PC.
+    private val mutableMediaAllowed = MutableStateFlow(true)
+    val mediaAllowed = mutableMediaAllowed.asStateFlow()
+    private val mutableMediaAccess = MutableStateFlow(false)
+    val mediaAccess = mutableMediaAccess.asStateFlow()
+    fun setMediaAllowed(value: Boolean) { val opened = core ?: return; scope.launch { opened.setMediaAllowed(value) } }
+    /** Access is granted in system settings: re-read it when the app comes back. */
+    fun refreshMedia() { val opened = core ?: return; scope.launch { opened.refreshMedia() } }
     fun setFindAllowed(value: Boolean) { val opened = core ?: return; scope.launch { opened.setFindAllowed(value) } }
 
     suspend fun acquire(): WindCore = gate.withLock {
@@ -44,6 +52,8 @@ class ConnectionOwner(private val application: Application) {
             observation = scope.launch {
                 launch { opened.ringing.collect { mutableRinging.value = it } }
                 launch { opened.findAllowed.collect { mutableFindAllowed.value = it } }
+                launch { opened.mediaAllowed.collect { mutableMediaAllowed.value = it } }
+                launch { opened.mediaAccess.collect { mutableMediaAccess.value = it } }
                 opened.state.collect { mutableState.value = it }
             }
         }

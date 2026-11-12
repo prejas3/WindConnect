@@ -431,3 +431,12 @@ RULE:sesja przerwana w czasie dzwonienia nie znaczy „zatrzymano”: linia mów
 PERF:`ring_ms` w stanie parowania to czas od prośby do stanu 0, czyli górna granica startu dźwięku na telefonie.
 
 Testy: `cargo test -p wind-core` (`find`: koder; `tests/find.rs`: dzwonienie i Stop, zatrzymanie na telefonie, limit, drugi Ring, dzwonienie po końcu sesji, brak dźwięku, wycofanie i włączenie `find/1` w trakcie sesji), `node apps/windows/scripts/check-find-ui.cjs` (podstawione IPC: stany kafelka, klawiatura, wyniki, niedostępne, Light/Dark, 150%) i `node apps/windows/scripts/check-find-android.cjs` (prawdziwa aplikacja i emulator z urządzeniem audio, `QEMU_AUDIO_DRV=none`; `FIND_NOTIFICATIONS=denied` sprawdza zatrzymanie bez powiadomień).
+
+## Odtwarzacz telefonu w panelu (WN-46)
+
+CCS/1
+FLOW:telefon (`media/1` ogłasza PC, PROTOCOL.md §9.6) -> `Now`/`Art`/`Gone` -> `media::Player` (teksty przez sanitizer podglądu schowka, okładka tylko JPEG/PNG po magicznych bajtach) -> `Snapshot.media` w `pairing-state` -> karta „Na telefonie” (okładka, tytuł, wykonawca, aplikacja, postęp, ⏮ ⏯ ⏭, klik/strzałki na pasku = przewiń) -> `media_action` -> `Command` na `media-control` (telefon ogłasza `media-control/1`).
+RULE:teksty z innych aplikacji telefonu trafiają do panelu wyłącznie przez `textContent`; okładka tylko jako `data:image/jpeg|png;base64` sprawdzony też w panelu. Przyciski zależą od `actions` odtwarzacza; telefon i tak pomija polecenie spoza `actions`.
+PERF:postęp liczy panel z ostatniego stanu (`position_ms + upływ × speed`) lokalnym zegarem 1 s, tylko gdy panel widoczny i gra; nic nie jest odpytywane.
+
+Testy: `cargo test -p wind-core` (`media`: koder, granice, ekstrapolacja, bramka akcji; `tests/media.rs`: prawdziwa sesja Now/Art/Gone tylko przy zmianie, Command z powrotem, nic bez możliwości), testy aplikacji (sanityzacja, okładka po kluczu), `node apps/windows/scripts/check-media-ui.cjs` (podstawione IPC: teksty, okładka, postęp bez IPC, polecenia, bramka akcji, wrogi tekst, ukrycie, Light/Dark, 150%) i `node apps/windows/scripts/check-media-android.cjs` (prawdziwa aplikacja + emulator z testową sesją multimediów zamiast Spotify; 10 próbek ⏯ i ⏭, przewinięcie, czasy w obie strony, polecenie spoza `actions` bez reakcji).
