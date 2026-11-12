@@ -7,7 +7,7 @@ const fs = require('node:fs/promises');
 const executable = path.resolve(process.argv[2] || 'target/debug/windconnect-windows.exe');
 const port = 19324;
 const artifacts = process.env.PANEL_ARTIFACTS || path.join(process.env.TEMP, 'windconnect-wn24');
-const child = spawn(executable, ['--autostart'], { windowsHide: true, stdio: 'pipe', env: { ...process.env, WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port}`, WEBVIEW2_USER_DATA_FOLDER: path.join(artifacts, 'webview') } });
+const child = spawn(executable, ['--autostart'], { windowsHide: true, stdio: 'pipe', env: { ...process.env, WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port}`, WEBVIEW2_USER_DATA_FOLDER: path.join(artifacts, 'webview'), WINDCONNECT_TEST_DATA_DIR: path.join(artifacts, 'pc-' + process.pid) } });
 let exited = false, stderr = '';
 child.once('exit', () => { exited = true; });
 child.stderr.on('data', data => { stderr += data; });
@@ -77,7 +77,13 @@ function native(action) {
     }
     await panel.emulateMedia({ reducedMotion: 'reduce' });
     assert.equal(await panel.locator('.panel').evaluate(element => getComputedStyle(element).animationName), 'none');
-    assert.equal(await panel.locator('.quick-actions button:disabled').count(), 4, 'unpaired actions unavailable');
+    // WN-109: unpaired, the whole group is hidden (panel.js, WC-28), so Wyślij and Schowek can't be reached;
+    // once connected they are live (their modules report failures). Only the not-yet-built ones stay disabled.
+    // Debug builds start with an empty store (WINDCONNECT_TEST_DATA_DIR); a release build reads the real one,
+    // so with a phone connected there the group is shown and only the disabled list is checked.
+    if ((await invoke('pairing_snapshot')).phase !== 'connected') assert.equal(await panel.locator('#quick-actions').isHidden(), true, 'unpaired: no quick actions');
+    assert.deepEqual(await panel.locator('.quick-actions button:disabled').allTextContents(), ['Dzwoń', 'Touchpad'], 'only unbuilt actions are disabled');
+    assert.equal(await panel.locator('.quick-actions button:not(:disabled)').count(), 2, 'Wyślij and Schowek are live once connected');
     assert.deepEqual(errors, []);
     const report = { executable, samplesUs: samples, maxUs: Math.max(...samples), preloaded: true, escape: true, shortcut: !shortcutError, shortcutError, blur: true, themes: true, reducedMotion: true, stderr };
     await fs.writeFile(path.join(artifacts,'run.json'), JSON.stringify(report,null,2));

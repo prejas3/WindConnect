@@ -154,7 +154,7 @@ node apps/windows/scripts/check-panel-native.cjs target/release/windconnect-wind
 
 CCS/1
 DEP: PLAYWRIGHT_MODULE jak dla check-ui.cjs.
-IO: 20 pomiarów <80 ms; preloading bez flash, Escape, utrata fokusu, otwarcie aplikacji, motywy, DM Sans, reduced-motion. Raport i PNG: %TEMP%/windconnect-wn24 (lub PANEL_ARTIFACTS). Runner zamyka własny proces i przeglądarkę.
+IO: 20 pomiarów <80 ms; preloading bez flash, Escape, utrata fokusu, otwarcie aplikacji, motywy, DM Sans, reduced-motion. Bez telefonu (debug: pusty magazyn w folderze raportu) szybkie akcje są ukryte, a wyłączone są tylko niezbudowane Dzwoń i Touchpad; Wyślij i Schowek działają po połączeniu (WN-109). Raport i PNG: %TEMP%/windconnect-wn24 (lub PANEL_ARTIFACTS). Runner zamyka własny proces i przeglądarkę.
 LIMIT: Przy zajętym Win+Shift+W raport jawnie zapisuje shortcut=false i komunikat OS; pozostałe sprawdzenia działają. Pełny test fizycznego skrótu wymaga wolnego skrótu. Zmiana krawędzi paska/monitora/DPI i rzeczywisty klik ikony pozostają do ręcznej walidacji powłoki; runner nie zmienia konfiguracji pulpitu.
 
 ## QR i połączenie telefonu (WN-25)
