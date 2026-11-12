@@ -29,8 +29,8 @@ function focusFor(step) {
 
 export function renderOnboarding(state) {
   if (!state || typeof state.phase !== 'string') return;
-  const devices = state.devices || [];
-  const paired = devices.some(d => !d.owed);
+  // The backend's rule, the one that picks the first window too (WN-113): an owed phone isn't paired.
+  const paired = state.paired === true;
   if (!paired) sawUnpaired = true;
   const done = paired && sawUnpaired && !finished && state.connected;
   const active = !finished && (!paired || done);

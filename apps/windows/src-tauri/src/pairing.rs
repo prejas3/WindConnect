@@ -66,6 +66,9 @@ pub struct Snapshot {
     pub connected: bool,
     /// Paired phones and those still owed an unpair notice (WC-28).
     pub devices: Vec<DeviceRow>,
+    /// A phone is paired: [`has_paired_in`], the rule the first window
+    /// follows too (WN-113). A phone owed an unpair notice doesn't count.
+    pub paired: bool,
 }
 impl Default for Snapshot {
     fn default() -> Self {
@@ -79,6 +82,7 @@ impl Default for Snapshot {
             code: None,
             connected: false,
             devices: Vec::new(),
+            paired: false,
         }
     }
 }
@@ -140,10 +144,13 @@ fn publish(app: &tauri::AppHandle, state: &watch::Sender<Snapshot>, value: Snaps
 /// Whether any phone is paired (read once at start; WC-34 picks the first
 /// window: onboarding in the main window, else the panel).
 pub fn has_paired() -> bool {
-    data_dir()
-        .map(PairedDevicesFile::in_dir)
-        .and_then(|store| store.load())
-        .is_ok_and(|list| !list.devices.is_empty())
+    data_dir().is_ok_and(|dir| has_paired_in(&PairedDevicesFile::in_dir(dir)))
+}
+/// "Has a paired phone", one rule for the first window and the onboarding
+/// view (WN-113): a phone in `devices`. A removed phone still owed its
+/// unpair notice sits in `revoked` and is already unpaired for the person.
+pub fn has_paired_in(store: &PairedDevicesFile) -> bool {
+    store.load().is_ok_and(|list| !list.devices.is_empty())
 }
 fn addresses(port: u16) -> std::io::Result<Vec<SocketAddr>> {
     // CCS/1 RULE:LAN IPv4 only, default-route interface first; no network packet is sent by UDP connect.
@@ -464,6 +471,7 @@ async fn run(
         let active_key = active.as_ref().map(|(s, _): &(Session, _)| s.peer().key);
         snapshot.connected = active_key.is_some();
         snapshot.devices = device_rows(&store, active_key.as_ref());
+        snapshot.paired = has_paired_in(&store);
         publish(&app, &state, snapshot.clone());
         tokio::select! {
             _ = async { if let Some(start) = paired_at.filter(|_| snapshot.phase == "connecting") { tokio::time::sleep_until(tokio::time::Instant::from_std(start + std::time::Duration::from_secs(10))).await; } else { std::future::pending().await } } => {
@@ -737,6 +745,28 @@ mod tests {
         assert!(colors.contains(&qrcode::Color::Dark));
         wipe_colors(&mut colors);
         assert!(colors.iter().all(|c| *c == qrcode::Color::Light));
+    }
+
+    #[test]
+    fn a_phone_owed_a_notice_is_not_paired() {
+        // WN-113: after the last phone is removed (its notice not delivered
+        // yet), the first window and the onboarding view both see no phone.
+        let dir = std::env::temp_dir().join(format!("wc-wn113-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let store = PairedDevicesFile::in_dir(&dir);
+        assert!(!has_paired_in(&store), "no file: nothing paired");
+        use wind_core::pairing::{PairedDevice, PairedStore};
+        let key = DeviceIdentity::generate().unwrap().public_key();
+        store
+            .add(&PairedDevice::now(key, Some("Pixel".into())))
+            .unwrap();
+        assert!(has_paired_in(&store));
+        store.remove(&key).unwrap();
+        let rows = device_rows(&store, None);
+        assert_eq!(rows.len(), 1);
+        assert!(rows[0].owed, "the removed phone is listed as owed");
+        assert!(!has_paired_in(&store), "an owed phone isn't paired");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

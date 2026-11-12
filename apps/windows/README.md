@@ -318,10 +318,12 @@ Test panelu (IPC podstawione): `node apps/windows/scripts/check-sas-ui.cjs`.
 CCS/1
 FLOW:start bez `--autostart` i bez sparowanego telefonu -> główne okno z trzema krokami i kodem QR bez klikania (to samo okno parowania co panel) -> parowanie -> krok „Gotowe” (skrót panelu, „Uruchamiaj z Windows”) -> zwykłe okno. Ze sparowanym telefonem start otwiera panel jak dotąd.
 RULE:kod QR jak w panelu (WN-94): tylko canvas z `aria-label="Kod parowania"`, moduły zerowane po narysowaniu, bez linku w DOM. Po wygaśnięciu nowy kod tylko na „Wyświetl nowy kod”. Fokus na głównym przycisku kroku. Ustawienia wymagające telefonu czekają do końca onboardingu.
+RULE:„sparowany telefon” ma jedną definicję (WN-113): `pairing::has_paired_in`, telefon w `devices`; usunięty telefon, któremu wciąż należy się powiadomienie o rozparowaniu (`owed`), się nie liczy. Wybór pierwszego okna (`has_paired`) i widok onboardingu (pole `paired` w stanie parowania) czytają tę samą regułę.
 LIMIT:werdykt „nowy użytkownik paruje bez instrukcji w < 60 s” pochodzi z testu z człowiekiem; skrypty mierzą tylko część, którą dokłada system.
 
 Testy: `node apps/windows/scripts/check-onboarding-ui.cjs` (podstawione IPC:
-kroki, zasady QR, SAS, wygaśnięcie, „Gotowe”, fokus, Light/Dark, tekst 150%)
+kroki, zasady QR, SAS, wygaśnięcie, „Gotowe”, fokus, Light/Dark, tekst 150%,
+start z samym telefonem `owed`)
 i `node apps/windows/scripts/check-onboarding-native.cjs` (prawdziwa aplikacja
 z pustym magazynem, `JAVA_HOME`, `ZXING_CORE_JAR`, zamknięty zainstalowany
 WindConnect): raport `launchToQrMs`, `qrToDoneMs`, `systemAddsMs`.
