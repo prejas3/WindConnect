@@ -6,6 +6,7 @@ pub mod broadcast;
 pub mod clipboard;
 pub mod discovery;
 pub mod files;
+pub mod find;
 pub mod identity;
 pub mod input;
 pub mod network;

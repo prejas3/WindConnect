@@ -585,3 +585,12 @@ FLOW:sesja przyjęta przez `WindCore` -> `BatteryReporter` rejestruje odbiornik 
 RULE:jedna normalizacja `BatteryReading.from(intent)`: procent jak w pasku stanu (`level * 100 / scale`, w dół), ładowanie = podłączony, CHARGING albo FULL; nieznany poziom = brak odczytu (nic nie idzie). Z niej skorzysta też widżet (WN-33).
 RULE:bez pollingu i budzenia: odbiornik tylko w czasie sesji; równe odczyty (intent przychodzi też przy zmianie napięcia i temperatury) są pomijane, a rdzeń wysyła tylko zmiany pary (poziom, ładowanie).
 LIMIT:PC widzi zmiany tylko przy żywej sesji (połączenie w tle włączone). W Doze albo bez połączenia w tle stan na PC nie jest aktualizowany, więc alert 15% może przyjść późno albo wcale. Nie dotyka ConnectionService ani ekranu głównego.
+
+## Znajdź telefon (WN-50)
+
+CCS/1
+FLOW:komputer prosi (`find/1`, PROTOCOL.md §9.5) -> `PhoneRinger`: głośność alarmu na max (poprzednia zapisana), wygenerowany ton (880/1320 Hz) przez AudioTrack z `USAGE_ALARM`, wibracje, powiadomienie -> stan 0 do PC dopiero, gdy głowica odtwarzania ruszyła.
+RULE:dźwięk omija tryb cichy i wibracje (strumień alarmu); ton jest generowany (bez pliku, bez opóźnienia przygotowania, niezależny od dzwonka użytkownika). Bez WAKE_LOCK: przy wygaszonym ekranie odtwarzanie podtrzymuje audioserver.
+RULE:zatrzymanie: powiadomienie na własnym kanale „Znajdź telefon” (IMPORTANCE_HIGH, bez własnego dźwięku, trwałe w czasie dzwonienia, znika po stanie końcowym, akcja „Zatrzymaj” i stuknięcie), pasek „Zatrzymaj dzwonienie” na każdym ekranie aplikacji (działa bez zgody na powiadomienia) i przycisk głośności przy otwartej aplikacji. Limit 60 s pilnuje rdzeń; koniec sesji nie zatrzymuje dzwonienia.
+RULE:głośność alarmu wraca po każdym dzwonieniu; gdy proces zginie w trakcie, następny start ją przywraca (chyba że użytkownik ją zmienił). Ustawienie „Pozwól komputerowi dzwonić” (domyślnie włączone) wycofuje `find/1` także w trwającej sesji.
+LIMIT:DND blokujące alarmy wycisza dźwięk (ominięcie wymaga dostępu do zasad DND, o który aplikacja nie prosi). Bez połączenia w tle albo w Doze prośba dochodzi późno albo wcale. Przycisk głośności przy wygaszonym ekranie lub poza aplikacją nie zatrzymuje dzwonienia (to wymagałoby sesji multimediów). Nie dotyka ConnectionService ani ekranu głównego; pasek jest nakładką w MainActivity.

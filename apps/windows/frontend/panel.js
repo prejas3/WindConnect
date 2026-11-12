@@ -80,6 +80,20 @@ function renderBattery(battery) {
   box.setAttribute('aria-label', `Bateria telefonu ${level}%${charging ? ', ładuje się' : ''}`);
 }
 
+// WN-50: ring the phone; the tile turns into "Zatrzymaj" while it starts or rings. State comes pushed in pairing-state.
+function renderFind(find, connected) {
+  const button = document.querySelector('#find-phone');
+  const status = document.querySelector('#find-status');
+  const active = !!find && (find.state === 'starting' || find.state === 'ringing');
+  button.disabled = !connected || !find || (!find.available && !active);
+  button.setAttribute('aria-pressed', String(active));
+  button.querySelector('.find-label').textContent = active ? 'Zatrzymaj' : 'Dzwoń';
+  button.setAttribute('aria-label', active ? 'Zatrzymaj dzwonienie telefonu' : 'Zadzwoń telefonem, by go znaleźć');
+  const line = !connected ? '' : active ? (find.state === 'ringing' ? 'Telefon dzwoni, także w trybie cichym' : 'Łączenie z telefonem…')
+    : find?.last || (find && !find.available ? 'Dzwonienie niedostępne: włącz je w ustawieniach WindConnect na telefonie' : '');
+  if (status.textContent !== line) status.textContent = line;
+}
+
 function renderPairing(state) {
   renderDevices(state.devices);
   const waiting = state.phase === 'waiting';
@@ -100,6 +114,7 @@ function renderPairing(state) {
   // A phone keeps its session (and these actions) while another one is being paired (WC-28).
   document.querySelector('#quick-actions').hidden = !(state.connected || connected);
   renderBattery(state.connected || connected ? state.battery : null);
+  renderFind(state.find, !!(state.connected || connected));
   document.querySelector('#pairing-instructions').hidden = !waiting;
   document.querySelector('#pairing-hint').hidden = !connected;
   const refresh = document.querySelector('#pairing-refresh');
@@ -181,6 +196,10 @@ function renderDrag(over) {
   document.querySelector('#drop-zone').hidden = !over;
 }
 document.querySelector('#send-files').addEventListener('click', () => invoke?.('files_action', { action: 'pick' }).catch(error));
+document.querySelector('#find-phone').addEventListener('click', event => {
+  const ringing = event.currentTarget.getAttribute('aria-pressed') === 'true';
+  invoke?.('pairing_action', { action: ringing ? 'ring-stop' : 'ring' }).catch(error);
+});
 document.querySelector('#transfers-clear').addEventListener('click', () => invoke?.('files_action', { action: 'clear' }).catch(error));
 const pairingActions = { 'pairing-refresh': 'refresh', 'pairing-cancel': 'close', 'pairing-sas': 'sas', 'pairing-accept': 'sas-accept', 'pairing-reject': 'sas-reject' };
 document.querySelectorAll(Object.keys(pairingActions).map(id => `#${id}`).join(',')).forEach(button => button.addEventListener('click', () => invoke?.('pairing_action', { action: pairingActions[button.id] }).catch(error)));

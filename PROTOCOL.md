@@ -184,7 +184,8 @@ od serwera, przykład w sekcji 7.1), `files` (odpowiedzi odbiorcy pliku) i
 | `05` | `files` | bidi | nadawca pliku; 1–8 na transfer (§9.1) | 7 (najniższy) |
 | `06` | `actions` | bidi | proszący o akcję; 1 na prośbę (§9.2) | 5 |
 | `07` | `battery` | uni | nadawca stanu baterii (§9.4) | 6 |
-| `08`–`3f` | zarezerwowane dla przyszłych kanałów | | | |
+| `08` | `find` | bidi | proszący o dzwonienie; 1 na dzwonienie (§9.5) | 5 |
+| `09`–`3f` | zarezerwowane dla przyszłych kanałów | | | |
 | `40`–`ff` | niedozwolone w v1 | | | |
 
 Zasady:
@@ -415,6 +416,7 @@ Możliwości v1.0:
 | `files/1` | strona obsługuje kanał `files` |
 | `actions/1` | strona przyjmuje prośby o akcje (kanał `actions`, §9.2) |
 | `battery/1` | strona przyjmuje stan baterii drugiej strony (kanał `battery`, §9.4, WN-49) |
+| `find/1` | strona potrafi zadzwonić na prośbę drugiej (kanał `find`, §9.5, WN-50) |
 
 Zasady:
 
@@ -1438,6 +1440,70 @@ nagłówek strumienia:            01 07
 Battery 82 %, ładuje się:       08 82 00 a2 00 18 52 01 f5
 ```
 
+### 9.5 Kanał `find` (`08`, WN-50)
+
+Znajdź telefon: komputer prosi telefon o głośne dzwonienie, także w trybie
+cichym, i obie strony mogą je zatrzymać. Wiadomości `find/1`; wersjonuje je
+sama możliwość. Telefon ogłasza `find/1` (potrafi i pozwala dzwonić),
+komputer nie. Użytkownik telefonu może to wyłączyć: wtedy telefon nie
+ogłasza `find/1` (§6, zasada 5), zamiast odmawiać każdej prośbie.
+
+**Strumień.** Jedno dzwonienie to jeden strumień bidi otwarty przez
+proszącego: nagłówek `01 08`, `Ring`, potem ewentualnie `Stop`. Dzwoniący
+odpowiada w kierunku powrotnym (bez nagłówka) stanem `0`, gdy dźwięk już
+gra, a potem dokładnie jednym stanem końcowym i FIN; proszący kończy swój
+kierunek FIN po stanie końcowym. Ramki do 16 384 B.
+
+Od proszącego:
+
+| typ | nazwa | pola `body` |
+|---|---|---|
+| 0 | `Ring` | pusta mapa |
+| 1 | `Stop` | pusta mapa |
+
+Od dzwoniącego:
+
+| typ | nazwa | pola `body` |
+|---|---|---|
+| 0 | `State` | `0 state`: uint (tabela niżej) |
+
+| `state` | znaczenie |
+|---|---|
+| 0 | dzwoni: dźwięk już gra (wysyłane dopiero po starcie odtwarzania) |
+| 1 | zatrzymane na tym urządzeniu przez jego użytkownika |
+| 2 | zatrzymane na prośbę (`Stop`) albo przejęte przez nowszy `Ring` |
+| 3 | minął limit 60 s |
+| 4 | niedostępne: nie da się odtworzyć dźwięku |
+
+Nieznany `state` proszący traktuje jak `4` (końcowy).
+
+Zasady:
+
+1. `Ring` musi przyjść w 5 s od otwarcia strumienia (inaczej `CANCELLED`).
+   Nieznany typ to `UNKNOWN_MESSAGE`, `Stop` przed `Ring` to
+   `PROTOCOL_VIOLATION`, błędna ramka `MALFORMED_FRAME`; w każdym
+   przypadku `STOP_SENDING` i `RESET_STREAM`, bez dzwonienia.
+2. Jedno dzwonienie naraz. `Ring` w czasie dzwonienia go nie zaczyna od
+   nowa: nowy strumień przejmuje dzwonienie (od razu stan `0`), a
+   poprzedni dostaje `2` i FIN. `Stop` z przejętego strumienia nic już nie
+   zatrzymuje.
+3. Dzwonienie trwa najwyżej 60 s. Koniec strumienia albo sesji proszącego
+   go **nie** zatrzymuje (użytkownik wciąż szuka telefonu): dzwoni dalej do
+   limitu albo zatrzymania na telefonie.
+4. Dźwięk omija tryb cichy i wibracje (na Androidzie strumień alarmu z
+   wygenerowanym tonem). Nic nie jest zapisywane w protokole; aplikacja
+   przywraca głośność, którą zmieniła.
+
+Przykłady (z nagłówkiem długości ramki):
+
+```text
+nagłówek strumienia:   01 08
+Ring:                  03 82 00 a0
+Stop:                  03 82 01 a0
+State 0 (dzwoni):      05 82 00 a1 00 00
+State 1 (na telefonie): 05 82 00 a1 00 01
+```
+
 ## 10. Kody błędów
 
 Te same kody służą w polu `code` wiadomości `Error` / `Goodbye` oraz jako
@@ -1489,6 +1555,7 @@ ten strumień (`STOP_SENDING` po stronie odbiorcy), nie połączenie.
 | wiadomości `files` | sekcja 9.1 |
 | wiadomości `actions` | sekcja 9.2 |
 | `Battery` 82 %, ładuje się | `08 82 00 a2 00 18 52 01 f5` (§9.4) |
+| wiadomości `find` | sekcja 9.5 |
 
 Przykłady są wektorami testowymi kodera ramek (WC-06): koder MUSI
 produkować dokładnie te bajty, a dekoder odtwarzać z nich te wiadomości.

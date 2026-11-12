@@ -57,7 +57,8 @@ pub use framed::{write_raw, FramedRecv, RecvError};
 use crate::input::{InputAnnouncement, InputEvent, InputReceiver, InputSender};
 use crate::protocol::InputMessage;
 pub use router::{
-    capability_name, is_uni, ActionStream, BidiStream, ChannelMessage, FileStream, Router,
+    capability_name, is_uni, ActionStream, BidiStream, ChannelMessage, FileStream, FindStream,
+    Router,
 };
 
 use crate::identity::PublicKey;
@@ -88,7 +89,7 @@ pub fn send_priority(channel: Channel) -> i32 {
         Channel::Clipboard => 2,
         Channel::Notify => 3,
         Channel::Media => 4,
-        Channel::Actions => 5,
+        Channel::Actions | Channel::Find => 5,
         Channel::Battery => 6,
         Channel::Files => 7,
     }
@@ -599,18 +600,25 @@ impl Session {
             .map(|(ch, v, _)| (*ch, *v))
             .chain(router.files.as_ref().map(|(v, _)| (Channel::Files, *v)))
             .chain(router.actions.as_ref().map(|(v, _)| (Channel::Actions, *v)))
+            .chain(router.find.as_ref().map(|_| (Channel::Find, 1)))
             .chain(router.input.as_ref().map(|_| (Channel::Input, 1)))
             .map(|(channel, version)| Accept {
                 channel,
                 version,
-                enabled: true,
+                enabled: !router.disabled.contains(&channel.byte()),
             })
             .collect();
         accepts.sort_by_key(|a| a.channel.byte());
         let gates = accepts
             .iter()
             .filter(|a| a.channel != Channel::Control)
-            .map(|a| (a.channel.byte(), watch::Sender::new(open)))
+            .map(|a| {
+                let gate = Gate {
+                    enabled: a.enabled,
+                    ..open
+                };
+                (a.channel.byte(), watch::Sender::new(gate))
+            })
             .collect();
         let input = router.input.map(|out| {
             let (tx, rx) = mpsc::channel(INPUT_COMMANDS);
@@ -647,6 +655,7 @@ impl Session {
             inner.clone(),
             router.files.map(|(_, tx)| tx),
             router.actions.map(|(_, tx)| tx),
+            router.find,
         ));
         (Session { inner }, events_rx)
     }
@@ -862,6 +871,21 @@ impl Session {
         Ok(ActionStream {
             send,
             recv: FramedRecv::new(recv, Channel::Actions),
+        })
+    }
+
+    /// Opens a `find` stream: one ring of the peer (§9.5); see
+    /// [`crate::find::ring`].
+    pub async fn open_find(&self) -> Result<FindStream, SessionError> {
+        if !self.peer_accepts(Channel::Find) {
+            return Err(SessionError::CapabilityMissing(Channel::Find));
+        }
+        let (mut send, recv) = self.inner.conn.quinn().open_bi().await?;
+        let _ = send.set_priority(send_priority(Channel::Find));
+        send.write_all(&stream_header(Channel::Find)).await?;
+        Ok(FindStream {
+            send,
+            recv: FramedRecv::new(recv, Channel::Find),
         })
     }
 
@@ -1495,6 +1519,7 @@ async fn bidi_loop(
     inner: Arc<Inner>,
     files: Option<mpsc::Sender<FileStream>>,
     actions: Option<mpsc::Sender<ActionStream>>,
+    find: Option<mpsc::Sender<FindStream>>,
 ) {
     let conn = inner.conn.quinn().clone();
     loop {
@@ -1505,6 +1530,7 @@ async fn bidi_loop(
         let inner = inner.clone();
         let files = files.clone();
         let actions = actions.clone();
+        let find = find.clone();
         // Each stream on its own, so a slow header holds back nothing else.
         tokio::spawn(async move {
             let mut header = [0u8; 2];
@@ -1520,6 +1546,7 @@ async fn bidi_loop(
                 }
                 Ok(Channel::Files) => (Channel::Files, files),
                 Ok(Channel::Actions) => (Channel::Actions, actions),
+                Ok(Channel::Find) => (Channel::Find, find),
                 Ok(_) => {
                     close(
                         &inner.conn,

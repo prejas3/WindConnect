@@ -175,6 +175,26 @@ class WindCore private constructor(
     // WN-49: the battery goes to the PC only while a session is live.
     private val battery = BatteryReporter(context)
     private var batteryJob: Job? = null
+    // WN-50: find my phone. One ringer per client: a ring outlives its session (PROTOCOL.md §9.5).
+    private val ringer = PhoneRinger(context, settings) { (state.value as? ConnectionState.Connected)?.peerName }.also { ringer ->
+        ringer.recover()
+        ringer.stopRequested = { client.stopRinging() }
+        client.setFindSink(ringer)
+        client.setFindEnabled(settings.getBoolean(FIND_ALLOWED, true))
+    }
+    /** The phone is ringing for the PC; [stopRinging] ends it (the PC sees "stopped on the phone"). */
+    val ringing: StateFlow<Boolean> = ringer.ringing
+    fun stopRinging() = client.stopRinging()
+    private val mutableFindAllowed = MutableStateFlow(settings.getBoolean(FIND_ALLOWED, true))
+    /** "Pozwól komputerowi dzwonić": off, `find/1` isn't announced and the PC's tile is disabled. */
+    val findAllowed: StateFlow<Boolean> = mutableFindAllowed.asStateFlow()
+    suspend fun setFindAllowed(value: Boolean) = withContext(Dispatchers.IO) {
+        settings.edit().putBoolean(FIND_ALLOWED, value).apply()
+        mutableFindAllowed.value = value
+        client.setFindEnabled(value)
+        val live = gate.withLock { connection }
+        try { live?.setFindAccepted(value) } catch (error: Exception) { if (error is CancellationException) throw error }
+    }
     private var stopped = false
     private var observer: NetworkObserver? = null
     private var desiredPeer: Pair<String, ByteArray>? = null
@@ -429,6 +449,7 @@ class WindCore private constructor(
             if (!stopped) {
                 stopped = true
                 systemClipboard.close()
+                ringer.stop()
                 desiredPeer = null
                 networkRetry?.cancel()
                 lanReturn?.cancel()
@@ -487,6 +508,7 @@ class WindCore private constructor(
     companion object {
         private const val SETTINGS = "windconnect.core"
         private const val RELAY_URL = "relay_url"
+        private const val FIND_ALLOWED = "find_allowed"
 
         suspend fun open(context: Context, name: String, bindAddress: String = "0.0.0.0:0"): WindCore {
             var native: CoreClient? = null

@@ -29,12 +29,23 @@ class ConnectionOwner(private val application: Application) {
     private val mutableState = MutableStateFlow<ConnectionState>(ConnectionState.Stopped)
     // CCS/1 RULE:QS observes existing leases only; opening the panel never starts a connection.
     val state = mutableState.asStateFlow()
+    // WN-50: the ring and its setting, for the Activity's stop bar and Settings (no lease of their own).
+    private val mutableRinging = MutableStateFlow(false)
+    val ringing = mutableRinging.asStateFlow()
+    private val mutableFindAllowed = MutableStateFlow(true)
+    val findAllowed = mutableFindAllowed.asStateFlow()
+    fun stopRinging() { core?.stopRinging() }
+    fun setFindAllowed(value: Boolean) { val opened = core ?: return; scope.launch { opened.setFindAllowed(value) } }
 
     suspend fun acquire(): WindCore = gate.withLock {
         val opened = core ?: WindCore.open(application, android.os.Build.MODEL.take(64)).also { opened ->
             core = opened
             mutableState.value = opened.state.value
-            observation = scope.launch { opened.state.collect { mutableState.value = it } }
+            observation = scope.launch {
+                launch { opened.ringing.collect { mutableRinging.value = it } }
+                launch { opened.findAllowed.collect { mutableFindAllowed.value = it } }
+                opened.state.collect { mutableState.value = it }
+            }
         }
         opened.clipboardFocus(focused)
         leases++
@@ -48,6 +59,7 @@ class ConnectionOwner(private val application: Application) {
             observation?.cancelAndJoin()
             observation = null
             mutableState.value = ConnectionState.Stopped
+            mutableRinging.value = false
             core = null
             opened.shutdown()
         }

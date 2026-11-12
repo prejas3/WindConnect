@@ -421,3 +421,13 @@ Audyt nowych zależności w EXE/MSI:
 | --- | --- | --- | --- | --- |
 | tauri-winrt-notification | 0.7.3 | MIT OR Apache-2.0 (LICENSE_MIT, LICENSE_APACHE-2.0, LICENSE.spdx); wybrana MIT | Natywny EXE; frontend/assets/tauri-winrt-notification-MIT.txt | Permisywna |
 | windows (+ windows-core, -collections, -future, -link, -numerics, -result, -strings, -threading) | 0.61.3 (części 0.1–0.61) | MIT OR Apache-2.0 (license-mit, license-apache-2.0, identyczne we wszystkich); wybrana MIT | Natywny EXE; frontend/assets/windows-rs-MIT.txt | Permisywna; bez plików NOTICE |
+
+## Znajdź telefon (WN-50)
+
+CCS/1
+FLOW:kafelek „Dzwoń” w panelu -> `Ring` na kanale `find` (`08`, PROTOCOL.md §9.5) -> telefon gra ton alarmu i dopiero wtedy odsyła stan 0 -> kafelek „Zatrzymaj” (aria-pressed) -> `Stop` z PC albo zatrzymanie na telefonie -> stan końcowy -> linia stanu („Zatrzymano”, „Zatrzymano na telefonie”, „Telefon dzwonił 60 s”, „Telefon nie może teraz dzwonić”).
+RULE:kafelek działa tylko przy sesji i gdy telefon ogłasza `find/1`; wyłączone na telefonie („Pozwól komputerowi dzwonić”) daje kafelek nieaktywny z wyjaśnieniem. Linia stanu ma `role="status"` (odpowiedź na własną akcję).
+RULE:sesja przerwana w czasie dzwonienia nie znaczy „zatrzymano”: linia mówi „Połączenie przerwane — telefon może nadal dzwonić (do 60 s)”, bo telefon dzwoni dalej do limitu albo zatrzymania na nim.
+PERF:`ring_ms` w stanie parowania to czas od prośby do stanu 0, czyli górna granica startu dźwięku na telefonie.
+
+Testy: `cargo test -p wind-core` (`find`: koder; `tests/find.rs`: dzwonienie i Stop, zatrzymanie na telefonie, limit, drugi Ring, dzwonienie po końcu sesji, brak dźwięku, wycofanie i włączenie `find/1` w trakcie sesji), `node apps/windows/scripts/check-find-ui.cjs` (podstawione IPC: stany kafelka, klawiatura, wyniki, niedostępne, Light/Dark, 150%) i `node apps/windows/scripts/check-find-android.cjs` (prawdziwa aplikacja i emulator z urządzeniem audio, `QEMU_AUDIO_DRV=none`; `FIND_NOTIFICATIONS=denied` sprawdza zatrzymanie bez powiadomień).

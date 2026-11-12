@@ -2,7 +2,13 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+    <!-- WN-50: find my phone vibrates with its ring. -->
+    <uses-permission android:name="android.permission.VIBRATE" />
     <application>
+        <!-- WN-50: the ring notification's "Zatrzymaj"; not exported, reached only through our PendingIntent. -->
+        <receiver
+            android:name="io.github.prejas3.windconnect.core.FindStopReceiver"
+            android:exported="false" />
         <!-- WN-36: received clipboard images. Not exported: reachable only through the clip's URI grant. -->
         <provider
             android:name="io.github.prejas3.windconnect.core.ClipImageProvider"
