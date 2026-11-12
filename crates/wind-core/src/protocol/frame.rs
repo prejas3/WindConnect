@@ -22,6 +22,8 @@ pub fn frame_limit(channel: Channel, first: bool) -> usize {
         Channel::Control => MAX_CONTROL_FRAME,
         // One small request or reply per stream (§9.2).
         Channel::Actions => MAX_CONTROL_FRAME,
+        // A few bytes per status (§9.4).
+        Channel::Battery => MAX_CONTROL_FRAME,
         _ => MAX_STREAM_FRAME,
     }
 }

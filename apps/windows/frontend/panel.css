@@ -3,7 +3,18 @@ body { min-height: 100vh; overflow: auto; }
 .panel-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .panel-heading h1 { font-size: 16px; letter-spacing: -.4px; display: flex; align-items: center; gap: 7px; }
 .panel-heading p { font-size: 12px; margin-top: 5px; }
-.panel-heading > div { min-width: 0; }
+.panel-heading > div { min-width: 0; flex: 1; }
+/* WN-49: the phone's battery; amber when low, the bolt while charging. No live region: alerts are toasts. */
+.phone-battery { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--sub); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.phone-battery svg { width: 24px; height: 12px; flex: none; }
+.phone-battery .shell { fill: none; stroke: currentColor; stroke-width: 1.5; }
+.phone-battery .tip { fill: currentColor; }
+.phone-battery .level { fill: var(--text); }
+.phone-battery .bolt { fill: var(--accent); stroke: var(--surface, Canvas); stroke-width: 1; display: none; }
+.phone-battery.charging .bolt { display: inline; }
+.phone-battery.charging .level { fill: var(--accent); opacity: .45; }
+.phone-battery.low { color: var(--warning); }
+.phone-battery.low .level { fill: var(--warning); }
 #phone-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 240px; }
 .pairing-card h2 { overflow-wrap: anywhere; }
 .pairing-card { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 10px; }

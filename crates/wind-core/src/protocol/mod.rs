@@ -46,6 +46,8 @@ pub enum Channel {
     Files = 5,
     /// Remote actions (§9.2, WN-54).
     Actions = 6,
+    /// The phone's battery level and charging (§9.4, WN-49).
+    Battery = 7,
 }
 
 impl Channel {
@@ -65,6 +67,7 @@ impl Channel {
             4 => Self::Input,
             5 => Self::Files,
             6 => Self::Actions,
+            7 => Self::Battery,
             _ => return Err(FrameError::UnknownChannel(b)),
         })
     }
@@ -236,7 +239,7 @@ mod tests {
             decode_stream_header([0x00, 0xff]),
             Err(FrameError::UnsupportedVersion(0))
         );
-        for b in [0x07, 0x3f, 0x40, 0xff] {
+        for b in [0x08, 0x3f, 0x40, 0xff] {
             assert_eq!(
                 decode_stream_header([0x01, b]),
                 Err(FrameError::UnknownChannel(b))

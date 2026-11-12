@@ -135,6 +135,8 @@ class PairingTest {
         val elapsed = android.os.SystemClock.elapsedRealtime() - start
         assertTrue("decoded QR to connected session must stay below 10s: $elapsed", elapsed < 10000)
         InstrumentationRegistry.getInstrumentation().sendStatus(0, android.os.Bundle().apply { putString("qrToConnectedMs", elapsed.toString()) })
+        // WN-49: the PC-side check changes the battery (dumpsys battery) while the session stays up.
+        InstrumentationRegistry.getArguments().getString("holdMs")?.toLongOrNull()?.let { Thread.sleep(it); return }
         if (InstrumentationRegistry.getArguments().getString("clipboardProof") == "true") {
             // Since WC-34 pairing leaves the background connection to the person; the proof's notification action needs it.
             compose.onNodeWithTag("keepBackground").performScrollTo().performClick()

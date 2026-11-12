@@ -32,10 +32,21 @@ pub fn refresh_icon(app: &tauri::AppHandle) {
         (app.try_state::<TrayRuntime>(), app.tray_by_id("connection"))
     {
         let phase = runtime.indicator.snapshot().phase;
-        if let Err(error) = tray.set_icon(Some(crate::brand_icon::current(phase))) {
+        if let Err(error) = tray
+            .set_icon(Some(crate::brand_icon::current(phase)))
+            .and_then(|_| tray.set_tooltip(Some(tooltip(phase))))
+        {
             eprintln!("tray icon: {error}");
         }
     }
+}
+/// "WindConnect · Połączono", plus the phone's battery while connected (WN-49).
+pub fn tooltip(phase: Phase) -> String {
+    let battery = match phase {
+        Phase::Connected => crate::battery::tooltip(crate::battery::current()),
+        _ => String::new(),
+    };
+    format!("WindConnect · {}{battery}", phase.label())
 }
 pub fn show_main(app: &tauri::AppHandle) -> tauri::Result<()> {
     if let Some(panel) = app.get_webview_window("panel") {
@@ -128,9 +139,7 @@ pub fn install(app: &tauri::AppHandle) -> tauri::Result<TrayRuntime> {
             if let Err(error) = app_handle.run_on_main_thread(move || {
                 let result = tray
                     .set_icon(Some(crate::brand_icon::current(update.phase)))
-                    .and_then(|_| {
-                        tray.set_tooltip(Some(format!("WindConnect · {}", update.phase.label())))
-                    });
+                    .and_then(|_| tray.set_tooltip(Some(tooltip(update.phase))));
                 let applied = Applied {
                     sequence: update.sequence,
                     phase: update.phase,

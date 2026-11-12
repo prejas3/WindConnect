@@ -700,6 +700,7 @@ impl CoreClient {
         Ok(Arc::new(CoreConnection {
             clipboard: std::sync::Mutex::new(None),
             clipboard_shared: self.clipboard.clone(),
+            battery: wind_core::battery::Sender::default(),
             clipboard_input: std::sync::Mutex::new(Some(clipboard_input)),
             session,
             relay: Some(link),
@@ -765,6 +766,7 @@ impl CoreClient {
         Ok(Arc::new(CoreConnection {
             clipboard: std::sync::Mutex::new(None),
             clipboard_shared: self.clipboard.clone(),
+            battery: wind_core::battery::Sender::default(),
             clipboard_input: std::sync::Mutex::new(Some(clipboard_input)),
             session,
             relay: None,
@@ -973,6 +975,8 @@ pub struct CoreConnection {
     clipboard_shared: Arc<wind_core::clipboard::Clipboard>,
     clipboard_input:
         std::sync::Mutex<Option<tokio::sync::mpsc::Receiver<wind_core::session::ChannelMessage>>>,
+    /// WN-49: sends only changes of the battery status.
+    battery: wind_core::battery::Sender,
     session: Session,
     /// Held while the session runs through the relay.
     relay: Option<RelayLink>,
@@ -1037,6 +1041,20 @@ impl CoreConnection {
                 _ => None,
             },
         }
+    }
+    /// WN-49 (§9.4): the phone's battery for the PC. Sends only when
+    /// (level, charging) changed since the last send on this connection, and
+    /// nothing when the peer doesn't take `battery/1`. True when sent.
+    pub async fn send_battery(&self, level: u8, charging: bool) -> Result<bool, CoreError> {
+        let status = wind_core::battery::Status::new(level, charging).ok_or_else(|| {
+            CoreError::Transport {
+                reason: format!("battery level {level} over 100"),
+            }
+        })?;
+        self.battery
+            .send(&self.session, status)
+            .await
+            .map_err(session_error)
     }
     pub fn peer(&self) -> PeerInfo {
         let peer = self.session.peer();

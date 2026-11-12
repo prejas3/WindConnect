@@ -577,3 +577,11 @@ podgląd. Czas zależy od profilu: uruchom `clipboard_peer` zbudowany
 `CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS=true cargo build --release
 --example clipboard_peer` i `PEER_PROFILE=release` (debugowy enkoder PNG jest
 ~10× wolniejszy niż wysyłana aplikacja).
+
+## Bateria telefonu na PC (WN-49)
+
+CCS/1
+FLOW:sesja przyjęta przez `WindCore` -> `BatteryReporter` rejestruje odbiornik `ACTION_BATTERY_CHANGED` (lepki intent daje stan od razu) -> `CoreConnection.sendBattery` -> PC (`battery/1`, PROTOCOL.md §9.4). Koniec sesji wyrejestrowuje odbiornik.
+RULE:jedna normalizacja `BatteryReading.from(intent)`: procent jak w pasku stanu (`level * 100 / scale`, w dół), ładowanie = podłączony, CHARGING albo FULL; nieznany poziom = brak odczytu (nic nie idzie). Z niej skorzysta też widżet (WN-33).
+RULE:bez pollingu i budzenia: odbiornik tylko w czasie sesji; równe odczyty (intent przychodzi też przy zmianie napięcia i temperatury) są pomijane, a rdzeń wysyła tylko zmiany pary (poziom, ładowanie).
+LIMIT:PC widzi zmiany tylko przy żywej sesji (połączenie w tle włączone). W Doze albo bez połączenia w tle stan na PC nie jest aktualizowany, więc alert 15% może przyjść późno albo wcale. Nie dotyka ConnectionService ani ekranu głównego.

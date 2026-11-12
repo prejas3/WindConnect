@@ -31,3 +31,12 @@ qrcode 0.14.1 (WN-25, unchanged Rust encoder): Copyright (c) 2016 kennytm.
 Chosen licence: MIT; full text: qrcode-MIT.txt.
 Default features disabled: no image/SVG/PIC dependencies; only its module matrix is sent to the local canvas.
 if-addrs 0.15.0 was already shipped by wind-core; WN-25 calls it directly for the QR's LAN addresses.
+
+Phone battery alerts (WN-49), Windows toasts:
+tauri-winrt-notification 0.7.3, Copyright (c) 2017 - Present Tauri Apps Contributors;
+chosen licence: MIT (offered: MIT OR Apache-2.0); full text: tauri-winrt-notification-MIT.txt.
+windows 0.61.3 and its parts windows-core 0.61.2, windows-collections 0.2.0, windows-future 0.2.1,
+windows-link 0.1.3, windows-numerics 0.2.0, windows-result 0.3.4, windows-strings 0.4.2,
+windows-threading 0.1.0 (windows-rs), Copyright (c) Microsoft Corporation;
+chosen licence: MIT (offered: MIT OR Apache-2.0); one identical text for all: windows-rs-MIT.txt.
+No NOTICE files in these packages; nothing vendored beyond their Rust sources and Windows metadata bindings.

@@ -402,3 +402,22 @@ Test UI: `node apps/windows/scripts/check-clipboard-ui.cjs` z zewnętrznym
 Playwright (`PLAYWRIGHT_MODULE`). Sprawdza klawiaturę, przełącznik, ręczne
 wysyłanie bez połączenia, status sensitive/konfliktu skrótu, historię (podgląd jako tekst, kopiuj/przypnij/usuń/wyczyść klawiaturą, własne przewijanie w panelu) i układ Light/Dark.
 Podstawione IPC sprawdza UI; dostarczenie OS potwierdza osobny test natywny.
+
+## Bateria telefonu (WN-49)
+
+CCS/1
+FLOW:telefon (ACTION_BATTERY_CHANGED, tylko w czasie sesji) -> `Battery` na kanale `battery` (`07`, PROTOCOL.md §9.4) -> `Snapshot.battery` w `pairing-state` (wypychane, bez pollingu) -> nagłówek panelu, podpowiedź ikony w zasobniku, plakietka niskiej baterii, toast.
+RULE:panel: poziom i błyskawica przy ładowaniu obok nazwy telefonu, `role="img"` z etykietą „Bateria telefonu 82%, ładuje się”; bez aria-live (zmiana procentu nie jest ogłaszana). Bez sesji albo bez odczytu element znika.
+RULE:zasobnik: podpowiedź „WindConnect · Połączono · bateria 82%, ładuje się”. Przy ≤ 15% bez ładowania bursztynowa kropka w prawym dolnym rogu, nałożona na stan WN-23 (nie osobny stan); znika po podłączeniu ładowarki albo końcu sesji.
+RULE:alerty (wind-core `battery::Alerts`): toast „Bateria telefonu: N%” przy spadku do ≤ 15% bez ładowania, raz na rozładowanie (ponownie po ładowaniu albo > 20%); „Telefon naładowany” przy 100% na ładowarce, raz (ponownie po odłączeniu albo < 95%). Pierwszy odczyt sesji nie daje toastu. Toast niesie tylko poziom, nazwę telefonu i stały tekst; kliknięcie otwiera panel.
+DEC:toasty przez `tauri-winrt-notification` 0.7.3 (to samo, czego używa na Windowsie tauri-plugin-notification), bo daje wywołanie zwrotne kliknięcia. Wersja release rejestruje nadawcę `HKCU\Software\Classes\AppUserModelId\io.github.prejas3.windconnect` (DisplayName „WindConnect”); debug wysyła jako PowerShell, jak plugin w trybie dev. WN-43 może to przejąć.
+LIMIT:zmiany dochodzą tylko przy żywej sesji (połączenie w tle włączone na telefonie). W Doze albo bez połączenia w tle komputer nie widzi zmian, więc alert 15% może przyjść późno albo wcale. Klucz AppUserModelId zostaje po odinstalowaniu (jak inne wpisy HKCU, por. WN-88).
+
+Testy: `cargo test -p wind-core` (`battery`: koder, błędne wiadomości, alerty z histerezą; `tests/battery.rs`: prawdziwa sesja, tylko zmiany i w kolejności, PC bez `battery/1` nic nie dostaje), testy jednostkowe aplikacji (plakietka, podpowiedź, teksty), `node apps/windows/scripts/check-battery-ui.cjs` (podstawione IPC: poziom, ładowanie, niski, ukrycie bez sesji, aktualizacje bez wywołań IPC, Light/Dark, 150%) i `node apps/windows/scripts/check-battery-android.cjs` (prawdziwa aplikacja i emulator: `dumpsys battery` zmienia poziom, panel i podpowiedź nadążają, alerty 15% i pełne).
+
+Audyt nowych zależności w EXE/MSI:
+
+| Komponent | Wersja | Licencja z pakietu | Gdzie trafia | Wynik |
+| --- | --- | --- | --- | --- |
+| tauri-winrt-notification | 0.7.3 | MIT OR Apache-2.0 (LICENSE_MIT, LICENSE_APACHE-2.0, LICENSE.spdx); wybrana MIT | Natywny EXE; frontend/assets/tauri-winrt-notification-MIT.txt | Permisywna |
+| windows (+ windows-core, -collections, -future, -link, -numerics, -result, -strings, -threading) | 0.61.3 (części 0.1–0.61) | MIT OR Apache-2.0 (license-mit, license-apache-2.0, identyczne we wszystkich); wybrana MIT | Natywny EXE; frontend/assets/windows-rs-MIT.txt | Permisywna; bez plików NOTICE |

@@ -183,7 +183,8 @@ od serwera, przykład w sekcji 7.1), `files` (odpowiedzi odbiorcy pliku) i
 | `04` | `input` | uni + datagramy | nadawca zdarzeń | 1 |
 | `05` | `files` | bidi | nadawca pliku; 1–8 na transfer (§9.1) | 7 (najniższy) |
 | `06` | `actions` | bidi | proszący o akcję; 1 na prośbę (§9.2) | 5 |
-| `07`–`3f` | zarezerwowane dla przyszłych kanałów | | | |
+| `07` | `battery` | uni | nadawca stanu baterii (§9.4) | 6 |
+| `08`–`3f` | zarezerwowane dla przyszłych kanałów | | | |
 | `40`–`ff` | niedozwolone w v1 | | | |
 
 Zasady:
@@ -212,7 +213,7 @@ Przykład: nagłówek strumienia `control` to `01 00`, strumienia `input` to `01
 
 ### 3.1 Cykl życia strumieni uni
 
-Kanały `clipboard`, `notify`, `media` i `input` mają w każdym kierunku
+Kanały `clipboard`, `notify`, `media`, `input` i `battery` mają w każdym kierunku
 **kolejkę wiadomości**: ciąg strumieni uni jednego nadawcy dla tego kanału.
 
 1. Nadawca ma naraz najwyżej **jeden otwarty do zapisu** strumień kanału.
@@ -413,6 +414,7 @@ Możliwości v1.0:
 | `input/1` | strona przyjmuje zdarzenia wejścia (kanał `input`, sekcja 8) |
 | `files/1` | strona obsługuje kanał `files` |
 | `actions/1` | strona przyjmuje prośby o akcje (kanał `actions`, §9.2) |
+| `battery/1` | strona przyjmuje stan baterii drugiej strony (kanał `battery`, §9.4, WN-49) |
 
 Zasady:
 
@@ -1402,6 +1404,40 @@ Applied refused, limit 16 000 000:
 1d 82 01 a3 00 50 00…00 01 01 02 1a 00 f4 24 00
 ```
 
+### 9.4 Kanał `battery` (`07`, WN-49)
+
+Poziom baterii telefonu i ładowanie, pokazywane na komputerze. Wiadomości
+`battery/1`; jak `actions/1` wersjonuje je sama możliwość. Komputer ogłasza
+`battery/1`, telefon nie (jeden kierunek). Kanał uni, kolejka wiadomości
+jak w §3.1; ramki do 16 384 B.
+
+| typ | nazwa | pola `body` |
+|---|---|---|
+| 0 | `Battery` | `0 level`: liczba 0–100, procent; `1 charging`: bool, podłączony do ładowania (także pełny na ładowarce) |
+
+Zasady:
+
+1. Nadawca wysyła jeden `Battery` zaraz po starcie sesji, jeśli druga
+   strona ogłosiła `battery/1`, a potem **tylko przy zmianie** pary
+   (`level`, `charging`). Bez timera i bez powtórek: brak wiadomości znaczy
+   „bez zmian”.
+2. Kolejne wiadomości idą jednym strumieniem (§3.1, zasada 5.5); nadawca
+   kończy go przy wycofaniu możliwości albo końcu sesji.
+3. Brak któregoś pola, powtórzony klucz, `level` > 100 albo pole złego
+   typu: odbiorca pomija tę wiadomość, strumień trwa. Nieznane klucze
+   pomija (§4.3).
+4. Odbiorca trzyma ostatni stan na czas sesji i zapomina go po jej końcu;
+   nic nie zapisuje. Alerty (niski poziom, pełne naładowanie) są sprawą
+   aplikacji odbiorcy, nie protokołu; pierwsza wiadomość sesji ich nie
+   wywołuje.
+
+Przykład (z nagłówkiem długości ramki):
+
+```text
+nagłówek strumienia:            01 07
+Battery 82 %, ładuje się:       08 82 00 a2 00 18 52 01 f5
+```
+
 ## 10. Kody błędów
 
 Te same kody służą w polu `code` wiadomości `Error` / `Goodbye` oraz jako
@@ -1452,6 +1488,7 @@ ten strumień (`STOP_SENDING` po stronie odbiorcy), nie połączenie.
 | `InputSession` s 0, g 0 | `07 82 03 a2 00 00 01 00` |
 | wiadomości `files` | sekcja 9.1 |
 | wiadomości `actions` | sekcja 9.2 |
+| `Battery` 82 %, ładuje się | `08 82 00 a2 00 18 52 01 f5` (§9.4) |
 
 Przykłady są wektorami testowymi kodera ramek (WC-06): koder MUSI
 produkować dokładnie te bajty, a dekoder odtwarzać z nich te wiadomości.

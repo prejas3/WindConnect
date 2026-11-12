@@ -21,6 +21,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -171,6 +172,9 @@ class WindCore private constructor(
     val state: StateFlow<ConnectionState> = mutableState.asStateFlow()
     private var connection: CoreConnection? = null
     private var watcher: Job? = null
+    // WN-49: the battery goes to the PC only while a session is live.
+    private val battery = BatteryReporter(context)
+    private var batteryJob: Job? = null
     private var stopped = false
     private var observer: NetworkObserver? = null
     private var desiredPeer: Pair<String, ByteArray>? = null
@@ -360,12 +364,14 @@ class WindCore private constructor(
         systemClipboard.sessionStarted()
         connection = opened
         mutableState.value = ConnectionState.Connected(peer.name, peer.fingerprint, rtt, opened.route())
+        startBattery(opened)
         watcher = scope.launch {
             // CCS/1 FLOW:end code -> unpaired: forget this connection's TLS peer | busy/untrusted: hold retries (WC-28).
             val end = opened.waitEnd()
             gate.withLock {
                 if (connection === opened) {
                     connection = null
+                    stopBattery()
                     when (end) {
                         "unpaired" -> {
                             try { opened.forgetPeer(pairedDirectory) } catch (error: Exception) { if (error is CancellationException) throw error }
@@ -441,7 +447,28 @@ class WindCore private constructor(
         }
     }
 
+    /** Sends the current reading, then each change, on [opened] (one session at a time). */
+    private fun startBattery(opened: CoreConnection) {
+        stopBattery()
+        battery.start()
+        batteryJob = scope.launch {
+            battery.readings.filterNotNull().collect { reading ->
+                try { opened.sendBattery(reading.level.toUByte(), reading.charging) } catch (error: Exception) {
+                    if (error is CancellationException) throw error
+                    // The session is ending; its watcher stops this.
+                }
+            }
+        }
+    }
+
+    private fun stopBattery() {
+        batteryJob?.cancel()
+        batteryJob = null
+        battery.stop()
+    }
+
     private suspend fun releaseConnection() {
+        stopBattery()
         watcher?.cancel()
         watcher = null
         val previous = connection

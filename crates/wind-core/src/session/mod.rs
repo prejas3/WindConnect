@@ -89,6 +89,7 @@ pub fn send_priority(channel: Channel) -> i32 {
         Channel::Notify => 3,
         Channel::Media => 4,
         Channel::Actions => 5,
+        Channel::Battery => 6,
         Channel::Files => 7,
     }
 }
@@ -575,10 +576,15 @@ impl Session {
         router: Router,
     ) -> (Session, mpsc::UnboundedReceiver<SessionEvent>) {
         let (events, events_rx) = mpsc::unbounded_channel();
-        let uni = [Channel::Clipboard, Channel::Notify, Channel::Media]
-            .into_iter()
-            .map(|ch| (ch.byte(), tokio::sync::Mutex::new(None)))
-            .collect();
+        let uni = [
+            Channel::Clipboard,
+            Channel::Notify,
+            Channel::Media,
+            Channel::Battery,
+        ]
+        .into_iter()
+        .map(|ch| (ch.byte(), tokio::sync::Mutex::new(None)))
+        .collect();
         let input_announced = has_input(&peer_hello.caps).then_some(InputAnnouncement {
             last: 0,
             enabled: 0,
