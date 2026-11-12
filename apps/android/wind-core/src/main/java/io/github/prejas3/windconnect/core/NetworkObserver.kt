@@ -25,7 +25,7 @@ internal class NetworkObserver(context: Context) : AutoCloseable {
     private val changes = NetworkChangeFilter(current())
     private val callback = object : ConnectivityManager.NetworkCallback() {
         // From API 26 onAvailable is always followed by onLinkPropertiesChanged, which decides.
-        override fun onLost(network: Network) { if (changes.lost(network)) events.trySend(Unit) }
+        override fun onLost(network: Network) { if (changes.lost(network, background(network))) events.trySend(Unit) }
         override fun onLinkPropertiesChanged(network: Network, properties: LinkProperties) {
             if (changes.linkChanged(network, summary(properties))) events.trySend(Unit)
         }
@@ -40,6 +40,16 @@ internal class NetworkObserver(context: Context) : AutoCloseable {
             !capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_TRUSTED)) return@mapNotNull null
         network to summary(properties)
     }.toMap()
+
+    /**
+     * The summary of [network] when it is still connected but in the background (no FOREGROUND):
+     * the callback reports that as lost (WN-111). A network really gone has no capabilities.
+     */
+    private fun background(network: Network): String? {
+        val capabilities = connectivity.getNetworkCapabilities(network) ?: return null
+        if (capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_FOREGROUND)) return null
+        return connectivity.getLinkProperties(network)?.let(::summary)
+    }
 
     private fun summary(properties: LinkProperties) =
         NetworkChangeFilter.summary(properties.interfaceName, properties.linkAddresses.map { it.toString() })

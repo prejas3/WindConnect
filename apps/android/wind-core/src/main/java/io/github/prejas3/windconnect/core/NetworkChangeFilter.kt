@@ -14,8 +14,17 @@ internal class NetworkChangeFilter<K>(baseline: Map<K, String>) {
     /** New link properties for [network]: true when its interface or addresses differ. */
     @Synchronized fun linkChanged(network: K, summary: String): Boolean = known.put(network, summary) != summary
 
-    /** [network] is gone: true when discovery knew it. */
-    @Synchronized fun lost(network: K): Boolean = known.remove(network) != null
+    /**
+     * [network] is gone from the callback: true when discovery knew it. [background] is its
+     * summary when it still exists, only no longer in the foreground (WN-111): another app
+     * dropped its request for mobile data, the callback can't see background networks, yet the
+     * interface and its addresses are unchanged. That is no change for discovery; the network
+     * stays known, so its return with the same summary isn't one either.
+     */
+    @Synchronized fun lost(network: K, background: String? = null): Boolean {
+        if (background != null && known[network] == background) return false
+        return known.remove(network) != null
+    }
 
     companion object {
         /** What discovery depends on: the interface and its addresses, in a stable order. */

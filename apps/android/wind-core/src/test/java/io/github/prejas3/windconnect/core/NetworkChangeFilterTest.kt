@@ -33,6 +33,19 @@ class NetworkChangeFilterTest {
         assertTrue(moved.linkChanged(100, NetworkChangeFilter.summary("wlan0", listOf("192.168.7.3/24"))))
     }
 
+    @Test fun networkMovedToTheBackgroundIsNoChange() {
+        // WN-111: another app drops its mobile-data request; the callback reports the still
+        // connected cellular network as lost, then as available again when it asks once more.
+        val cellular = NetworkChangeFilter.summary("eth0", listOf("10.0.2.15/24"))
+        val filter = NetworkChangeFilter(mapOf(100 to wifi, 101 to cellular))
+        assertFalse("background, same addresses", filter.lost(101, background = cellular))
+        assertFalse("back in the foreground", filter.linkChanged(101, cellular))
+        assertTrue("background with other addresses counts",
+            filter.lost(101, background = NetworkChangeFilter.summary("eth0", listOf("10.0.2.16/24"))))
+        assertTrue("really gone counts", filter.lost(100, background = null))
+        assertFalse("unknown network in the background", filter.lost(102, background = cellular))
+    }
+
     @Test fun summaryIgnoresOrderOnly() {
         assertEquals(NetworkChangeFilter.summary("wlan0", listOf("b", "a")), NetworkChangeFilter.summary("wlan0", listOf("a", "b")))
         assertTrue(NetworkChangeFilter.summary("wlan0", listOf("a")) != NetworkChangeFilter.summary("wlan1", listOf("a")))
