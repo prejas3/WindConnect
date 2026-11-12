@@ -117,26 +117,31 @@ class MdnsStartupTest {
                 assertTrue("Wi-Fi on restarts discovery in 15 s", SystemClock.elapsedRealtime() - on < 15_000)
                 delay(100)
             }
-            results.putString("restartAfterWifiOnMs", (SystemClock.elapsedRealtime() - on).toString())
+            var settledMs = SystemClock.elapsedRealtime() - on
+            results.putString("restartAfterWifiOnMs", settledMs.toString())
             // Every later restart, as ms after Wi-Fi on: the network settles in steps (addresses).
             val steps = mutableListOf<String>()
             var last = core.network.value.generation
             val browser = Browser(instance)
             var seenMs = -1L
             try {
-                // LIMIT:Wi-Fi on settles in steps (restarts ~0.6 s apart) and the browser often
-                // does not see the phone again within 20 s, before WN-103 too: reported, not asserted
-                // (follow-up card).
+                // Wi-Fi on settles in steps (restarts ~0.6 s apart: new addresses). Since WN-104 (one
+                // goodbye per burst, the announcement 1 s after it) the phone is seen ~1.2 s after the
+                // last step, one probing; WN-107 asserts it, measured from that last step.
                 val until = SystemClock.elapsedRealtime() + 20_000
                 while (SystemClock.elapsedRealtime() < until) {
                     val now = core.network.value.generation
-                    if (now != last) { steps += "${SystemClock.elapsedRealtime() - on}"; last = now }
+                    if (now != last) { settledMs = SystemClock.elapsedRealtime() - on; steps += "$settledMs"; last = now }
                     if (seenMs < 0 && browser.found.count == 0L) seenMs = SystemClock.elapsedRealtime() - on
                     delay(50)
                 }
             } finally { browser.close() }
             results.putString("laterRestartsMs", steps.joinToString(","))
             results.putString("seenAfterWifiOnMs", seenMs.toString())
+            results.putString("seenAfterSettledMs", (seenMs - settledMs).toString())
+            instrumentation.sendStatus(0, results)
+            assertTrue("seen again after Wi-Fi on: $results", seenMs >= 0)
+            assertTrue("seen within 5 s after Wi-Fi settled (last restart at $settledMs ms, seen at $seenMs ms)", seenMs - settledMs <= 5_000)
         } finally {
             core.shutdown()
             // Leave the device as found: Wi-Fi back and joined, or say so.
