@@ -74,6 +74,8 @@ pub struct Snapshot {
     pub media: Option<crate::media::MediaView>,
     /// WN-47: "Udostępnij odtwarzanie telefonowi" (the PC's player on the phone).
     pub share_media: bool,
+    /// WN-43: "Powiadomienia z telefonu" (the phone's notifications as toasts; notify/1).
+    pub phone_notifications: bool,
     /// A phone is paired: [`has_paired_in`], the rule the first window
     /// follows too (WN-113). A phone owed an unpair notice doesn't count.
     pub paired: bool,
@@ -94,6 +96,7 @@ impl Default for Snapshot {
             find: FindView::default(),
             media: None,
             share_media: true,
+            phone_notifications: true,
             paired: false,
         }
     }
@@ -138,6 +141,8 @@ pub fn find_outcome(end: Option<wind_core::find::State>) -> &'static str {
 enum Action {
     /// WN-47: share the PC's player with the phone, or stop.
     ShareMedia(bool),
+    /// WN-43: show the phone's notifications, or stop (and remove those shown).
+    PhoneNotifications(bool),
     /// A button of the phone's player in the panel (WN-46).
     Media(wind_core::media::Action),
     /// Find my phone (WN-50): ring it, or stop the ring.
@@ -395,6 +400,7 @@ type Incoming = (
     mpsc::Receiver<wind_core::session::ChannelMessage>,
     mpsc::Receiver<wind_core::session::ChannelMessage>,
     mpsc::Receiver<wind_core::session::ChannelMessage>,
+    mpsc::Receiver<wind_core::session::ChannelMessage>,
 );
 
 async fn run(
@@ -421,6 +427,24 @@ async fn run(
             .unwrap_or(true),
     ));
     let accept_share = share_media.clone();
+    // WN-43: the phone's notifications as toasts (default on: the phone side asks for consent, WN-42).
+    let notify_path = key_store.path().parent().map(|d| d.join("notify.json"));
+    let phone_notifications = Arc::new(std::sync::atomic::AtomicBool::new(
+        notify_path
+            .as_ref()
+            .and_then(|p| std::fs::read(p).ok())
+            .and_then(|b| serde_json::from_slice::<bool>(&b).ok())
+            .unwrap_or(true),
+    ));
+    let accept_notify = phone_notifications.clone();
+    let toasts = crate::notify::worker(
+        &app,
+        key_store
+            .path()
+            .parent()
+            .ok_or("identity directory missing")?
+            .join("notify-icons"),
+    );
     let trust = Arc::new(PinnedKeys::new());
     let loaded = store.load()?;
     loaded.pin_all(&trust);
@@ -475,6 +499,11 @@ async fn run(
                 if !accept_share.load(std::sync::atomic::Ordering::SeqCst) {
                     router.start_disabled(wind_core::protocol::Channel::MediaControl);
                 }
+                // CCS/1 IO:notify/1 from the phone (§9.7, WN-43): shown as toasts, texts sanitised, icons re-encoded.
+                let notify_input = wind_core::notify::route(&mut router);
+                if !accept_notify.load(std::sync::atomic::Ordering::SeqCst) {
+                    router.start_disabled(wind_core::protocol::Channel::Notify);
+                }
                 match tokio::time::timeout(
                     std::time::Duration::from_secs(6),
                     Session::accept(connection, local.clone(), router),
@@ -491,6 +520,7 @@ async fn run(
                                 battery_input,
                                 media_input,
                                 media_commands,
+                                notify_input,
                             ))
                             .await
                             .is_err()
@@ -547,6 +577,9 @@ async fn run(
     // WN-47: the PC's player followed for the live session, and the phone's commands for it.
     let mut pc_media: Option<crate::pc_media::PcMedia> = None;
     let mut media_commands: Option<mpsc::Receiver<wind_core::session::ChannelMessage>> = None;
+    // WN-43: the phone's notifications in the live session (what was shown, the popup limit).
+    let mut notify_input: Option<mpsc::Receiver<wind_core::session::ChannelMessage>> = None;
+    let mut notifications: Option<crate::notify::Notifications> = None;
     // The ring asked of the phone, and when it was asked (WN-50).
     let mut ring: Option<(wind_core::find::Ring, Instant)> = None;
     let mut refresh = loaded.devices.is_empty();
@@ -576,8 +609,12 @@ async fn run(
             player = crate::media::Player::default();
             pc_media = None;
             media_commands = None;
+            notify_input = None;
+            notifications = None;
         }
         snapshot.share_media = share_media.load(std::sync::atomic::Ordering::SeqCst);
+        snapshot.phone_notifications =
+            phone_notifications.load(std::sync::atomic::Ordering::SeqCst);
         snapshot.media = player.view.clone();
         crate::battery::set(&app, snapshot.battery);
         snapshot.find.available = active.as_ref().is_some_and(|(s, _): &(Session, _)| {
@@ -601,6 +638,13 @@ async fn run(
                         // Off: dropping it sends Gone and drops the SMTC subscriptions.
                         pc_media = if on { crate::pc_media::PcMedia::start(session.clone(), tokio::runtime::Handle::current()) } else { None };
                     }
+                }
+                Some(Action::PhoneNotifications(on)) => {
+                    phone_notifications.store(on, std::sync::atomic::Ordering::SeqCst);
+                    if let Some(path) = &notify_path { let _ = std::fs::write(path, if on { b"true" as &[u8] } else { b"false" }); }
+                    if let Some((session, _)) = &active { let _ = session.set_accepted(wind_core::protocol::Channel::Notify, on).await; }
+                    // Off: Windows keeps toast content in its store; remove what was shown and the icons.
+                    if !on { let _ = toasts.send(crate::notify::Job::Clear); }
                 }
                 Some(Action::Media(action)) => {
                     if let Some((session, _)) = &active {
@@ -661,6 +705,8 @@ async fn run(
                     let session = active.as_ref().filter(|(s, _)| s.peer().key == key).map(|(s, _)| s.clone());
                     match unpairing.unpair(key, session.as_ref()).await {
                         Ok(_) => {
+                            // The phone's toasts and icons go with its pairing.
+                            let _ = toasts.send(crate::notify::Job::Clear);
                             if session.is_some() { crate::clipboard::detach(&app); active = None; indicator.unavailable(); snapshot.phase = "offline".into(); }
                             snapshot.message = format!("Usunięto parowanie z: {gone}.");
                             let left = store.load().map(|l| l.devices).unwrap_or_default();
@@ -715,7 +761,7 @@ async fn run(
                 _ => {},
             },
             incoming = sessions.recv() => {
-                let Some((session, mut events, clipboard_input, action_streams, session_battery, session_media, session_commands)) = incoming else { break };
+                let Some((session, mut events, clipboard_input, action_streams, session_battery, session_media, session_commands, session_notify)) = incoming else { break };
                 // CCS/1 RULE:one session; another phone gets BUSY unless just paired here (the person's choice) (WC-28).
                 let fresh = preferred.is_some_and(|(k, at)| k == session.peer().key && at.elapsed() < PAIRED_TAKES_OVER);
                 let sent_away = dismissed.is_some_and(|(k, at)| k == session.peer().key && at.elapsed() < DISMISSED_FOR);
@@ -751,6 +797,8 @@ async fn run(
                 battery_input = Some(session_battery);
                 media_input = Some(session_media);
                 media_commands = Some(session_commands);
+                notify_input = Some(session_notify);
+                notifications = Some(crate::notify::Notifications::new(toasts.clone(), snapshot.phone.as_deref().unwrap_or("Telefon")));
                 pc_media = None;
                 if share_media.load(std::sync::atomic::Ordering::SeqCst) {
                     pc_media = crate::pc_media::PcMedia::start(session.clone(), tokio::runtime::Handle::current());
@@ -800,6 +848,11 @@ async fn run(
                 Some(message) => { if let Some(m) = wind_core::media::Message::decode(&message.message) { player.apply(m); } }
                 None => media_input = None,
             },
+            // CCS/1 FLOW:phone Posted/Icon/Removed -> Notifications (popup or quiet) -> toast worker (WN-43).
+            message = async { match notify_input.as_mut() { Some(rx) => rx.recv().await, None => std::future::pending().await } } => match message {
+                Some(message) => { if let (Some(n), Some(m)) = (notifications.as_mut(), wind_core::notify::Message::decode(&message.message)) { n.apply(m); } }
+                None => notify_input = None,
+            },
             // CCS/1 FLOW:phone Battery -> snapshot (panel, pushed) + tray badge/tooltip + alert toast (WN-49).
             message = async { match battery_input.as_mut() { Some(rx) => rx.recv().await, None => std::future::pending().await } } => match message {
                 Some(message) => {
@@ -817,6 +870,7 @@ async fn run(
                 crate::clipboard::detach(&app); indicator.unavailable(); snapshot.phase = "offline".into(); snapshot.message = "Telefon rozłączony".into();
                 // CCS/1 SEC:the phone removed the pairing: forget the key of this session's TLS peer only.
                 if close_code(&end) == Some(ErrorCode::Unpaired) && unpairing.unpaired_by(&session).is_ok() {
+                    let _ = toasts.send(crate::notify::Job::Clear);
                     snapshot.message = format!("{} usunął parowanie z tym komputerem.", snapshot.phone.clone().unwrap_or_else(|| "Telefon".into()));
                     let left = store.load().map(|l| l.devices).unwrap_or_default();
                     snapshot.phone = left.last().and_then(|d| d.name.clone());
@@ -901,6 +955,21 @@ pub fn share_media(
     state
         .commands
         .send(Action::ShareMedia(enabled))
+        .map_err(|_| "pairing unavailable".into())
+}
+/// WN-43: "Powiadomienia z telefonu" on or off (main window settings).
+#[tauri::command]
+pub fn phone_notifications(
+    window: tauri::WebviewWindow,
+    state: tauri::State<'_, Runtime>,
+    enabled: bool,
+) -> Result<(), String> {
+    if !matches!(window.label(), "main" | "panel") {
+        return Err("unsupported window".into());
+    }
+    state
+        .commands
+        .send(Action::PhoneNotifications(enabled))
         .map_err(|_| "pairing unavailable".into())
 }
 /// WN-46: a button of the phone's player ("play", "pause", "toggle", "next", "previous",
