@@ -1,5 +1,7 @@
 <resources>
     <string name="app_name">WindConnect</string>
+    <string name="widget_name">WindConnect — stan PC</string>
+    <string name="widget_description">Stan połączenia z komputerem, bateria telefonu i szybkie akcje.</string>
     <string name="tile_clipboard">Wyślij schowek</string>
     <string name="shortcut_clipboard">Wyślij schowek</string>
     <string name="shortcut_file">Niedostępne: plik</string>

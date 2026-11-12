@@ -15,6 +15,7 @@ class WindApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         LauncherShortcuts.publish(this)
+        WidgetUpdates.start(this)
     }
 }
 

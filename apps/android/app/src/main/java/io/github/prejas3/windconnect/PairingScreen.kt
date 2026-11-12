@@ -60,6 +60,7 @@ fun PairingScreen(model: PairingViewModel, diagnostic: @Composable () -> Unit) {
                 WindButton("Powrót", model::cancel, Modifier.testTag("closeSettings"), kind = ButtonKind.Quiet)
                 ClipboardTileControls()
                 LauncherShortcutControls()
+                WidgetControls()
                 BackgroundControls(state.hasPairedDevice)
                 ClipboardControls(state, model::sendClipboard, model::setClipboardEnabled, model::setClipboardImageLimit)
                 if (state.devices.isNotEmpty()) WindButton("Sparowane komputery", model::devices, Modifier.testTag("openDevices"), kind = ButtonKind.Secondary)

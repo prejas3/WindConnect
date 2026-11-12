@@ -22,3 +22,41 @@ chosen licence: MIT; full text: tungstenite-MIT.txt.
 webpki-roots 1.0.11 (Mozilla root certificates for wss:// TLS), from
 https://github.com/rustls/webpki-roots; Community Data License Agreement -
 Permissive 2.0; full text: webpki-roots-CDLA-Permissive-2.0.txt.
+
+WN-33: AndroidX Glance widget and new transitive runtime components.
+Copyright The Android Open Source Project (individual source headers inspected).
+Apache License 2.0; full text: AndroidX-APACHE-2.0.txt.
+New runtime artifacts (AAR unless marked JAR):
+androidx.glance:glance-appwidget:1.2.0
+androidx.glance:glance:1.2.0
+androidx.glance:glance-material3:1.2.0
+androidx.glance:glance-appwidget-proto:1.2.0 (JAR)
+androidx.core:core-remoteviews:1.1.0
+androidx.lifecycle:lifecycle-livedata:2.8.7
+androidx.lifecycle:lifecycle-service:2.8.7
+androidx.lifecycle:lifecycle-livedata-core-ktx:2.8.7 (empty compatibility artifact)
+androidx.datastore:datastore:1.0.0
+androidx.datastore:datastore-core:1.0.0 (JAR)
+androidx.datastore:datastore-preferences:1.0.0
+androidx.datastore:datastore-preferences-core:1.0.0 (JAR; also contains protobuf below)
+androidx.concurrent:concurrent-futures-ktx:1.1.0 (JAR)
+androidx.work:work-runtime:2.7.1
+androidx.work:work-runtime-ktx:2.7.1
+androidx.room:room-runtime:2.2.5
+androidx.room:room-common:2.2.5 (JAR)
+androidx.sqlite:sqlite:2.1.0
+androidx.sqlite:sqlite-framework:2.1.0
+Source: https://android.googlesource.com/platform/frameworks/support
+Official artifacts: https://dl.google.com/dl/android/maven2/
+
+Vendored Protocol Buffers runtime:
+androidx.glance:glance-appwidget-external-protobuf:1.2.0 (JAR), relocated
+under androidx.glance.appwidget.protobuf; its actual binary LICENSE.txt is
+BSD-3-Clause, retained verbatim as Glance-Protobuf-BSD.txt.
+androidx.datastore:datastore-preferences-core:1.0.0 includes relocated
+protobuf-javalite 3.10.0 (version recorded in its embedded pom.properties),
+under androidx.datastore.preferences.protobuf.
+Copyright 2008 Google Inc. All rights reserved.
+BSD-3-Clause; copyright and complete upstream terms: Protobuf-BSD.txt.
+Source: https://github.com/protocolbuffers/protobuf/tree/v3.10.0
+No endorsement by Google or the Android Open Source Project is implied.
