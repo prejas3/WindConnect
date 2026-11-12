@@ -983,8 +983,35 @@ pub async fn turn_away(
         session.inner.conn.close(ErrorCode::NoError, b"");
         return TurnedAway::Unpaired;
     }
-    session.goodbye(ErrorCode::Busy, None).await;
+    // WN-110: the notice may land after the grace (high RTT, relay §13) while
+    // `Goodbye BUSY` goes out: its sender counts it delivered on our transport's
+    // ack. So look once more before the close, and close BUSY only if it isn't there.
+    {
+        let mut control = session.inner.control.lock().await;
+        send_goodbye(&mut control, ErrorCode::Busy, None).await;
+    }
+    if late_unpaired(session, events) {
+        session.inner.conn.close(ErrorCode::NoError, b"");
+        return TurnedAway::Unpaired;
+    }
+    session.inner.conn.close(ErrorCode::Busy, b"");
     TurnedAway::Busy
+}
+
+/// Whether the peer said `Goodbye UNPAIRED` (or closed with that code) by now,
+/// among the events not read yet.
+fn late_unpaired(session: &Session, events: &mut mpsc::UnboundedReceiver<SessionEvent>) -> bool {
+    while let Ok(event) = events.try_recv() {
+        if matches!(event, SessionEvent::Goodbye(g) if g.code == ErrorCode::Unpaired) {
+            return true;
+        }
+    }
+    session
+        .inner
+        .conn
+        .quinn()
+        .close_reason()
+        .is_some_and(|end| close_code(&end) == Some(ErrorCode::Unpaired))
 }
 
 /// The §10 code the peer (or we) closed `error`'s connection with, if it
@@ -1022,12 +1049,34 @@ async fn send_goodbye(
 
 /// Ends a notice-mode connection (§12.10): `Goodbye` `UNPAIRED`, then close.
 async fn notice(conn: &Connection, control: &mut quinn::SendStream) -> SessionError {
-    let delivered = send_goodbye(control, ErrorCode::Unpaired, None).await;
+    let delay = testing::NOTICE_DELAY_MS.load(Ordering::Relaxed);
+    if delay > 0 {
+        tokio::time::sleep(Duration::from_millis(delay)).await;
+    }
+    let mut delivered = send_goodbye(control, ErrorCode::Unpaired, None).await;
+    if delivered {
+        // WN-110: the peer's transport acked the notice, but its app may have
+        // gone the BUSY way already (the notice came after its grace): then it
+        // closes with BUSY and kept our key, so the notice is still owed.
+        // A peer that read it closes otherwise, or leaves the close to us.
+        let end = tokio::time::timeout(GOODBYE_FLUSH, conn.quinn().closed()).await;
+        delivered = !matches!(end, Ok(e) if close_code(&e) == Some(ErrorCode::Busy));
+    }
     conn.close(ErrorCode::Unpaired, b"");
     SessionError::Unpaired {
         peer: conn.peer_key(),
         delivered,
     }
+}
+
+/// Hooks for tests only; not part of the API.
+#[doc(hidden)]
+pub mod testing {
+    use std::sync::atomic::AtomicU64;
+
+    /// Delay (ms) before a notice-mode connection sends `Goodbye UNPAIRED`:
+    /// a slow phone or a high RTT (WN-110). Process-wide; 0 in production.
+    pub static NOTICE_DELAY_MS: AtomicU64 = AtomicU64::new(0);
 }
 
 async fn send_control(inner: &Inner, msg: ControlMessage) -> Result<(), SessionError> {
