@@ -182,6 +182,20 @@ class WindCore private constructor(
         client.setFindSink(ringer)
         client.setFindEnabled(settings.getBoolean(FIND_ALLOWED, true))
     }
+    // WN-46: the phone's player for the PC. Only with notification-listener access and the person's setting.
+    private val appContext = context.applicationContext
+    private val mutableMediaAllowed = MutableStateFlow(settings.getBoolean(MEDIA_ALLOWED, true))
+    /** "Pokaż multimedia na komputerze" (default on). */
+    val mediaAllowed: StateFlow<Boolean> = mutableMediaAllowed.asStateFlow()
+    private val mutableMediaAccess = MutableStateFlow(MediaListenerService.granted(appContext))
+    /** Android's notification-listener access, which media sessions need (re-read by [refreshMedia]). */
+    val mediaAccess: StateFlow<Boolean> = mutableMediaAccess.asStateFlow()
+    private val mediaUpdates = MutableStateFlow<Pair<io.github.prejas3.windconnect.bindings.MediaNow?, ByteArray?>?>(null)
+    private val media = PhoneMedia(appContext) { now, art -> mediaUpdates.value = now to art }.also { media ->
+        client.setMediaSink(media)
+        client.setMediaEnabled(mutableMediaAllowed.value && mutableMediaAccess.value)
+    }
+    private var mediaJob: Job? = null
     /** The phone is ringing for the PC; [stopRinging] ends it (the PC sees "stopped on the phone"). */
     val ringing: StateFlow<Boolean> = ringer.ringing
     fun stopRinging() = client.stopRinging()
@@ -385,6 +399,7 @@ class WindCore private constructor(
         connection = opened
         mutableState.value = ConnectionState.Connected(peer.name, peer.fingerprint, rtt, opened.route())
         startBattery(opened)
+        startMedia(opened)
         watcher = scope.launch {
             // CCS/1 FLOW:end code -> unpaired: forget this connection's TLS peer | busy/untrusted: hold retries (WC-28).
             val end = opened.waitEnd()
@@ -392,6 +407,7 @@ class WindCore private constructor(
                 if (connection === opened) {
                     connection = null
                     stopBattery()
+                    stopMedia()
                     when (end) {
                         "unpaired" -> {
                             try { opened.forgetPeer(pairedDirectory) } catch (error: Exception) { if (error is CancellationException) throw error }
@@ -450,6 +466,7 @@ class WindCore private constructor(
                 stopped = true
                 systemClipboard.close()
                 ringer.stop()
+                stopMedia()
                 desiredPeer = null
                 networkRetry?.cancel()
                 lanReturn?.cancel()
@@ -488,8 +505,53 @@ class WindCore private constructor(
         battery.stop()
     }
 
+    /** Follows the phone's player on [opened] while allowed and granted; sends only changes (§9.6). */
+    private fun startMedia(opened: CoreConnection) {
+        stopMedia()
+        if (!(mutableMediaAllowed.value && mutableMediaAccess.value)) return
+        mediaUpdates.value = null
+        if (!media.start()) return
+        mediaJob = scope.launch {
+            mediaUpdates.filterNotNull().collect { (now, art) ->
+                try { if (now == null) opened.mediaGone() else opened.sendMedia(now, art) } catch (error: Exception) {
+                    if (error is CancellationException) throw error
+                }
+            }
+        }
+    }
+
+    private fun stopMedia() {
+        mediaJob?.cancel()
+        mediaJob = null
+        media.stop()
+    }
+
+    /** Re-reads access (the person may have changed it in system settings) and applies it, live too. */
+    suspend fun refreshMedia() = withContext(Dispatchers.IO) {
+        mutableMediaAccess.value = MediaListenerService.granted(appContext)
+        val enabled = mutableMediaAllowed.value && mutableMediaAccess.value
+        client.setMediaEnabled(enabled)
+        gate.withLock {
+            val live = connection ?: return@withLock
+            try { live.setMediaControlAccepted(enabled) } catch (error: Exception) { if (error is CancellationException) throw error }
+            if (enabled && mediaJob == null) startMedia(live)
+            if (!enabled && mediaJob != null) {
+                stopMedia()
+                try { live.mediaGone() } catch (error: Exception) { if (error is CancellationException) throw error }
+            }
+        }
+    }
+
+    suspend fun setMediaAllowed(value: Boolean) {
+        settings.edit().putBoolean(MEDIA_ALLOWED, value).apply()
+        mutableMediaAllowed.value = value
+        MediaListenerService.follow(appContext, value)
+        refreshMedia()
+    }
+
     private suspend fun releaseConnection() {
         stopBattery()
+        stopMedia()
         watcher?.cancel()
         watcher = null
         val previous = connection
@@ -507,6 +569,8 @@ class WindCore private constructor(
 
     companion object {
         private const val SETTINGS = "windconnect.core"
+        internal const val SETTINGS_FILE = SETTINGS
+        internal const val MEDIA_ALLOWED = "media_allowed"
         private const val RELAY_URL = "relay_url"
         private const val FIND_ALLOWED = "find_allowed"
 

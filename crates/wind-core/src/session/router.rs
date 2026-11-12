@@ -55,6 +55,7 @@ pub fn capability_name(channel: Channel) -> Option<&'static str> {
         Channel::Actions => "actions",
         Channel::Battery => "battery",
         Channel::Find => "find",
+        Channel::MediaControl => "media-control",
     })
 }
 
@@ -63,7 +64,12 @@ pub fn capability_name(channel: Channel) -> Option<&'static str> {
 pub fn is_uni(channel: Channel) -> bool {
     matches!(
         channel,
-        Channel::Clipboard | Channel::Notify | Channel::Media | Channel::Input | Channel::Battery
+        Channel::Clipboard
+            | Channel::Notify
+            | Channel::Media
+            | Channel::Input
+            | Channel::Battery
+            | Channel::MediaControl
     )
 }
 

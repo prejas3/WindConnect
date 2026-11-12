@@ -66,6 +66,66 @@ pub trait FindSink: Send + Sync {
     fn stop(&self);
 }
 
+/// WN-46 (§9.6): a command from the PC for the phone's player, already checked against the
+/// actions the last `send_media` allowed. `position_ms` only with "seek".
+#[uniffi::export(callback_interface)]
+pub trait MediaSink: Send + Sync {
+    fn command(&self, action: String, position_ms: Option<u64>);
+}
+
+/// The phone's player as the PC shows it (§9.6 `Now`).
+#[derive(uniffi::Record, Clone, Debug)]
+pub struct MediaNow {
+    pub title: String,
+    pub artist: Option<String>,
+    pub album: Option<String>,
+    pub app: String,
+    pub duration_ms: Option<u64>,
+    pub position_ms: u64,
+    pub playing: bool,
+    pub speed_permille: u64,
+    /// Bits: 1 play, 2 pause, 4 next, 8 previous, 16 seek.
+    pub actions: u64,
+}
+
+fn action_name(action: wind_core::media::Action) -> (&'static str, Option<u64>) {
+    use wind_core::media::Action;
+    match action {
+        Action::Play => ("play", None),
+        Action::Pause => ("pause", None),
+        Action::Toggle => ("toggle", None),
+        Action::Next => ("next", None),
+        Action::Previous => ("previous", None),
+        Action::Seek(at) => ("seek", Some(at)),
+    }
+}
+
+/// Hands the PC's commands to the sink, dropping what the last sent `Now` didn't allow.
+async fn serve_media(
+    sink: Arc<dyn MediaSink>,
+    allowed: Arc<std::sync::atomic::AtomicU64>,
+    mut queue: tokio::sync::mpsc::Receiver<wind_core::session::ChannelMessage>,
+) {
+    while let Some(message) = queue.recv().await {
+        let Some(action) = wind_core::media::Action::decode(&message.message) else {
+            continue;
+        };
+        if !action.allowed_by(allowed.load(std::sync::atomic::Ordering::SeqCst)) {
+            continue;
+        }
+        let sink = sink.clone();
+        let (name, position) = action_name(action);
+        // A platform callback may block briefly; off the runtime's workers.
+        let _ = tokio::task::spawn_blocking(move || sink.command(name.into(), position)).await;
+    }
+}
+
+type MediaRoute = (
+    Arc<dyn MediaSink>,
+    Arc<std::sync::atomic::AtomicU64>,
+    tokio::sync::mpsc::Receiver<wind_core::session::ChannelMessage>,
+);
+
 struct PlatformFind(Box<dyn FindSink>);
 impl wind_core::find::Sink for PlatformFind {
     fn ring(&self) -> bool {
@@ -247,6 +307,9 @@ pub struct CoreClient {
     ringer: std::sync::Mutex<Option<Arc<wind_core::find::Ringer>>>,
     /// The person allows the computer to ring (announce `find/1`).
     find_enabled: std::sync::atomic::AtomicBool,
+    /// WN-46: the phone's player for the PC's commands, and whether it may be controlled.
+    media: std::sync::Mutex<Option<Arc<dyn MediaSink>>>,
+    media_enabled: std::sync::atomic::AtomicBool,
 }
 
 #[derive(uniffi::Record, Clone, Debug)]
@@ -303,6 +366,8 @@ pub async fn open_client(
         discovered: tokio::sync::Mutex::new(None),
         ringer: std::sync::Mutex::new(None),
         find_enabled: std::sync::atomic::AtomicBool::new(true),
+        media: std::sync::Mutex::new(None),
+        media_enabled: std::sync::atomic::AtomicBool::new(false),
         identity: IdentityInfo {
             public_key: identity.public_key().as_bytes().to_vec(),
             fingerprint: identity.fingerprint().to_hex(),
@@ -338,6 +403,16 @@ impl CoreClient {
         if let Some(ringer) = self.ringer.lock().unwrap().clone() {
             ringer.stop_here();
         }
+    }
+    /// WN-46: where the PC's media commands go.
+    pub fn set_media_sink(&self, sink: Box<dyn MediaSink>) {
+        *self.media.lock().unwrap() = Some(Arc::from(sink));
+    }
+    /// Whether new sessions announce `media-control/1` (access granted and the setting on); a live
+    /// one changes with [`CoreConnection::set_media_control_accepted`].
+    pub fn set_media_enabled(&self, enabled: bool) {
+        self.media_enabled
+            .store(enabled, std::sync::atomic::Ordering::SeqCst);
     }
     pub fn is_ringing(&self) -> bool {
         self.ringer
@@ -731,6 +806,7 @@ impl CoreClient {
         let mut router = Router::new();
         let clipboard_input = wind_core::clipboard::Clipboard::route(&mut router);
         let find = self.route_find(&mut router);
+        let media = self.route_media(&mut router);
         let (session, _) = tokio::time::timeout(
             Duration::from_secs(10),
             Session::dial(
@@ -747,10 +823,13 @@ impl CoreClient {
         })?
         .map_err(session_error)?;
         self.serve_find(find);
+        let media_allowed = self.serve_media(media);
         Ok(Arc::new(CoreConnection {
             clipboard: std::sync::Mutex::new(None),
             clipboard_shared: self.clipboard.clone(),
             battery: wind_core::battery::Sender::default(),
+            media: wind_core::media::Sender::default(),
+            media_allowed,
             clipboard_input: std::sync::Mutex::new(Some(clipboard_input)),
             session,
             relay: Some(link),
@@ -795,6 +874,24 @@ impl CoreClient {
         }
         Some((ringer, streams))
     }
+    /// WN-46: routes `media-control` when there is a sink; withdrawn at the start unless allowed.
+    fn route_media(&self, router: &mut Router) -> Option<MediaRoute> {
+        let sink = self.media.lock().unwrap().clone()?;
+        let queue = wind_core::media::route_control(router);
+        if !self.media_enabled.load(std::sync::atomic::Ordering::SeqCst) {
+            router.start_disabled(wind_core::protocol::Channel::MediaControl);
+        }
+        Some((sink, Arc::new(std::sync::atomic::AtomicU64::new(0)), queue))
+    }
+    fn serve_media(&self, media: Option<MediaRoute>) -> Arc<std::sync::atomic::AtomicU64> {
+        match media {
+            Some((sink, allowed, queue)) => {
+                tokio::spawn(serve_media(sink, allowed.clone(), queue));
+                allowed
+            }
+            None => Arc::new(std::sync::atomic::AtomicU64::new(0)),
+        }
+    }
     fn serve_find(
         &self,
         find: Option<(
@@ -816,10 +913,11 @@ impl CoreClient {
             reason: "peer address must be an IP address and port".into(),
         })?;
         let mut changes = self.network.subscribe();
-        let ((session, _),(clipboard_input, find)) = loop {
+        let ((session, _),(clipboard_input, find, media)) = loop {
             let mut router=Router::new();
             let clipboard_input=wind_core::clipboard::Clipboard::route(&mut router);
             let find = self.route_find(&mut router);
+            let media = self.route_media(&mut router);
             let attempt = tokio::time::timeout(
             wait,
             Session::dial(
@@ -831,7 +929,7 @@ impl CoreClient {
             ),
         );
             tokio::select! {
-                result = attempt => break result.map(|r|r.map(|s|(s,(clipboard_input, find)))),
+                result = attempt => break result.map(|r|r.map(|s|(s,(clipboard_input, find, media)))),
                 changed = changes.changed() => {
                     if changed.is_err() { return Err(CoreError::Transport { reason: "network observer stopped".into() }); }
                 }
@@ -842,10 +940,13 @@ impl CoreClient {
         })?
         .map_err(session_error)?;
         self.serve_find(find);
+        let media_allowed = self.serve_media(media);
         Ok(Arc::new(CoreConnection {
             clipboard: std::sync::Mutex::new(None),
             clipboard_shared: self.clipboard.clone(),
             battery: wind_core::battery::Sender::default(),
+            media: wind_core::media::Sender::default(),
+            media_allowed,
             clipboard_input: std::sync::Mutex::new(Some(clipboard_input)),
             session,
             relay: None,
@@ -1056,6 +1157,9 @@ pub struct CoreConnection {
         std::sync::Mutex<Option<tokio::sync::mpsc::Receiver<wind_core::session::ChannelMessage>>>,
     /// WN-49: sends only changes of the battery status.
     battery: wind_core::battery::Sender,
+    /// WN-46: the phone's player, sent only on a change; what its commands may do.
+    media: wind_core::media::Sender,
+    media_allowed: Arc<std::sync::atomic::AtomicU64>,
     session: Session,
     /// Held while the session runs through the relay.
     relay: Option<RelayLink>,
@@ -1132,6 +1236,44 @@ impl CoreConnection {
         })?;
         self.battery
             .send(&self.session, status)
+            .await
+            .map_err(session_error)
+    }
+    /// WN-46 (§9.6): the phone's player for the PC; sent only on a change (art once per image).
+    /// True when sent. Commands from now on are checked against `now.actions`.
+    pub async fn send_media(&self, now: MediaNow, art: Option<Vec<u8>>) -> Result<bool, CoreError> {
+        self.media_allowed
+            .store(now.actions, std::sync::atomic::Ordering::SeqCst);
+        let now = wind_core::media::Now {
+            title: now.title,
+            artist: now.artist,
+            album: now.album,
+            app: now.app,
+            duration_ms: now.duration_ms,
+            position_ms: now.position_ms,
+            playing: now.playing,
+            speed_permille: now.speed_permille,
+            actions: now.actions,
+            art: None,
+        };
+        let art = art.filter(|a| {
+            a.len() <= wind_core::media::MAX_ART && wind_core::media::image_mime(a).is_some()
+        });
+        self.media
+            .now(&self.session, now, art.as_deref())
+            .await
+            .map_err(session_error)
+    }
+    /// No player on the phone any more.
+    pub async fn media_gone(&self) -> Result<bool, CoreError> {
+        self.media_allowed
+            .store(0, std::sync::atomic::Ordering::SeqCst);
+        self.media.gone(&self.session).await.map_err(session_error)
+    }
+    /// Announce or withdraw `media-control/1` on this session.
+    pub async fn set_media_control_accepted(&self, accept: bool) -> Result<bool, CoreError> {
+        self.session
+            .set_accepted(wind_core::protocol::Channel::MediaControl, accept)
             .await
             .map_err(session_error)
     }

@@ -10,6 +10,21 @@
       <button disabled aria-describedby="pairing-hint"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="m8 9 3 3 5-5M5 16h14m-7 0v5"/></svg>Touchpad</button>
     </div>
     <p id="find-status" class="find-status subtle" role="status"></p>
+    <section id="media" class="media-card" aria-labelledby="media-title" hidden>
+      <img id="media-art" class="media-art" alt="" hidden>
+      <div class="media-body">
+        <p class="media-app subtle" id="media-app"></p>
+        <h2 class="media-title" id="media-title"></h2>
+        <p class="media-sub subtle" id="media-sub"></p>
+        <div id="media-progress" class="media-progress" role="slider" tabindex="0" aria-label="Pozycja utworu" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0"><span></span></div>
+        <p class="media-time subtle"><span id="media-elapsed">0:00</span><span id="media-total"></span></p>
+      </div>
+      <div class="media-controls">
+        <button id="media-previous" class="button quiet small" aria-label="Poprzedni utwór"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5v14M18 6l-8 6 8 6z"/></svg></button>
+        <button id="media-toggle" class="button primary small" aria-label="Odtwórz"><svg class="play" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5l11 7-11 7z"/></svg><svg class="pause" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14M16 5v14"/></svg></button>
+        <button id="media-next" class="button quiet small" aria-label="Następny utwór"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17 5v14M6 6l8 6-8 6z"/></svg></button>
+      </div>
+    </section>
     <section id="transfers" class="transfers" aria-labelledby="transfers-title" hidden>
       <div class="transfers-head"><h2 id="transfers-title">Wysyłanie</h2><button id="transfers-clear" class="button quiet small" hidden>Wyczyść</button></div>
       <p id="transfers-summary" class="subtle" role="status"></p>
