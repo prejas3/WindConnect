@@ -369,7 +369,7 @@ FLOW:WM_CLIPBOARDUPDATE bez tekstu -> format „PNG” (bez zmian) albo CF_DIBV5
 RULE:odebrany obraz trafia do schowka od razu jako „PNG” i CF_DIB z opóźnionym renderowaniem; WM_RENDERFORMAT czeka na bajty (najwyżej 10 s bez postępu), potem renderuje. Nowszy schowek, przerwanie lub zastój: wklejenie się nie udaje, bez częściowego obrazu. WM_RENDERALLFORMATS przy zamknięciu renderuje tylko kompletny obraz, inaczej czyści schowek. Własnego obrazu (właściciel = nasze okno) nie odczytujemy: brak echa i czekania na samego siebie.
 RULE:limit „Maks. rozmiar obrazu” 5 / 16 / 50 MB (domyślnie 16) w Ustawieniach i panelu, zapisany w clipboard-images.json obok clipboard.json; dotyczy wysyłania i odbioru.
 SEC:te same flagi prywatności co dla tekstu: obrazu oznaczonego jako prywatny nie kopiujemy z OS; odebrany ma opt-out historii i chmury. Tekst ma pierwszeństwo, gdy w schowku są oba.
-LIMIT:wątek okna czeka na bajty tylko przy wklejaniu przed końcem przesyłu; ścieżka odbioru fragmentów go nie potrzebuje (bez zakleszczenia). Zrzuty większe niż 16384 px nie są wysyłane.
+LIMIT:wątek okna czeka na bajty tylko przy wklejaniu przed końcem przesyłu; ścieżka odbioru fragmentów go nie potrzebuje (bez zakleszczenia). Zrzuty większe niż 16384 px nie są wysyłane. Wklejenie odebranego obrazu jako CF_DIB dekoduje PNG z limitem 64 MiB pikseli (ochrona przed „bombą dekompresyjną”): większy obraz (np. 8K) wkleja się tylko jako „PNG”.
 
 Test OS (ta sama stacja co wyżej): `clipboard_probe` sprawdza odczyt „PNG” i
 samego DIB, brak kopii obrazu prywatnego, opóźnione renderowanie (wklejenie
@@ -377,7 +377,26 @@ czeka i dostaje cały PNG, CF_DIB z PNG), błąd wklejenia przy nowszym
 schowku od razu i przy zastoju po ~10 s, odpowiadające okno po zastoju i
 brak odczytu własnego obrazu. Pomiar zrzutu PC -> telefon: `apps/android/README.md`, WN-36.
 
+### Historia i hasła (WN-37)
+
+CCS/1
+FLOW:pozycja trafia do historii, gdy telefon potwierdził wysłany schowek (Applied) albo gdy schowek z telefonu został zapisany w Windows. Panel i Ustawienia pokazują „Historia schowka”: najnowsze u góry, kliknięcie (Enter) kopiuje z powrotem do schowka z flagami, jakie miała (z telefonu: poza historią Win+V i chmurą, jak przy odbiorze) i przy włączonej synchronizacji wysyła na telefon, przypinka i „Usuń z historii” obok, „Wyczyść” usuwa nieprzypięte.
+RULE:wyłączona synchronizacja: nic nowego nie trafia do historii (także ręczne wysłanie), a wyłączenie czyści nieprzypięte; przypięte zostają.
+RULE:20 ostatnich + do 20 przypiętych (przypięte u góry, poza dwudziestką); powtórka tej samej treści (SHA-256) przesuwa się na górę zamiast dublować. Obrazy nieprzypięte do 64 MB łącznie w pamięci (najstarszy wypada), przypięte też do 64 MB; obraz z telefonu można skopiować i przypiąć po dojściu całego PNG.
+SEC:historia jest tylko w pamięci; na dysk trafiają wyłącznie przypięte, w `clipboard-pins.bin` obok clipboard.json, zaszyfrowane DPAPI bieżącego użytkownika z własnym celem (nagłówek `WCPN` 1). Plik innego użytkownika, uszkodzony albo nowszy: start bez przypiętych, plik zostaje.
+SEC:do panelu (IPC) idzie tylko podgląd tekstu (jedna linia, 120 znaków) albo miniatura; pełny tekst i PNG zostają w procesie, kopiowanie idzie po id. Podgląd wstawiany jako tekst, nigdy HTML; znaki sterujące, bidi (U+202A–202E, U+2066–2069) i zerowej szerokości (U+200B–200F, U+FEFF) zamieniane na spację. Miniatury jako `data:image/png`: CSP pozwala na `data:` tylko w `img-src`.
+SEC:hasła: schowek z ExcludeClipboardContentFromMonitorProcessing, „Clipboard Viewer Ignore” (KeePass, Password Safe i inne), CanIncludeInClipboardHistory = 0 albo CanUploadToCloudClipboard = 0 nie jest nawet kopiowany z OS, więc nie wychodzi z PC ani nie trafia do historii. Nie rozpoznajemy haseł po treści: liczą się tylko znaczniki, które ustawia menedżer.
+LIMIT:historia tylko na Windows (Android jej nie pokazuje); po restarcie zostają tylko przypięte; bez wyszukiwania.
+DATA:pliki schowka w katalogu danych aplikacji (obok tożsamości): clipboard.json (włączona synchronizacja), clipboard-images.json (limit obrazów), clipboard-pins.bin (przypięte, DPAPI). Odinstalowanie MSI nie usuwa katalogu danych (jak tożsamości); usunięcie wszystkich przypiętych usuwa clipboard-pins.bin.
+
+Test „hasło nie opuszcza urządzenia”: `clipboard_probe` (każdy z 4 znaczników
+osobno, atomowo, jak menedżer haseł: nic nie jest kopiowane; pozycja z historii
+zachowuje flagi; obraz z historii wklejalny jako „PNG” i CF_DIB, bez echa) oraz test
+OS z telefonem (`check-background-android.cjs`): PC kopiuje 4 hasła z
+pojedynczymi znacznikami, telefon nie dostaje żadnego, a następny zwykły tekst
+dochodzi. Logika historii: testy jednostkowe `clipboard_history` (kolejność,
+limity, pamięć, przypinanie, plik DPAPI).
 Test UI: `node apps/windows/scripts/check-clipboard-ui.cjs` z zewnętrznym
 Playwright (`PLAYWRIGHT_MODULE`). Sprawdza klawiaturę, przełącznik, ręczne
-wysyłanie bez połączenia, status sensitive/konfliktu skrótu i układ Light/Dark.
+wysyłanie bez połączenia, status sensitive/konfliktu skrótu, historię (podgląd jako tekst, kopiuj/przypnij/usuń/wyczyść klawiaturą, własne przewijanie w panelu) i układ Light/Dark.
 Podstawione IPC sprawdza UI; dostarczenie OS potwierdza osobny test natywny.

@@ -21,6 +21,8 @@ if-addrs = "0.15"
 zeroize = "1"
 # PNG for clipboard images (WN-36); already in the tree via Tauri (0.18.1, MIT OR Apache-2.0).
 png = "0.18"
+# Clipboard history dedupe (WN-37); already in the tree via wind-core.
+sha2 = "0.10"
 
 [target.'cfg(windows)'.dependencies]
 window-vibrancy = "0.8.1"

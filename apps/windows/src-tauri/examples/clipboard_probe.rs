@@ -310,6 +310,22 @@ fn image_proof(desktop: usize, native: &clipboard_native::Native) -> Result<()> 
     let decoded = clipboard_image::decode_dib(&got_dib.expect("CF_DIB rendered")).unwrap();
     assert!(decoded.pixels == pixels, "CF_DIB from the PNG");
 
+    // WN-37: a history image put back: pasteable at once as "PNG" and CF_DIB, not read back (the app sends it).
+    assert!(native.write_history_image(&png, vec![1], 64, 48, true));
+    assert!(
+        clipboard_native::read()?.is_none(),
+        "history image not read back"
+    );
+    let (got, _) = paste(desktop, png_format()).join().unwrap();
+    assert!(got.as_deref() == Some(&png[..]), "history PNG");
+    let (got_dib, _) = paste(desktop, 8).join().unwrap();
+    assert!(
+        clipboard_image::decode_dib(&got_dib.expect("history CF_DIB"))
+            .unwrap()
+            .pixels
+            == pixels
+    );
+
     // Replaced while a paste waits: that paste fails at once, no partial image.
     let replaced = Arc::new(IncomingImage::new(
         [2; 16],
@@ -351,7 +367,7 @@ fn image_proof(desktop: usize, native: &clipboard_native::Native) -> Result<()> 
         "the window is responsive again"
     );
     println!(
-        r#"{{"imageRead":true,"privateImageNotCopied":true,"delayedRender":true,"dibFromPng":true,"replacedPasteFails":true,"stalledPasteMs":{},"responsiveAfterStall":true,"noEcho":true}}"#,
+        r#"{{"imageRead":true,"privateImageNotCopied":true,"delayedRender":true,"dibFromPng":true,"replacedPasteFails":true,"stalledPasteMs":{},"responsiveAfterStall":true,"noEcho":true,"historyImageCopy":true}}"#,
         took.as_millis()
     );
     Ok(())
@@ -383,6 +399,7 @@ fn main() -> Result<()> {
     changed.borrow_and_update();
     for format in [
         "ExcludeClipboardContentFromMonitorProcessing",
+        "Clipboard Viewer Ignore",
         "CanIncludeInClipboardHistory",
         "CanUploadToCloudClipboard",
     ] {
@@ -397,11 +414,25 @@ fn main() -> Result<()> {
         native.mark_test(format, 1)?;
         assert!(!clipboard_native::read()?.unwrap().sensitive);
     }
+    // WN-37: what a password manager leaves (one marker, atomically) is never copied out.
+    for marker in ["exclude", "ignore", "history", "cloud"] {
+        native.write_marked_test("WN37 synthetic password", marker)?;
+        let captured = clipboard_native::read()?.unwrap();
+        assert!(captured.sensitive && captured.text.is_empty(), "{marker}");
+    }
+    // A history entry put back keeps its flags: sent from the PC → ordinary; from the phone → protected.
+    assert!(native.write_history_text("WN37 from history", false));
+    let captured = clipboard_native::read()?.unwrap();
+    assert!(!captured.sensitive && captured.text == "WN37 from history");
+    // One that came from the phone keeps its flags (out of Win+V history and the cloud).
+    assert!(native.write_history_text("WN37 from the phone", true));
+    let captured = clipboard_native::read()?.unwrap();
+    assert!(captured.sensitive && captured.text.is_empty());
     assert!(native.write_received("remote test"));
     let captured = clipboard_native::read()?.unwrap();
     assert!(captured.sensitive);
     assert!(captured.text.is_empty());
-    println!("{{\"nativeClipboard\":true,\"isolatedNoninteractiveClipboard\":true,\"privacyFlags\":3,\"osListener\":true,\"historyCloudOptOut\":true}}");
+    println!("{{\"nativeClipboard\":true,\"isolatedNoninteractiveClipboard\":true,\"privacyFlags\":4,\"osListener\":true,\"historyCloudOptOut\":true,\"passwordManagerMarkers\":4,\"historyCopyKeepsFlags\":true}}");
     let desktop = _private.desktop();
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()

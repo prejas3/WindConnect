@@ -75,3 +75,23 @@ body.onboarding-active #actions, body.onboarding-active [data-clipboard-controls
 #onboarding-done { display: grid; gap: 12px; max-width: 520px; }#onboarding-done[hidden] { display: none; }#onboarding-done .control-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }#onboarding-done small { display: block; color: var(--sub); font-size: 12px; }#onboarding-finish { justify-self: start; }
 /* WN-36: the image limit keeps its three choices on one line; the row wraps under its label when narrow. */
 .control-row:has([data-clipboard-limit]) { flex-wrap: wrap; }[data-clipboard-limit] { flex-wrap: nowrap; flex-shrink: 0; }
+
+/* WN-37: clipboard history (panel and Settings); its own scroll so the panel keeps its height. */
+.history { display: grid; gap: 8px; background: var(--tile); border-radius: var(--radius-tile); padding: 12px; margin-top: 14px; }
+.history .transfers-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }.history .transfers-head h2 { font-size: 13px; }
+.history-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; max-height: 248px; overflow-y: auto; overscroll-behavior: contain; }
+.history-list li { display: grid; grid-template-columns: minmax(0,1fr) auto auto; align-items: center; gap: 2px; border-radius: var(--radius-control); }
+.history-list li[data-pinned="true"] { background: var(--accent-bg); }
+.history-copy { display: grid; grid-template-columns: auto minmax(0,1fr); align-items: center; gap: 8px; min-width: 0; text-align: left; padding: 6px 8px; border-radius: var(--radius-control); font-size: 12px; transition: background var(--duration-hover); }
+.history-copy:hover:not(:disabled) { background: var(--surface); }
+.history-copy:disabled { color: var(--disabled); cursor: default; }
+.history-copy > span { min-width: 0; }
+.history-copy .name { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.history-copy small { display: block; color: var(--sub); font-size: 11px; }
+.history-copy img { width: 40px; height: 30px; object-fit: cover; border-radius: 5px; background: var(--surface); }
+.history-copy .glyph { width: 16px; height: 16px; color: var(--sub); }
+.history-action { width: 28px; height: 28px; display: grid; place-items: center; border-radius: var(--radius-control); color: var(--sub); transition: background var(--duration-hover); }
+.history-action svg { width: 15px; height: 15px; }
+.history-action:hover { background: var(--surface); color: var(--text); }
+.history-action[aria-pressed="true"] { color: var(--accent-ink); }
+.history-action[aria-pressed="true"] svg { fill: currentColor; }

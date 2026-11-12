@@ -13,7 +13,7 @@ const server = http.createServer(async (request, response) => {
   const filename = path.resolve(root, '.' + (pathname === '/' ? '/index.html' : pathname));
   if (!filename.startsWith(root + path.sep)) { response.writeHead(403).end(); return; }
   try {
-    response.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self'; connect-src ipc: http://ipc.localhost");
+    response.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data:; connect-src ipc: http://ipc.localhost");
     response.setHeader('Content-Type', types[path.extname(filename)] || 'text/plain');
     response.end(await fs.readFile(filename));
   } catch { response.writeHead(404).end(); }
