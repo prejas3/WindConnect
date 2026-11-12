@@ -31,6 +31,11 @@ function wrap(svg, ink, background, round=false) {
   const unit=svg.includes('viewBox="0 0 16 16"')?16:64;
   return svg.replace('<svg ',`<svg style="color:${ink}" `).replace(/(<svg[^>]+>)/,`$1${background ? `<rect width="${unit}" height="${unit}" rx="${unit/(round?2:4)}" fill="${background}" stroke="none"/>`:''}`);
 }
+function inset(svg, unit, scale) {
+  const offset = unit * (1 - scale) / 2;
+  return svg.replace(/(<svg[^>]+>)/, `$1<g transform="translate(${offset} ${offset}) scale(${scale})">`)
+    .replace('</svg>', '</g></svg>');
+}
 (async()=>{
   const master=await fs.readFile(path.join(root,'assets/brand/orbita.svg'),'utf8');
   const small=await fs.readFile(path.join(root,'assets/brand/orbita-small.svg'),'utf8');
@@ -47,7 +52,7 @@ function wrap(svg, ink, background, round=false) {
       },{svg,size});
     }
     const images=[];
-    for(const size of sizes) { const r=await raster(wrap(size<=32?small:master,'#ffffff','#0d7f74'),size);const png=Buffer.from(r.png,'base64');images.push({size,png});await emit(`${windows}/app-${size}.png`,png); }
+    for(const size of sizes) { const unit=size<=32?16:64; const r=await raster(wrap(inset(size<=32?small:master,unit,.75),'#ffffff','#0d7f74'),size);const png=Buffer.from(r.png,'base64');images.push({size,png});await emit(`${windows}/app-${size}.png`,png); }
     await emit(`${windows}/icon.ico`,iconDirectory(images));
     for(const theme of ['light','dark']) for(const state of ['connected','searching','unavailable']) {
       const color=({light:{connected:'#0d7f74',searching:'#805015',unavailable:'#52686e'},dark:{connected:'#43c9b8',searching:'#efbc7c',unavailable:'#a1b2b6'}})[theme][state];
@@ -57,11 +62,12 @@ function wrap(svg, ink, background, round=false) {
       if(state==='unavailable') mark=mark.replace('</svg>','  <path stroke-width="1.5" d="M4 12 12 4"/>\n</svg>');
       for(const size of [16,20,24,32]) {const r=await raster(wrap(mark,color),size);await emit(`${windows}/tray/${state}-${theme}-${size}.png`,Buffer.from(r.png,'base64'));await emit(`${windows}/tray/${state}-${theme}-${size}.rgba`,Buffer.from(r.rgba));}
     }
-    await emit(`${android}/drawable/ic_launcher_foreground.xml`,vector(master,108,1,22));
-    await emit(`${android}/drawable/ic_launcher_monochrome.xml`,vector(master,108,1,22));
-    await emit(`${android}/drawable/ic_connection.xml`,vector(small,24,1.5,0));
+    // CCS/1 WHY:108dp layers are cropped to a ~72dp mask; a 48dp mark leaves visual padding inside the 66dp safe zone.
+    await emit(`${android}/drawable/ic_launcher_foreground.xml`,vector(master,108,.75,30));
+    await emit(`${android}/drawable/ic_launcher_monochrome.xml`,vector(master,108,.75,30));
+    await emit(`${android}/drawable/ic_connection.xml`,vector(small,24,1.25,2));
     for(const name of ['ic_launcher','ic_launcher_round']) await emit(`${android}/mipmap-anydpi-v26/${name}.xml`,'<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">\n    <background android:drawable="@color/icon_background" />\n    <foreground android:drawable="@drawable/ic_launcher_foreground" />\n    <monochrome android:drawable="@drawable/ic_launcher_monochrome" />\n</adaptive-icon>\n');
-    for(const [density,size] of [['mdpi',48],['hdpi',72],['xhdpi',96],['xxhdpi',144],['xxxhdpi',192]]) for(const name of ['ic_launcher','ic_launcher_round']) {const r=await raster(wrap(master,'#ffffff','#0d7f74',name.endsWith('round')),size);await emit(`${android}/mipmap-${density}/${name}.png`,Buffer.from(r.png,'base64'));}
+    for(const [density,size] of [['mdpi',48],['hdpi',72],['xhdpi',96],['xxhdpi',144],['xxxhdpi',192]]) for(const name of ['ic_launcher','ic_launcher_round']) {const r=await raster(wrap(inset(master,64,2/3),'#ffffff','#0d7f74',name.endsWith('round')),size);await emit(`${android}/mipmap-${density}/${name}.png`,Buffer.from(r.png,'base64'));}
     // CCS/1 RULE:manifest excludes itself; hashes prove every committed output was regenerated from this source/toolchain.
     await emit('assets/brand/generated.json',JSON.stringify({renderer:`Chromium ${browser.version()}`,source:'Orbita / WN-93 direction C',outputs},null,2)+'\n');
     console.log(`${check?'Verified':'Generated'} ${outputs.length} assets directly from SVG.`);

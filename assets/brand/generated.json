@@ -9,58 +9,58 @@
     },
     {
       "file": "apps/windows/src-tauri/icons/app-16.png",
-      "bytes": 826,
-      "sha256": "98d9adc9aed42cd4730d2a5b8a4967c16c391396c0bdcda656863be70cbe3ef7"
+      "bytes": 727,
+      "sha256": "2a656c03df73ada5dd5096ade1af1f962eaa6b6741a57f3414d00a21423f9df7"
     },
     {
       "file": "apps/windows/src-tauri/icons/app-20.png",
-      "bytes": 1126,
-      "sha256": "a9ff75fd8320b0da4c1ca75109df91996ec95cf8f8f408d99fad4faa71127ace"
+      "bytes": 935,
+      "sha256": "24b77368eccd10a365f8de3081d43b47cc95e961d4b1bb5140848c35f357be89"
     },
     {
       "file": "apps/windows/src-tauri/icons/app-24.png",
-      "bytes": 1347,
-      "sha256": "c38777290560aee6d9c850a6b7b7f3e60e0629600aed2589e0e295aa4b330f81"
+      "bytes": 1121,
+      "sha256": "5e9f028b2f490811a3bd753173d0b6f309c2547cff0f834cb34c3bfff1b3b68a"
     },
     {
       "file": "apps/windows/src-tauri/icons/app-32.png",
-      "bytes": 1769,
-      "sha256": "2426906a865573be211650d89cc5382c51add928a6ee95d999a8ab4a92503a28"
+      "bytes": 1557,
+      "sha256": "c05efe16af9aeb29bbe1f366ad26739089454e911bdf58aaa6ce69090fca7b6b"
     },
     {
       "file": "apps/windows/src-tauri/icons/app-40.png",
-      "bytes": 2332,
-      "sha256": "08a704262261e93fe8ff0df9ab7606cadfefa9b4610b1bc8eebc9da5ff86a24d"
+      "bytes": 1870,
+      "sha256": "68fe19a3064b5031722fe0050deda984fff48c7ddbbe804d7112bbf9a65d8676"
     },
     {
       "file": "apps/windows/src-tauri/icons/app-48.png",
-      "bytes": 2835,
-      "sha256": "b41b7c5216f4ca6f5d4fb241883f36c223d8b68dd9e9c3e511c024a01ab25f1c"
+      "bytes": 2407,
+      "sha256": "a3952fea8ff0e3241b8ae5ef8b3769a34a5589b2d4906c7a1e35705dc043fb28"
     },
     {
       "file": "apps/windows/src-tauri/icons/app-64.png",
-      "bytes": 3643,
-      "sha256": "c4b1b38f1e704cd00ddb96712abe16359be14759652f780cf1674b746956c6d3"
+      "bytes": 3169,
+      "sha256": "896215cbdb151a357025c07adde338b2304af1bfacc8cf4e8fe57940d6990562"
     },
     {
       "file": "apps/windows/src-tauri/icons/app-96.png",
-      "bytes": 5714,
-      "sha256": "420cd5d1381e30f24b67f73f7c776312feb8d5d12aff77fcb4f240a0cc21c19e"
+      "bytes": 4804,
+      "sha256": "2e194118e85ffca5934864480414cc50429cce2e33643d924a27ff9f06ac7da0"
     },
     {
       "file": "apps/windows/src-tauri/icons/app-128.png",
-      "bytes": 7254,
-      "sha256": "3cf7c4102accb1e02d853651d3d2b790b7b16cc9371a743317ab72d038a012c6"
+      "bytes": 6291,
+      "sha256": "ff8cbba9b19faa636038a8fb8972aab2355a2f5cc9e480f06611f3a9ec3c050d"
     },
     {
       "file": "apps/windows/src-tauri/icons/app-256.png",
-      "bytes": 15672,
-      "sha256": "3539b59ac17b62d01b50aece84ed2ad4e137af0121d67ddb432126452ff07456"
+      "bytes": 13429,
+      "sha256": "521f2e7898fb8400f597388b451f5093d90bd845205cd52a43724879d9c9080e"
     },
     {
       "file": "apps/windows/src-tauri/icons/icon.ico",
-      "bytes": 42684,
-      "sha256": "df6365e73b5639118866c3749d36a2d78b3aa2c08a42407beaa78bf0639350b8"
+      "bytes": 36476,
+      "sha256": "e7cf0484f9b12404cb8e8ebcaee9f67e1a422118e5a4005f3f18aea65feef196"
     },
     {
       "file": "apps/windows/src-tauri/icons/tray/connected-light-16.png",
@@ -304,18 +304,18 @@
     },
     {
       "file": "apps/android/app/src/main/res/drawable/ic_launcher_foreground.xml",
-      "bytes": 1220,
-      "sha256": "2ae6e461959272dabe184364a14fa83b450bf42cb79b4238dec4bc1ec4e4f9aa"
+      "bytes": 1226,
+      "sha256": "d8f7bddacdd08db7e544ab72e5b91462186d4b180dd0a188a36c6e02a53a36b2"
     },
     {
       "file": "apps/android/app/src/main/res/drawable/ic_launcher_monochrome.xml",
-      "bytes": 1220,
-      "sha256": "2ae6e461959272dabe184364a14fa83b450bf42cb79b4238dec4bc1ec4e4f9aa"
+      "bytes": 1226,
+      "sha256": "d8f7bddacdd08db7e544ab72e5b91462186d4b180dd0a188a36c6e02a53a36b2"
     },
     {
       "file": "apps/android/app/src/main/res/drawable/ic_connection.xml",
-      "bytes": 1197,
-      "sha256": "4e930d7b0b564cb65f007c3b8784acc9d48bad635cdbe4f09788a7fd4e94da2d"
+      "bytes": 1199,
+      "sha256": "41a75c84161dc195d68a4b12a57096ce32fee586dad9dd4a2e38d010f302c78f"
     },
     {
       "file": "apps/android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml",
@@ -329,53 +329,53 @@
     },
     {
       "file": "apps/android/app/src/main/res/mipmap-mdpi/ic_launcher.png",
-      "bytes": 2835,
-      "sha256": "b41b7c5216f4ca6f5d4fb241883f36c223d8b68dd9e9c3e511c024a01ab25f1c"
+      "bytes": 2176,
+      "sha256": "4e65611826f12ded667dd14d3686dc60d82fb14cbbb8f5265171dd9095ad95c1"
     },
     {
       "file": "apps/android/app/src/main/res/mipmap-mdpi/ic_launcher_round.png",
-      "bytes": 3263,
-      "sha256": "a6ee58d14bb7e2c59e9c96ec57ce7c0593f54228b01b5e9d10e13ae1406e819f"
+      "bytes": 2678,
+      "sha256": "9f5e6ae49ab2d8b0c87876e6d21ee9368a073540790f54da8b8b393202c452fa"
     },
     {
       "file": "apps/android/app/src/main/res/mipmap-hdpi/ic_launcher.png",
-      "bytes": 4231,
-      "sha256": "fa71eda7714fc7b105715a9806e896c7915cd288c607c5d85f68dd5a2e5ba92b"
+      "bytes": 3229,
+      "sha256": "308fa898694539d4ef221db02c5d866b01601b0377eca2fd355e352faa8f8bca"
     },
     {
       "file": "apps/android/app/src/main/res/mipmap-hdpi/ic_launcher_round.png",
-      "bytes": 4933,
-      "sha256": "eb6bdc0e36102fc7e3654e52f4119c6d46b80c671b0f89c03efc4bf2692abba9"
+      "bytes": 3964,
+      "sha256": "188ed8866e3060960144c67cb75dd9b21cb1e5399beb7c965f941631eed1fc2e"
     },
     {
       "file": "apps/android/app/src/main/res/mipmap-xhdpi/ic_launcher.png",
-      "bytes": 5714,
-      "sha256": "420cd5d1381e30f24b67f73f7c776312feb8d5d12aff77fcb4f240a0cc21c19e"
+      "bytes": 4297,
+      "sha256": "f415a73796684a4627c863e6c60dd9fdb052bfff81f31025d08c553303868d8d"
     },
     {
       "file": "apps/android/app/src/main/res/mipmap-xhdpi/ic_launcher_round.png",
-      "bytes": 6584,
-      "sha256": "a7f033c054d8aa9eafbf6b5f0dcfdd9e5c3317602c16a8aa9a13108c5c05ab23"
+      "bytes": 5250,
+      "sha256": "b955fed07aaebd8e8fb707cd0aa1a1121560fc4eb9f63fb147e362a275620e72"
     },
     {
       "file": "apps/android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png",
-      "bytes": 8647,
-      "sha256": "029903ff33be62c073a4aa166b23083847e20ee416c7e65b24c42e24c7ae891a"
+      "bytes": 6605,
+      "sha256": "2943c542839bc138e9897b4994e0f40311fd089af73c541d5f482cd23dd14057"
     },
     {
       "file": "apps/android/app/src/main/res/mipmap-xxhdpi/ic_launcher_round.png",
-      "bytes": 10042,
-      "sha256": "b412e37449a85a149cf3218e3ef411c3a7338569ec36f4811c5d8d4e584a9fba"
+      "bytes": 8123,
+      "sha256": "6ee293bf7cc654067c590528b279a88c105c85392fe64c28461592c737a42714"
     },
     {
       "file": "apps/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png",
-      "bytes": 11575,
-      "sha256": "157602025858541f0c2ceeb551eb3cd328e27fa6c4ee322cb439b38a92df37a3"
+      "bytes": 8781,
+      "sha256": "999b5be4e4d3182959da3a7bbfeb2d96ec6248addcd1ff4566764a0fd1eb8409"
     },
     {
       "file": "apps/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.png",
-      "bytes": 13476,
-      "sha256": "ae75854ebf049487b37fd566f5d99550f12b474f61b341eb12c3811b253caa84"
+      "bytes": 10797,
+      "sha256": "eaa6cf6ea9abdb90d986098f145508782ef3fb41825f71c5300ba441168637ec"
     }
   ]
 }
