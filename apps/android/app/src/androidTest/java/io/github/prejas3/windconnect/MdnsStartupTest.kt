@@ -1,6 +1,10 @@
 package io.github.prejas3.windconnect
 
 import android.content.Context
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
 import android.os.Bundle
@@ -8,9 +12,12 @@ import android.os.ParcelFileDescriptor
 import android.os.SystemClock
 import androidx.test.platform.app.InstrumentationRegistry
 import io.github.prejas3.windconnect.core.WindCore
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
 import org.junit.FixMethodOrder
 import org.junit.Test
 import org.junit.runners.MethodSorters
@@ -89,6 +96,56 @@ class MdnsStartupTest {
         instrumentation.sendStatus(0, results)
         assertTrue("browser saw the phone within 5 s in every run: $found", found.all { it in 0..5_000 })
         assertTrue("no network generation from the initial callbacks: $restarts", restarts.all { it == 0L })
+    }
+
+    /**
+     * WN-111: mobile data going to the background is no network change. An app that asked for
+     * mobile data lets go; Android takes FOREGROUND off the still-connected network and the
+     * callback reports it lost, then available when an app asks again. Interface and addresses
+     * stay, so discovery must not restart. Needs a mobile network (the emulator has one).
+     */
+    @Test fun a2_mobileDataToTheBackgroundIsNoChange() = runBlocking {
+        val connectivity = context.getSystemService(ConnectivityManager::class.java)
+        val results = Bundle()
+        val core = WindCore.open(context, "Android")
+        try {
+            delay(3_000)
+            val before = core.network.value.generation
+            var backgrounded = 0
+            repeat(3) {
+                val cellular = CompletableDeferred<Network>()
+                val request = object : ConnectivityManager.NetworkCallback() {
+                    override fun onAvailable(network: Network) { cellular.complete(network) }
+                }
+                // The app doesn't declare CHANGE_NETWORK_STATE; the test borrows the shell's.
+                instrumentation.uiAutomation.adoptShellPermissionIdentity(android.Manifest.permission.CHANGE_NETWORK_STATE)
+                try {
+                    connectivity.requestNetwork(NetworkRequest.Builder()
+                        .addTransportType(NetworkCapabilities.TRANSPORT_CELLULAR)
+                        .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET).build(), request)
+                } finally { instrumentation.uiAutomation.dropShellPermissionIdentity() }
+                val network = try { withTimeoutOrNull(5_000) { cellular.await() } } finally { delay(1_000) }
+                connectivity.unregisterNetworkCallback(request)
+                assumeTrue("a mobile network to request", network != null)
+                // Background unless another app holds mobile data right now.
+                val start = SystemClock.elapsedRealtime()
+                while (SystemClock.elapsedRealtime() - start < 2_000) {
+                    val caps = connectivity.getNetworkCapabilities(network!!)
+                    if (caps != null && !caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_FOREGROUND)) { backgrounded++; break }
+                    delay(50)
+                }
+                delay(1_500)
+            }
+            val after = core.network.value.generation
+            results.putString("backgrounded", "$backgrounded/3")
+            results.putString("generationBefore", "$before")
+            results.putString("generationAfter", "$after")
+            instrumentation.sendStatus(0, results)
+            assumeTrue("mobile data went to the background at least once (another app may hold it): $results", backgrounded > 0)
+            assertTrue("mobile data to the background and back restarts nothing: $results", after == before)
+        } finally {
+            core.shutdown()
+        }
     }
 
     /** A real network change (Wi-Fi off and on) still raises the generation and the phone is seen again. */
