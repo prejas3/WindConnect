@@ -5,6 +5,11 @@ body { min-height: 100vh; overflow: auto; }
 .panel-heading p { font-size: 12px; margin-top: 5px; }
 .panel-heading > div { min-width: 0; flex: 1; }
 /* WN-49: the phone's battery; amber when low, the bolt while charging. No live region: alerts are toasts. */
+/* WN-50: the "Dzwoń" tile while the phone rings. */
+.quick-actions #find-phone[aria-pressed="true"] { background: var(--accent); color: var(--surface); }
+.quick-actions #find-phone[aria-pressed="true"] svg { stroke: currentColor; }
+.find-status { font-size: 12px; margin: 6px 2px 0; min-height: 0; }
+.find-status:empty { display: none; }
 .phone-battery { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--sub); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .phone-battery svg { width: 24px; height: 12px; flex: none; }
 .phone-battery .shell { fill: none; stroke: currentColor; stroke-width: 1.5; }

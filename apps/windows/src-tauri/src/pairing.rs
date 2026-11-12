@@ -68,6 +68,8 @@ pub struct Snapshot {
     pub devices: Vec<DeviceRow>,
     /// The connected phone's battery (WN-49), pushed by the phone; None without a session or report.
     pub battery: Option<crate::battery::Battery>,
+    /// Find my phone (WN-50).
+    pub find: FindView,
     /// A phone is paired: [`has_paired_in`], the rule the first window
     /// follows too (WN-113). A phone owed an unpair notice doesn't count.
     pub paired: bool,
@@ -85,11 +87,52 @@ impl Default for Snapshot {
             connected: false,
             devices: Vec::new(),
             battery: None,
+            find: FindView::default(),
             paired: false,
         }
     }
 }
+/// The "Dzwoń" tile (WN-50): whether the phone takes `find/1`, the ring now, and how the last one ended.
+#[derive(Clone, PartialEq, serde::Serialize)]
+pub struct FindView {
+    pub available: bool,
+    /// "idle", "starting" or "ringing".
+    pub state: &'static str,
+    /// How the last ring ended, for the status line.
+    pub last: Option<String>,
+    /// Click to the phone's "ringing" (its sound already playing), in ms.
+    pub ring_ms: Option<u64>,
+}
+
+impl Default for FindView {
+    fn default() -> Self {
+        Self {
+            available: false,
+            state: "idle",
+            last: None,
+            ring_ms: None,
+        }
+    }
+}
+
+/// The status line for a ring that ended with `end` (None: the stream or session broke).
+pub fn find_outcome(end: Option<wind_core::find::State>) -> &'static str {
+    use wind_core::find::State;
+    match end {
+        Some(State::StoppedHere) => "Zatrzymano na telefonie",
+        Some(State::StoppedByRequest) => "Zatrzymano",
+        Some(State::TimedOut) => "Telefon dzwonił 60 s",
+        Some(State::Unavailable) => "Telefon nie może teraz dzwonić",
+        Some(State::Ringing) | None => {
+            "Połączenie przerwane — telefon może nadal dzwonić (do 60 s)"
+        }
+    }
+}
+
 enum Action {
+    /// Find my phone (WN-50): ring it, or stop the ring.
+    Ring,
+    StopRing,
     Refresh,
     Close,
     /// Pair without a camera: open a SAS window (WN-27).
@@ -461,10 +504,14 @@ async fn run(
     let mut preferred: Option<(PublicKey, Instant)> = None;
     // The phone disconnected from the panel, and when (BUSY for DISMISSED_FOR).
     let mut dismissed: Option<(PublicKey, Instant)> = None;
-    let mut active: Option<(Session, _)> = None;
+    let mut active: Option<(Session, ())> = None;
+    // The active session's capability changes (e.g. "Pozwól komputerowi dzwonić", WN-50) wake the loop.
+    let (caps_changed, mut caps_changes) = mpsc::unbounded_channel::<()>();
     // The active session's battery messages and its alerts (WN-49); both end with the session.
     let mut battery_input: Option<mpsc::Receiver<wind_core::session::ChannelMessage>> = None;
     let mut alerts = wind_core::battery::Alerts::default();
+    // The ring asked of the phone, and when it was asked (WN-50).
+    let mut ring: Option<(wind_core::find::Ring, Instant)> = None;
     let mut refresh = loaded.devices.is_empty();
     loop {
         if refresh {
@@ -490,6 +537,11 @@ async fn run(
             snapshot.battery = None;
         }
         crate::battery::set(&app, snapshot.battery);
+        snapshot.find.available = active.as_ref().is_some_and(|(s, _): &(Session, _)| {
+            s.peer_capabilities()
+                .iter()
+                .any(|c| c.name() == "find" && c.version() == 1)
+        });
         snapshot.devices = device_rows(&store, active_key.as_ref());
         snapshot.paired = has_paired_in(&store);
         publish(&app, &state, snapshot.clone());
@@ -498,6 +550,18 @@ async fn run(
                 snapshot.phase = "offline".into(); snapshot.message = "Telefon sparowany, ale brak połączenia. Sprawdź wspólną sieć Wi-Fi.".into();
             },
             command = commands.recv() => match command {
+                Some(Action::Ring) => {
+                    if let (None, Some((session, _))) = (&ring, &active) {
+                        snapshot.find.last = None;
+                        snapshot.find.ring_ms = None;
+                        match tokio::time::timeout(std::time::Duration::from_secs(3), wind_core::find::ring(session)).await {
+                            Ok(Ok(r)) => { snapshot.find.state = "starting"; ring = Some((r, Instant::now())); }
+                            Ok(Err(wind_core::session::SessionError::CapabilityMissing(_))) => { snapshot.find.last = Some("Telefon nie pozwala dzwonić z komputera".into()); }
+                            _ => { snapshot.find.last = Some("Nie udało się zadzwonić. Spróbuj ponownie.".into()); }
+                        }
+                    }
+                }
+                Some(Action::StopRing) => { if let Some((r, _)) = &ring { r.stop(); } }
                 // Pairing another phone is allowed during a session (WC-28); the session stays.
                 Some(Action::Refresh) => { if let Some(p) = prompt.take() { p.reject(); } snapshot.code = None; refresh = true; }
                 Some(Action::Close) => {
@@ -629,8 +693,38 @@ async fn run(
                 battery_input = Some(session_battery);
                 alerts = wind_core::battery::Alerts::default();
                 snapshot.battery = None;
-                active = Some((session, events));
+                let changed = caps_changed.clone();
+                tokio::spawn(async move {
+                    while let Some(event) = events.recv().await {
+                        if matches!(event, wind_core::session::SessionEvent::Capabilities(_)) && changed.send(()).is_err() { break; }
+                    }
+                });
+                active = Some((session, ()));
             },
+            // CCS/1 FLOW:Ring -> starting -> phone State 0 (sound playing) -> ringing -> final state or broken stream -> idle + last (WN-50).
+            changed = async { match ring.as_mut() { Some((r, _)) => r.state.changed().await, None => std::future::pending().await } } => {
+                let (r, asked) = ring.as_ref().expect("a ring's state changed");
+                let now = *r.state.borrow();
+                match now {
+                    wind_core::find::Asked::Starting => {}
+                    wind_core::find::Asked::Ringing => {
+                        snapshot.find.state = "ringing";
+                        snapshot.find.ring_ms = Some(asked.elapsed().as_millis() as u64);
+                    }
+                    wind_core::find::Asked::Ended(end) => {
+                        snapshot.find.state = "idle";
+                        snapshot.find.last = Some(find_outcome(end).into());
+                        ring = None;
+                    }
+                }
+                if changed.is_err() && ring.is_some() {
+                    snapshot.find.state = "idle";
+                    snapshot.find.last = Some(find_outcome(None).into());
+                    ring = None;
+                }
+            },
+            // The phone changed what it accepts (e.g. "Pozwól komputerowi dzwonić", WN-50): the loop recomputes.
+            Some(()) = caps_changes.recv() => {},
             // CCS/1 FLOW:phone Battery -> snapshot (panel, pushed) + tray badge/tooltip + alert toast (WN-49).
             message = async { match battery_input.as_mut() { Some(rx) => rx.recv().await, None => std::future::pending().await } } => match message {
                 Some(message) => {
@@ -685,6 +779,8 @@ pub fn pairing_action(
         "sas" => Action::Sas,
         "sas-accept" => Action::Decide(true),
         "sas-reject" => Action::Decide(false),
+        "ring" => Action::Ring,
+        "ring-stop" => Action::StopRing,
         _ => return Err("unsupported pairing action".into()),
     };
     state
@@ -802,6 +898,19 @@ mod tests {
         assert!(rows[0].owed, "the removed phone is listed as owed");
         assert!(!has_paired_in(&store), "an owed phone isn't paired");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn find_outcomes_say_what_happened() {
+        use wind_core::find::State;
+        assert_eq!(
+            find_outcome(Some(State::StoppedHere)),
+            "Zatrzymano na telefonie"
+        );
+        assert_eq!(find_outcome(Some(State::TimedOut)), "Telefon dzwonił 60 s");
+        // A broken stream isn't "stopped": the phone may still ring (WN-50 review, point 5).
+        assert!(find_outcome(None).contains("może nadal dzwonić"));
+        assert_eq!(FindView::default().state, "idle");
     }
 
     #[test]

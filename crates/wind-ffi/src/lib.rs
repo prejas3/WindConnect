@@ -58,6 +58,24 @@ pub trait IdentityStorage: Send + Sync {
 
 struct PlatformStore(Box<dyn IdentityStorage>);
 
+/// WN-50 (§9.5): the phone's ring. `ring` starts the sound and returns true once it is playing
+/// (it may block briefly); `stop` stops it. Called off the UI thread; never re-enter the core from them.
+#[uniffi::export(callback_interface)]
+pub trait FindSink: Send + Sync {
+    fn ring(&self) -> bool;
+    fn stop(&self);
+}
+
+struct PlatformFind(Box<dyn FindSink>);
+impl wind_core::find::Sink for PlatformFind {
+    fn ring(&self) -> bool {
+        self.0.ring()
+    }
+    fn stop(&self) {
+        self.0.stop()
+    }
+}
+
 /// CCS/1 RULE:callback writes OS clipboard synchronously; true only after success. Never re-enter clipboard send synchronously.
 #[uniffi::export(callback_interface)]
 pub trait ClipboardSink: Send + Sync {
@@ -225,6 +243,10 @@ pub struct CoreClient {
     network: Arc<NetworkChanges>,
     discovery: tokio::sync::Mutex<Option<NetworkDiscovery>>,
     discovered: tokio::sync::Mutex<Option<tokio::sync::watch::Receiver<DiscoverySnapshot>>>,
+    /// WN-50: one ringer for the client, so a ring outlives its session.
+    ringer: std::sync::Mutex<Option<Arc<wind_core::find::Ringer>>>,
+    /// The person allows the computer to ring (announce `find/1`).
+    find_enabled: std::sync::atomic::AtomicBool,
 }
 
 #[derive(uniffi::Record, Clone, Debug)]
@@ -279,6 +301,8 @@ pub async fn open_client(
         network: Arc::new(NetworkChanges::default()),
         discovery: tokio::sync::Mutex::new(None),
         discovered: tokio::sync::Mutex::new(None),
+        ringer: std::sync::Mutex::new(None),
+        find_enabled: std::sync::atomic::AtomicBool::new(true),
         identity: IdentityInfo {
             public_key: identity.public_key().as_bytes().to_vec(),
             fingerprint: identity.fingerprint().to_hex(),
@@ -297,6 +321,30 @@ pub async fn open_client(
 impl CoreClient {
     pub fn set_clipboard_sink(&self, sink: Box<dyn ClipboardSink>) {
         self.clipboard.set_sink(Arc::new(PlatformClipboard(sink)));
+    }
+    /// WN-50: the phone can ring; without a sink `find/1` is never announced.
+    pub fn set_find_sink(&self, sink: Box<dyn FindSink>) {
+        *self.ringer.lock().unwrap() =
+            Some(wind_core::find::Ringer::new(Arc::new(PlatformFind(sink))));
+    }
+    /// Whether new sessions announce `find/1`; a live one changes with
+    /// [`CoreConnection::set_find_accepted`].
+    pub fn set_find_enabled(&self, enabled: bool) {
+        self.find_enabled
+            .store(enabled, std::sync::atomic::Ordering::SeqCst);
+    }
+    /// The person stopped the ring on the phone (the PC gets state 1).
+    pub fn stop_ringing(&self) {
+        if let Some(ringer) = self.ringer.lock().unwrap().clone() {
+            ringer.stop_here();
+        }
+    }
+    pub fn is_ringing(&self) -> bool {
+        self.ringer
+            .lock()
+            .unwrap()
+            .as_ref()
+            .is_some_and(|r| r.is_ringing())
     }
     pub fn set_clipboard_enabled(&self, enabled: bool) {
         self.clipboard.set_enabled(enabled);
@@ -682,6 +730,7 @@ impl CoreClient {
             })?;
         let mut router = Router::new();
         let clipboard_input = wind_core::clipboard::Clipboard::route(&mut router);
+        let find = self.route_find(&mut router);
         let (session, _) = tokio::time::timeout(
             Duration::from_secs(10),
             Session::dial(
@@ -697,6 +746,7 @@ impl CoreClient {
             reason: "the peer did not answer through the relay".into(),
         })?
         .map_err(session_error)?;
+        self.serve_find(find);
         Ok(Arc::new(CoreConnection {
             clipboard: std::sync::Mutex::new(None),
             clipboard_shared: self.clipboard.clone(),
@@ -729,6 +779,33 @@ impl CoreClient {
 }
 
 impl CoreClient {
+    /// WN-50: routes `find` when the phone can ring; withdrawn at the start
+    /// while the person doesn't allow it, so the setting can turn it on live.
+    fn route_find(
+        &self,
+        router: &mut Router,
+    ) -> Option<(
+        Arc<wind_core::find::Ringer>,
+        tokio::sync::mpsc::Receiver<wind_core::session::FindStream>,
+    )> {
+        let ringer = self.ringer.lock().unwrap().clone()?;
+        let streams = router.route_find(4);
+        if !self.find_enabled.load(std::sync::atomic::Ordering::SeqCst) {
+            router.start_disabled(wind_core::protocol::Channel::Find);
+        }
+        Some((ringer, streams))
+    }
+    fn serve_find(
+        &self,
+        find: Option<(
+            Arc<wind_core::find::Ringer>,
+            tokio::sync::mpsc::Receiver<wind_core::session::FindStream>,
+        )>,
+    ) {
+        if let Some((ringer, streams)) = find {
+            tokio::spawn(ringer.serve(streams));
+        }
+    }
     async fn dial_direct(
         &self,
         address: &str,
@@ -739,9 +816,10 @@ impl CoreClient {
             reason: "peer address must be an IP address and port".into(),
         })?;
         let mut changes = self.network.subscribe();
-        let ((session, _),clipboard_input) = loop {
+        let ((session, _),(clipboard_input, find)) = loop {
             let mut router=Router::new();
             let clipboard_input=wind_core::clipboard::Clipboard::route(&mut router);
+            let find = self.route_find(&mut router);
             let attempt = tokio::time::timeout(
             wait,
             Session::dial(
@@ -753,7 +831,7 @@ impl CoreClient {
             ),
         );
             tokio::select! {
-                result = attempt => break result.map(|r|r.map(|s|(s,clipboard_input))),
+                result = attempt => break result.map(|r|r.map(|s|(s,(clipboard_input, find)))),
                 changed = changes.changed() => {
                     if changed.is_err() { return Err(CoreError::Transport { reason: "network observer stopped".into() }); }
                 }
@@ -763,6 +841,7 @@ impl CoreClient {
             reason: "connection timed out".into(),
         })?
         .map_err(session_error)?;
+        self.serve_find(find);
         Ok(Arc::new(CoreConnection {
             clipboard: std::sync::Mutex::new(None),
             clipboard_shared: self.clipboard.clone(),
@@ -1053,6 +1132,15 @@ impl CoreConnection {
         })?;
         self.battery
             .send(&self.session, status)
+            .await
+            .map_err(session_error)
+    }
+    /// WN-50: announce or withdraw `find/1` on this session (the setting
+    /// "Pozwól komputerowi dzwonić"); true when it changed. An error when the
+    /// phone has no find sink.
+    pub async fn set_find_accepted(&self, accept: bool) -> Result<bool, CoreError> {
+        self.session
+            .set_accepted(wind_core::protocol::Channel::Find, accept)
             .await
             .map_err(session_error)
     }

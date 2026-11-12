@@ -1,6 +1,9 @@
 package io.github.prejas3.windconnect
 
 import android.os.Bundle
+import android.view.KeyEvent
+import androidx.compose.foundation.layout.Box
+import androidx.compose.ui.Alignment
 import android.content.Intent
 import androidx.activity.viewModels
 import androidx.activity.ComponentActivity
@@ -62,8 +65,23 @@ class MainActivity : ComponentActivity() {
             val state by pairing.ui.collectAsStateWithLifecycle()
             // CCS/1 PERF:TTFD includes local identity/store readiness; an offline PC cannot hold startup reporting indefinitely.
             ReportDrawnWhen { state.initialized }
-            WindApp(forceContent = state.screen != "home", onSettings = pairing::settings) { PairingScreen(pairing) { ConnectionScreen() } }
+            val connections = (application as WindApplication).connections
+            val ringing by connections.ringing.collectAsStateWithLifecycle()
+            Box(Modifier.fillMaxSize()) {
+                WindApp(forceContent = state.screen != "home", onSettings = pairing::settings) { PairingScreen(pairing) { ConnectionScreen() } }
+                // WN-50: a way to stop that doesn't need notifications (POST_NOTIFICATIONS may be refused).
+                if (ringing) StopRingingBar(connections::stopRinging, Modifier.align(Alignment.TopCenter))
+            }
         }
+    }
+    // WN-50: a volume key stops the ring while the app is open (no extra permission needed).
+    override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        val connections = (application as WindApplication).connections
+        if ((keyCode == KeyEvent.KEYCODE_VOLUME_DOWN || keyCode == KeyEvent.KEYCODE_VOLUME_UP) && connections.ringing.value) {
+            connections.stopRinging()
+            return true
+        }
+        return super.onKeyDown(keyCode, event)
     }
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)

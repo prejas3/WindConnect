@@ -7,7 +7,7 @@
 //! what the session announces in `Hello` / `HelloAck`: a capability means
 //! "I accept" (§6), and nothing unregistered is accepted.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use tokio::sync::mpsc;
 
@@ -40,6 +40,9 @@ pub type FileStream = BidiStream;
 /// An `actions` stream: one request and its reply (§9.2, WN-54).
 pub type ActionStream = BidiStream;
 
+/// A `find` stream: one ring and its states (§9.5, WN-50).
+pub type FindStream = BidiStream;
+
 /// The capability name of a channel (§6); `control` has none.
 pub fn capability_name(channel: Channel) -> Option<&'static str> {
     Some(match channel {
@@ -51,6 +54,7 @@ pub fn capability_name(channel: Channel) -> Option<&'static str> {
         Channel::Files => "files",
         Channel::Actions => "actions",
         Channel::Battery => "battery",
+        Channel::Find => "find",
     })
 }
 
@@ -69,6 +73,9 @@ pub struct Router {
     pub(super) uni: BTreeMap<u8, (Channel, u64, mpsc::Sender<ChannelMessage>)>,
     pub(super) files: Option<(u64, mpsc::Sender<FileStream>)>,
     pub(super) actions: Option<(u64, mpsc::Sender<ActionStream>)>,
+    pub(super) find: Option<mpsc::Sender<FindStream>>,
+    /// Routed but not announced at the start (WN-50): `Session::set_accepted` turns them on.
+    pub(super) disabled: BTreeSet<u8>,
     pub(super) input: Option<mpsc::Sender<InputEvent>>,
 }
 
@@ -115,6 +122,20 @@ impl Router {
         rx
     }
 
+    /// Routes incoming `find` streams (asks to ring here, §9.5) to the
+    /// returned queue; see [`crate::find::Ringer`].
+    pub fn route_find(&mut self, queue: usize) -> mpsc::Receiver<FindStream> {
+        let (tx, rx) = mpsc::channel(queue.max(1));
+        self.find = Some(tx);
+        rx
+    }
+
+    /// Starts the session with routed `channel` withdrawn: not announced in
+    /// `Hello`, its streams refused, until `Session::set_accepted(channel, true)`.
+    pub fn start_disabled(&mut self, channel: Channel) {
+        self.disabled.insert(channel.byte());
+    }
+
     /// Accepts input (`input/1`, §8): the session runs the receiver state
     /// machine over the `input` stream and datagrams, and the returned queue
     /// gets what should reach the system, late and stale state already
@@ -134,7 +155,9 @@ impl Router {
             .map(|(ch, v, _)| (*ch, *v))
             .chain(self.files.as_ref().map(|(v, _)| (Channel::Files, *v)))
             .chain(self.actions.as_ref().map(|(v, _)| (Channel::Actions, *v)))
+            .chain(self.find.as_ref().map(|_| (Channel::Find, 1)))
             .chain(self.input.as_ref().map(|_| (Channel::Input, 1)))
+            .filter(|(ch, _)| !self.disabled.contains(&ch.byte()))
             .flat_map(|(ch, v)| (1..=v).map(move |v| (ch, v)))
             .filter_map(|(ch, v)| Capability::new(capability_name(ch)?, v))
             .collect();
