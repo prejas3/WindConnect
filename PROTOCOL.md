@@ -1512,8 +1512,9 @@ Odtwarzacz jednej strony pokazany i sterowany na drugiej. Dwie możliwości,
 bo kierunki robią co innego: `media/1` (pokazuję odtwarzacz drugiej strony:
 przyjmuję `Now`, `Art`, `Gone` na `media`) i `media-control/1` (moim
 odtwarzaczem można sterować: przyjmuję `Command` na `media-control`). W
-WN-46 komputer ogłasza `media/1`, telefon `media-control/1`; kierunek
-odwrotny (WN-47) używa tych samych wiadomości bez zmiany protokołu. Oba
+WN-46 komputer ogłasza `media/1`, telefon `media-control/1`; w kierunku
+odwrotnym (WN-47: odtwarzacz komputera na telefonie) komputer ogłasza
+`media-control/1`, a telefon `media/1`, z tymi samymi wiadomościami. Oba
 kanały są uni z kolejką jak w §3.1.
 
 Kanał `media` (od strony z odtwarzaczem):
@@ -1549,12 +1550,18 @@ Zasady:
    nie dopuszcza w `actions`, strona pomija bez reakcji.
 5. Strona ogłasza `media-control/1` tylko wtedy, gdy rzeczywiście może
    sterować odtwarzaczem (na Androidzie: dostęp do sesji multimediów i
-   włączone ustawienie), także w trakcie sesji (§6, zasada 5).
+   włączone ustawienie; na Windows: ustawienie „Udostępnij odtwarzanie
+   telefonowi”), a `media/1` tylko, gdy chce pokazywać odtwarzacz drugiej
+   strony; także w trakcie sesji (§6, zasada 5). Strona, która znów przyjmuje
+   `media/1`, dostaje od nadawcy bieżący `Now` (i `Art`) od nowa.
 6. **Zgoda.** Na Androidzie odczyt cudzych sesji multimediów wymaga
    dostępu do powiadomień. WindConnect używa go wyłącznie do odtwarzacza i
    nie czyta treści powiadomień. Funkcja czytająca powiadomienia (WN-42)
    NIE MOŻE po cichu rozszerzyć tej zgody: ma własny przełącznik (domyślnie
    wyłączony) i własne wyjaśnienie.
+7. Strona nie odsyła drugiej stronie jej własnego odtwarzacza: sesja
+   multimediów, którą sama utworzyła, by pokazać odtwarzacz drugiej strony,
+   nie jest nigdy wysyłana jako `Now` (inaczej powstaje echo).
 
 Przykłady (z nagłówkiem długości ramki):
 

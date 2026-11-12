@@ -28,6 +28,8 @@ sha2 = "0.10"
 window-vibrancy = "0.8.1"
 # Battery alerts as Windows toasts with a click callback (WN-49); what tauri-plugin-notification uses on Windows (MIT OR Apache-2.0).
 tauri-winrt-notification = "=0.7.3"
+# The PC's player for the phone (WN-47): SMTC and thumbnail re-encoding; the same 0.61 tauri-winrt-notification already brings.
+windows = { version = "0.61", features = ["Foundation", "Media_Control", "Storage_Streams", "Graphics_Imaging", "Win32_System_WinRT"] }
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_UI_HiDpi", "Win32_System_DataExchange", "Win32_System_StationsAndDesktops", "Win32_System_Memory", "Win32_System_LibraryLoader", "Win32_System_Registry", "Win32_System_Threading", "Win32_UI_WindowsAndMessaging", "Win32_UI_Input_KeyboardAndMouse", "Win32_System_Shutdown", "Win32_System_Power", "Win32_UI_Shell", "Win32_UI_Controls_Dialogs", "Win32_System_Com", "Win32_System_RemoteDesktop"] }
 
 [dev-dependencies]
@@ -35,6 +37,8 @@ tempfile = "3"
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 
 [target.'cfg(windows)'.dev-dependencies]
+# examples/smtc_player.rs (WN-47 test player): publishing an SMTC session; same windows 0.61 as the app.
+windows = { version = "0.61", features = ["Foundation", "Media", "Media_Playback", "Storage_Streams", "Win32_UI_Shell", "Media_Control", "Win32_System_WinRT"] }
 windows-sys = { version = "0.61", features = ["Win32_Security", "Win32_System_StationsAndDesktops", "Win32_Graphics_Gdi"] }
 
 [features]

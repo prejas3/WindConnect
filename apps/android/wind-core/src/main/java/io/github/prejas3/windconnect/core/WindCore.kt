@@ -191,11 +191,35 @@ class WindCore private constructor(
     /** Android's notification-listener access, which media sessions need (re-read by [refreshMedia]). */
     val mediaAccess: StateFlow<Boolean> = mutableMediaAccess.asStateFlow()
     private val mediaUpdates = MutableStateFlow<Pair<io.github.prejas3.windconnect.bindings.MediaNow?, ByteArray?>?>(null)
-    private val media = PhoneMedia(appContext) { now, art -> mediaUpdates.value = now to art }.also { media ->
+    private val media = PhoneMedia(appContext, { pcPlayer.token }) { now, art -> mediaUpdates.value = now to art }.also { media ->
         client.setMediaSink(media)
         client.setMediaEnabled(mutableMediaAllowed.value && mutableMediaAccess.value)
     }
     private var mediaJob: Job? = null
+    // WN-47: the PC's player shown here (app card + Android's media controls), and the person's setting.
+    private val mutablePcMediaAllowed = MutableStateFlow(settings.getBoolean(PC_MEDIA_ALLOWED, true))
+    /** "Pokaż odtwarzacz komputera" (default on). */
+    val pcMediaAllowed: StateFlow<Boolean> = mutablePcMediaAllowed.asStateFlow()
+    private val pcPlayer = PcPlayer(appContext, { (state.value as? ConnectionState.Connected)?.peerName }) { action, position ->
+        scope.launch {
+            val live = gate.withLock { connection }
+            try { live?.sendMediaCommand(action, position?.toULong()) } catch (error: Exception) { if (error is CancellationException) throw error }
+        }
+    }.also { player ->
+        client.setPcMediaSink(player)
+        client.setPcMediaEnabled(mutablePcMediaAllowed.value)
+    }
+    /** The PC's player now, or null. */
+    val pcMedia: StateFlow<PcMedia?> = pcPlayer.state
+    fun pcMediaCommand(action: String, positionMs: Long? = null) = pcPlayer.command(action, positionMs)
+    suspend fun setPcMediaAllowed(value: Boolean) = withContext(Dispatchers.IO) {
+        settings.edit().putBoolean(PC_MEDIA_ALLOWED, value).apply()
+        mutablePcMediaAllowed.value = value
+        client.setPcMediaEnabled(value)
+        if (!value) pcPlayer.clear()
+        val live = gate.withLock { connection }
+        try { live?.setPcMediaAccepted(value) } catch (error: Exception) { if (error is CancellationException) throw error }
+    }
     /** The phone is ringing for the PC; [stopRinging] ends it (the PC sees "stopped on the phone"). */
     val ringing: StateFlow<Boolean> = ringer.ringing
     fun stopRinging() = client.stopRinging()
@@ -408,6 +432,7 @@ class WindCore private constructor(
                     connection = null
                     stopBattery()
                     stopMedia()
+                    pcPlayer.clear()
                     when (end) {
                         "unpaired" -> {
                             try { opened.forgetPeer(pairedDirectory) } catch (error: Exception) { if (error is CancellationException) throw error }
@@ -467,6 +492,7 @@ class WindCore private constructor(
                 systemClipboard.close()
                 ringer.stop()
                 stopMedia()
+                pcPlayer.clear()
                 desiredPeer = null
                 networkRetry?.cancel()
                 lanReturn?.cancel()
@@ -552,6 +578,7 @@ class WindCore private constructor(
     private suspend fun releaseConnection() {
         stopBattery()
         stopMedia()
+        pcPlayer.clear()
         watcher?.cancel()
         watcher = null
         val previous = connection
@@ -571,6 +598,7 @@ class WindCore private constructor(
         private const val SETTINGS = "windconnect.core"
         internal const val SETTINGS_FILE = SETTINGS
         internal const val MEDIA_ALLOWED = "media_allowed"
+        private const val PC_MEDIA_ALLOWED = "pc_media_allowed"
         private const val RELAY_URL = "relay_url"
         private const val FIND_ALLOWED = "find_allowed"
 

@@ -75,6 +75,7 @@ fun HomeScreen(state: PairingUi, onScan: () -> Unit, onDiagnostics: () -> Unit, 
         Text("Szybkie akcje są jeszcze niedostępne.", color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
     }
     if (onClipboard != null && onClipboardEnabled != null) ClipboardControls(state, onClipboard, onClipboardEnabled)
+    PcMediaCard() // WN-47: the PC's player; shown only when the PC has one.
     Text("Ostatnie transfery", style = MaterialTheme.typography.titleMedium)
     WindCard(Modifier.fillMaxWidth().testTag("recentTransfers")) {
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {

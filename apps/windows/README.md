@@ -440,3 +440,13 @@ RULE:teksty z innych aplikacji telefonu trafiają do panelu wyłącznie przez `t
 PERF:postęp liczy panel z ostatniego stanu (`position_ms + upływ × speed`) lokalnym zegarem 1 s, tylko gdy panel widoczny i gra; nic nie jest odpytywane.
 
 Testy: `cargo test -p wind-core` (`media`: koder, granice, ekstrapolacja, bramka akcji; `tests/media.rs`: prawdziwa sesja Now/Art/Gone tylko przy zmianie, Command z powrotem, nic bez możliwości), testy aplikacji (sanityzacja, okładka po kluczu), `node apps/windows/scripts/check-media-ui.cjs` (podstawione IPC: teksty, okładka, postęp bez IPC, polecenia, bramka akcji, wrogi tekst, ukrycie, Light/Dark, 150%) i `node apps/windows/scripts/check-media-android.cjs` (prawdziwa aplikacja + emulator z testową sesją multimediów zamiast Spotify; 10 próbek ⏯ i ⏭, przewinięcie, czasy w obie strony, polecenie spoza `actions` bez reakcji).
+
+## Odtwarzacz komputera na telefonie (WN-47)
+
+CCS/1
+FLOW:Windows SMTC (`GlobalSystemMediaTransportControlsSessionManager`, zdarzenia sesji i menedżera, wątek MTA) -> `pc_media::PcMedia` -> `Now`/`Art`/`Gone` na `media` (telefon ogłasza `media/1`) -> telefon: karta w aplikacji i systemowe sterowanie multimediami. Polecenie z telefonu (`media-control/1`, ogłaszane przez PC) -> sprawdzenie względem `actions` -> `TryPause/Play/TogglePlayPause/SkipNext/SkipPrevious/ChangePlaybackPosition`.
+RULE:wybór sesji: pierwsza odtwarzana, inaczej bieżąca sesja systemu, jeśli wolno ją śledzić, inaczej pierwsza dozwolona. Okładka: miniatura sesji dekodowana i kodowana jako JPEG ≤ 256 px (Windows.Graphics.Imaging), ponad 96 KiB bez okładki. Po własnym poleceniu stan czytany od razu raz jeszcze (odpowiedź na akcję, nie odpytywanie).
+RULE:ustawienie w oknie głównym „Udostępnij odtwarzanie telefonowi” (domyślnie włączone, `pc-media.json`): wyłączone wycofuje `media-control/1` także w trwającej sesji, wysyła `Gone` i kończy subskrypcje SMTC. Gdy telefon znów przyjmuje `media/1`, PC wysyła stan od nowa.
+SEC:w wersji debug `WINDCONNECT_TEST_MEDIA_APP=<AUMID>` ogranicza śledzenie do jednej aplikacji, by test nie wstrzymał odtwarzaczy użytkownika; release tę zmienną pomija.
+
+Testy: testy jednostkowe (`pc_media`: wybór sesji, akcje, czas w tickach, nazwy, granice), `node apps/windows/scripts/check-pc-media-android.cjs` (prawdziwa aplikacja + `examples/smtc_player` z prawdziwą sesją SMTC `WindConnect.TestPlayer` + emulator: karta i powiadomienie na telefonie, 10× pauza/odtwarzanie ze sterowania Androida i z aplikacji, polecenie spoza `actions` bez reakcji, przełącznik i `Gone` sprzątają, brak echa).

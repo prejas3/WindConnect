@@ -134,3 +134,4 @@ document.querySelector('#tray-options').addEventListener('click', () => invoke?.
 document.querySelector('#quit-app').addEventListener('click', () => invoke?.('tray_action', { action: 'quit' }).catch(error => { console.error(error); toast('Nie udało się zakończyć aplikacji.'); }));
 import './clipboard.js';
 import './onboarding.js';
+import './pcmedia.js';

@@ -142,6 +142,8 @@ class PairingTest {
         if (InstrumentationRegistry.getArguments().getString("findProof") == "true") { FindProof.run(compose); return }
         // WN-46: the phone side of check-media-android.cjs (a test player controlled from the PC panel).
         if (InstrumentationRegistry.getArguments().getString("mediaProof") == "true") { MediaProof.run(); return }
+        // WN-47: the phone side of check-pc-media-android.cjs (the PC's player on the phone).
+        if (InstrumentationRegistry.getArguments().getString("pcMediaProof") == "true") { PcMediaProof.run(compose); return }
         if (InstrumentationRegistry.getArguments().getString("clipboardProof") == "true") {
             // Since WC-34 pairing leaves the background connection to the person; the proof's notification action needs it.
             compose.onNodeWithTag("keepBackground").performScrollTo().performClick()

@@ -120,6 +120,58 @@ async fn serve_media(
     }
 }
 
+/// WN-47 (§9.6): the PC's player for the phone. `art` is the image a `Now` points at (JPEG/PNG,
+/// checked by magic bytes), resolved here by its key; texts are the PC's, still to be shown as text only.
+#[uniffi::export(callback_interface)]
+pub trait PcMediaSink: Send + Sync {
+    fn now(&self, now: MediaNow, art: Option<Vec<u8>>);
+    fn gone(&self);
+}
+
+/// Folds the PC's Now/Art/Gone for the sink; ends with the session (a last `gone`).
+async fn serve_pc_media(
+    sink: Arc<dyn PcMediaSink>,
+    mut queue: tokio::sync::mpsc::Receiver<wind_core::session::ChannelMessage>,
+) {
+    use wind_core::media::Message;
+    let mut art: Option<([u8; 8], Vec<u8>)> = None;
+    while let Some(message) = queue.recv().await {
+        let sink = sink.clone();
+        match Message::decode(&message.message) {
+            Some(Message::Art { key, image }) => art = Some((key, image)),
+            Some(Message::Now(n)) => {
+                let image = n.art.and_then(|k| {
+                    art.as_ref()
+                        .filter(|(key, _)| *key == k)
+                        .map(|(_, i)| i.clone())
+                });
+                let now = MediaNow {
+                    title: n.title,
+                    artist: n.artist,
+                    album: n.album,
+                    app: n.app,
+                    duration_ms: n.duration_ms,
+                    position_ms: n.position_ms,
+                    playing: n.playing,
+                    speed_permille: n.speed_permille,
+                    actions: n.actions,
+                };
+                let _ = tokio::task::spawn_blocking(move || sink.now(now, image)).await;
+            }
+            Some(Message::Gone) => {
+                let _ = tokio::task::spawn_blocking(move || sink.gone()).await;
+            }
+            None => {}
+        }
+    }
+    let _ = tokio::task::spawn_blocking(move || sink.gone()).await;
+}
+
+type PcMediaRoute = (
+    Arc<dyn PcMediaSink>,
+    tokio::sync::mpsc::Receiver<wind_core::session::ChannelMessage>,
+);
+
 type MediaRoute = (
     Arc<dyn MediaSink>,
     Arc<std::sync::atomic::AtomicU64>,
@@ -310,6 +362,9 @@ pub struct CoreClient {
     /// WN-46: the phone's player for the PC's commands, and whether it may be controlled.
     media: std::sync::Mutex<Option<Arc<dyn MediaSink>>>,
     media_enabled: std::sync::atomic::AtomicBool,
+    /// WN-47: the PC's player shown here, and whether the person wants it.
+    pc_media: std::sync::Mutex<Option<Arc<dyn PcMediaSink>>>,
+    pc_media_enabled: std::sync::atomic::AtomicBool,
 }
 
 #[derive(uniffi::Record, Clone, Debug)]
@@ -368,6 +423,8 @@ pub async fn open_client(
         find_enabled: std::sync::atomic::AtomicBool::new(true),
         media: std::sync::Mutex::new(None),
         media_enabled: std::sync::atomic::AtomicBool::new(false),
+        pc_media: std::sync::Mutex::new(None),
+        pc_media_enabled: std::sync::atomic::AtomicBool::new(true),
         identity: IdentityInfo {
             public_key: identity.public_key().as_bytes().to_vec(),
             fingerprint: identity.fingerprint().to_hex(),
@@ -412,6 +469,16 @@ impl CoreClient {
     /// one changes with [`CoreConnection::set_media_control_accepted`].
     pub fn set_media_enabled(&self, enabled: bool) {
         self.media_enabled
+            .store(enabled, std::sync::atomic::Ordering::SeqCst);
+    }
+    /// WN-47: where the PC's player goes.
+    pub fn set_pc_media_sink(&self, sink: Box<dyn PcMediaSink>) {
+        *self.pc_media.lock().unwrap() = Some(Arc::from(sink));
+    }
+    /// Whether new sessions announce `media/1` ("Pokaż odtwarzacz komputera"); a live one changes
+    /// with [`CoreConnection::set_pc_media_accepted`].
+    pub fn set_pc_media_enabled(&self, enabled: bool) {
+        self.pc_media_enabled
             .store(enabled, std::sync::atomic::Ordering::SeqCst);
     }
     pub fn is_ringing(&self) -> bool {
@@ -807,6 +874,7 @@ impl CoreClient {
         let clipboard_input = wind_core::clipboard::Clipboard::route(&mut router);
         let find = self.route_find(&mut router);
         let media = self.route_media(&mut router);
+        let pc_media = self.route_pc_media(&mut router);
         let (session, _) = tokio::time::timeout(
             Duration::from_secs(10),
             Session::dial(
@@ -822,6 +890,7 @@ impl CoreClient {
             reason: "the peer did not answer through the relay".into(),
         })?
         .map_err(session_error)?;
+        self.serve_pc_media(pc_media);
         self.serve_find(find);
         let media_allowed = self.serve_media(media);
         Ok(Arc::new(CoreConnection {
@@ -892,6 +961,23 @@ impl CoreClient {
             None => Arc::new(std::sync::atomic::AtomicU64::new(0)),
         }
     }
+    /// WN-47: routes `media` (the PC's player) when there is a sink; withdrawn at the start unless wanted.
+    fn route_pc_media(&self, router: &mut Router) -> Option<PcMediaRoute> {
+        let sink = self.pc_media.lock().unwrap().clone()?;
+        let queue = wind_core::media::route_player(router);
+        if !self
+            .pc_media_enabled
+            .load(std::sync::atomic::Ordering::SeqCst)
+        {
+            router.start_disabled(wind_core::protocol::Channel::Media);
+        }
+        Some((sink, queue))
+    }
+    fn serve_pc_media(&self, route: Option<PcMediaRoute>) {
+        if let Some((sink, queue)) = route {
+            tokio::spawn(serve_pc_media(sink, queue));
+        }
+    }
     fn serve_find(
         &self,
         find: Option<(
@@ -913,11 +999,12 @@ impl CoreClient {
             reason: "peer address must be an IP address and port".into(),
         })?;
         let mut changes = self.network.subscribe();
-        let ((session, _),(clipboard_input, find, media)) = loop {
+        let ((session, _),(clipboard_input, find, media, pc_media)) = loop {
             let mut router=Router::new();
             let clipboard_input=wind_core::clipboard::Clipboard::route(&mut router);
             let find = self.route_find(&mut router);
             let media = self.route_media(&mut router);
+            let pc_media = self.route_pc_media(&mut router);
             let attempt = tokio::time::timeout(
             wait,
             Session::dial(
@@ -929,7 +1016,7 @@ impl CoreClient {
             ),
         );
             tokio::select! {
-                result = attempt => break result.map(|r|r.map(|s|(s,(clipboard_input, find, media)))),
+                result = attempt => break result.map(|r|r.map(|s|(s,(clipboard_input, find, media, pc_media)))),
                 changed = changes.changed() => {
                     if changed.is_err() { return Err(CoreError::Transport { reason: "network observer stopped".into() }); }
                 }
@@ -939,6 +1026,7 @@ impl CoreClient {
             reason: "connection timed out".into(),
         })?
         .map_err(session_error)?;
+        self.serve_pc_media(pc_media);
         self.serve_find(find);
         let media_allowed = self.serve_media(media);
         Ok(Arc::new(CoreConnection {
@@ -1269,6 +1357,40 @@ impl CoreConnection {
         self.media_allowed
             .store(0, std::sync::atomic::Ordering::SeqCst);
         self.media.gone(&self.session).await.map_err(session_error)
+    }
+    /// WN-47: a button for the PC's player ("play", "pause", "toggle", "next", "previous", "seek" with
+    /// `position_ms`). The PC drops what its player doesn't allow. False when the PC doesn't take it.
+    pub async fn send_media_command(
+        &self,
+        action: String,
+        position_ms: Option<u64>,
+    ) -> Result<bool, CoreError> {
+        use wind_core::media::Action;
+        let action = match (action.as_str(), position_ms) {
+            ("play", _) => Action::Play,
+            ("pause", _) => Action::Pause,
+            ("toggle", _) => Action::Toggle,
+            ("next", _) => Action::Next,
+            ("previous", _) => Action::Previous,
+            ("seek", Some(at)) => Action::Seek(at),
+            _ => {
+                return Err(CoreError::InvalidInput {
+                    reason: format!("unknown media action {action}"),
+                })
+            }
+        };
+        match wind_core::media::command(&self.session, action).await {
+            Ok(()) => Ok(true),
+            Err(wind_core::session::SessionError::CapabilityMissing(_)) => Ok(false),
+            Err(e) => Err(session_error(e)),
+        }
+    }
+    /// WN-47: announce or withdraw `media/1` (the PC's player shown here) on this session.
+    pub async fn set_pc_media_accepted(&self, accept: bool) -> Result<bool, CoreError> {
+        self.session
+            .set_accepted(wind_core::protocol::Channel::Media, accept)
+            .await
+            .map_err(session_error)
     }
     /// Announce or withdraw `media-control/1` on this session.
     pub async fn set_media_control_accepted(&self, accept: bool) -> Result<bool, CoreError> {

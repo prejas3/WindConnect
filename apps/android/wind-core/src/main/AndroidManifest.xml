@@ -16,6 +16,10 @@
                 <action android:name="android.service.notification.NotificationListenerService" />
             </intent-filter>
         </service>
+        <!-- WN-47: the PC media notification's buttons; not exported, reached only through our PendingIntents. -->
+        <receiver
+            android:name="io.github.prejas3.windconnect.core.PcMediaActionReceiver"
+            android:exported="false" />
         <!-- WN-50: the ring notification's "Zatrzymaj"; not exported, reached only through our PendingIntent. -->
         <receiver
             android:name="io.github.prejas3.windconnect.core.FindStopReceiver"

@@ -637,3 +637,12 @@ RULE:zgoda: Android nazywa to „dostępem do powiadomień”. `MediaListenerSer
 RULE:`media-control/1` jest ogłaszane tylko przy przyznanym dostępie i włączonym „Pokaż multimedia na komputerze”, także w trakcie sesji (`Router::start_disabled` / `set_accepted`). Wyłączone: telefon wysyła `Gone` i przestaje śledzić odtwarzacze, a usługa nasłuchu sama się odłącza (`requestUnbind`; `requestRebind` po włączeniu).
 PERF:bez sesji nic nie działa w `PhoneMedia` (żadnych callbacków ani skalowania okładek). Związana usługa nasłuchu utrzymuje jednak proces przy życiu także bez sesji: nowy czynnik rezydencji dla pomiaru baterii (WN-30).
 LIMIT:Spotify nie jest zainstalowany na emulatorze; test używa zwykłej `MediaSession` (Spotify wystawia taką samą). Dostęp do powiadomień przyznaje się tylko w ustawieniach systemu.
+
+## Odtwarzacz komputera na telefonie (WN-47)
+
+CCS/1
+FLOW:PC (`media/1` ogłasza telefon) -> `PcPlayer`: StateFlow dla karty „Na komputerze” na ekranie głównym (jedna wstawiona linia w HomeScreen) i własna `MediaSession` „WindConnect PC” z powiadomieniem MediaStyle na kanale „Multimedia komputera” (IMPORTANCE_LOW, bez dźwięku) -> systemowe sterowanie multimediami (powiadomienie, QS, ekran blokady) -> `sendMediaCommand` -> PC.
+RULE:sesja nie odtwarza dźwięku i nie ma odbiornika przycisków multimediów (`setMediaButtonReceiver(null)`), więc słuchawki i Bluetooth sterują odtwarzaczami telefonu. LIMIT:jeśli żaden odtwarzacz telefonu nie grał, Android może skierować przycisk słuchawek do aktywnej sesji WindConnect; wtedy wstrzyma odtwarzacz komputera.
+RULE:echo: `PhoneMedia` (WN-46) pomija własną sesję-lustro odtwarzacza komputera (po jej tokenie), więc odtwarzacz komputera nigdy nie wraca na PC jako „Na telefonie”.
+RULE:sprzątanie: `Gone`, koniec sesji, wyłączone „Pokaż odtwarzacz komputera” i zamknięcie rdzenia zwalniają sesję i usuwają powiadomienie; po śmierci procesu sesja znika z nim, a pozostawione powiadomienie usuwa następny start. Teksty z komputera: jedna linia, bez znaków sterujących i dwukierunkowych; okładka tylko JPEG/PNG po magicznych bajtach, dekodowana do ≤ 512 px.
+RULE:prywatność: tytuły odtwarzacza komputera widać na ekranie blokady, jak przy innych odtwarzaczach; mówi to opis przełącznika.

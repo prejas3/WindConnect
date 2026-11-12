@@ -72,6 +72,8 @@ pub struct Snapshot {
     pub find: FindView,
     /// The phone's player (WN-46); None without a session, access or player.
     pub media: Option<crate::media::MediaView>,
+    /// WN-47: "Udostępnij odtwarzanie telefonowi" (the PC's player on the phone).
+    pub share_media: bool,
     /// A phone is paired: [`has_paired_in`], the rule the first window
     /// follows too (WN-113). A phone owed an unpair notice doesn't count.
     pub paired: bool,
@@ -91,6 +93,7 @@ impl Default for Snapshot {
             battery: None,
             find: FindView::default(),
             media: None,
+            share_media: true,
             paired: false,
         }
     }
@@ -133,6 +136,8 @@ pub fn find_outcome(end: Option<wind_core::find::State>) -> &'static str {
 }
 
 enum Action {
+    /// WN-47: share the PC's player with the phone, or stop.
+    ShareMedia(bool),
     /// A button of the phone's player in the panel (WN-46).
     Media(wind_core::media::Action),
     /// Find my phone (WN-50): ring it, or stop the ring.
@@ -389,6 +394,7 @@ type Incoming = (
     mpsc::Receiver<wind_core::session::ActionStream>,
     mpsc::Receiver<wind_core::session::ChannelMessage>,
     mpsc::Receiver<wind_core::session::ChannelMessage>,
+    mpsc::Receiver<wind_core::session::ChannelMessage>,
 );
 
 async fn run(
@@ -405,6 +411,16 @@ async fn run(
             .ok_or("identity directory missing")?,
     ));
     let identity = DeviceIdentity::load_or_create(&key_store)?;
+    // WN-47: the setting, read once; the accept task announces media-control/1 by it.
+    let share_path = key_store.path().parent().map(|d| d.join("pc-media.json"));
+    let share_media = Arc::new(std::sync::atomic::AtomicBool::new(
+        share_path
+            .as_ref()
+            .and_then(|p| std::fs::read(p).ok())
+            .and_then(|b| serde_json::from_slice::<bool>(&b).ok())
+            .unwrap_or(true),
+    ));
+    let accept_share = share_media.clone();
     let trust = Arc::new(PinnedKeys::new());
     let loaded = store.load()?;
     loaded.pin_all(&trust);
@@ -454,6 +470,11 @@ async fn run(
                 let battery_input = wind_core::battery::route(&mut router);
                 // CCS/1 IO:media/1 from the phone (§9.6, WN-46): shown as text and checked images only.
                 let media_input = wind_core::media::route_player(&mut router);
+                // CCS/1 IO:media-control/1 from the phone (§9.6, WN-47): commands for the PC's player, checked against its actions.
+                let media_commands = wind_core::media::route_control(&mut router);
+                if !accept_share.load(std::sync::atomic::Ordering::SeqCst) {
+                    router.start_disabled(wind_core::protocol::Channel::MediaControl);
+                }
                 match tokio::time::timeout(
                     std::time::Duration::from_secs(6),
                     Session::accept(connection, local.clone(), router),
@@ -469,6 +490,7 @@ async fn run(
                                 action_streams,
                                 battery_input,
                                 media_input,
+                                media_commands,
                             ))
                             .await
                             .is_err()
@@ -522,6 +544,9 @@ async fn run(
     // The active session's player messages and what they built (WN-46).
     let mut media_input: Option<mpsc::Receiver<wind_core::session::ChannelMessage>> = None;
     let mut player = crate::media::Player::default();
+    // WN-47: the PC's player followed for the live session, and the phone's commands for it.
+    let mut pc_media: Option<crate::pc_media::PcMedia> = None;
+    let mut media_commands: Option<mpsc::Receiver<wind_core::session::ChannelMessage>> = None;
     // The ring asked of the phone, and when it was asked (WN-50).
     let mut ring: Option<(wind_core::find::Ring, Instant)> = None;
     let mut refresh = loaded.devices.is_empty();
@@ -549,7 +574,10 @@ async fn run(
             snapshot.battery = None;
             media_input = None;
             player = crate::media::Player::default();
+            pc_media = None;
+            media_commands = None;
         }
+        snapshot.share_media = share_media.load(std::sync::atomic::Ordering::SeqCst);
         snapshot.media = player.view.clone();
         crate::battery::set(&app, snapshot.battery);
         snapshot.find.available = active.as_ref().is_some_and(|(s, _): &(Session, _)| {
@@ -565,6 +593,15 @@ async fn run(
                 snapshot.phase = "offline".into(); snapshot.message = "Telefon sparowany, ale brak połączenia. Sprawdź wspólną sieć Wi-Fi.".into();
             },
             command = commands.recv() => match command {
+                Some(Action::ShareMedia(on)) => {
+                    share_media.store(on, std::sync::atomic::Ordering::SeqCst);
+                    if let Some(path) = &share_path { let _ = std::fs::write(path, if on { b"true" as &[u8] } else { b"false" }); }
+                    if let Some((session, _)) = &active {
+                        let _ = session.set_accepted(wind_core::protocol::Channel::MediaControl, on).await;
+                        // Off: dropping it sends Gone and drops the SMTC subscriptions.
+                        pc_media = if on { crate::pc_media::PcMedia::start(session.clone(), tokio::runtime::Handle::current()) } else { None };
+                    }
+                }
                 Some(Action::Media(action)) => {
                     if let Some((session, _)) = &active {
                         // The phone ignores what its player doesn't allow (§9.6, rule 4).
@@ -678,7 +715,7 @@ async fn run(
                 _ => {},
             },
             incoming = sessions.recv() => {
-                let Some((session, mut events, clipboard_input, action_streams, session_battery, session_media)) = incoming else { break };
+                let Some((session, mut events, clipboard_input, action_streams, session_battery, session_media, session_commands)) = incoming else { break };
                 // CCS/1 RULE:one session; another phone gets BUSY unless just paired here (the person's choice) (WC-28).
                 let fresh = preferred.is_some_and(|(k, at)| k == session.peer().key && at.elapsed() < PAIRED_TAKES_OVER);
                 let sent_away = dismissed.is_some_and(|(k, at)| k == session.peer().key && at.elapsed() < DISMISSED_FOR);
@@ -713,6 +750,11 @@ async fn run(
                 indicator.connected(generation);
                 battery_input = Some(session_battery);
                 media_input = Some(session_media);
+                media_commands = Some(session_commands);
+                pc_media = None;
+                if share_media.load(std::sync::atomic::Ordering::SeqCst) {
+                    pc_media = crate::pc_media::PcMedia::start(session.clone(), tokio::runtime::Handle::current());
+                }
                 player = crate::media::Player::default();
                 alerts = wind_core::battery::Alerts::default();
                 snapshot.battery = None;
@@ -747,7 +789,12 @@ async fn run(
                 }
             },
             // The phone changed what it accepts (e.g. "Pozwól komputerowi dzwonić", WN-50): the loop recomputes.
-            Some(()) = caps_changes.recv() => {},
+            Some(()) = caps_changes.recv() => { if let Some(m) = &pc_media { m.resend(); } },
+            // CCS/1 FLOW:phone Command -> PcMedia (dropped outside the PC player's actions) -> SMTC (WN-47).
+            message = async { match media_commands.as_mut() { Some(rx) => rx.recv().await, None => std::future::pending().await } } => match message {
+                Some(message) => { if let (Some(m), Some(action)) = (&pc_media, wind_core::media::Action::decode(&message.message)) { m.command(action); } }
+                None => media_commands = None,
+            },
             // CCS/1 FLOW:phone Now/Art/Gone -> Player (sanitised) -> snapshot.media, pushed (WN-46).
             message = async { match media_input.as_mut() { Some(rx) => rx.recv().await, None => std::future::pending().await } } => match message {
                 Some(message) => { if let Some(m) = wind_core::media::Message::decode(&message.message) { player.apply(m); } }
@@ -839,6 +886,21 @@ pub fn device_action(
     state
         .commands
         .send(action)
+        .map_err(|_| "pairing unavailable".into())
+}
+/// WN-47: "Udostępnij odtwarzanie telefonowi" on or off (main window settings).
+#[tauri::command]
+pub fn share_media(
+    window: tauri::WebviewWindow,
+    state: tauri::State<'_, Runtime>,
+    enabled: bool,
+) -> Result<(), String> {
+    if !matches!(window.label(), "main" | "panel") {
+        return Err("unsupported window".into());
+    }
+    state
+        .commands
+        .send(Action::ShareMedia(enabled))
         .map_err(|_| "pairing unavailable".into())
 }
 /// WN-46: a button of the phone's player ("play", "pause", "toggle", "next", "previous",

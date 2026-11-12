@@ -46,5 +46,10 @@ fun MediaControls() {
             context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         }, modifier = Modifier.testTag("mediaAccessSettings"), kind = ButtonKind.Secondary)
         WindSwitch("Pokaż multimedia na komputerze", allowed, connections::setMediaAllowed, Modifier.testTag("mediaAllowed"))
+        // WN-47: the other direction.
+        val pcAllowed by connections.pcMediaAllowed.collectAsStateWithLifecycle()
+        WindSwitch("Pokaż odtwarzacz komputera", pcAllowed, connections::setPcMediaAllowed, Modifier.testTag("pcMediaAllowed"))
+        Text("Co gra na komputerze, w aplikacji i w sterowaniu multimediami Androida. Tytuły widać też na ekranie blokady, jak przy innych odtwarzaczach.",
+            style = MaterialTheme.typography.bodySmall)
     }
 }

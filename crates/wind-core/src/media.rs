@@ -368,6 +368,11 @@ impl Sender {
         }
     }
 
+    /// Forgets what was sent: the next `now` goes out even if unchanged (the peer took `media/1` back on).
+    pub fn reset(&self) {
+        *self.sent.lock().unwrap() = Sent::default();
+    }
+
     /// No player any more (sent once).
     pub async fn gone(&self, session: &Session) -> Result<bool, SessionError> {
         if self.sent.lock().unwrap().gone {
