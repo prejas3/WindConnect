@@ -23,7 +23,12 @@ import kotlin.math.roundToLong
  * RULE:only while a session is live, access is granted and the person allows it; event-driven (session and controller
  * callbacks), never polled. Picks the first PLAYING session, else the first in the system's order.
  */
-internal class PhoneMedia(context: Context, private val publish: (MediaNow?, ByteArray?) -> Unit) : MediaSink {
+internal class PhoneMedia(
+    context: Context,
+    /** Our own session mirroring the PC's player (WN-47): never sent back to the PC. */
+    private val ownSession: () -> android.media.session.MediaSession.Token? = { null },
+    private val publish: (MediaNow?, ByteArray?) -> Unit,
+) : MediaSink {
     private val context = context.applicationContext
     private val sessions = this.context.getSystemService(MediaSessionManager::class.java)
     private val component = ComponentName(this.context, MediaListenerService::class.java)
@@ -64,7 +69,10 @@ internal class PhoneMedia(context: Context, private val publish: (MediaNow?, Byt
 
     /** On the media thread: follow the session [pick] chooses. */
     private fun choose() {
+        // Never our own mirror of the PC's player (PcPlayer, WN-47): it would echo back to the PC. Matched by its token, so
+        // other sessions in this process (none in the app; the instrumentation's test player) still count.
         val active = try { sessions.getActiveSessions(component) } catch (_: SecurityException) { emptyList() }
+            .let { all -> eligible(all.map { it.sessionToken }, ownSession()).map { all[it] } }
         val chosen = pick(active.map { it.playbackState?.state }).let { active.getOrNull(it) }
         if (chosen?.sessionToken != controller?.sessionToken) {
             controller?.unregisterCallback(callback)
@@ -132,6 +140,9 @@ internal class PhoneMedia(context: Context, private val publish: (MediaNow?, Byt
         /** The first PLAYING session, else the first in the system's order; -1 for none (§9.6, WN-46 review). */
         fun pick(states: List<Int?>): Int = states.indexOfFirst { it == PlaybackState.STATE_PLAYING }.takeIf { it >= 0 }
             ?: if (states.isEmpty()) -1 else 0
+
+        /** Indexes of the sessions that aren't [own] (WN-47: our mirror of the PC's player is never sent back to the PC). */
+        fun <T> eligible(sessions: List<T>, own: T?): List<Int> = sessions.indices.filter { own == null || sessions[it] != own }
 
         /** PlaybackState actions to §9.6 bits: 1 play, 2 pause, 4 next, 8 previous, 16 seek. */
         fun actions(flags: Long): Long {

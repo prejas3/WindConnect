@@ -17,6 +17,7 @@ mod instance;
 mod media;
 mod pairing;
 mod panel;
+mod pc_media;
 mod send_pipe;
 mod shell_menu;
 mod tray;
@@ -334,6 +335,7 @@ fn main() {
             pairing::device_action,
             pairing::dev_pairing_address,
             pairing::media_action,
+            pairing::share_media,
             #[cfg(debug_assertions)]
             battery::dev_battery_alerts,
             actions::actions_snapshot,

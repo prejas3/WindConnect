@@ -41,6 +41,13 @@ class ConnectionOwner(private val application: Application) {
     private val mutableMediaAccess = MutableStateFlow(false)
     val mediaAccess = mutableMediaAccess.asStateFlow()
     fun setMediaAllowed(value: Boolean) { val opened = core ?: return; scope.launch { opened.setMediaAllowed(value) } }
+    // WN-47: the PC's player on the phone.
+    private val mutablePcMedia = MutableStateFlow<io.github.prejas3.windconnect.core.PcMedia?>(null)
+    val pcMedia = mutablePcMedia.asStateFlow()
+    private val mutablePcMediaAllowed = MutableStateFlow(true)
+    val pcMediaAllowed = mutablePcMediaAllowed.asStateFlow()
+    fun pcMediaCommand(action: String, positionMs: Long? = null) { core?.pcMediaCommand(action, positionMs) }
+    fun setPcMediaAllowed(value: Boolean) { val opened = core ?: return; scope.launch { opened.setPcMediaAllowed(value) } }
     /** Access is granted in system settings: re-read it when the app comes back. */
     fun refreshMedia() { val opened = core ?: return; scope.launch { opened.refreshMedia() } }
     fun setFindAllowed(value: Boolean) { val opened = core ?: return; scope.launch { opened.setFindAllowed(value) } }
@@ -54,6 +61,8 @@ class ConnectionOwner(private val application: Application) {
                 launch { opened.findAllowed.collect { mutableFindAllowed.value = it } }
                 launch { opened.mediaAllowed.collect { mutableMediaAllowed.value = it } }
                 launch { opened.mediaAccess.collect { mutableMediaAccess.value = it } }
+                launch { opened.pcMedia.collect { mutablePcMedia.value = it } }
+                launch { opened.pcMediaAllowed.collect { mutablePcMediaAllowed.value = it } }
                 opened.state.collect { mutableState.value = it }
             }
         }
@@ -70,6 +79,7 @@ class ConnectionOwner(private val application: Application) {
             observation = null
             mutableState.value = ConnectionState.Stopped
             mutableRinging.value = false
+            mutablePcMedia.value = null
             core = null
             opened.shutdown()
         }
