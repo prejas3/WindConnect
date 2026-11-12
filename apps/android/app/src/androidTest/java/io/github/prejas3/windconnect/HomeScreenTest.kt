@@ -30,6 +30,21 @@ import org.junit.Test
 class HomeScreenTest {
     @get:Rule val compose = createComposeRule()
 
+    @Test fun sendFileRequiresCurrentConnectionAndAcceptedCapability() {
+        val ui = mutableStateOf(PairingUi(ready = true, initialized = true, hasPairedDevice = true,
+            connection = ConnectionState.Connected("PC", "key", 1)))
+        var clicked = false
+        compose.setContent { WindConnectTheme(ThemeMode.Light, false) {
+            Column(Modifier.verticalScroll(rememberScrollState())) { HomeScreen(ui.value, {}, {}, onSendFile = { clicked = true }) }
+        } }
+        compose.onNodeWithTag("homeSend").assertIsNotEnabled().assertTextContains("Niedostępne")
+        compose.runOnIdle { ui.value = ui.value.copy(filesAccepted = true) }
+        compose.onNodeWithTag("homeSend").assertIsEnabled().performScrollTo().performClick()
+        assertTrue(clicked)
+        compose.runOnIdle { ui.value = ui.value.copy(connection = ConnectionState.Disconnected("closed")) }
+        compose.onNodeWithTag("homeSend").assertIsNotEnabled()
+    }
+
     @Test fun unpairedHomeOffersRealPairingAndNoInventedTransfers() {
         var scan = false
         compose.setContent { WindConnectTheme(ThemeMode.Light, false) {

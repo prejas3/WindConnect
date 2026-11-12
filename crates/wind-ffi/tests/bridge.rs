@@ -40,6 +40,153 @@ impl wind_ffi::ClipboardSink for TestClipboard {
     }
 }
 struct Progress(Arc<Mutex<bool>>);
+
+#[tokio::test(flavor = "multi_thread")]
+async fn ffi_files_require_adoption_and_outbox_and_track_capability_withdrawal() {
+    let client = open_client(
+        Box::new(MemoryStorage::default()),
+        "Phone".into(),
+        "127.0.0.1:0".into(),
+    )
+    .await
+    .unwrap();
+    let key = PublicKey::from_bytes(&client.identity().public_key.try_into().unwrap()).unwrap();
+    let directory = std::env::temp_dir().join(format!(
+        "windconnect-wn40-ffi-{}-{}",
+        std::process::id(),
+        key.fingerprint().to_hex()
+    ));
+    let outbox = directory.join("outbox");
+    std::fs::create_dir_all(&outbox).unwrap();
+    let outbox = outbox.canonicalize().unwrap();
+    client
+        .configure_files(
+            directory.join("inbox").display().to_string(),
+            directory.join("parts").display().to_string(),
+            outbox.display().to_string(),
+        )
+        .await
+        .unwrap();
+    let source = outbox.join("photo.JPG");
+    std::fs::write(&source, b"verified file bytes").unwrap();
+    let outside = directory.join("outside.JPG");
+    std::fs::write(&outside, b"outside").unwrap();
+    let pc = DeviceIdentity::generate().unwrap();
+    let pins = Arc::new(PinnedKeys::new());
+    pins.pin(key);
+    let endpoint = Endpoint::bind("127.0.0.1:0".parse().unwrap(), &pc, pins).unwrap();
+    client
+        .pin_peer(pc.public_key().as_bytes().to_vec())
+        .unwrap();
+    let accepting = endpoint.clone();
+    let mut config = wind_core::files::FilesConfig::new(
+        directory.join("PC/Downloads/WindConnect"),
+        directory.join("PC/partials"),
+    );
+    config.type_folders = true;
+    let engine = wind_core::files::FileEngine::new(config).unwrap();
+    let receiving = engine.clone();
+    let server = tokio::spawn(async move {
+        let connection = accepting.accept().await.unwrap().unwrap();
+        let mut router = Router::new();
+        let incoming = router.route_files(1, 32);
+        let (session, _) = Session::accept(
+            connection,
+            LocalInfo {
+                name: "PC".into(),
+                kind: DeviceKind::Computer,
+                app: None,
+            },
+            router,
+        )
+        .await
+        .unwrap();
+        receiving.attach(session.clone(), Some(incoming));
+        session
+    });
+    let connection = client
+        .connect(
+            endpoint.local_addr().unwrap().to_string(),
+            pc.public_key().as_bytes().to_vec(),
+        )
+        .await
+        .unwrap();
+    let session = server.await.unwrap();
+    assert!(connection.files_accepted());
+    assert!(
+        connection
+            .queue_files(vec![source.display().to_string()])
+            .await
+            .is_err(),
+        "standby must not queue"
+    );
+    connection.activate_files().await;
+    assert!(connection
+        .queue_files(vec![outside.display().to_string()])
+        .await
+        .is_err());
+    assert!(connection
+        .queue_files(vec![outbox.display().to_string()])
+        .await
+        .is_err());
+    let ids = connection
+        .queue_files(vec![source.display().to_string()])
+        .await
+        .unwrap();
+    assert_eq!(ids.len(), 1);
+    tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            let rows = client.file_transfers().unwrap();
+            if rows.iter().any(|r| r.id == ids[0] && r.state == "done") {
+                break;
+            }
+            client.next_file_transfers().await.unwrap();
+        }
+    })
+    .await
+    .unwrap();
+    let mut received_updates = engine.subscribe();
+    let received = tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            if let Some(row) = engine
+                .transfers()
+                .into_iter()
+                .find(|r| r.saved_as.is_some())
+            {
+                break row;
+            }
+            received_updates.changed().await.unwrap();
+        }
+    })
+    .await
+    .unwrap();
+    let saved = received.saved_as.unwrap();
+    assert_eq!(saved.parent().unwrap().file_name().unwrap(), "Obrazy");
+    assert_eq!(std::fs::read(saved).unwrap(), b"verified file bytes");
+    session
+        .set_accepted(wind_core::protocol::Channel::Files, false)
+        .await
+        .unwrap();
+    assert!(
+        !tokio::time::timeout(Duration::from_secs(3), connection.next_files_accepted())
+            .await
+            .unwrap()
+            .unwrap()
+    );
+    assert!(!connection.files_accepted());
+    assert!(connection
+        .queue_files(vec![source.display().to_string()])
+        .await
+        .is_err());
+    connection.disconnect().await;
+    client.shutdown().await;
+    endpoint.close();
+    drop(session);
+    drop(connection);
+    drop(client);
+    drop(engine);
+    let _ = std::fs::remove_dir_all(directory);
+}
 impl wind_ffi::ClipboardImageProgress for Progress {
     fn applied(&self) {
         *self.0.lock().unwrap() = true;

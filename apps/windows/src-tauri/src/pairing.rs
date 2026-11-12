@@ -389,6 +389,7 @@ type Incoming = (
     mpsc::Receiver<wind_core::session::ActionStream>,
     mpsc::Receiver<wind_core::session::ChannelMessage>,
     mpsc::Receiver<wind_core::session::ChannelMessage>,
+    Option<mpsc::Receiver<wind_core::session::FileStream>>,
 );
 
 async fn run(
@@ -442,6 +443,7 @@ async fn run(
     let (notice_sender, mut notices) = mpsc::unbounded_channel::<String>();
     let loop_notices = notice_sender.clone();
     let accepting = endpoint.clone();
+    let files_enabled = crate::files::receiving_enabled(&app);
     let accept_unpairing = unpairing.clone();
     let _accept_task = AcceptTask(tokio::spawn(async move {
         while let Some(incoming) = accepting.accept().await {
@@ -454,6 +456,7 @@ async fn run(
                 let battery_input = wind_core::battery::route(&mut router);
                 // CCS/1 IO:media/1 from the phone (§9.6, WN-46): shown as text and checked images only.
                 let media_input = wind_core::media::route_player(&mut router);
+                let files_input = files_enabled.then(|| router.route_files(1, 32));
                 match tokio::time::timeout(
                     std::time::Duration::from_secs(6),
                     Session::accept(connection, local.clone(), router),
@@ -469,6 +472,7 @@ async fn run(
                                 action_streams,
                                 battery_input,
                                 media_input,
+                                files_input,
                             ))
                             .await
                             .is_err()
@@ -678,7 +682,7 @@ async fn run(
                 _ => {},
             },
             incoming = sessions.recv() => {
-                let Some((session, mut events, clipboard_input, action_streams, session_battery, session_media)) = incoming else { break };
+                let Some((session, mut events, clipboard_input, action_streams, session_battery, session_media, files_input)) = incoming else { break };
                 // CCS/1 RULE:one session; another phone gets BUSY unless just paired here (the person's choice) (WC-28).
                 let fresh = preferred.is_some_and(|(k, at)| k == session.peer().key && at.elapsed() < PAIRED_TAKES_OVER);
                 let sent_away = dismissed.is_some_and(|(k, at)| k == session.peer().key && at.elapsed() < DISMISSED_FOR);
@@ -698,7 +702,7 @@ async fn run(
                 if dismissed.is_some_and(|(k, _)| k != session.peer().key) { dismissed = None; }
                 let generation = indicator.searching();
                 if let Some((previous, _)) = active.take() { previous.connection().close(ErrorCode::GoingAway, b"replaced"); }
-                crate::files::attach(&app, session.clone());
+                crate::files::attach(&app, session.clone(), files_input);
                 crate::actions::serve(&app, trust.clone(), session.clone(), action_streams);
                 crate::clipboard::attach(&app, session.clone(), clipboard_input);
                 snapshot.phone = shown_name(&store, &session);

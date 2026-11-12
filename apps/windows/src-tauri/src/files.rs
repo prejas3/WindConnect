@@ -1,7 +1,7 @@
 //! CCS/1 M:sending files from Windows (WN-39) on the WN-38 engine
 //! FLOW:Explorer menu | drop on panel/main | "Wyślij" picker -> queue(paths) -> FileEngine::send(phone, path) -> attach(session)
 //! RULE:the phone is the connected one, else the last paired; transfers wait in the engine's queue until it connects.
-//! RULE:this PC routes no files/1 yet (receiving is WN-40), so attach takes no incoming queue.
+//! RULE:incoming files/1 uses the same engine, with local type folders (WN-40).
 use std::{
     collections::HashSet,
     path::{Path, PathBuf},
@@ -189,7 +189,9 @@ pub fn init(app: &tauri::AppHandle, data_dir: &Path) -> std::io::Result<()> {
     let inbox = downloads()
         .unwrap_or_else(|| data_dir.join("Downloads"))
         .join("WindConnect");
-    let engine = FileEngine::new(FilesConfig::new(inbox, data_dir.join("partials")))?;
+    let mut config = FilesConfig::new(inbox, data_dir.join("partials"));
+    config.type_folders = true;
+    let engine = FileEngine::new(config)?;
     let mut updates = engine.subscribe();
     let _ = runtime.engine.set(engine);
     let handle = app.clone();
@@ -222,12 +224,20 @@ pub fn set_target(app: &tauri::AppHandle, fingerprint: [u8; 32], name: Option<St
 }
 
 /// A phone session started: its transfers start or resume.
-pub fn attach(app: &tauri::AppHandle, session: Session) {
+pub fn receiving_enabled(app: &tauri::AppHandle) -> bool {
+    app.state::<Runtime>().engine.get().is_some()
+}
+
+pub fn attach(
+    app: &tauri::AppHandle,
+    session: Session,
+    incoming: Option<tokio::sync::mpsc::Receiver<wind_core::session::FileStream>>,
+) {
     let peer = &session.peer();
     let name = wind_core::pairing::clean_name(&peer.hello.name);
     set_target(app, *peer.key.fingerprint().as_bytes(), name);
     if let Some(engine) = app.state::<Runtime>().engine.get() {
-        engine.attach(session, None);
+        engine.attach(session, incoming);
     }
 }
 
