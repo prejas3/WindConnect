@@ -1672,7 +1672,12 @@ jest akurat poza siecią. Jedna droga dla obu przypadków:
    przyjętej sesji, także odrzuconej (`BUSY`) i takiej, która skończyła
    się przed użyciem: komputer, zanim odpowie `BUSY`, czeka do 500 ms na
    `Goodbye UNPAIRED` tej sesji, a telefon sprawdza kod zamknięcia
-   połączenia, które nie zostało sesją.
+   połączenia, które nie zostało sesją. Powiadomienie spóźnione (wolny
+   telefon, duże RTT, przekaźnik §13) może minąć się z `BUSY`: komputer
+   po wysłaniu `Goodbye BUSY` sprawdza jeszcze raz, czy `UNPAIRED` nie
+   doszło, i wtedy usuwa klucz i zamyka z `NO_ERROR` zamiast `BUSY`.
+   A po potwierdzeniu czeka do 1 s na zamknięcie przez B: zamknięcie z
+   `BUSY` znaczy, że aplikacja B go nie przeczytała, więc zostaje `-`.
 6. Powiadomienie należy się przez **30 dni**. Potem, albo gdy B usunie
    klucz A w inny sposób, próby B kończą się odmową TLS (§2,
    `UNTRUSTED_PEER`); B pokazuje „Komputer odrzuca połączenie — sparuj
