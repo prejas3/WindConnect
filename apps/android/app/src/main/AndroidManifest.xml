@@ -17,6 +17,12 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.WindConnect">
         <service android:name=".ConnectionService" android:exported="false" android:foregroundServiceType="connectedDevice" android:stopWithTask="false" />
+        <receiver android:name=".WindWidgetReceiver" android:exported="false" android:label="@string/widget_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/wind_widget" />
+        </receiver>
         <service android:name=".ClipboardTileService" android:exported="true"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
             android:icon="@drawable/ic_connection" android:label="@string/tile_clipboard">

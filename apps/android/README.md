@@ -1,5 +1,38 @@
 # Android
 
+## Widżet stanu PC (WN-33)
+
+CCS/1
+FLOW:Ustawienia -> „Dodaj widżet” -> potwierdzenie launchera; alternatywnie lista widżetów -> „WindConnect — stan PC”. Domyślnie4×2 (bazowa wysokość110dp do wyliczenia siatki launchera), zmiana szerokości/wysokości z minimum250×190dp. Treść i akcje tworzą zwartą grupę ze stałym odstępem4dp, bez rozpychania na całą przydzieloną wysokość. Własne powierzchnie akcji Glance, MaterialYou/paleta WN-22 i wybór jasny/ciemny aplikacji; minimum48dp dla akcji. „Wyślij schowek” otwiera istniejący focused sender, „Otwórz” aplikację. Przyjęcie prośby przez launcher nie jest przedstawiane jako potwierdzone dodanie.
+STATE:procent baterii dotyczy telefonu (WN-20), ⚡ oznacza ładowanie; pełny opis jest dostępny dla TalkBack. „Połączono · godzina” zawsze podaje czas snapshotu. Przy wyłączonym połączeniu w tle widżet mówi „Połączenie w tle wyłączone”, nawet jeżeli otwarta Activity chwilowo posiada połączenie. „Otwórz” pozwala przejść do konfiguracji. Zegar respektuje ustawienie12/24h telefonu.
+RULE:updatePeriodMillis=0. Bez app timerów, cyklicznego WorkRequest, alarmu ani minutowego odpytywania. Obserwator działa tylko z zainstalowanym widżetem; nie otwiera WindCore/połączenia. Zmiana znormalizowanego stanu, procentu/ładowania lub motywu -> snapshot w pamięci -> Glance.updateAll. RTT, surowe błędy, temperatura/napięcie nie zmieniają prezentacji. Glance używa własnych jednorazowych sesji WorkManager. Odbiornik nie ponawia sesji dla już żądanych ID przy powtarzającym się APPWIDGET_UPDATE (ochrona przed PACKAGE_CHANGED po zmianach komponentów WorkManager); nowe ID i resize nadal działają. Usunięcie ostatniego widżetu usuwa obserwatora i receiver baterii.
+SEC:widżet/receiver/worker nie czyta ani nie przechowuje schowka. PendingIntent prowadzi do istniejącej prywatnej SendClipboardActivity, która wymaga fokusu/odblokowania i zachowuje sensitive/limity. Provider jest exported=false. Z istniejącej listy parowań otwartej aplikacji zachowujemy wyłącznie nazwę ostatniego nieusuniętego PC w widget_presentation; zmiana/usunięcie parowania aktualizuje etykietę także offline. Nie otwieramy rdzenia dla samej nazwy. Nie utrwalamy Connected na dysku; ponowny proces odczytuje bieżący ConnectionOwner, bez odtwarzania starego połączenia.
+LIMIT:Android może zachować ostatni RemoteViews po force-stop lub nieoczekiwanym zabiciu procesu, dopóki nie nastąpi dozwolone zdarzenie. Dlatego widoczna jest godzina snapshotu; nie obiecujemy aktualizacji po force-stop. Przy działającej usłudze połączenia zmiany dochodzą bez otwierania Activity. Tekst Glance jest renderowany przez RemoteViews/systemową rodzinę fontu; geometria/kolory/rozmiary są własne, nie używamy domyślnych przycisków systemu.
+CHECK:WidgetModelTest (off, prywatność, RTT, unknown battery); scripts/check-android-widget.cjs na jawnie wskazanym jednorazowym emulatorze (realny AppWidgetHost, procent/temperatura, min resize250×190 przy150% fontu, dwa motywy, obie akcje,125s bez aktualizacji). Test ustawia tylko baterię emulatora i własne preferencje/host ID, a następnie je przywraca. Nie uruchamiać widgetFixture na telefonie użytkownika. Pełny run Androida osobno; test S25 Ultra/One UI wymagany przed zgłoszeniem.
+
+### Audyt przyrostu bibliotek widżetu
+
+CCS/1
+SOURCE:rzeczywiste AAR/JAR i POM w cache Gradle, licencje META-INF Glance oraz nagłówki opublikowanych sources.jar pozostałych modułów. Porównanie debugRuntimeClasspath przed/po:20 nowych artefaktów, bez podniesienia wersji wcześniej obecnych bibliotek. Pełna lista/hashe/source headers: run record karty.
+DEP:Glance1.2.0 stabilne, compileSdk35; runtime WorkManager/Room/DataStore to zależności Glance. Wersje poniżej są rzeczywiście rozwiązane przez Gradle, nie rekomendacje nowych wersji. Brak nowego binarnego kodu natywnego. WorkManager dodaje normalne WAKE_LOCK i standardowe komponenty schedulera; ACCESS_NETWORK_STATE było już wymagane przez wind-core. Nie dodano nowej zgody runtime.
+
+| Komponent | Wersja | Licencja — plik/źródło | Co trafia do APK | Ocena |
+| --- | --- | --- | --- | --- |
+| glance-appwidget, glance, glance-material3, glance-appwidget-proto | 1.2.0 | Apache-2.0, własne META-INF/LICENSE.txt; `assets/AndroidX-APACHE-2.0.txt` | DEX/zasoby Glance | Permisywne, pełny tekst dołączony. |
+| core-remoteviews | 1.1.0 | Apache-2.0, sources.jar nagłówki AOSP + wspólny tekst powyżej | DEX | Permisywna. |
+| lifecycle-livedata, lifecycle-service, lifecycle-livedata-core-ktx | 2.8.7 | Apache-2.0, sources.jar/POM AOSP (core-ktx pusty artefakt zgodności) | DEX/metadane | Permisywna. |
+| datastore, datastore-core, datastore-preferences, datastore-preferences-core | 1.0.0 | Apache-2.0, nagłówki sources.jar AOSP; protobuf poniżej osobno | DEX | Permisywna; vendored kod sprawdzony osobno. |
+| concurrent-futures-ktx | 1.1.0 | Apache-2.0, sources.jar AOSP | DEX | Permisywna. |
+| work-runtime, work-runtime-ktx | 2.7.1 | Apache-2.0, sources.jar AOSP | DEX/manifest schedulera | Permisywna. |
+| room-runtime, room-common | 2.2.5 | Apache-2.0, sources.jar AOSP | DEX | Permisywna. |
+| sqlite, sqlite-framework | 2.1.0 | Apache-2.0, sources.jar AOSP | DEX, wrapper systemowej SQLite | Permisywna; brak nowego .so. |
+| glance-appwidget-external-protobuf | artefakt 1.2.0 | BSD-3-Clause w rzeczywistym `META-INF/.../LICENSE.txt`, `assets/Glance-Protobuf-BSD.txt` | Relokowany runtime protobuf w DEX | Permisywna; nie utożsamiamy z Apache innych modułów. |
+| protobuf-javalite wewnątrz datastore-preferences-core | 3.10.0, wersja z jego pom.properties | Google Inc./BSD-3-Clause, `assets/Protobuf-BSD.txt`, upstream LICENSE | Druga relokowana kopia w DEX | Pełny copyright/warunki dołączone. |
+
+CCS/1
+IO:NOTICE.txt uzupełniono o wszystkie20 modułów oraz obie kopie protobuf. Licencje Apache/BSD są pełnymi tekstami w assets i podlegają kontroli zawartości końcowego APK. Własny layout/shape preview: MIT projektu. Istniejące fonty/ZXing/Rust bez zmian.
+EXT:https://developer.android.com/jetpack/androidx/releases/glance ; https://android.googlesource.com/platform/frameworks/support ; https://github.com/protocolbuffers/protobuf/blob/v3.10.0/LICENSE
+
 ## Skróty launchera (WN-72)
 
 CCS/1

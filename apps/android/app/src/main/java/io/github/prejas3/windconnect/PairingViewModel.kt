@@ -76,6 +76,9 @@ class PairingViewModel(application: Application) : AndroidViewModel(application)
                 viewModelScope.launch {
                     opened.paired.collect { list ->
                         val kept = list.filter { !it.owed }
+                        // CCS/1 RULE:cache display name only; never persist a Connected widget state.
+                        application.getSharedPreferences("widget_presentation", android.content.Context.MODE_PRIVATE)
+                            .edit().putString("peer_name", kept.lastOrNull()?.name).apply()
                         mutableUi.update { it.copy(devices = list, hasPairedDevice = kept.isNotEmpty() || it.connection is ConnectionState.Connected,
                             computerName = (it.connection as? ConnectionState.Connected)?.peerName ?: kept.lastOrNull()?.name) }
                     }

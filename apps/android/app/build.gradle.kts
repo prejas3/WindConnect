@@ -51,6 +51,8 @@ dependencies {
     implementation("androidx.activity:activity-compose:1.10.1")
     implementation("androidx.compose.material3:material3")
     implementation("com.google.zxing:core:3.5.4")
+    implementation("androidx.glance:glance-appwidget:1.2.0")
+    implementation("androidx.glance:glance-material3:1.2.0")
     testImplementation("junit:junit:4.13.2")
 
     androidTestImplementation("androidx.test:runner:1.6.2")
