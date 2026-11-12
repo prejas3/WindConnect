@@ -91,7 +91,7 @@ class PairingTest {
 
     @Test fun scannerEntryAndCancelRemainAvailable() {
         openScanner()
-        compose.onNodeWithText("Zeskanuj kod z komputera").assertExists()
+        compose.onNodeWithText("Zeskanuj kod QR").assertExists() // the scanner screen's heading, not the Welcome button
         compose.onNodeWithTag("cancelPairing").performScrollTo().performClick()
         compose.onNodeWithTag("computerCard").assertExists()
     }
