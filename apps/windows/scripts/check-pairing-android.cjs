@@ -29,6 +29,8 @@ let app, instrument, browser, socket, timer, redirected = false, output = '';
     assert(panel);
     const invoke = (command, args) => panel.evaluate(({command,args}) => window.__TAURI__.core.invoke(command,args), {command,args});
     await panel.waitForFunction(async () => (await window.__TAURI__.core.invoke('pairing_snapshot')).phase === 'waiting');
+    // WC-34: an empty store opens onboarding in the main window; the panel (same pairing window) is opened explicitly.
+    await invoke('panel_action', { action: 'show' });
     await panel.locator('#pairing-qr').waitFor({ state: 'visible' });
     const imageFile = path.join(root, 'desktop-qr.png'), offerFile = path.join(root, 'offer.txt'), javaFile = path.join(root, 'DecodeQr.java');
     await panel.locator('#pairing-qr').screenshot({ path: imageFile });

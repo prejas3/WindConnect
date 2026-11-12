@@ -153,7 +153,7 @@ generator, a nie ręcznie edytowane wiązania lub binaria.
 
 AAR: `wind-core/build/outputs/aar/wind-core-release.aar`.
 Lokalne repozytorium Maven z AAR, źródłami, POM i metadanymi Gradle:
-`wind-core/build/repo/`. Współrzędne: `io.github.prejas3.windconnect:wind-core:0.40.0`.
+`wind-core/build/repo/`. Współrzędne: `io.github.prejas3.windconnect:wind-core:0.41.0`.
 Publikacja zapisuje pliki lokalnie; nie wysyła ich do zewnętrznego repozytorium.
 Konsument musi korzystać z POM/metadanych (JNA i korutyny są zależnościami
 przechodnimi); sama kopia pliku AAR nie dostarczy JNA.
@@ -166,7 +166,7 @@ Konsument spoza repozytorium dodaje lokalne repozytorium do
 maven { url = uri("/sciezka/do/wind-core/build/repo") }
 ```
 
-oraz `implementation("io.github.prejas3.windconnect:wind-core:0.40.0")`.
+oraz `implementation("io.github.prejas3.windconnect:wind-core:0.41.0")`.
 W aplikacji konsumenta ogranicz ABI do `arm64-v8a` i `x86_64`.
 
 ```kotlin
@@ -316,8 +316,18 @@ pamięć odkrywania po zmianie sieci. Pytanie i odpowiedź unicast sprawdza test
 hosta, a filtrowanie broadcast przez prawdziwy układ Wi-Fi bez locka wymaga
 telefonu.
 
-Wersja aplikacji to 0.40.0, a Android `versionCode` to 49. Numery wydań rosną
+Wersja aplikacji to 0.41.0, a Android `versionCode` to 50. Numery wydań rosną
 niezależnie od kolejności kart, aby aktualizacja APK i MSI nie cofała wersji.
+
+## Pierwsze uruchomienie (WC-34)
+
+CCS/1
+FLOW:brak sparowanego komputera -> karta „Witaj w WindConnect” na górze ekranu głównego (co jest potrzebne, przycisk „Zeskanuj kod z komputera” jak w kroku 2 na PC, zdanie o aparacie przed pytaniem systemu) -> po stuknięciu od razu pytanie o aparat -> skaner -> „Gotowe”.
+RULE:„Gotowe” zadaje jedno pytanie: „Utrzymuj połączenie w tle” (ConnectionService + POST_NOTIFICATIONS na API 33+) albo „Nie teraz”. Parowanie samo już nie włącza usługi. Odmowa powiadomień: usługa działa, ale bez widocznego powiadomienia nie ma stanu komputera ani akcji „Wyślij schowek”; ekran mówi to jednym zdaniem i prowadzi do ustawień powiadomień. Ustawienia -> „Połączenie w tle” zmienia decyzję później.
+A11Y:nagłówki kart „Witaj” i „Gotowe” są oznaczone dla TalkBack.
+
+Test: `OnboardingTest` (karta „Witaj”, decyzja „Gotowe”, zdania skutków);
+`PairingTest` z `-e background true` wybiera „Utrzymuj połączenie w tle”.
 
 ## Sparowane komputery (WC-28)
 

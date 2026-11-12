@@ -265,7 +265,12 @@ fn main() {
                 }
             }
             if !std::env::args().any(|arg| arg == "--autostart") || !sending.is_empty() {
-                panel::show(app.handle())?;
+                // CCS/1 FLOW:first start with no paired phone -> main window onboarding (QR stays while focus moves to the phone, WC-34).
+                if sending.is_empty() && !pairing::has_paired() {
+                    tray::show_main(app.handle())?;
+                } else {
+                    panel::show(app.handle())?;
+                }
             }
             Ok(())
         })

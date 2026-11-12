@@ -132,7 +132,18 @@ fn publish(app: &tauri::AppHandle, state: &watch::Sender<Snapshot>, value: Snaps
         return;
     }
     state.send_replace(value.clone());
+    // The main window shows the same single pairing window during onboarding (WC-34).
+    let _ = app.emit_to("main", "pairing-state", value.clone());
     let _ = app.emit_to("panel", "pairing-state", value);
+}
+
+/// Whether any phone is paired (read once at start; WC-34 picks the first
+/// window: onboarding in the main window, else the panel).
+pub fn has_paired() -> bool {
+    data_dir()
+        .map(PairedDevicesFile::in_dir)
+        .and_then(|store| store.load())
+        .is_ok_and(|list| !list.devices.is_empty())
 }
 fn addresses(port: u16) -> std::io::Result<Vec<SocketAddr>> {
     // CCS/1 RULE:LAN IPv4 only, default-route interface first; no network packet is sent by UDP connect.

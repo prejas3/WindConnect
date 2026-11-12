@@ -43,6 +43,9 @@ async function shot(name, theme) {
     await fs.mkdir(root, { recursive: true });
     await launch();
     await waitState(s => s.phase === 'waiting');
+    // WC-34: with no paired phone the first window is the main one (onboarding); open the panel for this check.
+    assert.equal((await invoke('panel_snapshot')).visible, false, 'first start opens onboarding, not the panel');
+    await invoke('panel_action', { action: 'show' });
     await panel.waitForFunction(async () => (await window.__TAURI__.core.invoke('panel_snapshot')).visible);
     await panel.locator('#pairing-qr').waitFor({ state: 'visible' });
     await shot('waiting', 'light'); await shot('waiting', 'dark');
