@@ -183,7 +183,20 @@ class WindCore private constructor(
     private var lanReturn: Job? = null
     @Volatile private var multicast: MulticastPolicy? = null
     private var multicastTimer: Job? = null
-    private val systemClipboard = SystemClipboard(context, settings, scope, client::setClipboardEnabled, { state.value is ConnectionState.Connected }) { text, sensitive, manual ->
+    private val systemClipboard = SystemClipboard(context, settings, scope, client::setClipboardEnabled, { state.value is ConnectionState.Connected },
+        imageLimitChanged = { bytes -> client.setClipboardImageLimit(bytes.toULong()) },
+        publishImage = { image, manual, onApplied ->
+            withContext(Dispatchers.IO) {
+                val current = gate.withLock { connection }
+                if (current == null) "unavailable" to null else {
+                    val progress = object : io.github.prejas3.windconnect.bindings.ClipboardImageProgress {
+                        override fun applied() { onApplied() }
+                    }
+                    current.sendClipboardImage(image.png, image.thumbnail, image.width.toULong(), image.height.toULong(), false, manual, progress)
+                        .let { it.status to it.peerLimit?.toLong() }
+                }
+            }
+        }) { text, sensitive, manual ->
         withContext(Dispatchers.IO) {
             val current = gate.withLock { connection }
             if (current == null) "unavailable" else current.sendClipboard(text, sensitive, manual)
@@ -192,6 +205,8 @@ class WindCore private constructor(
     val clipboardUi = systemClipboard.ui
     fun clipboardFocus(focused: Boolean) = systemClipboard.focus(focused)
     fun setClipboardEnabled(enabled: Boolean) = systemClipboard.setEnabled(enabled)
+    /** WN-36: the image limit, 5 / 16 / 50 MB. */
+    fun setClipboardImageLimit(mb: Int) = systemClipboard.setImageLimit(mb)
     suspend fun sendCurrentClipboard(): String = systemClipboard.send(true)
 
     /**
@@ -476,6 +491,7 @@ class WindCore private constructor(
                         opened = it
                         client.setClipboardSink(it.systemClipboard)
                         client.setClipboardEnabled(it.clipboardUi.value.enabled)
+                        it.systemClipboard.applyImageLimit()
                         it.restoreRelay()
                         it.observeNetwork(context.applicationContext)
                     }

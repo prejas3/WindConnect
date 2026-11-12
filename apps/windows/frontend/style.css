@@ -73,3 +73,5 @@ body.onboarding-active #actions, body.onboarding-active [data-clipboard-controls
 .onboarding .pairing-code { font-size: 40px; font-weight: 700; letter-spacing: 6px; font-variant-numeric: tabular-nums; margin: 6px 0; }
 .onboarding .button-row { display: flex; flex-wrap: wrap; gap: 8px; }
 #onboarding-done { display: grid; gap: 12px; max-width: 520px; }#onboarding-done[hidden] { display: none; }#onboarding-done .control-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }#onboarding-done small { display: block; color: var(--sub); font-size: 12px; }#onboarding-finish { justify-self: start; }
+/* WN-36: the image limit keeps its three choices on one line; the row wraps under its label when narrow. */
+.control-row:has([data-clipboard-limit]) { flex-wrap: wrap; }[data-clipboard-limit] { flex-wrap: nowrap; flex-shrink: 0; }

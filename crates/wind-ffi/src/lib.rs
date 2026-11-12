@@ -62,12 +62,77 @@ struct PlatformStore(Box<dyn IdentityStorage>);
 #[uniffi::export(callback_interface)]
 pub trait ClipboardSink: Send + Sync {
     fn apply_text(&self, text: String) -> bool;
+    /// WN-36: put `image` on the OS clipboard now (pasteable); its PNG comes
+    /// through `ClipboardImage::read`. True only once the OS took it.
+    fn apply_image(&self, image: Arc<ClipboardImage>) -> bool;
 }
 struct PlatformClipboard(Box<dyn ClipboardSink>);
 impl wind_core::clipboard::Sink for PlatformClipboard {
     fn apply(&self, text: &str) -> bool {
         self.0.apply_text(text.to_owned())
     }
+    fn apply_image(&self, image: Arc<wind_core::clipboard::IncomingImage>) -> bool {
+        self.0.apply_image(Arc::new(ClipboardImage(image)))
+    }
+}
+
+/// A received clipboard image (WN-36): the thumbnail now, the PNG as it
+/// arrives. Memory only; a newer clipboard item fails an unfinished one.
+#[derive(uniffi::Object)]
+pub struct ClipboardImage(Arc<wind_core::clipboard::IncomingImage>);
+
+#[uniffi::export]
+impl ClipboardImage {
+    /// Hex of its 16-byte id (names the content URI).
+    pub fn id(&self) -> String {
+        self.0.id().iter().map(|b| format!("{b:02x}")).collect()
+    }
+    pub fn size(&self) -> u64 {
+        self.0.size()
+    }
+    pub fn width(&self) -> u64 {
+        self.0.width()
+    }
+    pub fn height(&self) -> u64 {
+        self.0.height()
+    }
+    /// The thumbnail PNG: for previews only, never pasted as the image.
+    pub fn thumbnail(&self) -> Vec<u8> {
+        self.0.thumbnail().to_vec()
+    }
+    pub fn is_complete(&self) -> bool {
+        self.0.is_complete()
+    }
+    /// Blocks until bytes from `offset` are there (up to `max`); empty at
+    /// the end. Fails when replaced, broken off, or after 10 s with no bytes.
+    /// CCS/1 RULE:call from a worker thread (a paste's pipe), never the main thread.
+    pub fn read(&self, offset: u64, max: u32) -> Result<Vec<u8>, CoreError> {
+        self.0
+            .read_at(offset, max as usize)
+            .map_err(|e| CoreError::Transport {
+                reason: match e {
+                    wind_core::clipboard::ImageError::Failed => "image replaced or broken off",
+                    wind_core::clipboard::ImageError::Stalled => "image transfer stalled",
+                }
+                .into(),
+            })
+    }
+}
+
+/// Told once the peer has the image on its clipboard (pasteable), before
+/// the whole PNG is there.
+#[uniffi::export(callback_interface)]
+pub trait ClipboardImageProgress: Send + Sync {
+    fn applied(&self);
+}
+
+/// How a clipboard image send ended: `status` as for text, plus
+/// "too-large", "peer-limit" (with `peer_limit` bytes), "unsupported",
+/// "replaced".
+#[derive(uniffi::Record)]
+pub struct ClipboardSendResult {
+    pub status: String,
+    pub peer_limit: Option<u64>,
 }
 
 impl KeyStore for PlatformStore {
@@ -235,6 +300,10 @@ impl CoreClient {
     }
     pub fn set_clipboard_enabled(&self, enabled: bool) {
         self.clipboard.set_enabled(enabled);
+    }
+    /// The largest image PNG sent or taken, in bytes (the user's setting).
+    pub fn set_clipboard_image_limit(&self, bytes: u64) {
+        self.clipboard.set_image_limit(bytes);
     }
     /// CCS/1 SEC:call only after explicit confirmation; parsed offer is single-use and never exports its secret.
     pub async fn pair_qr(
@@ -929,6 +998,45 @@ impl CoreConnection {
             None => "unavailable",
         }
         .into()
+    }
+    /// WN-36: sends a PNG with its thumbnail (clipboard/2).
+    #[allow(clippy::too_many_arguments)]
+    pub async fn send_clipboard_image(
+        &self,
+        png: Vec<u8>,
+        thumbnail: Vec<u8>,
+        width: u64,
+        height: u64,
+        sensitive: bool,
+        manual: bool,
+        progress: Box<dyn ClipboardImageProgress>,
+    ) -> ClipboardSendResult {
+        let binding = self.clipboard.lock().unwrap().clone();
+        let status = match binding {
+            Some(binding) => {
+                binding
+                    .send_image(
+                        wind_core::clipboard::OutgoingImage {
+                            png,
+                            thumbnail,
+                            width,
+                            height,
+                        },
+                        sensitive,
+                        manual,
+                        move || progress.applied(),
+                    )
+                    .await
+            }
+            None => wind_core::clipboard::Status::Unavailable,
+        };
+        ClipboardSendResult {
+            status: status.name().into(),
+            peer_limit: match status {
+                wind_core::clipboard::Status::PeerLimit(limit) => Some(limit),
+                _ => None,
+            },
+        }
     }
     pub fn peer(&self) -> PeerInfo {
         let peer = self.session.peer();

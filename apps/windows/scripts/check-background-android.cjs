@@ -39,7 +39,8 @@ let peer, instrument, socket, timer, redirected = false, output = '', wasExempt 
     device('shell', 'am', 'force-stop', pkg);
     device('shell', 'pm', 'clear', pkg);
     device('emu', 'redir', 'add', 'udp:'+redirectPort+':47821'); redirected = true;
-    peer = spawn(path.resolve(clipboardProof ? 'target/debug/examples/clipboard_peer.exe' : 'target/debug/examples/background_peer.exe'), [root], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+    // WN-36: PEER_PROFILE=release times images as the shipped app encodes them (a debug PNG encoder is ~10× slower).
+    peer = spawn(path.resolve(clipboardProof ? `target/${process.env.PEER_PROFILE || 'debug'}/examples/clipboard_peer.exe` : 'target/debug/examples/background_peer.exe'), [root], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
     let peerOutput = ''; peer.stderr.on('data', data => { peerOutput += data; });
     for (let attempt = 0; attempt < 100; attempt++) { try { await fs.access(path.join(root, 'port.txt')); break; } catch {} assert.equal(peer.exitCode, null, peerOutput); await delay(50); }
     const offerFile = path.join(root, 'offer.txt'), imageFile = path.join(root, 'desktop-qr.png'), javaFile = path.join(root, 'EncodeQr.java');
@@ -78,7 +79,14 @@ let peer, instrument, socket, timer, redirected = false, output = '', wasExempt 
         assert.equal(capture.status,0);await fs.writeFile(path.join(root,`clipboard-${theme}.png`),capture.stdout);
       }
       const notification=spawnSync(adb,['-s',serial,'exec-out','run-as',pkg,'cat','cache/wn35-notification.png'],{windowsHide:true,timeout:10000});assert.equal(notification.status,0);await fs.writeFile(path.join(root,'clipboard-notification.png'),notification.stdout);
-      const report={actualOsClipboards:true,actualSession:true,androidToPcP95Micros:android.p95Micros,pcToAndroidP95Micros:pc.p95Micros,notification:true,backgroundReceive:true,sensitiveBlocked:true,artifacts:root};
+      // WN-36: PC screenshot -> pasteable on the phone (< 500 ms), and the whole PNG there; phone -> PC image.
+      const images=JSON.parse(await fs.readFile(path.join(root,'pc-image-benchmark.json'),'utf8'));
+      assert(images.fullHd.allApplied && images.uhd4k.allApplied, JSON.stringify(images));
+      assert(images.fullHd.pasteableMaxMicros < 500000, `1080p screenshot pasteable in < 500 ms: ${JSON.stringify(images.fullHd)}`);
+      assert.equal(state.imagesFromPhone, 1, 'phone -> PC image'); assert.deepEqual(state.phoneImageSize, [800,600]);
+      const report={actualOsClipboards:true,actualSession:true,androidToPcP95Micros:android.p95Micros,pcToAndroidP95Micros:pc.p95Micros,notification:true,backgroundReceive:true,sensitiveBlocked:true,
+        imagePngBytes1080p:images.fullHd.pngBytes,imagePasteableMaxMs1080p:images.fullHd.pasteableMaxMicros/1000,imageCompleteMaxMs1080p:images.fullHd.completeMaxMicros/1000,
+        imagePngBytes4k:images.uhd4k.pngBytes,imagePasteableMaxMs4k:images.uhd4k.pasteableMaxMicros/1000,imageCompleteMaxMs4k:images.uhd4k.completeMaxMicros/1000,phoneToPcImage:true,artifacts:root};
       await fs.writeFile(path.join(root,'run.json'),JSON.stringify(report,null,2));console.log(JSON.stringify(report));
       assert(android.p95Micros<150000 && pc.p95Micros<150000,'OS copy -> applied ack p95 <150ms');return;
     }

@@ -6,6 +6,7 @@ mod actions;
 mod autostart;
 mod brand_icon;
 mod clipboard;
+mod clipboard_image;
 mod clipboard_native;
 mod files;
 mod hotkey;

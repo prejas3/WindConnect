@@ -362,6 +362,21 @@ przeżywa uruchomienia: przerwany test może zostawić syntetyczny tekst, a
 kolejny odmówi startu, dopóki ktoś go nie usunie. Test Android/PC i pomiar100 próbek w obu
 kierunkach opisano w `apps/android/README.md`, sekcja WN-35.
 
+### Obrazy (WN-36)
+
+CCS/1
+FLOW:WM_CLIPBOARDUPDATE bez tekstu -> format „PNG” (bez zmian) albo CF_DIBV5/CF_DIB (kodowany do PNG poza wątkiem okna, `png` 0.18, szybka kompresja) + miniatura ≤ 512 px -> clipboard/2 (PROTOCOL.md §9.3.1). Status: „Wysyłanie obrazu…” po Applied telefonu (obraz już wklejalny), „Obraz wysłany na telefon” po ImageDone.
+RULE:odebrany obraz trafia do schowka od razu jako „PNG” i CF_DIB z opóźnionym renderowaniem; WM_RENDERFORMAT czeka na bajty (najwyżej 10 s bez postępu), potem renderuje. Nowszy schowek, przerwanie lub zastój: wklejenie się nie udaje, bez częściowego obrazu. WM_RENDERALLFORMATS przy zamknięciu renderuje tylko kompletny obraz, inaczej czyści schowek. Własnego obrazu (właściciel = nasze okno) nie odczytujemy: brak echa i czekania na samego siebie.
+RULE:limit „Maks. rozmiar obrazu” 5 / 16 / 50 MB (domyślnie 16) w Ustawieniach i panelu, zapisany w clipboard-images.json obok clipboard.json; dotyczy wysyłania i odbioru.
+SEC:te same flagi prywatności co dla tekstu: obrazu oznaczonego jako prywatny nie kopiujemy z OS; odebrany ma opt-out historii i chmury. Tekst ma pierwszeństwo, gdy w schowku są oba.
+LIMIT:wątek okna czeka na bajty tylko przy wklejaniu przed końcem przesyłu; ścieżka odbioru fragmentów go nie potrzebuje (bez zakleszczenia). Zrzuty większe niż 16384 px nie są wysyłane.
+
+Test OS (ta sama stacja co wyżej): `clipboard_probe` sprawdza odczyt „PNG” i
+samego DIB, brak kopii obrazu prywatnego, opóźnione renderowanie (wklejenie
+czeka i dostaje cały PNG, CF_DIB z PNG), błąd wklejenia przy nowszym
+schowku od razu i przy zastoju po ~10 s, odpowiadające okno po zastoju i
+brak odczytu własnego obrazu. Pomiar zrzutu PC -> telefon: `apps/android/README.md`, WN-36.
+
 Test UI: `node apps/windows/scripts/check-clipboard-ui.cjs` z zewnętrznym
 Playwright (`PLAYWRIGHT_MODULE`). Sprawdza klawiaturę, przełącznik, ręczne
 wysyłanie bez połączenia, status sensitive/konfliktu skrótu i układ Light/Dark.

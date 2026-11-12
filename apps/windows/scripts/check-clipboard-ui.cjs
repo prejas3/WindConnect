@@ -1,4 +1,4 @@
-// CCS/1 PURPOSE:clipboard UI commands/status, keyboard, themes and larger text; IPC stub does not prove OS delivery.
+// CCS/1 PURPOSE:clipboard UI commands/status, the image limit (WN-36), keyboard, themes and larger text; IPC stub does not prove OS delivery.
 const assert = require('node:assert/strict');
 const http = require('node:http');
 const fs = require('node:fs/promises');
@@ -24,7 +24,7 @@ const server = http.createServer(async (req, res) => {
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
     await page.addInitScript(() => {
-      const state = {enabled:true,status:'Synchronizacja automatyczna',shortcut_error:false};
+      const state = {enabled:true,status:'Synchronizacja automatyczna',shortcut_error:false,image_limit_mb:16};
       window.calls = [];
       window.__TAURI__ = {
         core: {invoke: async (command, args) => {
@@ -35,6 +35,7 @@ const server = http.createServer(async (req, res) => {
           if (command === 'clipboard_action') {
             if (args.action === 'enabled') state.enabled = args.enabled;
             if (args.action === 'send') state.status = 'Brak połączenia z telefonem';
+            if (args.action === 'image-limit') state.image_limit_mb = args.limit;
             window.clipboardEvent?.({payload:{...state}});
           }
           return null;
@@ -57,14 +58,21 @@ const server = http.createServer(async (req, res) => {
     const toggle = page.getByRole('switch', {name:'Synchronizacja automatyczna'});
     await toggle.focus(); await page.keyboard.press('Space');
     await page.waitForFunction(() => document.querySelector('[data-clipboard-toggle]').getAttribute('aria-checked') === 'false');
+    // WN-36: the image limit, by keyboard; one choice pressed.
+    const limit = page.getByRole('group', {name:'Maks. rozmiar obrazu'});
+    assert.equal(await limit.getByRole('button', {name:'16 MB'}).getAttribute('aria-pressed'), 'true');
+    await limit.getByRole('button', {name:'50 MB'}).focus(); await page.keyboard.press('Enter');
+    await page.waitForFunction(() => document.querySelector('[data-limit="50"]').getAttribute('aria-pressed') === 'true');
+    assert.deepEqual(await limit.locator('[aria-pressed="true"]').allTextContents(), ['50 MB']);
     await page.getByRole('button',{name:'Wyślij schowek na telefon'}).click();
     await page.waitForFunction(() => document.querySelector('[data-clipboard-status]').textContent === 'Brak połączenia z telefonem');
-    await page.evaluate(() => window.clipboardEvent({payload:{enabled:false,status:'Treść oznaczona jako wrażliwa — nie wysłano',shortcut_error:true}}));
+    await page.evaluate(() => window.clipboardEvent({payload:{enabled:false,status:'Treść oznaczona jako wrażliwa — nie wysłano',shortcut_error:true,image_limit_mb:5}}));
+    assert.deepEqual(await limit.locator('[aria-pressed="true"]').allTextContents(), ['5 MB'], 'state from the app');
     assert.match(await page.locator('[data-clipboard-shortcut]').textContent(), /jest zajęty/);
     assert.deepEqual(await page.evaluate(() => window.calls.filter(([c]) => c === 'clipboard_action')), [
-      ['clipboard_action',{action:'enabled',enabled:false}],['clipboard_action',{action:'send'}],
+      ['clipboard_action',{action:'enabled',enabled:false}],['clipboard_action',{action:'image-limit',limit:50}],['clipboard_action',{action:'send'}],
     ]);
     assert.deepEqual(errors, []);
-    console.log(`PASS: clipboard keyboard/toggle/manual/offline/sensitive/conflict, Light/Dark and 150% text; ${out}`);
+    console.log(`PASS: clipboard keyboard/toggle/image limit/manual/offline/sensitive/conflict, Light/Dark and 150% text; ${out}`);
   } finally { if (browser) await browser.close(); await new Promise(resolve => server.close(resolve)); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

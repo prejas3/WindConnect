@@ -1,4 +1,4 @@
-//! CCS/1 IO:real CF_UNICODETEXT / WM_CLIPBOARDUPDATE | SEC:privacy formats respected, bounded copies, no payload logs.
+//! CCS/1 IO:real CF_UNICODETEXT, images (the "PNG" format, CF_DIBV5/CF_DIB; WN-36) / WM_CLIPBOARDUPDATE, delayed rendering of received images | SEC:privacy formats respected, bounded copies, no payload logs.
 #![cfg(windows)]
 use std::{
     cell::Cell,
@@ -19,7 +19,14 @@ use windows_sys::Win32::{
     UI::WindowsAndMessaging::*,
 };
 const TEXT: u32 = 13; // CF_UNICODETEXT, not an OLE dependency.
-                      // CCS/1 RULE:serialize this process's clipboard opens; the window procedure never waits on an active writer (Win32 sends owner messages synchronously).
+const DIB: u32 = 8; // CF_DIB
+const DIBV5: u32 = 17; // CF_DIBV5
+/// Largest raw DIB copied out of the clipboard (8K × 4K × 4 B, with room).
+const MAX_DIB: usize = 160 * 1024 * 1024;
+/// The received image this window renders on request (WN-36).
+static RENDER: std::sync::Mutex<Option<std::sync::Arc<wind_core::clipboard::IncomingImage>>> =
+    std::sync::Mutex::new(None);
+// CCS/1 RULE:serialize this process's clipboard opens; the window procedure never waits on an active writer (Win32 sends owner messages synchronously).
 static CLIPBOARD_GATE: std::sync::Mutex<()> = std::sync::Mutex::new(());
 static DEFERRED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 static WINDOW: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
@@ -59,6 +66,7 @@ struct Formats {
     exclude: u32,
     history: u32,
     cloud: u32,
+    png: u32,
 }
 fn formats() -> io::Result<&'static Formats> {
     static IDS: OnceLock<Formats> = OnceLock::new();
@@ -69,9 +77,10 @@ fn formats() -> io::Result<&'static Formats> {
             ),
             history: RegisterClipboardFormatW(wide("CanIncludeInClipboardHistory").as_ptr()),
             cloud: RegisterClipboardFormatW(wide("CanUploadToCloudClipboard").as_ptr()),
+            png: RegisterClipboardFormatW(wide("PNG").as_ptr()),
         }
     });
-    if f.exclude == 0 || f.history == 0 || f.cloud == 0 {
+    if f.exclude == 0 || f.history == 0 || f.cloud == 0 || f.png == 0 {
         Err(io::Error::last_os_error())
     } else {
         Ok(f)
@@ -114,11 +123,39 @@ fn private_flag(format: u32) -> bool {
         excluded
     }
 }
+/// An image as the clipboard holds it, copied out (WN-36).
+#[derive(Clone)]
+pub enum ImagePayload {
+    /// The registered "PNG" format: sent as it is.
+    Png(Arc<Vec<u8>>),
+    /// CF_DIBV5 / CF_DIB: encoded as PNG off the window thread.
+    Dib(Arc<Vec<u8>>),
+}
 #[derive(Clone)]
 pub struct Capture {
+    /// Empty for an image.
     pub text: String,
+    pub image: Option<ImagePayload>,
     pub sensitive: bool,
     pub sequence: u32,
+}
+/// Copies a clipboard format's bytes (at most `max`); `None` if absent or larger.
+unsafe fn copy_format(format: u32, max: usize) -> io::Result<Option<Vec<u8>>> {
+    let handle = unsafe { GetClipboardData(format) };
+    if handle.is_null() {
+        return Err(io::Error::last_os_error());
+    }
+    let size = unsafe { GlobalSize(handle) };
+    if size == 0 || size > max {
+        return Ok(None);
+    }
+    let p = unsafe { GlobalLock(handle) };
+    if p.is_null() {
+        return Err(io::Error::last_os_error());
+    }
+    let bytes = unsafe { std::slice::from_raw_parts(p.cast::<u8>(), size) }.to_vec();
+    unsafe { GlobalUnlock(handle) };
+    Ok(Some(bytes))
 }
 pub fn read() -> io::Result<Option<Capture>> {
     read_inner(false, true)
@@ -137,7 +174,16 @@ fn read_inner(include_sensitive: bool, wait: bool) -> io::Result<Option<Capture>
         let _open = Open::acquire(std::ptr::null_mut())
             .map_err(|e| io::Error::new(io::ErrorKind::WouldBlock, e))?;
         let f = formats()?;
-        if IsClipboardFormatAvailable(TEXT) == 0 {
+        let text = IsClipboardFormatAvailable(TEXT) != 0;
+        let image = [f.png, DIBV5, DIB]
+            .into_iter()
+            .find(|format| IsClipboardFormatAvailable(*format) != 0);
+        if !text && image.is_none() {
+            return Ok(None);
+        }
+        // CCS/1 RULE:an image this window put there (a received one, delayed rendering) is never read back: no echo, no self-render wait.
+        if !text && GetClipboardOwner() as usize == WINDOW.load(std::sync::atomic::Ordering::SeqCst)
+        {
             return Ok(None);
         }
         let sensitive = IsClipboardFormatAvailable(f.exclude) != 0
@@ -147,7 +193,23 @@ fn read_inner(include_sensitive: bool, wait: bool) -> io::Result<Option<Capture>
         if sensitive && !include_sensitive {
             return Ok(Some(Capture {
                 text: String::new(),
+                image: None,
                 sensitive: true,
+                sequence: GetClipboardSequenceNumber(),
+            }));
+        }
+        if let (false, Some(format)) = (text, image) {
+            // Text wins when both are there (as before WN-36).
+            type Wrap = fn(Arc<Vec<u8>>) -> ImagePayload;
+            let (max, wrap): (usize, Wrap) = if format == f.png {
+                (wind_core::clipboard::MAX_IMAGE as usize, ImagePayload::Png)
+            } else {
+                (MAX_DIB, ImagePayload::Dib)
+            };
+            return Ok(copy_format(format, max)?.map(|bytes| Capture {
+                text: String::new(),
+                image: Some(wrap(Arc::new(bytes))),
+                sensitive,
                 sequence: GetClipboardSequenceNumber(),
             }));
         }
@@ -173,6 +235,7 @@ fn read_inner(include_sensitive: bool, wait: bool) -> io::Result<Option<Capture>
             .filter(|s| s.len() <= wind_core::clipboard::MAX_TEXT)
             .map(|text| Capture {
                 text,
+                image: None,
                 sensitive,
                 sequence: GetClipboardSequenceNumber(),
             }))
@@ -216,7 +279,86 @@ fn write(hwnd: HWND, text: &str, protected: bool) -> io::Result<()> {
             put(f.cloud, &0u32.to_ne_bytes())?;
         }
         let data: Vec<u8> = wide(text).iter().flat_map(|u| u.to_ne_bytes()).collect();
+        RENDER.lock().unwrap().take();
         put(TEXT, &data)
+    }
+}
+/// Puts a received image on the clipboard with delayed rendering (WN-36):
+/// pasteable now, its "PNG" and CF_DIB rendered by this window when a paste
+/// asks (WM_RENDERFORMAT), once the bytes are in.
+fn write_image(
+    hwnd: HWND,
+    image: Arc<wind_core::clipboard::IncomingImage>,
+    protected: bool,
+) -> io::Result<()> {
+    let _gate = access(true).unwrap();
+    unsafe {
+        let f = formats()?;
+        let _open = Open::acquire(hwnd)?;
+        if EmptyClipboard() == 0 {
+            return Err(io::Error::last_os_error());
+        }
+        if protected {
+            put(f.history, &0u32.to_ne_bytes())?;
+            put(f.cloud, &0u32.to_ne_bytes())?;
+        }
+        *RENDER.lock().unwrap() = Some(image);
+        for format in [f.png, DIB] {
+            // Delayed rendering: a NULL handle. Success returns NULL too, so the error code tells.
+            SetLastError(0);
+            if SetClipboardData(format, std::ptr::null_mut()).is_null() && GetLastError() != 0 {
+                RENDER.lock().unwrap().take();
+                return Err(io::Error::last_os_error());
+            }
+        }
+        Ok(())
+    }
+}
+/// How long a paste waits for a received image's bytes (no progress).
+const RENDER_STALL: Duration = wind_core::clipboard::STALL;
+/// WM_RENDERFORMAT: the clipboard is open by the pasting app. On a failed or
+/// stalled image nothing is set, so that paste fails (no partial image).
+/// CCS/1 RULE:only waits on bytes the tokio side pushes; nothing on that path needs this thread.
+unsafe fn render(format: u32) -> bool {
+    let Some(image) = RENDER.lock().unwrap().clone() else {
+        return false;
+    };
+    let Ok(f) = formats() else { return false };
+    let Ok(png) = image.wait_complete(RENDER_STALL) else {
+        return false;
+    };
+    let data = if format == f.png {
+        png
+    } else if format == DIB {
+        match crate::clipboard_image::decode_png(&png) {
+            Ok(rgba) => crate::clipboard_image::encode_dib(&rgba),
+            Err(_) => return false,
+        }
+    } else {
+        return false;
+    };
+    unsafe { put(format, &data) }.is_ok()
+}
+/// WM_RENDERALLFORMATS (this window is going away while it owns the
+/// clipboard): render a complete image, else leave an empty clipboard rather
+/// than formats nobody can render.
+unsafe fn render_all(hwnd: HWND) {
+    let Ok(_open) = Open::acquire(hwnd) else {
+        return;
+    };
+    unsafe {
+        if GetClipboardOwner() != hwnd {
+            return;
+        }
+        let complete = RENDER
+            .lock()
+            .unwrap()
+            .as_ref()
+            .is_some_and(|i| i.is_complete());
+        let Ok(f) = formats() else { return };
+        if !(complete && render(f.png) && render(DIB)) {
+            EmptyClipboard();
+        }
     }
 }
 // CCS/1 RULE:a change missed because another process held the clipboard is re-read on the window thread by one
@@ -292,6 +434,21 @@ unsafe extern "system" fn procedure(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) 
         }
     }
     let p = unsafe { GetWindowLongPtrW(hwnd, GWLP_USERDATA) } as *const Watcher;
+    match msg {
+        WM_RENDERFORMAT => {
+            unsafe { render(w as u32) };
+            return 0;
+        }
+        WM_RENDERALLFORMATS => {
+            unsafe { render_all(hwnd) };
+            return 0;
+        }
+        WM_DESTROYCLIPBOARD => {
+            RENDER.lock().unwrap().take();
+            return 0;
+        }
+        _ => {}
+    }
     let handled = matches!(msg, WM_CLIPBOARDUPDATE | WM_CANCEL_RETRY)
         || (msg == WM_TIMER && w == RETRY_TIMER);
     if !handled {
@@ -463,6 +620,39 @@ impl Native {
     pub fn write_received(&self, text: &str) -> bool {
         write(self.hwnd as HWND, text, true).is_ok()
     }
+    /// A received image, pasteable at once (delayed rendering, WN-36).
+    pub fn write_received_image(&self, image: Arc<wind_core::clipboard::IncomingImage>) -> bool {
+        write_image(self.hwnd as HWND, image, true).is_ok()
+    }
+    #[cfg(debug_assertions)]
+    #[allow(dead_code)]
+    pub fn write_image_test(
+        &self,
+        image: Arc<wind_core::clipboard::IncomingImage>,
+        protected: bool,
+    ) -> io::Result<()> {
+        write_image(self.hwnd as HWND, image, protected)
+    }
+    /// Puts a plain image (CF_DIB and "PNG", rendered now) as another app would.
+    #[cfg(debug_assertions)]
+    #[allow(dead_code)]
+    pub fn put_image_test(&self, png: &[u8], dib: &[u8]) -> io::Result<()> {
+        let _gate = access(true).unwrap();
+        unsafe {
+            let f = formats()?;
+            let _open = Open::acquire(std::ptr::null_mut())?;
+            if EmptyClipboard() == 0 {
+                return Err(io::Error::last_os_error());
+            }
+            if !png.is_empty() {
+                put(f.png, png)?;
+            }
+            if !dib.is_empty() {
+                put(DIB, dib)?;
+            }
+            Ok(())
+        }
+    }
     #[cfg(debug_assertions)]
     #[allow(dead_code)] // CCS/1 IO:external isolated OS proof uses this entry, never shipped in release.
     pub fn write_test(&self, text: &str, protected: bool) -> io::Result<()> {
@@ -474,7 +664,9 @@ impl Native {
         let _gate = access(true).unwrap();
         unsafe {
             let _open = Open::acquire(self.hwnd as HWND)?;
-            if GetClipboardOwner() != self.hwnd as HWND {
+            // Ours, or ownerless (put_image_test opens without a window, as another app would).
+            let owner = GetClipboardOwner();
+            if owner != self.hwnd as HWND && !owner.is_null() {
                 if CountClipboardFormats() == 0 {
                     return Ok(());
                 }

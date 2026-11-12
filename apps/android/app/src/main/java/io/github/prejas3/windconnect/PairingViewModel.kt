@@ -194,6 +194,7 @@ class PairingViewModel(application: Application) : AndroidViewModel(application)
     private fun clearSas() { sas?.cancel(); sas = null }
 
     fun setClipboardEnabled(value: Boolean) { core?.setClipboardEnabled(value) }
+    fun setClipboardImageLimit(mb: Int) { core?.setClipboardImageLimit(mb) }
     fun sendClipboard() { viewModelScope.launch { core?.sendCurrentClipboard() } }
 
     fun cameraError() { mutableUi.update { it.copy(screen = "error", message = "Nie udało się otworzyć aparatu. Zamknij inne aplikacje korzystające z aparatu i spróbuj ponownie.") } }

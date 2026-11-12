@@ -1,4 +1,8 @@
-//! CCS/1 PURPOSE:finite real QR/TLS + native clipboard peer, 100 OS-to-OS applied-ack samples. Synthetic data only.
+//! CCS/1 PURPOSE:finite real QR/TLS + native clipboard peer, 100 OS-to-OS applied-ack samples, and WN-36 screenshot-sized images
+//! (copy on the PC -> pasteable on the phone, -> complete there; phone -> PC image). Synthetic data only.
+#[path = "../src/clipboard_image.rs"]
+#[allow(dead_code)]
+mod clipboard_image;
 #[path = "../src/clipboard_native.rs"]
 #[allow(dead_code)]
 // CCS/1 DEP:uses the subset of the production native adapter needed by this proof.
@@ -15,7 +19,7 @@ use std::{
 };
 use tokio::sync::{mpsc, watch};
 use wind_core::{
-    clipboard::{Clipboard, Connection, Sink, Status},
+    clipboard::{Clipboard, Connection, IncomingImage, Sink, Status},
     identity::DeviceIdentity,
     pairing::{PairedDevicesFile, PairingConfig, PairingListener},
     protocol::DeviceKind,
@@ -29,8 +33,24 @@ struct NativeSink {
     received: AtomicUsize,
     leak: AtomicBool,
     notification: AtomicBool,
+    /// WN-36: images from the phone (the last complete one's size: IMAGE_SIZE).
+    images: AtomicUsize,
 }
 impl Sink for NativeSink {
+    fn apply_image(&self, image: Arc<IncomingImage>) -> bool {
+        if !self.native.write_received_image(image.clone()) {
+            return false;
+        }
+        self.images.fetch_add(1, Ordering::SeqCst);
+        std::thread::spawn(move || {
+            if let Ok(png) = image.wait_complete(Duration::from_secs(10)) {
+                if let Ok(rgba) = clipboard_image::decode_png(&png) {
+                    *IMAGE_SIZE.lock().unwrap() = Some((rgba.width, rgba.height));
+                }
+            }
+        });
+        true
+    }
     fn apply(&self, text: &str) -> bool {
         if !self.native.write_received(text) {
             eprintln!("native test write failed");
@@ -67,10 +87,73 @@ impl Sink for NativeSink {
         if text == "WN35-ANDROID-NOTIFICATION" {
             self.notification.store(true, Ordering::SeqCst);
         }
-        if text.starts_with("WN35-CONTROL-") {
+        if text.starts_with("WN35-CONTROL-") || text.starts_with("WN36-CONTROL-") {
             let _ = self.controls.try_send(text.into());
         }
         true
+    }
+}
+/// The size of the last complete image from the phone.
+static IMAGE_SIZE: Mutex<Option<(u32, u32)>> = Mutex::new(None);
+/// A synthetic screenshot: a desktop gradient, windows with title bars and
+/// rows of "text" strokes, so it compresses like a real one (not noise).
+fn screenshot(width: u32, height: u32) -> clipboard_image::Rgba {
+    let mut pixels = vec![0u8; (width * height * 4) as usize];
+    let mut put = |x: u32, y: u32, c: [u8; 3]| {
+        let i = ((y * width + x) * 4) as usize;
+        pixels[i..i + 4].copy_from_slice(&[c[0], c[1], c[2], 255]);
+    };
+    for y in 0..height {
+        for x in 0..width {
+            put(
+                x,
+                y,
+                [
+                    (20 + x * 60 / width) as u8,
+                    (60 + y * 80 / height) as u8,
+                    110,
+                ],
+            );
+        }
+    }
+    let mut seed = 0x2545_f491u32;
+    let mut next = move || {
+        seed ^= seed << 13;
+        seed ^= seed >> 17;
+        seed ^= seed << 5;
+        seed
+    };
+    for window in 0..6u32 {
+        let (wx, wy) = (60 + window * width / 8, 40 + window * height / 10);
+        let (ww, wh) = (width / 2, height / 2);
+        for y in wy..(wy + wh).min(height) {
+            for x in wx..(wx + ww).min(width) {
+                let title = y < wy + 32;
+                put(x, y, if title { [40, 44, 52] } else { [248, 248, 246] });
+            }
+        }
+        // Text rows: short dark strokes of random length.
+        let mut y = wy + 48;
+        while y + 12 < (wy + wh).min(height) {
+            let mut x = wx + 16;
+            while x + 8 < (wx + ww).min(width) - 16 {
+                let word = 8 + next() % 60;
+                for dy in 0..9 {
+                    for dx in 0..word.min((wx + ww).min(width) - 16 - x) {
+                        if (dx + dy + next() % 3) % 4 != 0 {
+                            put(x + dx, y + dy, [30, 30, 36]);
+                        }
+                    }
+                }
+                x += word + 7;
+            }
+            y += 20;
+        }
+    }
+    clipboard_image::Rgba {
+        width,
+        height,
+        pixels,
     }
 }
 fn main() -> Result<(), Error> {
@@ -144,6 +227,7 @@ async fn run(
         received: AtomicUsize::new(0),
         leak: AtomicBool::new(false),
         notification: AtomicBool::new(false),
+        images: AtomicUsize::new(0),
     });
     hub.set_sink(sink.clone());
     let current: Arc<Mutex<Option<Arc<Connection>>>> = Arc::new(Mutex::new(None));
@@ -180,6 +264,12 @@ async fn run(
         Arc::new(Mutex::new(std::collections::HashMap::new()));
     let measurements = Arc::new(Mutex::new(Vec::<u64>::new()));
     let (complete, mut completed) = watch::channel(None);
+    let image_starts: Arc<Mutex<Option<Instant>>> = Arc::new(Mutex::new(None));
+    let image_samples = Arc::new(Mutex::new(
+        Vec::<(Option<u64>, Option<u64>, usize, bool)>::new(),
+    ));
+    let (image_done, mut images_done) = watch::channel(0usize);
+    let (bench_starts, bench_samples) = (image_starts.clone(), image_samples.clone());
     let (active, times, samples) = (current.clone(), starts.clone(), measurements.clone());
     workers.spawn(async move {
         while input.changed().await.is_ok() {
@@ -197,6 +287,39 @@ async fn run(
             let Some(connection) = connection else {
                 continue;
             };
+            if let Some(payload) = value.image.clone() {
+                // WN-36: what the app does: encode off-thread, send, time "pasteable" and "complete".
+                let copied = image_starts.lock().unwrap().take();
+                let image = tokio::task::spawn_blocking(move || match payload {
+                    clipboard_native::ImagePayload::Png(png) => {
+                        clipboard_image::outgoing_from_png(png.as_ref().clone())
+                    }
+                    clipboard_native::ImagePayload::Dib(dib) => {
+                        clipboard_image::outgoing_from_dib(&dib)
+                    }
+                })
+                .await
+                .unwrap()
+                .expect("a readable screenshot");
+                let size = image.png.len();
+                let pasteable = Arc::new(Mutex::new(None));
+                let at = pasteable.clone();
+                let status = connection
+                    .send_image(image, false, false, move || {
+                        *at.lock().unwrap() = copied.map(|t: Instant| t.elapsed())
+                    })
+                    .await;
+                let complete = copied.map(|t| t.elapsed());
+                let pasteable = *pasteable.lock().unwrap();
+                image_samples.lock().unwrap().push((
+                    pasteable.map(|d| d.as_micros() as u64),
+                    complete.map(|d| d.as_micros() as u64),
+                    size,
+                    status == Status::Applied,
+                ));
+                image_done.send_replace(image_samples.lock().unwrap().len());
+                continue;
+            }
             let index = value
                 .text
                 .strip_prefix("WN35-PC-BENCH-")
@@ -228,6 +351,43 @@ async fn run(
             }
             let values=measurements.lock().unwrap().clone();assert_eq!(values.len(),100);let mut sorted=values.clone();sorted.sort_unstable();
             std::fs::write(root.join("pc-benchmark.json"),serde_json::to_vec_pretty(&serde_json::json!({"samplesMicros":values,"p95Micros":sorted[94],"maxMicros":sorted[99],"startsAt":"native Windows clipboard copy","endsAt":"ack after Android ClipboardManager write","samples":100,"isolatedNoninteractiveClipboard":true})).unwrap()).unwrap();
+        }else if command=="WN36-CONTROL-PC-IMAGE"{
+            // WN-36 done-when: a PC screenshot pasteable on the phone in < 500 ms. CF_DIB only, as a
+            // screenshot tool leaves it (the slower path: the PC encodes the PNG).
+            tokio::time::sleep(Duration::from_millis(500)).await;
+            let shots = [(1920u32, 1080u32, 10usize), (3840, 2160, 3)];
+            for (width, height, count) in shots {
+                let base = screenshot(width, height);
+                for sample in 0..count {
+                    // A different screenshot each time (a moved cursor-sized block): a repeat would be "unchanged".
+                    let mut shot = clipboard_image::Rgba { width, height, pixels: base.pixels.clone() };
+                    for y in 0..16u32 { for x in 0..16u32 {
+                        let i = (((100 + y) * width + 100 + x + sample as u32 * 20) * 4) as usize;
+                        shot.pixels[i..i + 3].copy_from_slice(&[255, sample as u8 * 20, 0]);
+                    } }
+                    let dib = clipboard_image::encode_dib(&shot);
+                    let before = *images_done.borrow();
+                    *bench_starts.lock().unwrap() = Some(Instant::now());
+                    writer.put_image_test(&[], &dib).expect("synthetic screenshot copy");
+                    tokio::time::timeout(Duration::from_secs(20), async { while *images_done.borrow() == before { images_done.changed().await.expect("image sender"); } })
+                        .await.expect("image delivered");
+                    tokio::time::sleep(Duration::from_millis(200)).await;
+                }
+            }
+            let all = bench_samples.lock().unwrap().clone();
+            let report = |from: usize, to: usize| {
+                let part = &all[from..to];
+                let mut pasteable: Vec<u64> = part.iter().filter_map(|s| s.0).collect();
+                let mut complete: Vec<u64> = part.iter().filter_map(|s| s.1).collect();
+                pasteable.sort_unstable(); complete.sort_unstable();
+                serde_json::json!({"samples":part.len(),"allApplied":part.iter().all(|s| s.3),"pngBytes":part.first().map(|s| s.2),
+                    "pasteableMicros":pasteable,"completeMicros":complete,
+                    "pasteableMaxMicros":pasteable.last(),"completeMaxMicros":complete.last()})
+            };
+            std::fs::write(root.join("pc-image-benchmark.json"),serde_json::to_vec_pretty(&serde_json::json!({
+                "startsAt":"native Windows clipboard copy (CF_DIB)","pasteableAt":"Applied after Android setPrimaryClip (content URI)",
+                "completeAt":"ImageDone: the whole PNG on the phone",
+                "fullHd":report(0,10),"uhd4k":report(10,13)})).unwrap()).unwrap();
         }else if command=="WN35-CONTROL-PC-PRIVATE"{
             tokio::time::sleep(Duration::from_millis(100)).await;writer.write_test("WN35-PRIVATE-PC",true).unwrap();
             tokio::time::sleep(Duration::from_millis(200)).await;writer.write_test("WN35-PC-PRIVATE-CHECK",false).unwrap();
@@ -244,7 +404,7 @@ async fn run(
                 if directory.join("done").exists(){break;}
                 if let Some(Err(error))=workers.try_join_next(){return Err(error.into());}
                 std::fs::write(directory.join("connected.txt"),if active.is_some(){"true"}else{"false"})?;
-                std::fs::write(directory.join("clipboard-state.json"),serde_json::to_vec(&serde_json::json!({"received":sink.received.load(Ordering::SeqCst),"privacyLeak":sink.leak.load(Ordering::SeqCst),"notification":sink.notification.load(Ordering::SeqCst)}))?)?;
+                std::fs::write(directory.join("clipboard-state.json"),serde_json::to_vec(&serde_json::json!({"received":sink.received.load(Ordering::SeqCst),"privacyLeak":sink.leak.load(Ordering::SeqCst),"notification":sink.notification.load(Ordering::SeqCst),"imagesFromPhone":sink.images.load(Ordering::SeqCst),"phoneImageSize":IMAGE_SIZE.lock().unwrap().map(|(w,h)|vec![w,h])}))?)?;
             },
             _=pairing.next_event()=>{},
         incoming=sessions.recv()=>{if let Some(((session,_),queue))=incoming{*current.lock().unwrap()=Some(hub.attach(session.clone(),queue));native.set_monitoring(true);active=Some(session);}else{break;}},

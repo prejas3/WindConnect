@@ -16,7 +16,7 @@ import kotlinx.coroutines.flow.first
 import org.junit.Assert.*
 import java.io.File
 
-/** CCS/1 PURPOSE:real OS->QUIC->OS applied ack; synthetic text only, no clipboard read in background. */
+/** CCS/1 PURPOSE:real OS->QUIC->OS applied ack; synthetic text and images (WN-36) only, no clipboard read in background. */
 object ClipboardProof {
     fun run(compose: AndroidComposeTestRule<ActivityScenarioRule<MainActivity>, MainActivity>) = runBlocking {
         val activity = compose.activity
@@ -97,6 +97,51 @@ object ClipboardProof {
             delay(100)
             assertEquals(receivedBeforePrivate + 1, core.clipboardUi.value.received)
             instrumentation.runOnMainSync { assertEquals("WN35-PC-PRIVATE-CHECK", manager.primaryClip!!.getItemAt(0).text.toString()) }
+
+            // WN-36: PC screenshots (10 × 1080p, 3 × 4K) arrive in the background as text does; the PC times them.
+            val receivedBeforeImages = core.clipboardUi.value.received
+            val deliveredBeforeImages = core.clipboardUi.value.delivered
+            copy("WN36-CONTROL-PC-IMAGE")
+            awaitDelivered(deliveredBeforeImages)
+            compose.activityRule.scenario.moveToState(Lifecycle.State.CREATED)
+            withTimeout(120_000) { core.clipboardUi.first { it.received >= receivedBeforeImages + 13 } }
+            compose.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
+            compose.waitForIdle()
+            var imageUri: android.net.Uri? = null
+            instrumentation.runOnMainSync {
+                val clip = manager.primaryClip!!
+                assertTrue("an image clip", clip.description.hasMimeType("image/png"))
+                assertNull(clip.getItemAt(0).text)
+                assertFalse("images are not marked sensitive (preview works)", clip.description.extras?.getBoolean("android.content.extra.IS_SENSITIVE", false) ?: false)
+                imageUri = clip.getItemAt(0).uri
+            }
+            // A paste: the whole PNG through the URI; a preview: the thumbnail.
+            val pasted = activity.contentResolver.openInputStream(imageUri!!)!!.use { it.readBytes() }
+            val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            android.graphics.BitmapFactory.decodeByteArray(pasted, 0, pasted.size, bounds)
+            assertEquals(3840 to 2160, bounds.outWidth to bounds.outHeight)
+            val preview = activity.contentResolver.loadThumbnail(imageUri!!, android.util.Size(96, 96), null)
+            assertTrue(preview.width in 1..512)
+            delay(300)
+            assertEquals("our own received image is never sent back", deliveredBeforeImages + 1, core.clipboardUi.value.delivered)
+
+            // Phone -> PC: an image another app put on the clipboard (MediaStore URI), sent when focused.
+            val values = android.content.ContentValues().apply {
+                put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, "wn36-test-${SystemClock.elapsedRealtimeNanos()}.png")
+                put(android.provider.MediaStore.Images.Media.MIME_TYPE, "image/png")
+                put(android.provider.MediaStore.Images.Media.RELATIVE_PATH, "Pictures/WindConnectTest")
+            }
+            val stored = activity.contentResolver.insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)!!
+            try {
+                activity.contentResolver.openOutputStream(stored)!!.use { out ->
+                    val bitmap = android.graphics.Bitmap.createBitmap(800, 600, android.graphics.Bitmap.Config.ARGB_8888).apply { eraseColor(android.graphics.Color.rgb(20, 120, 110)) }
+                    bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out)
+                }
+                val beforePhoneImage = core.clipboardUi.value.delivered
+                instrumentation.runOnMainSync { manager.setPrimaryClip(ClipData.newUri(activity.contentResolver, "WN36 image", stored)) }
+                awaitDelivered(beforePhoneImage)
+                assertEquals("Obraz wysłany na komputer", core.clipboardUi.value.status)
+            } finally { activity.contentResolver.delete(stored, null, null) }
 
             compose.activityRule.scenario.moveToState(Lifecycle.State.CREATED)
             copy("WN35-ANDROID-NOTIFICATION")
