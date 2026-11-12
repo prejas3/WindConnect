@@ -30,7 +30,12 @@ async fn two_devices_discover_each_other() {
     .await
     .expect("both advertisements must resolve");
     println!("mutual mDNS discovery: {:?}", started.elapsed());
-    assert!(started.elapsed() < Duration::from_secs(1));
+    // WN-108: the budget is probing plus the first announcement, not 1 s.
+    // RFC 6762 §8.1: a random 0-250 ms start, then 3 probes 250 ms apart,
+    // so up to ~1 s before the name is ours and announced (measured on
+    // Windows: 834-1012 ms; 1 s failed now and then). 2 s holds that with
+    // room for a loaded host; the 5 s timeout above stays the hard limit.
+    assert!(started.elapsed() < Duration::from_secs(2));
 }
 
 #[test]
