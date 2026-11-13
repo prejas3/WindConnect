@@ -13,6 +13,11 @@
     <form id="open-on-phone" class="open-on-phone" hidden><input id="phone-url" type="url" inputmode="url" placeholder="https://…" aria-label="Link do otwarcia na telefonie" autocomplete="off"><button class="button small" type="submit">Otwórz na telefonie</button></form>
     <p id="open-on-phone-status" class="find-status subtle" role="status"></p>
     <button id="open-sms" class="button small sms-open" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8m-8 3h5"/></svg>Wiadomości</button>
+    <section id="gallery" class="transfers gallery" aria-labelledby="gallery-title" hidden>
+      <div class="transfers-head"><h2 id="gallery-title">Ostatnie zdjęcia</h2><span class="subtle">przeciągnij na pulpit</span></div>
+      <ul id="gallery-list" class="gallery-list"></ul>
+      <p id="gallery-status" class="find-status subtle" role="status"></p>
+    </section>
     <section id="media" class="media-card" aria-labelledby="media-title" hidden>
       <img id="media-art" class="media-art" alt="" hidden>
       <div class="media-body">

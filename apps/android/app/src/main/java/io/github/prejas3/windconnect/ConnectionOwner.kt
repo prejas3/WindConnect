@@ -97,6 +97,13 @@ class ConnectionOwner(private val application: Application) {
     private val mutableSmsSendAccess = MutableStateFlow(false)
     val smsSendAccess = mutableSmsSendAccess.asStateFlow()
     fun setSmsSendAllowed(value: Boolean) { val opened = core ?: return; scope.launch { opened.setSmsSendAllowed(value) } }
+    // WN-58: photos in the PC's panel (own consent, default off; photo access asked when turned on).
+    private val mutableGalleryAllowed = MutableStateFlow(false)
+    val galleryAllowed = mutableGalleryAllowed.asStateFlow()
+    private val mutableGalleryAccess = MutableStateFlow(false)
+    val galleryAccess = mutableGalleryAccess.asStateFlow()
+    fun setGalleryAllowed(value: Boolean) { val opened = core ?: return; scope.launch { opened.setGalleryAllowed(value) } }
+    fun refreshGallery() { val opened = core ?: return; scope.launch { opened.refreshGallery() } }
     // WN-100: actions on the PC, and links from it.
     private val mutableOpenLinks = MutableStateFlow(true)
     val openLinks = mutableOpenLinks.asStateFlow()
@@ -134,6 +141,8 @@ class ConnectionOwner(private val application: Application) {
                 launch { opened.smsContacts.collect { mutableSmsContacts.value = it } }
                 launch { opened.smsSendAllowed.collect { mutableSmsSendAllowed.value = it } }
                 launch { opened.smsSendAccess.collect { mutableSmsSendAccess.value = it } }
+                launch { opened.galleryAllowed.collect { mutableGalleryAllowed.value = it } }
+                launch { opened.galleryAccess.collect { mutableGalleryAccess.value = it } }
                 launch { opened.callsAllowed.collect { mutableCallsAllowed.value = it } }
                 launch { opened.openLinks.collect { mutableOpenLinks.value = it } }
                 launch { opened.callsAccess.collect { mutableCallsAccess.value = it } }

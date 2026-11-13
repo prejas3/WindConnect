@@ -58,7 +58,7 @@ use crate::input::{InputAnnouncement, InputEvent, InputReceiver, InputSender};
 use crate::protocol::InputMessage;
 pub use router::{
     capability_name, is_uni, ActionStream, BidiStream, ChannelMessage, FileStream, FindStream,
-    Router, SmsStream,
+    GalleryStream, Router, SmsStream,
 };
 
 use crate::identity::PublicKey;
@@ -89,7 +89,7 @@ pub fn send_priority(channel: Channel) -> i32 {
         Channel::Clipboard => 2,
         Channel::Notify | Channel::NotifyAction => 3,
         Channel::Media | Channel::MediaControl | Channel::Volume => 4,
-        Channel::Actions | Channel::Find | Channel::Sms => 5,
+        Channel::Actions | Channel::Find | Channel::Sms | Channel::Gallery => 5,
         Channel::Battery => 6,
         Channel::Files => 7,
     }
@@ -607,6 +607,7 @@ impl Session {
             .chain(router.actions.as_ref().map(|(v, _)| (Channel::Actions, *v)))
             .chain(router.find.as_ref().map(|_| (Channel::Find, 1)))
             .chain(router.sms.as_ref().map(|_| (Channel::Sms, 1)))
+            .chain(router.gallery.as_ref().map(|_| (Channel::Gallery, 1)))
             .chain(router.input.as_ref().map(|_| (Channel::Input, 1)))
             .map(|(channel, version)| Accept {
                 channel,
@@ -663,6 +664,7 @@ impl Session {
             router.actions.map(|(_, tx)| tx),
             router.find,
             router.sms,
+            router.gallery,
         ));
         (Session { inner }, events_rx)
     }
@@ -908,6 +910,21 @@ impl Session {
         Ok(SmsStream {
             send,
             recv: FramedRecv::new(recv, Channel::Sms),
+        })
+    }
+
+    /// Opens a `gallery` stream: one request to the phone (§9.13); see
+    /// [`crate::gallery`].
+    pub async fn open_gallery(&self) -> Result<GalleryStream, SessionError> {
+        if !self.peer_accepts(Channel::Gallery) {
+            return Err(SessionError::CapabilityMissing(Channel::Gallery));
+        }
+        let (mut send, recv) = self.inner.conn.quinn().open_bi().await?;
+        let _ = send.set_priority(send_priority(Channel::Gallery));
+        send.write_all(&stream_header(Channel::Gallery)).await?;
+        Ok(GalleryStream {
+            send,
+            recv: FramedRecv::new(recv, Channel::Gallery),
         })
     }
 
@@ -1543,6 +1560,7 @@ async fn bidi_loop(
     actions: Option<mpsc::Sender<ActionStream>>,
     find: Option<mpsc::Sender<FindStream>>,
     sms: Option<mpsc::Sender<SmsStream>>,
+    gallery: Option<mpsc::Sender<GalleryStream>>,
 ) {
     let conn = inner.conn.quinn().clone();
     loop {
@@ -1555,6 +1573,7 @@ async fn bidi_loop(
         let actions = actions.clone();
         let find = find.clone();
         let sms = sms.clone();
+        let gallery = gallery.clone();
         // Each stream on its own, so a slow header holds back nothing else.
         tokio::spawn(async move {
             let mut header = [0u8; 2];
@@ -1572,6 +1591,7 @@ async fn bidi_loop(
                 Ok(Channel::Actions) => (Channel::Actions, actions),
                 Ok(Channel::Find) => (Channel::Find, find),
                 Ok(Channel::Sms) => (Channel::Sms, sms),
+                Ok(Channel::Gallery) => (Channel::Gallery, gallery),
                 Ok(_) => {
                     close(
                         &inner.conn,

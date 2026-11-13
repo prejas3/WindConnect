@@ -13,6 +13,7 @@ mod clipboard_history;
 mod clipboard_image;
 mod clipboard_native;
 mod files;
+mod gallery;
 mod hotkey;
 pub mod indicator;
 mod instance;
@@ -233,6 +234,7 @@ fn main() {
         .manage(files::Runtime::default())
         .manage(clipboard::Runtime::default())
         .manage(sms::Sms::default())
+        .manage(gallery::Gallery::default())
         .setup(move |app| {
             if let Err(error) = shell_menu::install() {
                 eprintln!("Explorer menu unavailable: {error}");
@@ -299,6 +301,7 @@ fn main() {
             tauri::WindowEvent::Focused(false)
                 if window.label() == "tray-menu"
                     || (window.label() == "panel"
+                        && !gallery::DRAGGING_OUT.load(std::sync::atomic::Ordering::SeqCst)
                         && !window
                             .state::<files::Runtime>()
                             .dragging
@@ -307,7 +310,11 @@ fn main() {
                 let _ = window.hide();
             }
             // CCS/1 FLOW:files dropped on the panel or the main window go to the phone (WN-39).
-            tauri::WindowEvent::DragDrop(event) if matches!(window.label(), "panel" | "main") => {
+            // WN-58: a photo dragged out of the panel is not a file to send back, even over the panel itself.
+            tauri::WindowEvent::DragDrop(event)
+                if matches!(window.label(), "panel" | "main")
+                    && !gallery::DRAGGING_OUT.load(std::sync::atomic::Ordering::SeqCst) =>
+            {
                 let runtime = window.state::<files::Runtime>();
                 let over = match event {
                     tauri::DragDropEvent::Enter { .. } | tauri::DragDropEvent::Over { .. } => true,
@@ -372,6 +379,10 @@ fn main() {
             files::files_action,
             clipboard::clipboard_snapshot,
             sms::sms_status,
+            gallery::gallery_state,
+            gallery::gallery_prefetch,
+            gallery::gallery_drag,
+            gallery::gallery_open,
             sms::sms_threads,
             sms::sms_thread,
             sms::sms_older,

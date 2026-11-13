@@ -450,6 +450,38 @@ class WindCore private constructor(
         applySms()
         client.smsChanged()
     }
+
+    // WN-58: the newest photos and screenshots in the PC's panel. Own consent (setting off by default) and photo access,
+    // asked only when the person turns it on.
+    private val phoneGallery = PhoneGallery(appContext).also { client.setGallerySource(it) }
+    private val mutableGalleryAllowed = MutableStateFlow(settings.getBoolean(GALLERY_ALLOWED, false))
+    /** "Zdjęcia na komputerze" (default off). */
+    val galleryAllowed: StateFlow<Boolean> = mutableGalleryAllowed.asStateFlow()
+    private val mutableGalleryAccess = MutableStateFlow(phoneGallery.canRead())
+    /** Photo access granted (re-read by [refreshGallery]). */
+    val galleryAccess: StateFlow<Boolean> = mutableGalleryAccess.asStateFlow()
+    init { applyGalleryLocal() }
+    private fun applyGalleryLocal(): Boolean {
+        val on = mutableGalleryAllowed.value && mutableGalleryAccess.value
+        client.setGalleryEnabled(on)
+        phoneGallery.observe(on) { client.galleryChanged() }
+        return on
+    }
+    private suspend fun applyGallery() {
+        val on = applyGalleryLocal()
+        val live = gate.withLock { connection }
+        try { live?.setGalleryAccepted(on) } catch (error: Exception) { if (error is CancellationException) throw error }
+    }
+    suspend fun setGalleryAllowed(value: Boolean) = withContext(Dispatchers.IO) {
+        settings.edit().putBoolean(GALLERY_ALLOWED, value).apply()
+        mutableGalleryAllowed.value = value
+        applyGallery()
+    }
+    /** Photo access changes in the system dialog or settings: re-read it when the app comes back. */
+    suspend fun refreshGallery() = withContext(Dispatchers.IO) {
+        mutableGalleryAccess.value = phoneGallery.canRead()
+        applyGallery()
+    }
     private var stopped = false
     private var observer: NetworkObserver? = null
     private var desiredPeer: Pair<String, ByteArray>? = null
@@ -717,6 +749,7 @@ class WindCore private constructor(
                 stopMedia()
                 stopNotify()
                 phoneSms.observe(false) {}
+                phoneGallery.observe(false) {}
                 phoneSms.close()
                 pcPlayer.clear()
                 desiredPeer = null
@@ -1020,6 +1053,7 @@ class WindCore private constructor(
         private const val OPEN_LINKS = "open_links"
         private const val CALLS_ALLOWED = "calls_allowed"
         private const val SMS_SEND_ALLOWED = "sms_send_allowed"
+        private const val GALLERY_ALLOWED = "gallery_allowed"
 
         suspend fun open(context: Context, name: String, bindAddress: String = "0.0.0.0:0"): WindCore {
             var native: CoreClient? = null

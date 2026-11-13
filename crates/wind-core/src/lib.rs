@@ -8,6 +8,7 @@ pub mod clipboard;
 pub mod discovery;
 pub mod files;
 pub mod find;
+pub mod gallery;
 pub mod identity;
 pub mod input;
 pub mod media;

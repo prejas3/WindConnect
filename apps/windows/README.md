@@ -526,6 +526,27 @@ Zdjęcia z odebranych MMS ładują się przy przewijaniu. Wysyłanie trzeba
 włączyć na telefonie („Wysyłanie z komputera”); do tego czasu pole to mówi.
 Pomiar: `scripts/check-sms-send-android.cjs`.
 
+## Ostatnie zdjęcia w panelu (WN-58)
+
+Gdy telefon udostępnia zdjęcia („Zdjęcia na komputerze”, PROTOCOL.md §9.13,
+`gallery/1`), panel pokazuje 10 najnowszych zdjęć i zrzutów ekranu (dwa rzędy
+po pięć). Nowe zdjęcie przychodzi przez obserwację (`Watch` → `Recent` →
+miniatury tylko nowych), bez odpytywania. Naciśnięcie zdjęcia zaczyna
+pobierać oryginał; przeciągnięcie oddaje go Windows jako plik (OLE
+`DoDragDrop`, obiekt danych powłoki z `SHCreateItemFromParsingName`, tylko
+kopiowanie), a kliknięcie lub Enter otwiera go w domyślnej przeglądarce. Gdy
+przycisk puszczono, zanim oryginał doszedł, panel prosi o ponowne
+przeciągnięcie (plik już czeka). Własne przeciągnięcie nie jest brane za
+pliki do wysłania na telefon ani nie chowa panelu.
+Miniatury są tylko w pamięci; oryginały w `%TEMP%\WindConnect\gallery`
+(najwyżej 8), usuwane z końcem sesji, przy połączeniu innego telefonu i przy
+starcie. Nazwy sprawdza rdzeń (jedna część ścieżki, nic, czego Windows nie
+utworzy).
+Pomiar: `scripts/check-gallery-android.cjs` (prawdziwa aplikacja + emulator:
+nowe zdjęcie od polecenia do narysowanej miniatury < 1 s, oryginał zgodny co
+do SHA-256, ustawienie telefonu wył./wł.). Samo przeciągnięcie myszą wymaga
+testu ręcznego.
+
 ## Połączenia z telefonu (WN-57)
 
 Ustawienie „Połączenia z telefonu” (okno główne, domyślnie włączone,

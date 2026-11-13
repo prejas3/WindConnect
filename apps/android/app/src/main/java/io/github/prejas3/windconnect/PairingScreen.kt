@@ -67,6 +67,7 @@ fun PairingScreen(model: PairingViewModel, diagnostic: @Composable () -> Unit) {
                 MediaControls()
                 NotifyControls()
                 SmsControls()
+                GalleryControls()
                 CallControls()
                 LinkControls()
                 ClipboardControls(state, model::sendClipboard, model::setClipboardEnabled, model::setClipboardImageLimit)

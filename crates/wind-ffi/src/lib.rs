@@ -14,6 +14,7 @@ use zeroize::{Zeroize, Zeroizing};
 
 uniffi::setup_scaffolding!();
 mod file_transfer;
+mod gallery_bridge;
 mod phone_actions;
 mod phone_extras;
 mod sms_bridge;
@@ -21,6 +22,7 @@ pub use file_transfer::{
     FileCommitResult, FileCommitStatus, FileDestination, FileTransfer, IncomingControl,
     IncomingFile,
 };
+pub use gallery_bridge::{GalleryItem, GalleryItems, GalleryOriginal, GallerySource, GalleryThumb};
 pub use phone_actions::UrlOpener;
 pub use phone_extras::{CallActionSink, CallerInfo, MissedCall, VolumeSink};
 pub use sms_bridge::{
@@ -451,6 +453,10 @@ pub struct CoreClient {
     sms: std::sync::Mutex<Option<Arc<wind_core::sms::Server>>>,
     /// The person's setting and READ_SMS (announce `sms/1`).
     sms_enabled: std::sync::atomic::AtomicBool,
+    /// WN-58: one gallery server for the client (its watches end with each session).
+    gallery: std::sync::Mutex<Option<Arc<wind_core::gallery::Server>>>,
+    /// The person's setting and photo access (announce `gallery/1`).
+    gallery_enabled: std::sync::atomic::AtomicBool,
 }
 
 #[derive(uniffi::Record, Clone, Debug)]
@@ -522,6 +528,8 @@ pub async fn open_client(
         call_actions_enabled: std::sync::atomic::AtomicBool::new(false),
         sms: std::sync::Mutex::new(None),
         sms_enabled: std::sync::atomic::AtomicBool::new(false),
+        gallery: std::sync::Mutex::new(None),
+        gallery_enabled: std::sync::atomic::AtomicBool::new(false),
         identity: IdentityInfo {
             public_key: identity.public_key().as_bytes().to_vec(),
             fingerprint: identity.fingerprint().to_hex(),
@@ -573,6 +581,24 @@ impl CoreClient {
     /// SMS changed on the phone (a content observer): the PC's watches get `Changed`.
     pub fn sms_changed(&self) {
         if let Some(server) = self.sms.lock().unwrap().clone() {
+            server.changed();
+        }
+    }
+    /// WN-58: the phone's photos; without them `gallery/1` is never announced.
+    pub fn set_gallery_source(&self, source: Box<dyn GallerySource>) {
+        *self.gallery.lock().unwrap() = Some(wind_core::gallery::Server::new(Arc::new(
+            gallery_bridge::PlatformGallery(source),
+        )));
+    }
+    /// Whether new sessions announce `gallery/1` (the setting on and photo access granted); a live one changes
+    /// with [`CoreConnection::set_gallery_accepted`].
+    pub fn set_gallery_enabled(&self, enabled: bool) {
+        self.gallery_enabled
+            .store(enabled, std::sync::atomic::Ordering::SeqCst);
+    }
+    /// Photos changed on the phone (a MediaStore observer): the PC's watches get `Changed`.
+    pub fn gallery_changed(&self) {
+        if let Some(server) = self.gallery.lock().unwrap().clone() {
             server.changed();
         }
     }
@@ -1039,6 +1065,7 @@ impl CoreClient {
         let notify_actions = self.route_notify_actions(&mut router);
         let volume = self.route_volume(&mut router);
         let sms = self.route_sms(&mut router);
+        let gallery = self.route_gallery(&mut router);
         let call_actions = self.route_call_actions(&mut router);
         let actions = self.route_actions(&mut router);
         let (session, events) = tokio::time::timeout(
@@ -1059,6 +1086,7 @@ impl CoreClient {
         self.serve_pc_media(pc_media);
         self.serve_find(find);
         self.serve_sms(sms);
+        self.serve_gallery(gallery);
         self.serve_call_actions(call_actions);
         self.serve_actions(&session, actions);
         self.serve_notify_actions(notify_actions);
@@ -1208,6 +1236,23 @@ impl CoreClient {
         }
         Some((server, streams))
     }
+    /// WN-58: routes `gallery` when there is a source; withdrawn at the start unless allowed and granted.
+    fn route_gallery(&self, router: &mut Router) -> Option<gallery_bridge::GalleryRoute> {
+        let server = self.gallery.lock().unwrap().clone()?;
+        let streams = router.route_gallery(8);
+        if !self
+            .gallery_enabled
+            .load(std::sync::atomic::Ordering::SeqCst)
+        {
+            router.start_disabled(wind_core::protocol::Channel::Gallery);
+        }
+        Some((server, streams))
+    }
+    fn serve_gallery(&self, route: Option<gallery_bridge::GalleryRoute>) {
+        if let Some((server, streams)) = route {
+            tokio::spawn(server.serve(streams));
+        }
+    }
     /// WN-57: routes `call-action` when there is a sink; withdrawn at the start unless "Połączenia na komputerze" is on.
     fn route_call_actions(&self, router: &mut Router) -> Option<phone_extras::CallActionRoute> {
         let sink = self.call_actions.lock().unwrap().clone()?;
@@ -1266,7 +1311,7 @@ impl CoreClient {
             reason: "peer address must be an IP address and port".into(),
         })?;
         let mut changes = self.network.subscribe();
-        let ((session, events),(clipboard_input, find, media, pc_media, notify_actions, volume, sms, call_actions, actions, file_input)) = loop {
+        let ((session, events),(clipboard_input, find, media, pc_media, notify_actions, volume, sms, gallery, call_actions, actions, file_input)) = loop {
             let mut router=Router::new();
             let file_input=router.route_files(1,32);
             router.start_disabled(wind_core::protocol::Channel::Files);
@@ -1277,6 +1322,7 @@ impl CoreClient {
             let notify_actions = self.route_notify_actions(&mut router);
             let volume = self.route_volume(&mut router);
             let sms = self.route_sms(&mut router);
+            let gallery = self.route_gallery(&mut router);
             let call_actions = self.route_call_actions(&mut router);
             let actions = self.route_actions(&mut router);
             let attempt = tokio::time::timeout(
@@ -1290,7 +1336,7 @@ impl CoreClient {
             ),
         );
             tokio::select! {
-                result = attempt => break result.map(|r|r.map(|s|(s,(clipboard_input, find, media, pc_media, notify_actions, volume, sms, call_actions, actions, file_input)))),
+                result = attempt => break result.map(|r|r.map(|s|(s,(clipboard_input, find, media, pc_media, notify_actions, volume, sms, gallery, call_actions, actions, file_input)))),
                 changed = changes.changed() => {
                     if changed.is_err() { return Err(CoreError::Transport { reason: "network observer stopped".into() }); }
                 }
@@ -1303,6 +1349,7 @@ impl CoreClient {
         self.serve_pc_media(pc_media);
         self.serve_find(find);
         self.serve_sms(sms);
+        self.serve_gallery(gallery);
         self.serve_call_actions(call_actions);
         self.serve_actions(&session, actions);
         self.serve_notify_actions(notify_actions);
@@ -1801,6 +1848,14 @@ impl CoreConnection {
     pub async fn set_sms_accepted(&self, accept: bool) -> Result<bool, CoreError> {
         self.session
             .set_accepted(wind_core::protocol::Channel::Sms, accept)
+            .await
+            .map_err(session_error)
+    }
+    /// WN-58: announce or withdraw `gallery/1` on this session (the setting "Zdjęcia na komputerze" with photo
+    /// access); true when it changed. Withdrawn, the PC's watch ends and new requests are refused.
+    pub async fn set_gallery_accepted(&self, accept: bool) -> Result<bool, CoreError> {
+        self.session
+            .set_accepted(wind_core::protocol::Channel::Gallery, accept)
             .await
             .map_err(session_error)
     }

@@ -295,5 +295,6 @@ async function start() {
 }
 start().catch(error);
 import './clipboard.js';
+import './photos.js';
 import { renderNotifications } from './notifications.js';
 import { renderPhoneVolume } from './phonevolume.js';

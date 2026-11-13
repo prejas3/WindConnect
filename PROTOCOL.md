@@ -194,7 +194,8 @@ od serwera, przykład w sekcji 7.1), `files` (odpowiedzi odbiorcy pliku) i
 | `0c` | `call` | uni | telefon: stan połączenia (§9.10) | 1 |
 | `0d` | `sms` | bidi | komputer; 1 na prośbę o wątki, wiadomości, zdjęcie albo obserwację (§9.11) | 5 |
 | `0e` | `call-action` | uni | komputer: odrzuć lub wycisz dzwoniące połączenie telefonu (§9.12) | 1 |
-| `0f`–`3f` | zarezerwowane dla przyszłych kanałów | | | |
+| `0f` | `gallery` | bidi | komputer; 1 na prośbę o listę, miniaturę, oryginał albo obserwację (§9.13) | 5 |
+| `10`–`3f` | zarezerwowane dla przyszłych kanałów | | | |
 | `40`–`ff` | niedozwolone w v1 | | | |
 
 Zasady:
@@ -431,6 +432,7 @@ Możliwości v1.0:
 | `actions/1` | strona przyjmuje prośby o akcje (kanał `actions`, §9.2) |
 | `battery/1` | strona przyjmuje stan baterii drugiej strony (kanał `battery`, §9.4, WN-49) |
 | `find/1` | strona potrafi zadzwonić na prośbę drugiej (kanał `find`, §9.5, WN-50) |
+| `gallery/1` | strona udostępnia drugiej swoje najnowsze zdjęcia i zrzuty ekranu: przyjmuje prośby na kanale `gallery` (§9.13, WN-58) |
 | `sms/1` | strona udostępnia drugiej do odczytu swoje wątki SMS/MMS (WN-55) i, za osobną zgodą, wysyłanie przez siebie (WN-56): przyjmuje prośby na kanale `sms` (§9.11) |
 
 Zasady:
@@ -1044,7 +1046,8 @@ dokumentu:
    koniec transferu to FIN obu stron. Strumień `files` przyjmuje tylko
    strona, która ogłosiła `files/1`. Tak samo `actions` (§9.2, nagłówek
    `01 06`), który przyjmuje tylko strona z `actions/1`, i `sms` (§9.11,
-   nagłówek `01 0d`), który przyjmuje tylko strona z `sms/1`.
+   nagłówek `01 0d`), który przyjmuje tylko strona z `sms/1`, i `gallery`
+   (§9.13, nagłówek `01 0f`), który przyjmuje tylko strona z `gallery/1`.
 
 ### 9.1 Kanał `files` (`05`, WC-38)
 
@@ -1960,6 +1963,88 @@ Przykłady (z nagłówkiem długości ramki): nagłówek strumienia `01 0e`;
 `Reject` połączenia 7: `05 82 00 a1 00 07`; `Silence` połączenia 7:
 `05 82 01 a1 00 07`.
 
+### 9.13 Kanał `gallery` (`0f`, WN-58)
+
+CCS/1
+PURPOSE:ostatnie zdjęcia i zrzuty ekranu telefonu w panelu komputera: lista i miniatury od razu, nowe zdjęcie w panelu < 1 s od zrobienia, oryginał w pełnej jakości dopiero przy przeciągnięciu albo otwarciu.
+RULE:`gallery/1` ogłasza telefon tylko z włączonym ustawieniem „Zdjęcia na komputerze” i dostępem do zdjęć (Android 13+: `READ_MEDIA_IMAGES`, 10–12: `READ_EXTERNAL_STORAGE`); bez jednego z nich wycofuje możliwość (§6, zasada 5). Komputer nie ogłasza `gallery/1`.
+
+**Strumień.** Jak `sms` (§9.11): jedna prośba to jeden strumień bidi
+otwarty przez komputer, nagłówek `01 0f`, jedna wiadomość, FIN. Telefon
+odpowiada w kierunku powrotnym (bez nagłówka) odpowiedzią i dokładnie
+jednym `End`, potem FIN. Wyjątek: `Watch` trwa, dopóki któraś strona nie
+zakończy strumienia. Ramki do 1 MiB (§4.2).
+
+Od komputera:
+
+| typ | nazwa | pola `body` |
+|---|---|---|
+| 0 | `Recent` | `0 limit`: uint 1–60; najnowsze zdjęcia, od najnowszego |
+| 1 | `Thumb` | `0 id`: uint; `1 size`: uint 64–512, dłuższy bok w px |
+| 2 | `Original` | `0 id`: uint |
+| 3 | `Watch` | pusta mapa |
+
+Od telefonu:
+
+| typ | nazwa | pola `body` |
+|---|---|---|
+| 0 | `Items` | `0 items`: tablica do 60 zdjęć |
+| 1 | `Thumb` | `0 jpeg`: bajty 1–65 536, JPEG (`ff d8 ff`) |
+| 2 | `File` | `0 name`: tekst 1–255 B, jedna część ścieżki według §9.1 (bez `/`, `\`, `:`, znaków sterujących, nazw urządzeń Windows); `1 mime`: tekst 1–64 B; `2 size`: uint 1 B–256 MiB |
+| 3 | `Chunk` | `0 data`: bajty 1–262 144 |
+| 4 | `Changed` | pusta mapa |
+| 5 | `End` | `0 status`: uint, jak w §9.11 (0 gotowe, 1 odmowa, 2 nie ma, 3 zajęte, 4 błąd) |
+
+Zdjęcie (mapa): `0 id` uint (identyfikator telefonu, Android: `_ID`
+MediaStore, stały, dopóki zdjęcie istnieje), `1 date` uint (dodanie, ms od
+epoki; po nim sortuje `Recent`), `2 name` tekst 1–255 B, `3 mime` tekst
+1–64 B, `4 width`, `5 height` uint (0: nieznane), `6 size` uint (bajty
+oryginału), `7 screenshot` bool (zrzut ekranu, Android: folder
+`Screenshots`).
+
+Zasady:
+
+1. Prośba w 5 s od otwarcia strumienia (inaczej `CANCELLED`). Błędna
+   wiadomość albo pole poza zakresem: `MALFORMED_FRAME`; nieznany typ:
+   `UNKNOWN_MESSAGE`; w obu przypadkach `STOP_SENDING` i `RESET_STREAM`,
+   bez odpowiedzi. Wartości spoza zakresu odbiorca odrzuca, nie przycina.
+2. `Recent` zwraca jedno `Items` z najwyżej `limit` zdjęciami (zdjęcia i
+   zrzuty razem; bez oczekujących i usuniętych do kosza), od najnowszego,
+   potem `End` 0. Więcej elementów niż `limit` to błąd odpowiedzi.
+3. `Thumb` zwraca jeden `Thumb`: JPEG o dłuższym boku najwyżej `size`, do
+   64 KiB. Zdjęcia, którego już nie ma: `End` 2.
+4. `Original` zwraca `File`, potem `Chunk`i z bajtami oryginału po kolei,
+   razem dokładnie `size`, potem `End` 0. Nazwę, której komputer nie mógłby
+   utworzyć, telefon zastępuje przed wysłaniem (`IMG_<id>.<rozszerzenie>`).
+   Gdy plik da mniej bajtów, niż zapowiedział (zmienił się w trakcie
+   czytania), telefon przerywa strumień (`RESET_STREAM`, `CANCELLED`), bez
+   `End`. Komputer, który dostanie więcej bajtów niż `size` albo `End` 0
+   przed ostatnim bajtem, odrzuca cały plik. Między ramkami najwyżej 20 s.
+5. `Watch`: telefon wysyła `Changed`, gdy zmienią się jego zdjęcia (nowe,
+   usunięte), zebrane w 250 ms (aparat zapisuje zdjęcie w kilku krokach);
+   komputer wtedy pyta od nowa przez `Recent` i prosi o miniatury tylko
+   nowych `id`. Najwyżej 2 obserwacje naraz na sesję; kolejna dostaje od
+   razu `End` 3. Wycofanie `gallery/1` kończy obserwację (§6, zasada 5).
+6. Najwyżej 4 prośby (bez `Watch`) obsługiwane naraz na sesję; kolejne
+   czekają.
+7. Prywatność: nazwy nie trafiają do logów żadnej strony. Komputer trzyma
+   miniatury tylko w pamięci, a oryginał tylko jako plik przekazywany
+   Windows przy przeciągnięciu albo otwarciu (folder tymczasowy aplikacji,
+   usuwany z końcem sesji, przy połączeniu innego telefonu i przy starcie).
+
+Przykłady (z nagłówkiem długości ramki):
+
+```text
+nagłówek strumienia:          01 0f
+Recent limit 20:              05 82 00 a1 00 14
+Thumb id 7, size 256:         09 82 01 a2 00 07 01 19 01 00
+Original id 7:                05 82 02 a1 00 07
+Watch:                        03 82 03 a0
+Chunk [01 02 03]:             08 82 03 a1 00 43 01 02 03
+Changed:                      03 82 04 a0
+End 0 (gotowe):               05 82 05 a1 00 00
+```
+
 ## 10. Kody błędów
 
 Te same kody służą w polu `code` wiadomości `Error` / `Goodbye` oraz jako
@@ -2019,6 +2104,7 @@ ten strumień (`STOP_SENDING` po stronie odbiorcy), nie połączenie.
 | `State` ringing | `05 82 00 a1 00 01` (§9.10) |
 | `Reject` call 7 | `05 82 00 a1 00 07` (§9.12) |
 | wiadomości `sms` | sekcja 9.11 |
+| wiadomości `gallery` | sekcja 9.13 |
 
 Przykłady są wektorami testowymi kodera ramek (WC-06): koder MUSI
 produkować dokładnie te bajty, a dekoder odtwarzać z nich te wiadomości.

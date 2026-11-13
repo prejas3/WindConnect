@@ -806,6 +806,25 @@ je przez obserwację. Najwyżej 10 wysyłek na minutę (rdzeń). Obrazy z
 odebranych MMS idą na komputer na prośbę (`Part`), jako JPEG do 1600 px.
 Testy: `MmsPduTest`, `SmsRulesTest`, `apps/windows/scripts/check-sms-send-android.cjs`.
 
+## Zdjęcia na komputerze (WN-58)
+
+`PhoneGallery` udostępnia panelowi komputera najnowsze zdjęcia i zrzuty
+ekranu (PROTOCOL.md §9.13, `gallery/1`): lista z MediaStore (wszystkie
+woluminy zewnętrzne, od `DATE_ADDED`; oczekujące i w koszu MediaStore ukrywa
+sam), miniatury z `loadThumbnail` (JPEG do 64 KiB) i oryginał jako deskryptor
+pliku (`openFileDescriptor` + `detachFd`, rdzeń go czyta i zamyka). Zrzut
+ekranu to zdjęcie z folderu `Screenshots` (`GalleryRules`). Zmiany
+(`ContentObserver` na `content://media`, tylko ścieżki `images`) budzą
+obserwację komputera; rdzeń zbiera je w 250 ms.
+Ustawienie „Zdjęcia na komputerze” (domyślnie wyłączone) prosi o dostęp do
+zdjęć dopiero przy włączeniu (Android 13+: `READ_MEDIA_IMAGES`, 10–12:
+`READ_EXTERNAL_STORAGE`). Odmowa zostawia przełącznik wyłączony; dostęp jest
+sprawdzany przy każdej prośbie. Nazwy nie trafiają do logów.
+LIMIT:dostęp częściowy Androida 14 („wybrane zdjęcia”) nie jest obsługiwany
+osobno: bez pełnego dostępu funkcja jest wyłączona.
+Testy: `GalleryRulesTest`, `apps/windows/scripts/check-gallery-android.cjs`
+(z `GalleryProof`).
+
 ## Połączenia na komputerze (WN-57)
 
 Ustawienie „Połączenia na komputerze” (domyślnie wyłączone) prosi przy
