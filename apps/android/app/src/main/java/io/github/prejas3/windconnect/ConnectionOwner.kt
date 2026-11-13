@@ -12,10 +12,20 @@ import kotlinx.coroutines.sync.withLock
 /** CCS/1 RULE:Activity and service lease one native client; only the final release shuts it down. */
 class WindApplication : Application() {
     val connections = ConnectionOwner(this)
+    var visibleActivities = 0; private set
     override fun onCreate() {
         super.onCreate()
         LauncherShortcuts.publish(this)
         WidgetUpdates.start(this)
+        registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
+            override fun onActivityStarted(activity: android.app.Activity) { visibleActivities++; ReceiveFilesService.ensure(activity) }
+            override fun onActivityStopped(activity: android.app.Activity) { visibleActivities = (visibleActivities - 1).coerceAtLeast(0); ReceiveFilesService.instance?.checkIdle() }
+            override fun onActivityCreated(activity: android.app.Activity, state: android.os.Bundle?) = Unit
+            override fun onActivityResumed(activity: android.app.Activity) = Unit
+            override fun onActivityPaused(activity: android.app.Activity) = Unit
+            override fun onActivitySaveInstanceState(activity: android.app.Activity, state: android.os.Bundle) = Unit
+            override fun onActivityDestroyed(activity: android.app.Activity) = Unit
+        })
     }
 }
 
@@ -89,7 +99,10 @@ class ConnectionOwner(private val application: Application) {
                 launch { opened.notifyApps.collect { mutableNotifyApps.value = it } }
                 launch { opened.pcVolume.collect { mutablePcVolume.value = it } }
                 launch { opened.volumeAllowed.collect { mutableVolumeAllowed.value = it } }
-                opened.state.collect { mutableState.value = it }
+                opened.state.collect {
+                    mutableState.value = it
+                    if (it is ConnectionState.Connected) ReceiveFilesService.ensure(application)
+                }
             }
         }
         opened.clipboardFocus(focused)

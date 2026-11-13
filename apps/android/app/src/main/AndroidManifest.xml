@@ -18,6 +18,9 @@
         android:theme="@style/Theme.WindConnect">
         <service android:name=".ConnectionService" android:exported="false" android:foregroundServiceType="connectedDevice" android:stopWithTask="false" />
         <service android:name=".SendFilesService" android:exported="false" android:foregroundServiceType="connectedDevice" android:stopWithTask="false" />
+        <service android:name=".ReceiveFilesService" android:exported="false" android:foregroundServiceType="connectedDevice" android:stopWithTask="false" />
+        <receiver android:name=".ReceiveFilesCancelReceiver" android:exported="false" />
+        <activity android:name=".ReceiveFilesActivity" android:exported="false" />
         <activity android:name=".ShareFilesActivity" android:exported="true" android:label="@string/share_files">
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />

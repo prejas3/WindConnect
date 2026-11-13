@@ -57,9 +57,28 @@ pub const LOST_RETRY: Duration = Duration::from_secs(1);
 /// Progress is published at most this often (state changes at once).
 pub const PUBLISH_EVERY: Duration = Duration::from_millis(100);
 
+/// CCS/1 IO:verified private file -> platform publication; returning success authorises wire Complete.
+/// Called on a blocking worker without the engine book locked. Default filesystem receivers use no hook.
+pub trait IncomingCommit: Send + Sync + std::fmt::Debug {
+    fn commit(&self, file: &VerifiedIncoming, cancelled: Arc<AtomicBool>) -> io::Result<()>;
+}
+#[derive(Debug, Clone)]
+pub struct VerifiedIncoming {
+    pub peer: [u8; 32],
+    pub id: TransferId,
+    pub relative_path: String,
+    pub path: PathBuf,
+    pub size: u64,
+}
+
 /// Engine settings.
 #[derive(Debug, Clone)]
 pub struct FilesConfig {
+    pub incoming_commit: Option<Arc<dyn IncomingCommit>>,
+    pub max_incoming_file: u64,
+    pub max_incoming_active: u64,
+    /// Space for the private partial and any destination copy (Android uses two).
+    pub incoming_copies: u64,
     /// Organise received files under fixed type folders. Never changes the wire path.
     pub type_folders: bool,
     /// Where incoming files go (created if missing).
@@ -84,6 +103,10 @@ pub struct FilesConfig {
 impl FilesConfig {
     pub fn new(inbox: impl Into<PathBuf>, partials: impl Into<PathBuf>) -> Self {
         FilesConfig {
+            incoming_commit: None,
+            max_incoming_file: u64::MAX,
+            max_incoming_active: u64::MAX,
+            incoming_copies: 1,
             type_folders: false,
             inbox: inbox.into(),
             partials: partials.into(),
@@ -232,6 +255,8 @@ struct Book {
     sessions: HashMap<[u8; 32], (u64, Session)>,
 }
 
+type OfferGates = HashMap<([u8; 32], TransferId), std::sync::Weak<tokio::sync::Mutex<()>>>;
+
 struct Inner {
     config: FilesConfig,
     book: Mutex<Book>,
@@ -242,6 +267,8 @@ struct Inner {
     pending_joins: AtomicUsize,
     offers: Notify,
     attaches: AtomicU64,
+    receive_reservations: Mutex<HashMap<([u8; 32], TransferId), u64>>,
+    offer_gates: Mutex<OfferGates>,
 }
 
 /// The engine: one per application, for every paired device.
@@ -282,6 +309,8 @@ impl FileEngine {
             pending_joins: AtomicUsize::new(0),
             offers: Notify::new(),
             attaches: AtomicU64::new(0),
+            receive_reservations: Mutex::new(HashMap::new()),
+            offer_gates: Mutex::new(HashMap::new()),
         });
         tokio::spawn(publisher(
             Arc::downgrade(&inner),
@@ -394,6 +423,11 @@ impl FileEngine {
     /// a partial incoming file is deleted.
     pub fn cancel(&self, id: &TransferId) -> Result<(), FilesError> {
         let mut book = self.inner.lock();
+        if usize::from(book.out.contains_key(id)) + book.inc.keys().filter(|(_, i)| i == id).count()
+            != 1
+        {
+            return Err(FilesError::Unknown);
+        }
         if let Some(out) = book.out.get_mut(id) {
             if out.info.state.is_finished() {
                 return Err(FilesError::WrongState);
@@ -417,15 +451,66 @@ impl FileEngine {
             }
             match &inc.run {
                 Some(run) => {
-                    run.cancel
-                        .send_replace(Some(End::Cancelled { by_peer: false }));
+                    run.end(End::Cancelled { by_peer: false });
                 }
                 None => {
                     inc.info.state = TransferState::Cancelled { by_peer: false };
                     store::discard(&self.inner.config.partials, &key.0, &key.1);
+                    self.inner.receive_reservations.lock().unwrap().remove(&key);
                 }
             }
         }
+        drop(book);
+        self.inner.publish(true);
+        Ok(())
+    }
+
+    /// Peer-qualified incoming controls: an inbound wire ID can never select an outgoing file.
+    pub fn cancel_outgoing(&self, id: &TransferId) -> Result<(), FilesError> {
+        let mut book = self.inner.lock();
+        let outgoing = book.out.get_mut(id).ok_or(FilesError::Unknown)?;
+        if outgoing.info.state.is_finished() {
+            return Err(FilesError::WrongState);
+        }
+        if let Some(cancel) = &outgoing.cancel {
+            cancel.send_replace(true);
+        } else {
+            outgoing.info.state = TransferState::Cancelled { by_peer: false };
+        }
+        drop(book);
+        self.inner.publish(true);
+        Ok(())
+    }
+    pub fn cancel_incoming(&self, peer: &[u8; 32], id: &TransferId) -> Result<(), FilesError> {
+        let key = (*peer, *id);
+        let mut book = self.inner.lock();
+        let incoming = book.inc.get_mut(&key).ok_or(FilesError::Unknown)?;
+        if incoming.info.state.is_finished() {
+            return Err(FilesError::WrongState);
+        }
+        if let Some(run) = &incoming.run {
+            run.end(End::Cancelled { by_peer: false });
+        } else {
+            incoming.info.state = TransferState::Cancelled { by_peer: false };
+            store::discard(&self.inner.config.partials, peer, id);
+            self.inner.receive_reservations.lock().unwrap().remove(&key);
+        }
+        drop(book);
+        self.inner.publish(true);
+        Ok(())
+    }
+    pub fn forget_incoming(&self, peer: &[u8; 32], id: &TransferId) -> Result<(), FilesError> {
+        let key = (*peer, *id);
+        let mut book = self.inner.lock();
+        let incoming = book.inc.get(&key).ok_or(FilesError::Unknown)?;
+        if !incoming.info.state.is_finished() {
+            return Err(FilesError::WrongState);
+        }
+        book.inc.remove(&key);
+        book.order.retain(|(direction, p, i)| {
+            !(*direction == Direction::Incoming && p == peer && i == id)
+        });
+        self.inner.receive_reservations.lock().unwrap().remove(&key);
         drop(book);
         self.inner.publish(true);
         Ok(())
@@ -1063,13 +1148,14 @@ async fn send_stream(inner: Arc<Inner>, shared: Arc<SendShared>, stream: FileStr
 
 /// An incoming transfer while its streams run.
 struct InRun {
+    publication_cancel: Arc<AtomicBool>,
     peer: [u8; 32],
     offer: Offer,
     partial: Arc<Partial>,
     /// Set to end every stream: cancel, failure, or a newer `Offer`.
     cancel: watch::Sender<Option<End>>,
     /// The final path once complete, or why finishing failed.
-    complete: watch::Sender<Option<Result<PathBuf, String>>>,
+    complete: watch::Sender<Option<Result<PathBuf, FailReason>>>,
     finishing: AtomicBool,
     /// Further stream numbers joined so far.
     joined: Mutex<HashSet<u64>>,
@@ -1085,8 +1171,14 @@ impl InRun {
     }
 
     fn end(&self, end: End) {
+        if matches!(end, End::Cancelled { .. } | End::Failed(_)) {
+            self.publication_cancel.store(true, Ordering::SeqCst);
+        }
         self.cancel.send_if_modified(|e| {
-            if e.is_none() {
+            if e.is_none()
+                || (matches!(e, Some(End::Lost))
+                    && matches!(end, End::Cancelled { .. } | End::Failed(_)))
+            {
                 *e = Some(end);
                 true
             } else {
@@ -1124,13 +1216,50 @@ async fn receive_stream(inner: Arc<Inner>, peer: [u8; 32], mut stream: FileStrea
 
 async fn receive_offer(inner: Arc<Inner>, peer: [u8; 32], offer: Offer, mut stream: FileStream) {
     let key = (peer, offer.id);
+    // CCS/1 RULE:simultaneous repeat Offers share one opener/finalizer for this peer-qualified token.
+    let offer_gate = {
+        let mut gates = inner.offer_gates.lock().unwrap();
+        gates.retain(|_, gate| gate.strong_count() != 0);
+        if let Some(gate) = gates.get(&key).and_then(std::sync::Weak::upgrade) {
+            gate
+        } else {
+            let gate = Arc::new(tokio::sync::Mutex::new(()));
+            gates.insert(key, Arc::downgrade(&gate));
+            gate
+        }
+    };
+    let offer_guard = offer_gate.lock_owned().await;
     let Ok(parts) = path::check(&offer.path) else {
         abort(&mut stream, ErrorCode::MalformedFrame);
         return;
     };
     let parts: Vec<String> = parts.into_iter().map(str::to_owned).collect();
+    let changed = inner.lock().inc.get(&key).is_some_and(|incoming| {
+        incoming.info.path != offer.path || incoming.info.size != offer.size
+    });
+    if changed {
+        abort(&mut stream, ErrorCode::MalformedFrame);
+        return;
+    }
     // Cancelled by the user here: stays refused (a sender's own cancel
     // and retry is a new start).
+    // A reconnect during publication waits for that transaction rather than starting a second copy.
+    let finishing = inner
+        .lock()
+        .inc
+        .get(&key)
+        .and_then(|i| i.run.clone())
+        .filter(|r| r.finishing.load(Ordering::SeqCst));
+    if let Some(old) = finishing {
+        let mut complete = old.complete.subscribe();
+        if tokio::time::timeout(Duration::from_secs(600), until_set(&mut complete))
+            .await
+            .is_err()
+        {
+            abort(&mut stream, ErrorCode::Busy);
+            return;
+        }
+    }
     let (previous, running) = {
         let book = inner.lock();
         let running = book
@@ -1173,6 +1302,35 @@ async fn receive_offer(inner: Arc<Inner>, peer: [u8; 32], offer: Offer, mut stre
         abort(&mut stream, ErrorCode::RateLimited);
         return;
     }
+    // Reserve atomically before any await/open, including concurrent Offers.
+    let reserved = {
+        let mut reservations = inner.receive_reservations.lock().unwrap();
+        let reserved = reservations
+            .iter()
+            .filter(|(k, _)| **k != key)
+            .fold(0u64, |n, (_, size)| n.saturating_add(*size));
+        if offer.size > inner.config.max_incoming_file
+            || reserved.saturating_add(offer.size) > inner.config.max_incoming_active
+            || (!reservations.contains_key(&key) && reservations.len() >= MAX_INCOMING)
+        {
+            None
+        } else {
+            reservations.insert(key, offer.size);
+            Some(reserved)
+        }
+    };
+    let Some(reserved) = reserved else {
+        abort(&mut stream, ErrorCode::NoSpace);
+        record_in(
+            &inner,
+            &offer,
+            peer,
+            TransferState::Failed(FailReason::NoSpace),
+            0,
+            None,
+        );
+        return;
+    };
     let opened = {
         let (root, offer) = (inner.config.partials.clone(), offer.clone());
         blocking(move || Partial::open(&root, &peer, &offer)).await
@@ -1180,6 +1338,7 @@ async fn receive_offer(inner: Arc<Inner>, peer: [u8; 32], offer: Offer, mut stre
     let (partial, have) = match opened {
         Ok(x) => x,
         Err(e) => {
+            inner.receive_reservations.lock().unwrap().remove(&key);
             abort(&mut stream, ErrorCode::InternalError);
             record_in(
                 &inner,
@@ -1197,12 +1356,22 @@ async fn receive_offer(inner: Arc<Inner>, peer: [u8; 32], offer: Offer, mut stre
         .filter(|i| wire::has(&have, *i))
         .map(|i| offer.chunk_len(i) as u64)
         .sum();
-    let need = offer.size - have_bytes + inner.config.space_margin;
+    let need = offer
+        .size
+        .saturating_sub(have_bytes)
+        .saturating_add(
+            offer
+                .size
+                .saturating_mul(inner.config.incoming_copies.saturating_sub(1)),
+        )
+        .saturating_add(reserved.saturating_mul(inner.config.incoming_copies))
+        .saturating_add(inner.config.space_margin);
     let free = {
         let inbox = inner.config.inbox.clone();
         blocking(move || store::free_space(&inbox)).await
     };
     if free.map(|f| f < need).unwrap_or(false) {
+        inner.receive_reservations.lock().unwrap().remove(&key);
         abort(&mut stream, ErrorCode::NoSpace);
         if have.is_empty() {
             partial.discard();
@@ -1218,6 +1387,7 @@ async fn receive_offer(inner: Arc<Inner>, peer: [u8; 32], offer: Offer, mut stre
         return;
     }
     let run = Arc::new(InRun {
+        publication_cancel: Arc::new(AtomicBool::new(false)),
         peer,
         offer: offer.clone(),
         partial: Arc::new(partial),
@@ -1237,6 +1407,7 @@ async fn receive_offer(inner: Arc<Inner>, peer: [u8; 32], offer: Offer, mut stre
         Some(run.clone()),
     );
     inner.offers.notify_waiters();
+    drop(offer_guard);
     if let Err(e) = write_raw(
         &mut stream.send,
         Channel::Files,
@@ -1363,7 +1534,7 @@ async fn receive_chunks(
         tokio::select! {
             biased;
             c = until_set(&mut complete), if !told => {
-                let result = c.unwrap_or(Err("closed".into()));
+                let result = c.unwrap_or(Err(FailReason::Io("closed".into())));
                 told = true;
                 match result {
                     Ok(_) => {
@@ -1374,7 +1545,7 @@ async fn receive_chunks(
                         }
                         let _ = stream.send.finish();
                     }
-                    Err(why) => break Some(End::Failed(FailReason::Io(why))),
+                    Err(why) => break Some(End::Failed(why)),
                 }
             }
             _ = until_set(&mut cancel) => break None,
@@ -1487,6 +1658,9 @@ async fn receive_chunks(
             TransferState::Waiting
         }
     };
+    if state.is_finished() && !run.finishing.load(Ordering::SeqCst) {
+        inner.receive_reservations.lock().unwrap().remove(&key);
+    }
     inner.set_in(&key, |i| {
         i.info.state = state;
         i.run = None;
@@ -1505,13 +1679,52 @@ async fn finish_file(inner: Arc<Inner>, run: Arc<InRun>, mut parts: Vec<String>)
             incoming_folder(parts.last().map(String::as_str).unwrap_or("")).into(),
         );
     }
+    let commit = inner.config.incoming_commit.clone();
+    let committing = run.clone();
     let result = blocking(move || {
         let parts: Vec<&str> = parts.iter().map(String::as_str).collect();
-        partial.finish(&inbox, &parts)
+        let path = partial.finish(&inbox, &parts)?;
+        if let Some(commit) = commit {
+            let file = VerifiedIncoming {
+                peer: committing.peer,
+                id: committing.offer.id,
+                relative_path: committing.offer.path.clone(),
+                path: path.clone(),
+                size: committing.offer.size,
+            };
+            if let Err(error) = commit.commit(&file, committing.publication_cancel.clone()) {
+                let _ = std::fs::remove_file(&path);
+                return Err(error);
+            }
+        }
+        Ok(path)
     })
     .await
-    .map_err(|e| e.to_string());
+    .map_err(|e| {
+        if e.kind() == io::ErrorKind::StorageFull {
+            FailReason::NoSpace
+        } else {
+            FailReason::Io(e.to_string())
+        }
+    });
+    // Publication may outlive its streams after a connection loss. Record its outcome independently.
+    inner.set_in(&run.key(), |incoming| {
+        if let Ok(path) = &result {
+            incoming.info.saved_as = Some(path.clone());
+            incoming.info.state = TransferState::Done;
+        } else if let Some(End::Cancelled { by_peer }) = *run.cancel.borrow() {
+            incoming.info.state = TransferState::Cancelled { by_peer };
+        } else if let Err(reason) = &result {
+            incoming.info.state = TransferState::Failed(reason.clone());
+        }
+    });
     run.complete.send_replace(Some(result));
+    inner
+        .receive_reservations
+        .lock()
+        .unwrap()
+        .remove(&run.key());
+    inner.publish(true);
 }
 
 /// CCS/1 RULE:organisation only, not content validation; last extension, fixed local folders.

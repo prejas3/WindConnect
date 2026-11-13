@@ -1,23 +1,32 @@
 //! CCS/1 SEC:only staged regular files below the configured private outbox cross the boundary.
-use crate::{public_key, CoreClient, CoreConnection, CoreError};
+use crate::{public_key, session_error, CoreClient, CoreConnection, CoreError};
 use std::{
     path::{Path, PathBuf},
-    sync::Mutex,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex, Weak,
+    },
 };
 use tokio::sync::watch;
 use wind_core::{
-    files::{id_hex, FileEngine, FilesConfig, TransferInfo, TransferState},
+    files::{
+        id_hex, Direction, FileEngine, FilesConfig, IncomingCommit, TransferInfo, TransferState,
+        VerifiedIncoming,
+    },
     session::{Session, SessionEvent},
     transport::PeerTrust,
 };
 
 #[derive(Clone, Debug, uniffi::Record)]
 pub struct FileTransfer {
+    pub peer: String,
+    pub incoming: bool,
     pub id: String,
     pub name: String,
     pub size: u64,
     pub done: u64,
     pub state: String,
+    pub failure: Option<String>,
 }
 
 fn invalid(reason: impl ToString) -> CoreError {
@@ -29,11 +38,126 @@ fn invalid(reason: impl ToString) -> CoreError {
 struct Runtime {
     engine: FileEngine,
     outbox: PathBuf,
+    inbox: PathBuf,
 }
 #[derive(Default)]
 pub(crate) struct FileBridge {
     runtime: Mutex<Option<Runtime>>,
     updates: tokio::sync::Mutex<Option<watch::Receiver<Vec<TransferInfo>>>>,
+    destination: Mutex<Option<Arc<dyn FileDestination>>>,
+}
+
+#[derive(Clone, Debug, uniffi::Record)]
+pub struct IncomingFile {
+    pub peer: String,
+    pub id: String,
+    pub name: String,
+    pub source: String,
+    pub size: u64,
+}
+#[derive(Clone, Debug, uniffi::Enum)]
+pub enum FileCommitStatus {
+    Published,
+    Cancelled,
+    NoSpace,
+    Failed,
+}
+#[derive(Clone, Debug, uniffi::Record)]
+pub struct FileCommitResult {
+    pub status: FileCommitStatus,
+    pub error: Option<String>,
+}
+#[derive(uniffi::Object)]
+pub struct IncomingControl {
+    cancelled: Arc<AtomicBool>,
+}
+#[uniffi::export]
+impl IncomingControl {
+    pub fn is_cancelled(&self) -> bool {
+        self.cancelled.load(Ordering::SeqCst)
+    }
+}
+#[uniffi::export(callback_interface)]
+pub trait FileDestination: Send + Sync {
+    fn commit(&self, file: IncomingFile, control: Arc<IncomingControl>) -> FileCommitResult;
+}
+struct CommitBridge(Weak<FileBridge>);
+impl std::fmt::Debug for CommitBridge {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("AndroidFileDestination")
+    }
+}
+impl IncomingCommit for CommitBridge {
+    fn commit(&self, file: &VerifiedIncoming, cancelled: Arc<AtomicBool>) -> std::io::Result<()> {
+        let bridge = self
+            .0
+            .upgrade()
+            .ok_or_else(|| std::io::Error::other("file destination closed"))?;
+        let inbox = bridge
+            .runtime
+            .lock()
+            .unwrap()
+            .as_ref()
+            .map(|r| r.inbox.clone())
+            .ok_or_else(|| std::io::Error::other("files not configured"))?;
+        let path = file.path.canonicalize()?;
+        if !path.starts_with(&inbox)
+            || !path.is_file()
+            || std::fs::symlink_metadata(&file.path)?
+                .file_type()
+                .is_symlink()
+        {
+            return Err(std::io::Error::other("invalid verified private file"));
+        }
+        let sink = bridge
+            .destination
+            .lock()
+            .unwrap()
+            .clone()
+            .ok_or_else(|| std::io::Error::other("file destination unavailable"))?;
+        let result = sink.commit(
+            IncomingFile {
+                peer: hex_peer(&file.peer),
+                id: id_hex(&file.id),
+                name: file.relative_path.clone(),
+                source: path.to_string_lossy().into(),
+                size: file.size,
+            },
+            Arc::new(IncomingControl { cancelled }),
+        );
+        match result.status {
+            FileCommitStatus::Published => Ok(()),
+            FileCommitStatus::NoSpace => Err(std::io::Error::new(
+                std::io::ErrorKind::StorageFull,
+                "public destination has no space",
+            )),
+            FileCommitStatus::Cancelled => Err(std::io::Error::new(
+                std::io::ErrorKind::Interrupted,
+                "publication cancelled",
+            )),
+            FileCommitStatus::Failed => Err(std::io::Error::other(
+                result
+                    .error
+                    .unwrap_or_else(|| "public publication failed".into())
+                    .chars()
+                    .take(256)
+                    .collect::<String>(),
+            )),
+        }
+    }
+}
+fn hex_peer(peer: &[u8; 32]) -> String {
+    peer.iter().map(|b| format!("{b:02x}")).collect()
+}
+fn parse_peer(peer: &str) -> Result<[u8; 32], CoreError> {
+    if peer.len() != 64 || !peer.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return Err(invalid("bad peer fingerprint"));
+    }
+    let mut value = [0; 32];
+    for (i, b) in value.iter_mut().enumerate() {
+        *b = u8::from_str_radix(&peer[i * 2..i * 2 + 2], 16).map_err(invalid)?;
+    }
+    Ok(value)
 }
 impl FileBridge {
     fn engine(&self) -> Result<FileEngine, CoreError> {
@@ -50,10 +174,19 @@ impl FileBridge {
             .rev()
             .take(1000)
             .map(|t| FileTransfer {
+                peer: hex_peer(&t.peer),
+                incoming: t.direction == Direction::Incoming,
                 id: id_hex(&t.id),
                 name: t.path.clone(),
                 size: t.size,
                 done: t.done,
+                failure: match &t.state {
+                    TransferState::Failed(wind_core::files::FailReason::NoSpace) => {
+                        Some("no_space".into())
+                    }
+                    TransferState::Failed(_) => Some("failed".into()),
+                    _ => None,
+                },
                 state: match t.state {
                     TransferState::Queued => "queued",
                     TransferState::Running => "running",
@@ -142,11 +275,17 @@ impl CoreClient {
         }
         std::fs::create_dir_all(&outbox).map_err(invalid)?;
         let root = std::fs::canonicalize(outbox).map_err(invalid)?;
-        let engine = FileEngine::new(FilesConfig::new(inbox, partials)).map_err(invalid)?;
+        let mut config = FilesConfig::new(&inbox, partials);
+        config.incoming_commit = Some(Arc::new(CommitBridge(Arc::downgrade(&self.files))));
+        config.max_incoming_file = 2 * 1024 * 1024 * 1024;
+        config.max_incoming_active = 4 * 1024 * 1024 * 1024;
+        config.incoming_copies = 2;
+        let engine = FileEngine::new(config).map_err(invalid)?;
         *updates = Some(engine.subscribe());
         *runtime = Some(Runtime {
             engine,
             outbox: root,
+            inbox: Path::new(&inbox).canonicalize().map_err(invalid)?,
         });
         Ok(())
     }
@@ -164,7 +303,50 @@ impl CoreClient {
     }
     pub fn cancel_file(&self, id: String) -> Result<(), CoreError> {
         let id = parse_id(&id)?;
-        self.files.engine()?.cancel(&id).map_err(invalid)
+        self.files.engine()?.cancel_outgoing(&id).map_err(invalid)
+    }
+    pub fn set_file_destination(&self, destination: Box<dyn FileDestination>) {
+        *self.files.destination.lock().unwrap() = Some(Arc::from(destination));
+    }
+    pub fn cancel_incoming_file(&self, peer: String, id: String) -> Result<(), CoreError> {
+        self.files
+            .engine()?
+            .cancel_incoming(&parse_peer(&peer)?, &parse_id(&id)?)
+            .map_err(invalid)
+    }
+    pub fn release_incoming_file(&self, peer: String, id: String) -> Result<(), CoreError> {
+        let peer = parse_peer(&peer)?;
+        let id = parse_id(&id)?;
+        let (engine, root) = {
+            let runtime = self.files.runtime.lock().unwrap();
+            let r = runtime
+                .as_ref()
+                .ok_or_else(|| invalid("files not configured"))?;
+            (r.engine.clone(), r.inbox.clone())
+        };
+        let row = engine
+            .transfers()
+            .into_iter()
+            .find(|r| r.direction == Direction::Incoming && r.peer == peer && r.id == id)
+            .ok_or_else(|| invalid("unknown incoming transfer"))?;
+        if !row.state.is_finished() {
+            return Err(invalid("incoming transfer is active"));
+        }
+        if let Some(path) = row.saved_as {
+            if path.exists() {
+                let canonical = path.canonicalize().map_err(invalid)?;
+                if !canonical.starts_with(&root)
+                    || std::fs::symlink_metadata(&path)
+                        .map_err(invalid)?
+                        .file_type()
+                        .is_symlink()
+                {
+                    return Err(invalid("unsafe private receipt path"));
+                }
+                std::fs::remove_file(canonical).map_err(invalid)?;
+            }
+        }
+        engine.forget_incoming(&peer, &id).map_err(invalid)
     }
 }
 
@@ -211,9 +393,23 @@ impl CoreConnection {
                 .files_active
                 .swap(true, std::sync::atomic::Ordering::SeqCst)
             {
-                engine.attach(self.session.clone(), None);
+                engine.attach(self.session.clone(), self.file_input.lock().unwrap().take());
             }
         }
+    }
+    pub async fn set_file_receiving(&self, enabled: bool) -> Result<(), CoreError> {
+        if enabled
+            && (!self.files_active.load(Ordering::SeqCst)
+                || self.files.destination.lock().unwrap().is_none()
+                || !self.trust.is_trusted(&public_key(&self.peer().public_key)?))
+        {
+            return Err(invalid("adopted paired receiver not ready"));
+        }
+        self.session
+            .set_accepted(wind_core::protocol::Channel::Files, enabled)
+            .await
+            .map_err(session_error)?;
+        Ok(())
     }
     pub async fn queue_files(&self, paths: Vec<String>) -> Result<Vec<String>, CoreError> {
         if paths.is_empty() || paths.len() > 100 {

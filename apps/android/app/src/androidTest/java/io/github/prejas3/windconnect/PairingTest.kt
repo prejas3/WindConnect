@@ -148,6 +148,10 @@ class PairingTest {
             compose.onNodeWithTag("pairingDone").performScrollTo().performClick()
             FilesProof.run(compose); return
         }
+        if (InstrumentationRegistry.getArguments().getString("receiveFilesProof") == "true") {
+            compose.onNodeWithTag("pairingDone").performScrollTo().performClick()
+            ReceiveFilesProof.run(compose); return
+        }
         // WN-49: the PC-side check changes the battery (dumpsys battery) while the session stays up.
         InstrumentationRegistry.getArguments().getString("holdMs")?.toLongOrNull()?.let { Thread.sleep(it); return }
         // WN-50: the phone side of check-find-android.cjs (stops from the notification, the bar, a volume key).

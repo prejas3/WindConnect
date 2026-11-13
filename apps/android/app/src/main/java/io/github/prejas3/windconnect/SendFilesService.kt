@@ -118,7 +118,7 @@ class SendFilesService : Service() {
             var stagedFiles = 0
             val rate = TransferRate()
             fun process() {
-                val rows = core.files.value.associateBy { it.id }
+                val rows = core.files.value.filterNot { it.incoming }.associateBy { it.id }
                 val done = pending.keys.filter { rows[it]?.state == "done" }
                 done.forEach { id -> pending.remove(id)?.delete(); indices[id]?.let { confirmed.add(it) }; completed++ }
                 if (pending.keys.any { rows[it]?.state in listOf("failed", "cancelled") }) failed = true
@@ -194,7 +194,7 @@ class SendFilesService : Service() {
                         val core = opened
                         if (core != null) {
                             pending.keys.forEach { try { core.cancelFile(it) } catch (_: Exception) { } }
-                            core.files.value.filter { it.id in indices && it.state == "done" }.forEach { indices[it.id]?.let(confirmed::add) }
+                            core.files.value.filter { !it.incoming && it.id in indices && it.state == "done" }.forEach { indices[it.id]?.let(confirmed::add) }
                             FileSending.trace("cleanup-files")
                             try { batch?.let { removeBatch(core.outbox.canonicalFile, it) } }
                             catch (_: Exception) { /* CCS/1 STATE:abandoned private batch is retried by the next batch's cleanup. */ }
