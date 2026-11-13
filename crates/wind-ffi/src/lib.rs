@@ -104,6 +104,8 @@ pub struct PhoneNotification {
     pub progress: bool,
     /// The label of its reply action, when it can be replied to (WN-44).
     pub reply: Option<String>,
+    /// It doesn't interrupt on the phone (Do not disturb): quiet on the PC (WN-45).
+    pub quiet: bool,
 }
 
 /// WN-44 (§9.8): the PC's dismissals and replies for notifications this phone sent in the session. The phone checks the id
@@ -1475,6 +1477,7 @@ impl CoreConnection {
             time_ms: notification.time_ms,
             icon: None,
             reply: notification.reply,
+            quiet: notification.quiet,
         };
         self.notify
             .posted(posted, icon, notification.progress)

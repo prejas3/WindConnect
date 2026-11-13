@@ -80,6 +80,7 @@ fn note(id: u8, text: &str) -> Posted {
         time_ms: 1_794_500_000_000,
         icon: None,
         reply: None,
+        quiet: false,
     }
 }
 

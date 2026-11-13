@@ -104,6 +104,12 @@ internal object NotificationRules {
 
     const val MAX_REPLY_LABEL = 64
 
+    /**
+     * WN-45: quiet on the PC (no popup or sound) when Android's ranking says it doesn't get through Do not disturb right now.
+     * [ranked]: the listener had a ranking for it (none: as before, not quiet).
+     */
+    fun quiet(ranked: Boolean, matchesInterruptionFilter: Boolean) = ranked && !matchesInterruptionFilter
+
     /** Plain text, one line, no control or bidi characters, at most [max] UTF-8 bytes; null when nothing is left. */
     fun clean(text: CharSequence?, max: Int): String? {
         if (text == null) return null
@@ -166,6 +172,8 @@ internal sealed interface NotificationEvent {
     /** [posted]: SystemClock.elapsedRealtime when the listener got it (for the latency proof). */
     data class Posted(val notification: PhoneNotification, val packageName: String, val posted: Long) : NotificationEvent
     data class Removed(val id: ByteArray) : NotificationEvent
+    /** WN-45: the app filter changed: blocked apps' notifications sent in this session go away on the PC. */
+    object FilterChanged : NotificationEvent
 }
 
 /** App labels and 64 px PNG icons, per package, made once. */
@@ -208,6 +216,12 @@ class NotifyListenerService : NotificationListenerService() {
         val deliver = sink ?: return
         if (!allowed(this)) return
         val content = NotificationRules.content(sbn.parts(), packageName) ?: return
+        // WN-45: listed for the app filter (package name only), then filtered before anything is kept or sent.
+        NotifyApps.saw(this, sbn.packageName)
+        if (!NotifyApps.allows(this, sbn.packageName)) return
+        val ranking = Ranking()
+        val ranked = try { currentRanking?.getRanking(sbn.key, ranking) == true } catch (_: Exception) { false }
+        val quiet = NotificationRules.quiet(ranked, ranked && ranking.matchesInterruptionFilter())
         val id = NotificationRules.id(sbn.key, salt(this))
         // WN-44: what a dismissal or a reply from the PC needs (the core checks the id was sent in this session).
         remember(id, sbn.key, content.replyIndex?.let { sbn.notification.actions?.getOrNull(it) })
@@ -220,6 +234,7 @@ class NotifyListenerService : NotificationListenerService() {
             timeMs = sbn.postTime.toULong(),
             progress = content.progress,
             reply = content.reply,
+            quiet = quiet,
         ), sbn.packageName, at))
     }
 
@@ -244,6 +259,18 @@ class NotifyListenerService : NotificationListenerService() {
 
         /** Forgets every notification (a new session: the PC may act only on what it is sent from now on). */
         internal fun forget() = synchronized(known) { known.clear() }
+
+        /** WN-45: forgets these (their app was blocked): the PC can no longer reply to or dismiss them. */
+        internal fun forget(ids: List<ByteArray>) = synchronized(known) { ids.forEach { known.remove(it.toList()) } }
+
+        /** WN-45: lists the apps of what is in the shade now (for the app filter's list); package names only. */
+        internal fun recordActive(context: Context) {
+            val listener = current?.get() ?: return
+            val active = try { listener.activeNotifications } catch (_: Exception) { null } ?: return
+            for (sbn in active) {
+                if (NotificationRules.content(sbn.parts(), context.packageName) != null) NotifyApps.saw(context, sbn.packageName)
+            }
+        }
 
         /** WN-44: the PC dismissed it; false when it isn't known or the listener isn't bound. */
         internal fun dismiss(id: ByteArray): Boolean {
