@@ -60,6 +60,8 @@ pub const PUBLISH_EVERY: Duration = Duration::from_millis(100);
 /// Engine settings.
 #[derive(Debug, Clone)]
 pub struct FilesConfig {
+    /// Organise received files under fixed type folders. Never changes the wire path.
+    pub type_folders: bool,
     /// Where incoming files go (created if missing).
     pub inbox: PathBuf,
     /// Where partial incoming files wait (created if missing): the app's
@@ -82,6 +84,7 @@ pub struct FilesConfig {
 impl FilesConfig {
     pub fn new(inbox: impl Into<PathBuf>, partials: impl Into<PathBuf>) -> Self {
         FilesConfig {
+            type_folders: false,
             inbox: inbox.into(),
             partials: partials.into(),
             streams: 4,
@@ -234,6 +237,7 @@ struct Inner {
     book: Mutex<Book>,
     infos: watch::Sender<Vec<TransferInfo>>,
     dirty: AtomicBool,
+    publish_wake: Arc<Notify>,
     last_publish: Mutex<Instant>,
     pending_joins: AtomicUsize,
     offers: Notify,
@@ -273,12 +277,16 @@ impl FileEngine {
             book: Mutex::new(Book::default()),
             infos: watch::channel(Vec::new()).0,
             dirty: AtomicBool::new(false),
+            publish_wake: Arc::new(Notify::new()),
             last_publish: Mutex::new(Instant::now()),
             pending_joins: AtomicUsize::new(0),
             offers: Notify::new(),
             attaches: AtomicU64::new(0),
         });
-        tokio::spawn(publisher(Arc::downgrade(&inner)));
+        tokio::spawn(publisher(
+            Arc::downgrade(&inner),
+            inner.publish_wake.clone(),
+        ));
         Ok(FileEngine { inner })
     }
 
@@ -509,6 +517,7 @@ impl Inner {
             self.infos.send_replace(self.snapshot());
         } else {
             self.dirty.store(true, Ordering::Relaxed);
+            self.publish_wake.notify_one();
         }
     }
 
@@ -525,15 +534,31 @@ impl Inner {
     }
 }
 
-async fn publisher(inner: Weak<Inner>) {
-    let mut tick = tokio::time::interval(PUBLISH_EVERY);
+impl Drop for Inner {
+    fn drop(&mut self) {
+        self.publish_wake.notify_one();
+    }
+}
+
+// CCS/1 PERF:one delayed publish after dirty progress; no timer while idle, no strong owner across await.
+async fn publisher(inner: Weak<Inner>, wake: Arc<Notify>) {
     loop {
-        tick.tick().await;
-        let Some(inner) = inner.upgrade() else {
-            return;
+        wake.notified().await;
+        let wait = match inner.upgrade() {
+            Some(owner) if owner.dirty.load(Ordering::Relaxed) => PUBLISH_EVERY.saturating_sub(
+                owner
+                    .last_publish
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .elapsed(),
+            ),
+            Some(_) => continue,
+            None => return,
         };
-        if inner.dirty.load(Ordering::Relaxed) {
-            inner.publish(true);
+        tokio::time::sleep(wait).await;
+        let Some(owner) = inner.upgrade() else { return };
+        if owner.dirty.load(Ordering::Relaxed) {
+            owner.publish(true);
         }
     }
 }
@@ -1471,9 +1496,15 @@ async fn receive_chunks(
 
 /// Every chunk is in: make it durable, move it to its name, tell the
 /// streams.
-async fn finish_file(inner: Arc<Inner>, run: Arc<InRun>, parts: Vec<String>) {
+async fn finish_file(inner: Arc<Inner>, run: Arc<InRun>, mut parts: Vec<String>) {
     let partial = run.partial.clone();
     let inbox = inner.config.inbox.clone();
+    if inner.config.type_folders {
+        parts.insert(
+            0,
+            incoming_folder(parts.last().map(String::as_str).unwrap_or("")).into(),
+        );
+    }
     let result = blocking(move || {
         let parts: Vec<&str> = parts.iter().map(String::as_str).collect();
         partial.finish(&inbox, &parts)
@@ -1481,4 +1512,75 @@ async fn finish_file(inner: Arc<Inner>, run: Arc<InRun>, parts: Vec<String>) {
     .await
     .map_err(|e| e.to_string());
     run.complete.send_replace(Some(result));
+}
+
+/// CCS/1 RULE:organisation only, not content validation; last extension, fixed local folders.
+pub fn incoming_folder(name: &str) -> &'static str {
+    match name
+        .rsplit_once('.')
+        .map(|(_, ext)| ext.to_ascii_lowercase())
+        .as_deref()
+    {
+        Some(
+            "jpg" | "jpeg" | "png" | "gif" | "webp" | "heic" | "heif" | "avif" | "bmp" | "tif"
+            | "tiff",
+        ) => "Obrazy",
+        Some("mp4" | "mkv" | "mov" | "webm" | "avi" | "m4v" | "3gp") => "Wideo",
+        Some("mp3" | "wav" | "flac" | "ogg" | "m4a" | "aac" | "opus") => "Audio",
+        Some(
+            "pdf" | "txt" | "md" | "csv" | "doc" | "docx" | "xls" | "xlsx" | "ppt" | "pptx" | "odt"
+            | "ods" | "odp" | "rtf",
+        ) => "Dokumenty",
+        _ => "Inne",
+    }
+}
+
+#[cfg(test)]
+mod folder_tests {
+    #[test]
+    fn uses_last_extension_and_fixed_categories() {
+        for (name, folder) in [
+            ("photo.JPG", "Obrazy"),
+            ("clip.mp4", "Wideo"),
+            ("song.FLAC", "Audio"),
+            ("paper.pdf", "Dokumenty"),
+            ("photo.jpg.exe", "Inne"),
+            ("unknown", "Inne"),
+            ("name.", "Inne"),
+        ] {
+            assert_eq!(super::incoming_folder(name), folder);
+        }
+        assert!(!super::FilesConfig::new("inbox", "partials").type_folders);
+    }
+
+    #[tokio::test]
+    async fn publisher_coalesces_dirty_progress_and_releases_idle_owner() {
+        let temp = tempfile::tempdir().unwrap();
+        let engine = super::FileEngine::new(super::FilesConfig::new(
+            temp.path().join("in"),
+            temp.path().join("parts"),
+        ))
+        .unwrap();
+        let mut updates = engine.subscribe();
+        let weak = std::sync::Arc::downgrade(&engine.inner);
+        engine.inner.publish(false);
+        engine.inner.publish(false);
+        tokio::time::timeout(std::time::Duration::from_secs(2), updates.changed())
+            .await
+            .unwrap()
+            .unwrap();
+        updates.borrow_and_update();
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(220), updates.changed())
+                .await
+                .is_err()
+        );
+        drop(engine);
+        tokio::task::yield_now().await;
+        assert!(
+            weak.upgrade().is_none(),
+            "publisher must not retain an idle engine"
+        );
+        assert!(updates.changed().await.is_err());
+    }
 }

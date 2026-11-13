@@ -13,6 +13,8 @@ use wind_core::{
 use zeroize::{Zeroize, Zeroizing};
 
 uniffi::setup_scaffolding!();
+mod file_transfer;
+pub use file_transfer::FileTransfer;
 
 /// With the relay on, the address gets this long first (a LAN answers in
 /// milliseconds; the relay is the fallback).
@@ -393,6 +395,7 @@ pub struct PairedLoadResult {
 
 #[derive(uniffi::Object)]
 pub struct CoreClient {
+    files: Arc<file_transfer::FileBridge>,
     clipboard: Arc<wind_core::clipboard::Clipboard>,
     /// Signs pairing and relay authentication (PROTOCOL.md §13.2).
     device_identity: Arc<DeviceIdentity>,
@@ -466,6 +469,7 @@ pub async fn open_client(
             reason: e.to_string(),
         })?;
     Ok(Arc::new(CoreClient {
+        files: Arc::new(file_transfer::FileBridge::default()),
         clipboard: Arc::new(wind_core::clipboard::Clipboard::default()),
         endpoint,
         relay: std::sync::Mutex::new(None),
@@ -944,7 +948,7 @@ impl CoreClient {
         let media = self.route_media(&mut router);
         let pc_media = self.route_pc_media(&mut router);
         let notify_actions = self.route_notify_actions(&mut router);
-        let (session, _) = tokio::time::timeout(
+        let (session, events) = tokio::time::timeout(
             Duration::from_secs(10),
             Session::dial(
                 &self.endpoint,
@@ -964,6 +968,9 @@ impl CoreClient {
         self.serve_notify_actions(notify_actions);
         let media_allowed = self.serve_media(media);
         Ok(Arc::new(CoreConnection {
+            file_caps: file_transfer::FileCapabilities::new(&session, events),
+            files_active: std::sync::atomic::AtomicBool::new(false),
+            files: self.files.clone(),
             clipboard: std::sync::Mutex::new(None),
             clipboard_shared: self.clipboard.clone(),
             battery: wind_core::battery::Sender::default(),
@@ -1087,7 +1094,7 @@ impl CoreClient {
             reason: "peer address must be an IP address and port".into(),
         })?;
         let mut changes = self.network.subscribe();
-        let ((session, _),(clipboard_input, find, media, pc_media, notify_actions)) = loop {
+        let ((session, events),(clipboard_input, find, media, pc_media, notify_actions)) = loop {
             let mut router=Router::new();
             let clipboard_input=wind_core::clipboard::Clipboard::route(&mut router);
             let find = self.route_find(&mut router);
@@ -1120,6 +1127,9 @@ impl CoreClient {
         self.serve_notify_actions(notify_actions);
         let media_allowed = self.serve_media(media);
         Ok(Arc::new(CoreConnection {
+            file_caps: file_transfer::FileCapabilities::new(&session, events),
+            files_active: std::sync::atomic::AtomicBool::new(false),
+            files: self.files.clone(),
             clipboard: std::sync::Mutex::new(None),
             clipboard_shared: self.clipboard.clone(),
             battery: wind_core::battery::Sender::default(),
@@ -1330,6 +1340,9 @@ fn action_error(error: wind_core::actions::RequestError) -> CoreError {
 
 #[derive(uniffi::Object)]
 pub struct CoreConnection {
+    files: Arc<file_transfer::FileBridge>,
+    file_caps: file_transfer::FileCapabilities,
+    files_active: std::sync::atomic::AtomicBool,
     clipboard: std::sync::Mutex<Option<Arc<wind_core::clipboard::Connection>>>,
     clipboard_shared: Arc<wind_core::clipboard::Clipboard>,
     clipboard_input:

@@ -1,5 +1,12 @@
 # Windows
 
+## Odbiór plików z Androida (WN-40)
+
+CCS/1
+FLOW:dopuszczona sparowana sesja -> files/1 -> istniejący FileEngine -> Pobrane/WindConnect/Obrazy, Wideo, Audio, Dokumenty lub Inne. Kategoria jest wybierana lokalnie przy zweryfikowanej finalizacji według ostatniego rozszerzenia bez rozróżniania wielkości liter; np.photo.jpg.exe i brak rozszerzenia -> Inne. Pełna tabela rozszerzeń: `wind-core::files::incoming_folder`; domyślna polityka silnika OFF, runtime Windows ON.
+SEC:sygnalizowany typ nie jest oceną zawartości. Dotychczasowe sprawdzanie ścieżek, brak nadpisywania, checksum/resume i Mark-of-the-Web obowiązują także w podfolderze kategorii; częściowe pliki pozostają poza inboxem. Nigdy nie otwieramy/uruchamiamy odebranego pliku automatycznie. Router przekazuje incoming queue dopiero po dopuszczeniu sesji (BUSY/unpair nadal przed odbiorem).
+IO:generowany fixture `files_peer` zapisuje tylko w przekazanym TEMP, z tą samą opt-in polityką silnika. Test20 obrazów i zestawu mieszanego jest opisany w Android README; nie dotyka Pobranych zalogowanego użytkownika ani zainstalowanej aplikacji. Wysyłanie z Windows jest WN-39; Android public Downloads receiver pozostaje WN-120, rozszerzone UI postępu WN-41.
+
 Ikona WN-93 „Orbita”: źródła SVG i instrukcja odtwarzania w `assets/brand/README.md`.
 ICO zawiera rozmiary16–256px; zasobnik ma osobne warianty16/20/24/32px
 dla trzech stanów i obu palet. Nie skaluje małej bitmapy do większego DPI.
