@@ -761,3 +761,22 @@ przy wyciszeniu nie wyłącza wyciszenia, `VolumeScale.plan`). Ustawienie
 „Głośność komputera” na ekranie głównym (suwak bez „odbijania”, wycisz).
 Testy: `CallVolumeTest` (jednostkowy), `PcVolumeTest` (Compose) i
 `apps/windows/scripts/check-call-volume-android.cjs`.
+
+## SMS na komputerze (WN-55)
+
+`PhoneSms` udostępnia komputerowi wątki SMS/MMS do odczytu (PROTOCOL.md
+§9.11): lista wątków (`mms-sms/conversations?simple=true`, adresy z
+`canonical-addresses`, nieprzeczytane z `sms`/`mms`), wiadomości wątku
+(SMS i tekst MMS, od najnowszej, `before`/`since` włącznie, bez szkiców),
+nazwy i zdjęcia kontaktów (`PhoneLookup`, PNG 96 px do 64 KiB). Zmiany
+dostawcy (`ContentObserver` na `content://mms-sms/`) budzą obserwację
+komputera; rdzeń zbiera je w 250 ms.
+Ustawienie „SMS na komputerze” (domyślnie wyłączone) prosi o `READ_SMS` i
+`READ_CONTACTS` dopiero przy włączeniu, po wyjaśnieniu; kontakty są
+opcjonalne (bez nich same numery). Odmowa zostawia przełącznik wyłączony,
+reszta aplikacji działa. Uprawnienie jest sprawdzane przy każdej prośbie,
+więc cofnięcie go w ustawieniach Androida działa od razu. Treść i numery
+nie trafiają do logów.
+Decyzja D2: uprawnienia SMS deklaruje tylko ta wersja (GitHub/F-Droid);
+wariant Google Play musi je pominąć.
+Test: `apps/windows/scripts/check-sms-android.cjs` (z `SmsProof`).

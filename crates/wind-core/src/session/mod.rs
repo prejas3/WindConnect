@@ -58,7 +58,7 @@ use crate::input::{InputAnnouncement, InputEvent, InputReceiver, InputSender};
 use crate::protocol::InputMessage;
 pub use router::{
     capability_name, is_uni, ActionStream, BidiStream, ChannelMessage, FileStream, FindStream,
-    Router,
+    Router, SmsStream,
 };
 
 use crate::identity::PublicKey;
@@ -89,7 +89,7 @@ pub fn send_priority(channel: Channel) -> i32 {
         Channel::Clipboard => 2,
         Channel::Notify | Channel::NotifyAction => 3,
         Channel::Media | Channel::MediaControl | Channel::Volume => 4,
-        Channel::Actions | Channel::Find => 5,
+        Channel::Actions | Channel::Find | Channel::Sms => 5,
         Channel::Battery => 6,
         Channel::Files => 7,
     }
@@ -605,6 +605,7 @@ impl Session {
             .chain(router.files.as_ref().map(|(v, _)| (Channel::Files, *v)))
             .chain(router.actions.as_ref().map(|(v, _)| (Channel::Actions, *v)))
             .chain(router.find.as_ref().map(|_| (Channel::Find, 1)))
+            .chain(router.sms.as_ref().map(|_| (Channel::Sms, 1)))
             .chain(router.input.as_ref().map(|_| (Channel::Input, 1)))
             .map(|(channel, version)| Accept {
                 channel,
@@ -660,6 +661,7 @@ impl Session {
             router.files.map(|(_, tx)| tx),
             router.actions.map(|(_, tx)| tx),
             router.find,
+            router.sms,
         ));
         (Session { inner }, events_rx)
     }
@@ -890,6 +892,21 @@ impl Session {
         Ok(FindStream {
             send,
             recv: FramedRecv::new(recv, Channel::Find),
+        })
+    }
+
+    /// Opens an `sms` stream: one request to the phone (§9.11); see
+    /// [`crate::sms`].
+    pub async fn open_sms(&self) -> Result<SmsStream, SessionError> {
+        if !self.peer_accepts(Channel::Sms) {
+            return Err(SessionError::CapabilityMissing(Channel::Sms));
+        }
+        let (mut send, recv) = self.inner.conn.quinn().open_bi().await?;
+        let _ = send.set_priority(send_priority(Channel::Sms));
+        send.write_all(&stream_header(Channel::Sms)).await?;
+        Ok(SmsStream {
+            send,
+            recv: FramedRecv::new(recv, Channel::Sms),
         })
     }
 
@@ -1524,6 +1541,7 @@ async fn bidi_loop(
     files: Option<mpsc::Sender<FileStream>>,
     actions: Option<mpsc::Sender<ActionStream>>,
     find: Option<mpsc::Sender<FindStream>>,
+    sms: Option<mpsc::Sender<SmsStream>>,
 ) {
     let conn = inner.conn.quinn().clone();
     loop {
@@ -1535,6 +1553,7 @@ async fn bidi_loop(
         let files = files.clone();
         let actions = actions.clone();
         let find = find.clone();
+        let sms = sms.clone();
         // Each stream on its own, so a slow header holds back nothing else.
         tokio::spawn(async move {
             let mut header = [0u8; 2];
@@ -1551,6 +1570,7 @@ async fn bidi_loop(
                 Ok(Channel::Files) => (Channel::Files, files),
                 Ok(Channel::Actions) => (Channel::Actions, actions),
                 Ok(Channel::Find) => (Channel::Find, find),
+                Ok(Channel::Sms) => (Channel::Sms, sms),
                 Ok(_) => {
                     close(
                         &inner.conn,

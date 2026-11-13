@@ -17,6 +17,7 @@ pub mod pairing;
 pub mod protocol;
 pub mod relay;
 pub mod session;
+pub mod sms;
 pub mod transport;
 pub mod volume;
 

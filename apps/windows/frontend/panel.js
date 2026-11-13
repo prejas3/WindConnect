@@ -181,6 +181,9 @@ function renderPairing(state) {
   document.querySelector('#quick-actions').hidden = !(state.connected || connected);
   renderBattery(state.connected || connected ? state.battery : null);
   renderFind(state.find, !!(state.connected || connected));
+  // WN-55: the "Wiadomości" window; it explains itself when the phone doesn't share SMS.
+  document.querySelector('#open-sms').hidden = !(state.connected || connected);
+  document.querySelector('#open-sms').setAttribute('aria-description', state.sms ? 'SMS z telefonu' : 'Telefon nie udostępnia SMS');
   renderMedia(state.connected || connected ? state.media : null);
   renderNotifications(state.notifications, !!(state.connected || connected));
   renderPhoneVolume(state.connected || connected ? state.phone_volume : null);
@@ -223,6 +226,7 @@ function renderDrag(over) {
   document.querySelector('#drop-title').textContent = `Upuść, aby wysłać na ${phone}`;
   document.querySelector('#drop-zone').hidden = !over;
 }
+document.querySelector('#open-sms').addEventListener('click', () => invoke?.('sms_open').catch(error));
 document.querySelector('#send-files').addEventListener('click', () => invoke?.('files_action', { action: 'pick' }).catch(error));
 document.querySelector('#find-phone').addEventListener('click', event => {
   const ringing = event.currentTarget.getAttribute('aria-pressed') === 'true';

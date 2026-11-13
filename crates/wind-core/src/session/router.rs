@@ -43,6 +43,9 @@ pub type ActionStream = BidiStream;
 /// A `find` stream: one ring and its states (§9.5, WN-50).
 pub type FindStream = BidiStream;
 
+/// An `sms` stream: one request of the PC and the phone's answer (§9.11, WN-55).
+pub type SmsStream = BidiStream;
+
 /// The capability name of a channel (§6); `control` has none.
 pub fn capability_name(channel: Channel) -> Option<&'static str> {
     Some(match channel {
@@ -59,6 +62,7 @@ pub fn capability_name(channel: Channel) -> Option<&'static str> {
         Channel::NotifyAction => "notify-action",
         Channel::Volume => "volume",
         Channel::Call => "call",
+        Channel::Sms => "sms",
     })
 }
 
@@ -86,6 +90,7 @@ pub struct Router {
     pub(super) files: Option<(u64, mpsc::Sender<FileStream>)>,
     pub(super) actions: Option<(u64, mpsc::Sender<ActionStream>)>,
     pub(super) find: Option<mpsc::Sender<FindStream>>,
+    pub(super) sms: Option<mpsc::Sender<SmsStream>>,
     /// Routed but not announced at the start (WN-50): `Session::set_accepted` turns them on.
     pub(super) disabled: BTreeSet<u8>,
     pub(super) input: Option<mpsc::Sender<InputEvent>>,
@@ -142,6 +147,14 @@ impl Router {
         rx
     }
 
+    /// Routes incoming `sms` streams (the PC reads SMS here, §9.11) to the
+    /// returned queue; see [`crate::sms::Server`].
+    pub fn route_sms(&mut self, queue: usize) -> mpsc::Receiver<SmsStream> {
+        let (tx, rx) = mpsc::channel(queue.max(1));
+        self.sms = Some(tx);
+        rx
+    }
+
     /// Starts the session with routed `channel` withdrawn: not announced in
     /// `Hello`, its streams refused, until `Session::set_accepted(channel, true)`.
     pub fn start_disabled(&mut self, channel: Channel) {
@@ -168,6 +181,7 @@ impl Router {
             .chain(self.files.as_ref().map(|(v, _)| (Channel::Files, *v)))
             .chain(self.actions.as_ref().map(|(v, _)| (Channel::Actions, *v)))
             .chain(self.find.as_ref().map(|_| (Channel::Find, 1)))
+            .chain(self.sms.as_ref().map(|_| (Channel::Sms, 1)))
             .chain(self.input.as_ref().map(|_| (Channel::Input, 1)))
             .filter(|(ch, _)| !self.disabled.contains(&ch.byte()))
             .flat_map(|(ch, v)| (1..=v).map(move |v| (ch, v)))

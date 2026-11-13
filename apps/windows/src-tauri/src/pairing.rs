@@ -70,6 +70,8 @@ pub struct Snapshot {
     pub battery: Option<crate::battery::Battery>,
     /// Find my phone (WN-50).
     pub find: FindView,
+    /// WN-55: the phone offers its SMS (sms/1): the panel's "Wiadomości" button.
+    pub sms: bool,
     /// The phone's player (WN-46); None without a session, access or player.
     pub media: Option<crate::media::MediaView>,
     /// WN-47: "Udostępnij odtwarzanie telefonowi" (the PC's player on the phone).
@@ -102,6 +104,7 @@ impl Default for Snapshot {
             devices: Vec::new(),
             battery: None,
             find: FindView::default(),
+            sms: false,
             media: None,
             share_media: true,
             phone_notifications: true,
@@ -744,6 +747,11 @@ async fn run(
                 .iter()
                 .any(|c| c.name() == "find" && c.version() == 1)
         });
+        snapshot.sms = active.as_ref().is_some_and(|(s, _): &(Session, _)| {
+            s.peer_capabilities()
+                .iter()
+                .any(|c| c.name() == "sms" && c.version() == 1)
+        });
         snapshot.devices = device_rows(&store, active_key.as_ref());
         snapshot.paired = has_paired_in(&store);
         publish(&app, &state, snapshot.clone());
@@ -855,9 +863,10 @@ async fn run(
                     let session = active.as_ref().filter(|(s, _)| s.peer().key == key).map(|(s, _)| s.clone());
                     match unpairing.unpair(key, session.as_ref()).await {
                         Ok(_) => {
-                            // The phone's toasts and icons go with its pairing.
+                            // The phone's toasts and icons go with its pairing, and so does what was read of its SMS.
+                            crate::sms::forget(&app, &key);
                             let _ = toasts.send(crate::notify::Job::Clear);
-                            if session.is_some() { crate::clipboard::detach(&app); active = None; indicator.unavailable(); snapshot.phase = "offline".into(); }
+                            if session.is_some() { crate::clipboard::detach(&app); crate::sms::detach(&app); active = None; indicator.unavailable(); snapshot.phase = "offline".into(); }
                             snapshot.message = format!("Usunięto parowanie z: {gone}.");
                             let left = store.load().map(|l| l.devices).unwrap_or_default();
                             match left.last() {
@@ -874,7 +883,7 @@ async fn run(
                         dismissed = Some((key, Instant::now()));
                         // GOING_AWAY: the phone doesn't come back on its own (§7.7), so another one can connect.
                         session.goodbye(ErrorCode::GoingAway, None).await;
-                        crate::clipboard::detach(&app); indicator.unavailable();
+                        crate::clipboard::detach(&app); crate::sms::detach(&app); indicator.unavailable();
                         snapshot.phase = "offline".into(); snapshot.message = "Telefon rozłączony".into();
                     }
                 }
@@ -934,6 +943,7 @@ async fn run(
                 crate::files::attach(&app, session.clone(), files_input);
                 crate::actions::serve(&app, trust.clone(), session.clone(), action_streams);
                 crate::clipboard::attach(&app, session.clone(), clipboard_input);
+                crate::sms::attach(&app, session.clone());
                 snapshot.phone = shown_name(&store, &session);
                 // Pairing another phone stays on screen while a known one reconnects.
                 let adding = (snapshot.phase == "waiting" || snapshot.phase.starts_with("sas-")) && !fresh;
@@ -1001,7 +1011,7 @@ async fn run(
                 }
             },
             // The phone changed what it accepts (e.g. "Pozwól komputerowi dzwonić", WN-50): the loop recomputes.
-            Some(()) = caps_changes.recv() => { if let Some(m) = &pc_media { m.resend(); } },
+            Some(()) = caps_changes.recv() => { if let Some(m) = &pc_media { m.resend(); } crate::sms::capabilities_changed(&app); },
             // CCS/1 FLOW:phone Command -> PcMedia (dropped outside the PC player's actions) -> SMTC (WN-47).
             message = async { match media_commands.as_mut() { Some(rx) => rx.recv().await, None => std::future::pending().await } } => match message {
                 Some(message) => { if let (Some(m), Some(action)) = (&pc_media, wind_core::media::Action::decode(&message.message)) { m.command(action); } }
@@ -1054,9 +1064,10 @@ async fn run(
             },
             end = async { match &active { Some((session, _)) => session.closed().await, None => std::future::pending().await } } => {
                 let (session, _) = active.take().expect("closed future implies a session");
-                crate::clipboard::detach(&app); indicator.unavailable(); snapshot.phase = "offline".into(); snapshot.message = "Telefon rozłączony".into();
+                crate::clipboard::detach(&app); crate::sms::detach(&app); indicator.unavailable(); snapshot.phase = "offline".into(); snapshot.message = "Telefon rozłączony".into();
                 // CCS/1 SEC:the phone removed the pairing: forget the key of this session's TLS peer only.
                 if close_code(&end) == Some(ErrorCode::Unpaired) && unpairing.unpaired_by(&session).is_ok() {
+                    crate::sms::forget(&app, &session.peer().key);
                     let _ = toasts.send(crate::notify::Job::Clear);
                     snapshot.message = format!("{} usunął parowanie z tym komputerem.", snapshot.phone.clone().unwrap_or_else(|| "Telefon".into()));
                     let left = store.load().map(|l| l.devices).unwrap_or_default();

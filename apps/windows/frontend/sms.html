@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="pl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light dark"><title>WindConnect — Wiadomości</title><link rel="stylesheet" href="tokens.css"><link rel="stylesheet" href="style.css"><link rel="stylesheet" href="sms.css"><script type="module" src="sms.js"></script></head>
+<body>
+  <div class="sms">
+    <aside class="threads" aria-label="Wątki">
+      <header class="threads-head">
+        <h1>Wiadomości</h1>
+        <button id="refresh" class="button quiet small" aria-label="Odśwież wątki"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.6M20 4v5h-5"/></svg></button>
+      </header>
+      <input id="search" class="search" type="search" placeholder="Szukaj" aria-label="Szukaj w wątkach" autocomplete="off">
+      <p id="threads-status" class="subtle threads-status" role="status"></p>
+      <ul id="thread-list" class="thread-list" role="listbox" aria-label="Wątki SMS"></ul>
+    </aside>
+    <section class="conversation" aria-labelledby="conversation-title">
+      <header class="conversation-head" id="conversation-head" hidden>
+        <span class="avatar large" id="conversation-avatar" aria-hidden="true"></span>
+        <div><h2 id="conversation-title"></h2><p id="conversation-sub" class="subtle"></p></div>
+      </header>
+      <div id="messages" class="messages" tabindex="0" aria-label="Wiadomości w wątku" hidden>
+        <button id="older" class="button quiet small older" hidden>Wcześniejsze wiadomości</button>
+        <ol id="message-list" class="message-list"></ol>
+      </div>
+      <div id="empty" class="empty-state">
+        <span class="empty-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8m-8 3h5"/></svg></span>
+        <h2 id="empty-title">Wybierz wątek</h2>
+        <p id="empty-text">Wiadomości z telefonu pojawią się tutaj. Treść nie jest zapisywana na tym komputerze.</p>
+      </div>
+      <p id="conversation-status" class="subtle conversation-status" role="status"></p>
+    </section>
+  </div>
+</body></html>

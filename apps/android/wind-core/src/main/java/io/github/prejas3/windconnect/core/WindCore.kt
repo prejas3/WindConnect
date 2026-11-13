@@ -327,6 +327,41 @@ class WindCore private constructor(
         val live = gate.withLock { connection }
         try { live?.setFindAccepted(value) } catch (error: Exception) { if (error is CancellationException) throw error }
     }
+    // WN-55: SMS read on the PC. Own consent (setting off by default) and READ_SMS, asked only when the person turns it
+    // on; contacts (READ_CONTACTS) are optional. Decision D2: only this (GitHub/F-Droid) build declares the permissions.
+    private val phoneSms = PhoneSms(appContext).also { client.setSmsSource(it) }
+    private val mutableSmsAllowed = MutableStateFlow(settings.getBoolean(SMS_ALLOWED, false))
+    /** "SMS na komputerze" (default off). */
+    val smsAllowed: StateFlow<Boolean> = mutableSmsAllowed.asStateFlow()
+    private val mutableSmsAccess = MutableStateFlow(phoneSms.canRead())
+    /** READ_SMS granted (re-read by [refreshSms]). */
+    val smsAccess: StateFlow<Boolean> = mutableSmsAccess.asStateFlow()
+    private val mutableSmsContacts = MutableStateFlow(phoneSms.canReadContacts())
+    /** READ_CONTACTS granted: names and photos on the PC. */
+    val smsContacts: StateFlow<Boolean> = mutableSmsContacts.asStateFlow()
+    init { applySmsLocal() }
+    private fun applySmsLocal(): Boolean {
+        val on = mutableSmsAllowed.value && mutableSmsAccess.value
+        client.setSmsEnabled(on)
+        phoneSms.observe(on) { client.smsChanged() }
+        return on
+    }
+    private suspend fun applySms() {
+        val on = applySmsLocal()
+        val live = gate.withLock { connection }
+        try { live?.setSmsAccepted(on) } catch (error: Exception) { if (error is CancellationException) throw error }
+    }
+    suspend fun setSmsAllowed(value: Boolean) = withContext(Dispatchers.IO) {
+        settings.edit().putBoolean(SMS_ALLOWED, value).apply()
+        mutableSmsAllowed.value = value
+        applySms()
+    }
+    /** Permissions change in the system dialog or settings: re-read them when the app comes back. */
+    suspend fun refreshSms() = withContext(Dispatchers.IO) {
+        mutableSmsAccess.value = phoneSms.canRead()
+        mutableSmsContacts.value = phoneSms.canReadContacts()
+        applySms()
+    }
     private var stopped = false
     private var observer: NetworkObserver? = null
     private var desiredPeer: Pair<String, ByteArray>? = null
@@ -593,6 +628,7 @@ class WindCore private constructor(
                 ringer.stop()
                 stopMedia()
                 stopNotify()
+                phoneSms.observe(false) {}
                 pcPlayer.clear()
                 desiredPeer = null
                 networkRetry?.cancel()
@@ -840,6 +876,7 @@ class WindCore private constructor(
         private const val PC_MEDIA_ALLOWED = "pc_media_allowed"
         private const val RELAY_URL = "relay_url"
         private const val FIND_ALLOWED = "find_allowed"
+        private const val SMS_ALLOWED = "sms_allowed"
 
         suspend fun open(context: Context, name: String, bindAddress: String = "0.0.0.0:0"): WindCore {
             var native: CoreClient? = null
