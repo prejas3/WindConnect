@@ -475,7 +475,7 @@ impl<'a> Reader<'a> {
 
 /// Characters that would let a preview fake its look: bidi embeddings,
 /// overrides and isolates, zero-width and direction marks.
-fn deceptive(c: char) -> bool {
+pub(crate) fn deceptive(c: char) -> bool {
     matches!(c, '\u{200B}'..='\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}' | '\u{FEFF}')
 }
 /// One line for the panel: control, bidi and zero-width characters and runs

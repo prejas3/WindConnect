@@ -15,10 +15,13 @@ mod hotkey;
 pub mod indicator;
 mod instance;
 mod media;
+mod notify;
 mod pairing;
 mod panel;
+mod pc_media;
 mod send_pipe;
 mod shell_menu;
+mod toast;
 mod tray;
 
 #[tauri::command]
@@ -334,8 +337,14 @@ fn main() {
             pairing::device_action,
             pairing::dev_pairing_address,
             pairing::media_action,
+            pairing::share_media,
+            pairing::phone_notifications,
             #[cfg(debug_assertions)]
             battery::dev_battery_alerts,
+            #[cfg(debug_assertions)]
+            notify::dev_notify_log,
+            #[cfg(debug_assertions)]
+            notify::dev_notify_history,
             actions::actions_snapshot,
             actions::set_action_enabled,
             actions::edit_custom_actions,

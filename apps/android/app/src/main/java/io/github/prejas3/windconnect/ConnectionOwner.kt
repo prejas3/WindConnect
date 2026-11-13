@@ -42,8 +42,22 @@ class ConnectionOwner(private val application: Application) {
     private val mutableMediaAccess = MutableStateFlow(false)
     val mediaAccess = mutableMediaAccess.asStateFlow()
     fun setMediaAllowed(value: Boolean) { val opened = core ?: return; scope.launch { opened.setMediaAllowed(value) } }
+    // WN-47: the PC's player on the phone.
+    private val mutablePcMedia = MutableStateFlow<io.github.prejas3.windconnect.core.PcMedia?>(null)
+    val pcMedia = mutablePcMedia.asStateFlow()
+    private val mutablePcMediaAllowed = MutableStateFlow(true)
+    val pcMediaAllowed = mutablePcMediaAllowed.asStateFlow()
+    fun pcMediaCommand(action: String, positionMs: Long? = null) { core?.pcMediaCommand(action, positionMs) }
+    fun setPcMediaAllowed(value: Boolean) { val opened = core ?: return; scope.launch { opened.setPcMediaAllowed(value) } }
     /** Access is granted in system settings: re-read it when the app comes back. */
     fun refreshMedia() { val opened = core ?: return; scope.launch { opened.refreshMedia() } }
+    // WN-42: the phone's notifications on the PC (own consent, default off).
+    private val mutableNotifyAllowed = MutableStateFlow(false)
+    val notifyAllowed = mutableNotifyAllowed.asStateFlow()
+    private val mutableNotifyAccess = MutableStateFlow(false)
+    val notifyAccess = mutableNotifyAccess.asStateFlow()
+    fun setNotifyAllowed(value: Boolean) { val opened = core ?: return; scope.launch { opened.setNotifyAllowed(value) } }
+    fun refreshNotify() { val opened = core ?: return; scope.launch { opened.refreshNotify() } }
     fun setFindAllowed(value: Boolean) { val opened = core ?: return; scope.launch { opened.setFindAllowed(value) } }
 
     suspend fun acquire(): WindCore = gate.withLock {
@@ -55,6 +69,10 @@ class ConnectionOwner(private val application: Application) {
                 launch { opened.findAllowed.collect { mutableFindAllowed.value = it } }
                 launch { opened.mediaAllowed.collect { mutableMediaAllowed.value = it } }
                 launch { opened.mediaAccess.collect { mutableMediaAccess.value = it } }
+                launch { opened.pcMedia.collect { mutablePcMedia.value = it } }
+                launch { opened.pcMediaAllowed.collect { mutablePcMediaAllowed.value = it } }
+                launch { opened.notifyAllowed.collect { mutableNotifyAllowed.value = it } }
+                launch { opened.notifyAccess.collect { mutableNotifyAccess.value = it } }
                 opened.state.collect { mutableState.value = it }
             }
         }
@@ -71,6 +89,7 @@ class ConnectionOwner(private val application: Application) {
             observation = null
             mutableState.value = ConnectionState.Stopped
             mutableRinging.value = false
+            mutablePcMedia.value = null
             core = null
             opened.shutdown()
         }

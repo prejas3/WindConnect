@@ -146,6 +146,25 @@ class PairingTest {
         if (InstrumentationRegistry.getArguments().getString("findProof") == "true") { FindProof.run(compose); return }
         // WN-46: the phone side of check-media-android.cjs (a test player controlled from the PC panel).
         if (InstrumentationRegistry.getArguments().getString("mediaProof") == "true") { MediaProof.run(); return }
+        // WN-43: the phone side of check-notify-toasts-android.cjs (the phone's notifications as toasts on the real PC).
+        if (InstrumentationRegistry.getArguments().getString("notifyProof") == "true") {
+            val args = InstrumentationRegistry.getArguments()
+            val connections = (context as WindApplication).connections
+            val core = kotlinx.coroutines.runBlocking { connections.acquire() }
+            val tag = args.getString("tag") ?: "toast"
+            try {
+                // Two passes on this session: as the phone is (the assistant's hold counts before the listener), then
+                // with the notification assistant off for the test, so postTime itself is measured; restored after.
+                NotifyProof.run(core, "${tag}a", "listener")
+                val assistant = NotifyProof.shell("cmd notification get_approved_assistant").trim().takeIf { it.contains('/') }
+                if (assistant != null) NotifyProof.shell("cmd notification disallow_assistant $assistant")
+                try { NotifyProof.run(core, "${tag}b", "post") }
+                finally { if (assistant != null) NotifyProof.shell("cmd notification allow_assistant $assistant") }
+            } finally { kotlinx.coroutines.runBlocking { connections.release(core) } }
+            return
+        }
+        // WN-47: the phone side of check-pc-media-android.cjs (the PC's player on the phone).
+        if (InstrumentationRegistry.getArguments().getString("pcMediaProof") == "true") { PcMediaProof.run(compose); return }
         if (InstrumentationRegistry.getArguments().getString("clipboardProof") == "true") {
             // Since WC-34 pairing leaves the background connection to the person; the proof's notification action needs it.
             compose.onNodeWithTag("keepBackground").performScrollTo().performClick()

@@ -40,3 +40,4 @@ windows-link 0.1.3, windows-numerics 0.2.0, windows-result 0.3.4, windows-string
 windows-threading 0.1.0 (windows-rs), Copyright (c) Microsoft Corporation;
 chosen licence: MIT (offered: MIT OR Apache-2.0); one identical text for all: windows-rs-MIT.txt.
 No NOTICE files in these packages; nothing vendored beyond their Rust sources and Windows metadata bindings.
+WN-47 calls windows 0.61.3 directly (SMTC, thumbnail re-encoding): the same package and licence as above, no new crate.

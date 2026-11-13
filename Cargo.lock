@@ -4902,7 +4902,7 @@ checksum = "712e227841d057c1ee1cd2fb22fa7e5a5461ae8e48fa2ca79ec42cfc1931183f"
 
 [[package]]
 name = "wind-core"
-version = "0.46.0"
+version = "0.49.0"
 dependencies = [
  "ed25519-dalek",
  "futures-util",
@@ -4928,7 +4928,7 @@ dependencies = [
 
 [[package]]
 name = "wind-ffi"
-version = "0.46.0"
+version = "0.49.0"
 dependencies = [
  "tokio",
  "uniffi",
@@ -4938,7 +4938,7 @@ dependencies = [
 
 [[package]]
 name = "windconnect-windows"
-version = "0.46.0"
+version = "0.49.0"
 dependencies = [
  "if-addrs",
  "png",
@@ -4953,13 +4953,14 @@ dependencies = [
  "tokio",
  "wind-core",
  "window-vibrancy",
+ "windows 0.61.3",
  "windows-sys 0.61.2",
  "zeroize",
 ]
 
 [[package]]
 name = "windctl"
-version = "0.46.0"
+version = "0.49.0"
 dependencies = [
  "clap",
  "tempfile",
