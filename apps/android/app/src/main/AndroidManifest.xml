@@ -11,6 +11,9 @@
          GitHub/F-Droid build; a Google Play variant must leave these out (Play restricts SMS permissions). -->
     <uses-permission android:name="android.permission.READ_SMS" />
     <uses-permission android:name="android.permission.READ_CONTACTS" />
+    <!-- WN-56: sending from the PC ("Wysyłanie z komputera"), asked only when turned on; READ_PHONE_STATE only lists SIMs. -->
+    <uses-permission android:name="android.permission.SEND_SMS" />
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
     <uses-feature android:name="android.hardware.camera.any" android:required="false" />
     <application
         android:name=".WindApplication"

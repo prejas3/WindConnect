@@ -81,6 +81,12 @@ class ConnectionOwner(private val application: Application) {
     val smsContacts = mutableSmsContacts.asStateFlow()
     fun setSmsAllowed(value: Boolean) { val opened = core ?: return; scope.launch { opened.setSmsAllowed(value) } }
     fun refreshSms() { val opened = core ?: return; scope.launch { opened.refreshSms() } }
+    // WN-56: sending from the PC (own setting, default off; SEND_SMS asked when turned on).
+    private val mutableSmsSendAllowed = MutableStateFlow(false)
+    val smsSendAllowed = mutableSmsSendAllowed.asStateFlow()
+    private val mutableSmsSendAccess = MutableStateFlow(false)
+    val smsSendAccess = mutableSmsSendAccess.asStateFlow()
+    fun setSmsSendAllowed(value: Boolean) { val opened = core ?: return; scope.launch { opened.setSmsSendAllowed(value) } }
 
     suspend fun acquire(): WindCore = gate.withLock {
         val opened = core ?: WindCore.open(application, android.os.Build.MODEL.take(64)).also { opened ->
@@ -101,6 +107,8 @@ class ConnectionOwner(private val application: Application) {
                 launch { opened.smsAllowed.collect { mutableSmsAllowed.value = it } }
                 launch { opened.smsAccess.collect { mutableSmsAccess.value = it } }
                 launch { opened.smsContacts.collect { mutableSmsContacts.value = it } }
+                launch { opened.smsSendAllowed.collect { mutableSmsSendAllowed.value = it } }
+                launch { opened.smsSendAccess.collect { mutableSmsSendAccess.value = it } }
                 opened.state.collect { mutableState.value = it }
             }
         }

@@ -4,12 +4,16 @@
 use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::{Mutex, OnceLock, Weak};
 use std::time::{Duration, Instant};
 
 use wind_core::identity::DeviceIdentity;
 use wind_core::protocol::{Channel, DeviceKind};
 use wind_core::session::{LocalInfo, Router, Session, SessionError};
-use wind_core::sms::{self, AskError, Message, MessageBox, Person, Server, Source, Status, Thread};
+use wind_core::sms::{
+    self, AskError, Message, MessageBox, Outgoing, Person, SendState, Server, Sim, Source, Status,
+    Thread,
+};
 use wind_core::transport::{Endpoint, PinnedKeys};
 
 const LOCALHOST: SocketAddr = SocketAddr::new(std::net::IpAddr::V4(Ipv4Addr::LOCALHOST), 0);
@@ -27,6 +31,11 @@ fn info(name: &str) -> LocalInfo {
 /// Thread 1: 1000 messages dated 1..=1000 ms, ids 1..=1000, every tenth sent; thread 2: one MMS.
 struct Store {
     denied: AtomicBool,
+    /// WN-56: sending on; what was sent; how the fake network answers.
+    sending: AtomicBool,
+    sent: Mutex<Vec<Outgoing>>,
+    outcome: Mutex<Vec<SendState>>,
+    server: OnceLock<Weak<Server>>,
 }
 
 fn msg(id: u64) -> Message {
@@ -43,6 +52,8 @@ fn msg(id: u64) -> Message {
         address: None,
         read: true,
         attachments: 0,
+        parts: vec![],
+        delivery: None,
     }
 }
 
@@ -103,6 +114,49 @@ impl Source for Store {
             _ => Err(Status::NotFound),
         }
     }
+    fn sims(&self) -> Result<Vec<Sim>, Status> {
+        if !self.sending.load(Ordering::SeqCst) {
+            return Err(Status::Denied);
+        }
+        Ok(vec![
+            Sim {
+                id: 1,
+                label: "Orange".into(),
+                slot: 0,
+                default: true,
+            },
+            Sim {
+                id: 2,
+                label: "Play".into(),
+                slot: 1,
+                default: false,
+            },
+        ])
+    }
+    fn send(&self, token: u64, message: Outgoing) -> Result<(), Status> {
+        if !self.sending.load(Ordering::SeqCst) {
+            return Err(Status::Denied);
+        }
+        self.sent.lock().unwrap().push(message);
+        let server = self.server.get().unwrap().clone();
+        let outcome = self.outcome.lock().unwrap().clone();
+        // The platform's callbacks come later, on another thread.
+        std::thread::spawn(move || {
+            for state in outcome {
+                std::thread::sleep(Duration::from_millis(20));
+                if let Some(s) = server.upgrade() {
+                    s.send_state(token, state);
+                }
+            }
+        });
+        Ok(())
+    }
+    fn part(&self, message: u64, part: u64) -> Result<(String, Vec<u8>), Status> {
+        match (message, part) {
+            (5, 1) => Ok(("image/png".into(), PNG.to_vec())),
+            _ => Err(Status::NotFound),
+        }
+    }
     fn photo(&self, address: &str) -> Result<Vec<u8>, Status> {
         match address {
             "+48600100200" => Ok(PNG.to_vec()),
@@ -145,8 +199,13 @@ async fn pair(offers: bool) -> Pair {
     let (pc, _) = server_task.await.unwrap().unwrap();
     let store = Arc::new(Store {
         denied: AtomicBool::new(false),
+        sending: AtomicBool::new(true),
+        sent: Mutex::new(vec![]),
+        outcome: Mutex::new(vec![SendState::Sent, SendState::Delivered]),
+        server: OnceLock::new(),
     });
     let server = Server::new(store.clone());
+    let _ = store.server.set(Arc::downgrade(&server));
     tokio::spawn(server.clone().serve(streams));
     Pair {
         pc,
@@ -254,4 +313,85 @@ async fn nothing_without_the_capability() {
             Channel::Sms
         )))
     ));
+}
+
+async fn states(
+    mut rx: tokio::sync::mpsc::Receiver<Result<SendState, AskError>>,
+) -> (Vec<SendState>, Option<AskError>) {
+    let mut out = vec![];
+    while let Some(r) = tokio::time::timeout(T, rx.recv()).await.unwrap() {
+        match r {
+            Ok(s) => out.push(s),
+            Err(e) => return (out, Some(e)),
+        }
+    }
+    (out, None)
+}
+
+fn text(to: &str, body: &str) -> Outgoing {
+    Outgoing {
+        to: vec![to.into()],
+        body: body.into(),
+        sim: Some(2),
+        image: None,
+    }
+}
+
+#[tokio::test]
+async fn sims_send_and_reports() {
+    let p = pair(true).await;
+    let sims = sms::sims(&p.pc).await.unwrap();
+    assert_eq!(sims.len(), 2);
+    assert!(sims[0].default);
+    let (got, err) = states(
+        sms::send(&p.pc, text("+48600100200", "Hej z PC"))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert!(err.is_none());
+    assert_eq!(
+        got,
+        [SendState::Queued, SendState::Sent, SendState::Delivered]
+    );
+    let sent = p.store.sent.lock().unwrap().clone();
+    assert_eq!(sent, [text("+48600100200", "Hej z PC")]);
+    // A failure from the network ends the stream at once.
+    *p.store.outcome.lock().unwrap() = vec![SendState::Failed];
+    let (got, _) = states(sms::send(&p.pc, text("1", "x")).await.unwrap()).await;
+    assert_eq!(got, [SendState::Queued, SendState::Failed]);
+    // An MMS part.
+    let (mime, bytes) = sms::part(&p.pc, 5, 1).await.unwrap();
+    assert_eq!(
+        (mime.as_str(), bytes.as_slice()),
+        ("image/png", PNG.as_slice())
+    );
+    assert!(matches!(
+        sms::part(&p.pc, 5, 2).await,
+        Err(AskError::Status(Status::NotFound))
+    ));
+}
+
+#[tokio::test]
+async fn sending_off_is_denied_and_sends_are_limited() {
+    let p = pair(true).await;
+    p.store.sending.store(false, Ordering::SeqCst);
+    assert!(matches!(
+        sms::sims(&p.pc).await,
+        Err(AskError::Status(Status::Denied))
+    ));
+    let (got, err) = states(sms::send(&p.pc, text("1", "x")).await.unwrap()).await;
+    assert!(got.is_empty());
+    assert!(matches!(err, Some(AskError::Status(Status::Denied))));
+    assert!(p.store.sent.lock().unwrap().is_empty());
+    p.store.sending.store(true, Ordering::SeqCst);
+    *p.store.outcome.lock().unwrap() = vec![SendState::Failed];
+    // Ten a minute: the eleventh is refused before it reaches the phone's SMS.
+    for _ in 0..sms::SENDS_PER_MINUTE {
+        let (_, err) = states(sms::send(&p.pc, text("1", "x")).await.unwrap()).await;
+        assert!(err.is_none());
+    }
+    let (_, err) = states(sms::send(&p.pc, text("1", "x")).await.unwrap()).await;
+    assert!(matches!(err, Some(AskError::Status(Status::Busy))));
+    assert_eq!(p.store.sent.lock().unwrap().len(), sms::SENDS_PER_MINUTE);
 }

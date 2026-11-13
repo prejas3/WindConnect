@@ -375,6 +375,9 @@ fn main() {
             sms::sms_older,
             sms::sms_photo,
             sms::sms_open,
+            sms::sms_sims,
+            sms::sms_send,
+            sms::sms_part,
             clipboard::clipboard_action,
             clipboard::clipboard_history
         ])

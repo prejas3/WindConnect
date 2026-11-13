@@ -43,6 +43,19 @@ fun SmsControls() {
     val access by connections.smsAccess.collectAsStateWithLifecycle()
     val contacts by connections.smsContacts.collectAsStateWithLifecycle()
     var refused by rememberSaveable { mutableStateOf(false) }
+    val sendAllowed by connections.smsSendAllowed.collectAsStateWithLifecycle()
+    val sendAccess by connections.smsSendAccess.collectAsStateWithLifecycle()
+    var sendRefused by rememberSaveable { mutableStateOf(false) }
+    val askSend = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
+        val ok = result[Manifest.permission.SEND_SMS] == true
+        sendRefused = !ok
+        connections.refreshSms()
+        if (ok) connections.setSmsSendAllowed(true)
+    }
+    val turnSend = { on: Boolean ->
+        if (on && !sendAccess) askSend.launch(arrayOf(Manifest.permission.SEND_SMS, Manifest.permission.READ_PHONE_STATE))
+        else connections.setSmsSendAllowed(on)
+    }
     val lifecycle = LocalLifecycleOwner.current
     DisposableEffect(lifecycle) {
         connections.refreshSms()
@@ -77,7 +90,16 @@ fun SmsControls() {
         }
         Text(state, style = MaterialTheme.typography.bodySmall,
             modifier = Modifier.testTag("smsState").semantics { liveRegion = LiveRegionMode.Polite })
-        if (refused || (allowed && !access) || (allowed && access && !contacts)) {
+        // WN-56: sending is a separate consent and needs reading on (the PC sends from the window that shows the threads).
+        if (allowed && access) {
+            WindSwitch("Wysyłanie z komputera", sendAllowed && sendAccess, turnSend, Modifier.testTag("smsSendAllowed"))
+            Text(when {
+                sendAllowed && sendAccess -> "Komputer może wysyłać SMS i MMS z tego telefonu (opłaty jak za zwykłe wiadomości). Najwyżej 10 na minutę."
+                sendRefused || (sendAllowed && !sendAccess) -> "Brak zgody na wysyłanie SMS. Możesz ją przyznać w ustawieniach aplikacji."
+                else -> "Po włączeniu Android zapyta o wysyłanie SMS i (opcjonalnie) o stan telefonu, by pokazać wybór karty SIM."
+            }, style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("smsSendState"))
+        }
+        if (refused || sendRefused || (allowed && !access) || (allowed && access && !contacts)) {
             WindButton("Otwórz ustawienia aplikacji", {
                 val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null))
                 if (context !is Activity) intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)

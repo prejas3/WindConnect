@@ -513,3 +513,15 @@ tylko w pamięci aplikacji (bez zapisu na dysku), znika przy połączeniu innego
 telefonu albo rozparowaniu i trafia na stronę wyłącznie jako tekst.
 Pomiar: `scripts/check-sms-android.cjs` (prawdziwa aplikacja + emulator,
 1000 SMS w wątku, otwarcie od kliknięcia do narysowania).
+
+### Wysyłanie SMS i MMS (WN-56)
+
+W oknie „Wiadomości” pole na dole wysyła odpowiedź w otwartym wątku, a „+”
+zaczyna nową wiadomość (numery oddzielone przecinkami). Gdy telefon ma kilka
+kart SIM, obok jest wybór karty. Ikona obrazu dołącza zdjęcie: okno zmniejsza
+je do 1280 px i JPEG do ok. 300 KB, a wiadomość idzie jako MMS (także przy
+kilku odbiorcach). Stan wysyłki widać od razu (wysyłanie…, wysłano,
+dostarczono, nie wysłano); potem wiadomość zastępuje zapis z telefonu.
+Zdjęcia z odebranych MMS ładują się przy przewijaniu. Wysyłanie trzeba
+włączyć na telefonie („Wysyłanie z komputera”); do tego czasu pole to mówi.
+Pomiar: `scripts/check-sms-send-android.cjs`.

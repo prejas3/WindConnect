@@ -780,3 +780,18 @@ nie trafiają do logów.
 Decyzja D2: uprawnienia SMS deklaruje tylko ta wersja (GitHub/F-Droid);
 wariant Google Play musi je pominąć.
 Test: `apps/windows/scripts/check-sms-android.cjs` (z `SmsProof`).
+
+### Wysyłanie z komputera (WN-56)
+
+Osobne ustawienie „Wysyłanie z komputera” (widoczne przy włączonym odczycie,
+domyślnie wyłączone) prosi o `SEND_SMS` i opcjonalnie `READ_PHONE_STATE`
+(tylko lista kart SIM) dopiero przy włączeniu. `SmsSender` wysyła tekst do
+jednego numeru jako SMS (`divideMessage` + `sendMultipartTextMessage` z
+raportami wysłania i doręczenia, kartą wybraną na PC), a obraz lub kilku
+odbiorców jako MMS: `MmsPdu` (minimalne M-Send.req z SMIL) -> plik w
+`cache/mms-out` -> `FileProvider` (`${applicationId}.mmsout`) ->
+`sendMultimediaMessage`. Jako aplikacja SMS niedomyślna WindConnect nie pisze
+do dostawcy SMS: Android sam zapisuje wysłane wiadomości, więc komputer widzi
+je przez obserwację. Najwyżej 10 wysyłek na minutę (rdzeń). Obrazy z
+odebranych MMS idą na komputer na prośbę (`Part`), jako JPEG do 1600 px.
+Testy: `MmsPduTest`, `SmsRulesTest`, `apps/windows/scripts/check-sms-send-android.cjs`.

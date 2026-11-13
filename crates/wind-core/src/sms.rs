@@ -42,6 +42,26 @@ pub const CONCURRENT: usize = 4;
 pub const WATCHES: usize = 2;
 /// How long the phone gathers changes before one `Changed`.
 pub const CHANGE_DEBOUNCE: Duration = Duration::from_millis(250);
+/// Most recipients of one `Send` (more than one goes as a group MMS).
+pub const MAX_RECIPIENTS: usize = 20;
+/// Bytes of the picture of one `Send` (JPEG or PNG; the PC scales it down first).
+pub const MAX_IMAGE: usize = 768 * 1024;
+/// Bytes of one MMS part sent to the PC (pictures re-encoded on the phone).
+pub const MAX_PART: usize = 900 * 1024;
+/// Most SIMs listed.
+pub const MAX_SIMS: usize = 4;
+/// Most parts listed per MMS.
+pub const MAX_PARTS: usize = 16;
+/// Bytes of a MIME type.
+pub const MAX_MIME: usize = 64;
+/// Bytes of a SIM's label.
+pub const MAX_LABEL: usize = 64;
+/// A `Send` stream waits this long for "sent" (or a failure).
+pub const SEND_TIMEOUT: Duration = Duration::from_secs(120);
+/// After "sent", this long for the delivery report.
+pub const DELIVERY_WAIT: Duration = Duration::from_secs(60);
+/// Sends accepted per minute per phone (more get `End(Busy)`).
+pub const SENDS_PER_MINUTE: usize = 10;
 
 /// How a request ended.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -95,6 +115,127 @@ pub enum Request {
     Photo { address: String },
     /// `Changed` whenever SMS change on the phone, until either side ends the stream.
     Watch,
+    /// The SIMs a message can go out through (WN-56); `End(Denied)` while sending is off.
+    Sims,
+    /// Sends a message (WN-56): the phone answers with `Sending` states, then `End`.
+    Send(Outgoing),
+    /// A part of a received MMS (WN-56), by the message's and the part's id.
+    Part { message: u64, part: u64 },
+}
+
+/// A message the PC sends through the phone.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Outgoing {
+    /// 1 to [`MAX_RECIPIENTS`] addresses.
+    pub to: Vec<String>,
+    /// Possibly empty when there is a picture.
+    pub body: String,
+    /// A [`Sim::id`]; none: the phone's default.
+    pub sim: Option<u64>,
+    /// `image/jpeg` or `image/png` and its bytes (checked by their first bytes).
+    pub image: Option<(String, Vec<u8>)>,
+}
+
+impl Outgoing {
+    /// Goes as MMS: a picture or more than one recipient.
+    pub fn mms(&self) -> bool {
+        self.image.is_some() || self.to.len() > 1
+    }
+}
+
+/// A SIM a message can go out through.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Sim {
+    /// Android's subscription id.
+    pub id: u64,
+    /// The carrier's or the person's name for it.
+    pub label: String,
+    /// The slot, from 0.
+    pub slot: u32,
+    /// What the phone sends by default.
+    pub default: bool,
+}
+
+/// How a sent message is doing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SendState {
+    /// The phone took it and handed it to the system.
+    Queued,
+    Sent,
+    /// The delivery report came (SMS only).
+    Delivered,
+    Failed,
+}
+
+impl SendState {
+    pub fn code(self) -> u64 {
+        match self {
+            Self::Queued => 0,
+            Self::Sent => 1,
+            Self::Delivered => 2,
+            Self::Failed => 3,
+        }
+    }
+    /// An unknown code is `Failed`.
+    pub fn from_code(code: u64) -> Self {
+        match code {
+            0 => Self::Queued,
+            1 => Self::Sent,
+            2 => Self::Delivered,
+            _ => Self::Failed,
+        }
+    }
+    pub fn is_final(self) -> bool {
+        matches!(self, Self::Delivered | Self::Failed)
+    }
+}
+
+/// A part of an MMS other than its text.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Part {
+    pub id: u64,
+    pub mime: String,
+}
+
+/// An SMS's delivery report.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Delivery {
+    Pending,
+    Delivered,
+    Failed,
+}
+
+impl Delivery {
+    pub fn code(self) -> u64 {
+        match self {
+            Self::Pending => 0,
+            Self::Delivered => 1,
+            Self::Failed => 2,
+        }
+    }
+    /// An unknown code is `Pending`.
+    pub fn from_code(code: u64) -> Self {
+        match code {
+            1 => Self::Delivered,
+            2 => Self::Failed,
+            _ => Self::Pending,
+        }
+    }
+}
+
+const IMAGE_TYPES: [&str; 2] = ["image/jpeg", "image/png"];
+
+/// JPEG or PNG by the first bytes, matching the declared type.
+pub fn image_matches(mime: &str, bytes: &[u8]) -> bool {
+    match mime {
+        "image/jpeg" => bytes.starts_with(&[0xff, 0xd8, 0xff]),
+        "image/png" => crate::notify::is_png(bytes),
+        _ => false,
+    }
+}
+
+fn address_ok(a: &str) -> bool {
+    !a.is_empty() && a.len() <= MAX_ADDRESS
 }
 
 impl Request {
@@ -119,6 +260,25 @@ impl Request {
             }
             Self::Photo { address } => (2, vec![(0, Value::Text(address.clone()))]),
             Self::Watch => (3, vec![]),
+            Self::Sims => (4, vec![]),
+            Self::Send(o) => {
+                let mut f = vec![
+                    (
+                        0,
+                        Value::Array(o.to.iter().map(|a| Value::Text(a.clone())).collect()),
+                    ),
+                    (1, Value::Text(o.body.clone())),
+                ];
+                if let Some(sim) = o.sim {
+                    f.push((2, uint(sim)));
+                }
+                if let Some((mime, bytes)) = &o.image {
+                    f.push((3, Value::Bytes(bytes.clone())));
+                    f.push((4, Value::Text(mime.clone())));
+                }
+                (5, f)
+            }
+            Self::Part { message, part } => (6, vec![(0, uint(*message)), (1, uint(*part))]),
         };
         RawMessage::new(ty, map(f))
     }
@@ -144,6 +304,45 @@ impl Request {
                 _ => None,
             },
             3 => Some(Self::Watch),
+            4 => Some(Self::Sims),
+            5 => {
+                let Value::Array(to) = get(&f, 0)? else {
+                    return None;
+                };
+                if to.is_empty() || to.len() > MAX_RECIPIENTS {
+                    return None;
+                }
+                let to = to
+                    .iter()
+                    .map(|v| bounded_text(v, MAX_ADDRESS).filter(|a| address_ok(a)))
+                    .collect::<Option<Vec<_>>>()?;
+                let body = bounded_text(get(&f, 1)?, MAX_BODY)?;
+                let image = match (get(&f, 3), get(&f, 4)) {
+                    (None, None) => None,
+                    (Some(Value::Bytes(b)), Some(Value::Text(mime)))
+                        if !b.is_empty()
+                            && b.len() <= MAX_IMAGE
+                            && IMAGE_TYPES.contains(&mime.as_str())
+                            && image_matches(mime, b) =>
+                    {
+                        Some((mime.clone(), b.clone()))
+                    }
+                    _ => return None,
+                };
+                if body.is_empty() && image.is_none() {
+                    return None;
+                }
+                Some(Self::Send(Outgoing {
+                    to,
+                    body,
+                    sim: opt_uint(&f, 2)?,
+                    image,
+                }))
+            }
+            6 => Some(Self::Part {
+                message: get_uint(&f, 0)?,
+                part: get_uint(&f, 1)?,
+            }),
             _ => None,
         }
     }
@@ -216,8 +415,12 @@ pub struct Message {
     /// The sender of a received message in a group thread; else none.
     pub address: Option<String>,
     pub read: bool,
-    /// MMS parts that aren't text (shown as a note; WN-56 shows them).
+    /// MMS parts that aren't text.
     pub attachments: u32,
+    /// Those of them the PC can ask for with `Part` (WN-56), at most [`MAX_PARTS`].
+    pub parts: Vec<Part>,
+    /// An SMS's delivery report, when one was asked for (WN-56).
+    pub delivery: Option<Delivery>,
 }
 
 impl Message {
@@ -235,6 +438,12 @@ pub enum Reply {
     Photo(Vec<u8>),
     Changed,
     End(Status),
+    /// WN-56: the phone's SIMs.
+    Sims(Vec<Sim>),
+    /// WN-56: how a `Send` is doing.
+    Sending(SendState),
+    /// WN-56: an MMS part: its type and bytes.
+    Part(String, Vec<u8>),
 }
 
 impl Reply {
@@ -251,6 +460,32 @@ impl Reply {
             Self::Photo(png) => (2, vec![(0, Value::Bytes(png.clone()))]),
             Self::Changed => (3, vec![]),
             Self::End(status) => (4, vec![(0, uint(status.code()))]),
+            Self::Sims(sims) => (
+                5,
+                vec![(
+                    0,
+                    Value::Array(
+                        sims.iter()
+                            .map(|s| {
+                                Value::Array(vec![
+                                    uint(s.id),
+                                    Value::Text(s.label.clone()),
+                                    uint(s.slot as u64),
+                                    Value::Bool(s.default),
+                                ])
+                            })
+                            .collect(),
+                    ),
+                )],
+            ),
+            Self::Sending(state) => (6, vec![(0, uint(state.code()))]),
+            Self::Part(mime, bytes) => (
+                7,
+                vec![
+                    (0, Value::Text(mime.clone())),
+                    (1, Value::Bytes(bytes.clone())),
+                ],
+            ),
         };
         RawMessage::new(ty, map(f))
     }
@@ -269,6 +504,19 @@ impl Reply {
             },
             3 => Some(Self::Changed),
             4 => Some(Self::End(Status::from_code(get_uint(&f, 0)?))),
+            5 => Some(Self::Sims(items(&f, MAX_SIMS as u32, decode_sim)?)),
+            6 => Some(Self::Sending(SendState::from_code(get_uint(&f, 0)?))),
+            7 => match (get(&f, 0)?, get(&f, 1)?) {
+                (Value::Text(mime), Value::Bytes(b))
+                    if !mime.is_empty()
+                        && mime.len() <= MAX_MIME
+                        && !b.is_empty()
+                        && b.len() <= MAX_PART =>
+                {
+                    Some(Self::Part(mime.clone(), b.clone()))
+                }
+                _ => None,
+            },
             _ => None,
         }
     }
@@ -325,6 +573,20 @@ fn message_value(m: &Message) -> Value {
     f.push((6, Value::Bool(m.read)));
     if m.attachments > 0 {
         f.push((7, uint(m.attachments as u64)));
+    }
+    if !m.parts.is_empty() {
+        f.push((
+            8,
+            Value::Array(
+                m.parts
+                    .iter()
+                    .map(|p| Value::Array(vec![uint(p.id), Value::Text(p.mime.clone())]))
+                    .collect(),
+            ),
+        ));
+    }
+    if let Some(d) = m.delivery {
+        f.push((9, uint(d.code())));
     }
     map(f)
 }
@@ -436,6 +698,30 @@ fn decode_thread(v: &Value) -> Option<Thread> {
     })
 }
 
+fn decode_sim(v: &Value) -> Option<Sim> {
+    let Value::Array(parts) = v else { return None };
+    let [id, label, slot, default] = parts.as_slice() else {
+        return None;
+    };
+    Some(Sim {
+        id: as_uint(id)?,
+        label: bounded_text(label, MAX_LABEL)?,
+        slot: u32::try_from(as_uint(slot)?).ok()?,
+        default: as_bool(default)?,
+    })
+}
+
+fn decode_part(v: &Value) -> Option<Part> {
+    let Value::Array(parts) = v else { return None };
+    let [id, mime] = parts.as_slice() else {
+        return None;
+    };
+    Some(Part {
+        id: as_uint(id)?,
+        mime: bounded_text(mime, MAX_MIME).filter(|m| !m.is_empty())?,
+    })
+}
+
 fn decode_message(v: &Value) -> Option<Message> {
     let f = fields_of(v)?;
     Some(Message {
@@ -453,6 +739,14 @@ fn decode_message(v: &Value) -> Option<Message> {
             None => 0,
             Some(n) => u32::try_from(n).ok()?,
         },
+        parts: match get(&f, 8) {
+            None => vec![],
+            Some(Value::Array(list)) if list.len() <= MAX_PARTS => {
+                list.iter().map(decode_part).collect::<Option<_>>()?
+            }
+            Some(_) => return None,
+        },
+        delivery: opt_uint(&f, 9)?.map(Delivery::from_code),
     })
 }
 
@@ -483,6 +777,9 @@ fn fit_thread(mut t: Thread) -> Thread {
 
 fn fit_message(mut m: Message) -> Message {
     m.body = clip(&m.body, MAX_BODY);
+    m.parts
+        .retain(|p| !p.mime.is_empty() && p.mime.len() <= MAX_MIME);
+    m.parts.truncate(MAX_PARTS);
     m.address = m
         .address
         .filter(|a| !a.is_empty() && a.len() <= MAX_ADDRESS);
@@ -501,12 +798,31 @@ pub trait Source: Send + Sync {
     ) -> Result<Vec<Message>, Status>;
     /// A PNG of at most [`MAX_PHOTO`] bytes.
     fn photo(&self, address: &str) -> Result<Vec<u8>, Status>;
+    /// WN-56: the SIMs to send through; `Denied` while sending is off.
+    fn sims(&self) -> Result<Vec<Sim>, Status> {
+        Err(Status::Denied)
+    }
+    /// WN-56: hands `message` to the system; its states follow through [`Server::send_state`] with `token`.
+    /// `Denied` while sending is off.
+    fn send(&self, token: u64, message: Outgoing) -> Result<(), Status> {
+        let _ = (token, message);
+        Err(Status::Denied)
+    }
+    /// WN-56: a part of a received MMS: its type and at most [`MAX_PART`] bytes.
+    fn part(&self, message: u64, part: u64) -> Result<(String, Vec<u8>), Status> {
+        let _ = (message, part);
+        Err(Status::NotFound)
+    }
 }
 
 /// Serves `sms` streams on the phone.
 pub struct Server {
     source: Arc<dyn Source>,
     changes: watch::Sender<u64>,
+    /// WN-56: the open sends, by token, and when the last ones were accepted.
+    sends: std::sync::Mutex<std::collections::HashMap<u64, mpsc::UnboundedSender<SendState>>>,
+    next_token: std::sync::atomic::AtomicU64,
+    recent: std::sync::Mutex<std::collections::VecDeque<std::time::Instant>>,
 }
 
 impl Server {
@@ -514,7 +830,103 @@ impl Server {
         Arc::new(Self {
             source,
             changes: watch::channel(0).0,
+            sends: Default::default(),
+            next_token: 1.into(),
+            recent: Default::default(),
         })
+    }
+
+    /// WN-56: how the send `token` is doing (from the platform's sent/delivery callbacks).
+    pub fn send_state(&self, token: u64, state: SendState) {
+        if let Some(tx) = self.sends.lock().unwrap().get(&token) {
+            let _ = tx.send(state);
+        }
+    }
+
+    /// Room for another send: fewer than [`SENDS_PER_MINUTE`] taken in the last minute.
+    fn admit_send(&self) -> bool {
+        let now = std::time::Instant::now();
+        let mut recent = self.recent.lock().unwrap();
+        while recent
+            .front()
+            .is_some_and(|t| now.duration_since(*t) >= Duration::from_secs(60))
+        {
+            recent.pop_front();
+        }
+        recent.len() < SENDS_PER_MINUTE
+    }
+
+    /// A send the phone took counts toward the limit (a refused one doesn't).
+    fn count_send(&self) {
+        self.recent
+            .lock()
+            .unwrap()
+            .push_back(std::time::Instant::now());
+    }
+
+    async fn send(&self, mut stream: SmsStream, message: Outgoing) {
+        if !self.admit_send() {
+            return end(&mut stream, Status::Busy).await;
+        }
+        let token = self
+            .next_token
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let (tx, mut states) = mpsc::unbounded_channel();
+        self.sends.lock().unwrap().insert(token, tx);
+        // MMS has no delivery report: "sent" is its last word.
+        let mms = message.mms();
+        let source = self.source.clone();
+        let handed = tokio::task::spawn_blocking(move || source.send(token, message))
+            .await
+            .unwrap_or(Err(Status::Failed));
+        let status = match handed {
+            Err(s) => s,
+            Ok(()) => {
+                self.count_send();
+                let mut deadline = tokio::time::Instant::now() + SEND_TIMEOUT;
+                let mut last = SendState::Queued;
+                let mut ok = write_raw(
+                    &mut stream.send,
+                    Channel::Sms,
+                    &Reply::Sending(last).encode(),
+                )
+                .await
+                .is_ok();
+                while ok && !last.is_final() && !(mms && last == SendState::Sent) {
+                    match tokio::time::timeout_at(deadline, states.recv()).await {
+                        Ok(Some(state)) if state != last => {
+                            if state == SendState::Sent {
+                                deadline = tokio::time::Instant::now() + DELIVERY_WAIT;
+                            }
+                            last = state;
+                            ok = write_raw(
+                                &mut stream.send,
+                                Channel::Sms,
+                                &Reply::Sending(state).encode(),
+                            )
+                            .await
+                            .is_ok();
+                        }
+                        Ok(Some(_)) => {}
+                        // No report in time: "sent" stays the last word; nothing at all is a failure.
+                        _ => {
+                            if last == SendState::Queued {
+                                let _ = write_raw(
+                                    &mut stream.send,
+                                    Channel::Sms,
+                                    &Reply::Sending(SendState::Failed).encode(),
+                                )
+                                .await;
+                            }
+                            break;
+                        }
+                    }
+                }
+                Status::Ok
+            }
+        };
+        self.sends.lock().unwrap().remove(&token);
+        end(&mut stream, status).await;
     }
 
     /// SMS changed on the phone (a content observer): every watch sends `Changed` after [`CHANGE_DEBOUNCE`].
@@ -544,7 +956,7 @@ impl Server {
             Ok(Ok(Some(m))) => match Request::decode(&m) {
                 Some(r) => r,
                 None => {
-                    let code = if m.ty <= 3 {
+                    let code = if m.ty <= 6 {
                         ErrorCode::MalformedFrame
                     } else {
                         ErrorCode::UnknownMessage
@@ -561,6 +973,10 @@ impl Server {
                 return end(&mut stream, Status::Busy).await;
             };
             return self.watch(stream).await;
+        }
+        // A send waits for its reports and holds no request slot.
+        if let Request::Send(message) = request {
+            return self.send(stream, message).await;
         }
         let Ok(_permit) = requests.acquire_owned().await else {
             return;
@@ -605,7 +1021,27 @@ impl Server {
                     Ok(vec![Reply::Photo(png)])
                 }
             }),
-            Request::Watch => unreachable!("handled above"),
+            Request::Sims => source.sims().map(|mut sims| {
+                sims.truncate(MAX_SIMS);
+                for sim in &mut sims {
+                    sim.label = clip(&sim.label, MAX_LABEL);
+                }
+                vec![Reply::Sims(sims)]
+            }),
+            Request::Part { message, part } => {
+                source.part(message, part).and_then(|(mime, bytes)| {
+                    if mime.is_empty()
+                        || mime.len() > MAX_MIME
+                        || bytes.is_empty()
+                        || bytes.len() > MAX_PART
+                    {
+                        Err(Status::NotFound)
+                    } else {
+                        Ok(vec![Reply::Part(mime, bytes)])
+                    }
+                })
+            }
+            Request::Watch | Request::Send(_) => unreachable!("handled above"),
         })
         .await
         .unwrap_or(Err(Status::Failed));
@@ -787,6 +1223,79 @@ pub async fn photo(session: &Session, address: &str) -> Result<Option<Vec<u8>>, 
     }
 }
 
+/// WN-56: the phone's SIMs; `Status(Denied)` while sending is off on the phone.
+pub async fn sims(session: &Session) -> Result<Vec<Sim>, AskError> {
+    match ask(session, Request::Sims).await?.as_slice() {
+        [Reply::Sims(sims)] => Ok(sims.clone()),
+        _ => Err(AskError::Protocol),
+    }
+}
+
+/// WN-56: an MMS part: its type and bytes (a picture as JPEG/PNG).
+pub async fn part(
+    session: &Session,
+    message: u64,
+    part: u64,
+) -> Result<(String, Vec<u8>), AskError> {
+    match ask(session, Request::Part { message, part })
+        .await?
+        .as_slice()
+    {
+        [Reply::Part(mime, bytes)] => Ok((mime.clone(), bytes.clone())),
+        _ => Err(AskError::Protocol),
+    }
+}
+
+/// WN-56: sends `message` through the phone. The receiver gets its states, then closes; a refusal or a broken
+/// stream comes as one `Err` instead.
+pub async fn send(
+    session: &Session,
+    message: Outgoing,
+) -> Result<mpsc::Receiver<Result<SendState, AskError>>, AskError> {
+    let mut stream = session.open_sms().await?;
+    write_raw(
+        &mut stream.send,
+        Channel::Sms,
+        &Request::Send(message).encode(),
+    )
+    .await?;
+    let _ = stream.send.finish();
+    let (tx, rx) = mpsc::channel(8);
+    tokio::spawn(async move {
+        let wait = SEND_TIMEOUT + DELIVERY_WAIT + Duration::from_secs(10);
+        let read = async {
+            loop {
+                match stream.recv.next_raw().await {
+                    Ok(Some(m)) => match Reply::decode(&m) {
+                        Some(Reply::Sending(state)) => {
+                            if tx.send(Ok(state)).await.is_err() {
+                                return;
+                            }
+                        }
+                        Some(Reply::End(Status::Ok)) => return,
+                        Some(Reply::End(s)) => {
+                            let _ = tx.send(Err(AskError::Status(s))).await;
+                            return;
+                        }
+                        _ => {
+                            let _ = tx.send(Err(AskError::Protocol)).await;
+                            return;
+                        }
+                    },
+                    _ => {
+                        let _ = tx.send(Err(AskError::Protocol)).await;
+                        return;
+                    }
+                }
+            }
+        };
+        if tokio::time::timeout(wait, read).await.is_err() {
+            stream.recv.stop(ErrorCode::Cancelled);
+        }
+    });
+    Ok(rx)
+}
+
 /// Watches the phone's SMS: the receiver gets `()` per `Changed` and closes when the watch ends (the session, the
 /// phone withdrawing `sms/1`, or dropping the receiver).
 pub async fn watch(session: &Session) -> Result<mpsc::Receiver<()>, AskError> {
@@ -827,7 +1336,106 @@ mod tests {
             address: None,
             read: true,
             attachments: 0,
+            parts: vec![],
+            delivery: None,
         }
+    }
+
+    const JPEG: [u8; 4] = [0xff, 0xd8, 0xff, 0xe0];
+
+    #[test]
+    fn sends_parts_and_sims_round_trip() {
+        let send = Outgoing {
+            to: vec!["+48600100200".into(), "+48600100300".into()],
+            body: "Hej".into(),
+            sim: Some(2),
+            image: Some(("image/jpeg".into(), JPEG.to_vec())),
+        };
+        assert!(send.mms());
+        for r in [
+            Request::Sims,
+            Request::Send(send),
+            Request::Send(Outgoing {
+                to: vec!["+48600".into()],
+                body: "x".into(),
+                sim: None,
+                image: None,
+            }),
+            Request::Part {
+                message: 4,
+                part: 9,
+            },
+        ] {
+            assert_eq!(Request::decode(&r.encode()), Some(r));
+        }
+        let sims = Reply::Sims(vec![Sim {
+            id: 1,
+            label: "Orange".into(),
+            slot: 0,
+            default: true,
+        }]);
+        for r in [
+            sims,
+            Reply::Sending(SendState::Delivered),
+            Reply::Part("image/jpeg".into(), JPEG.to_vec()),
+            Reply::Messages(vec![Message {
+                mms: true,
+                parts: vec![Part {
+                    id: 3,
+                    mime: "image/jpeg".into(),
+                }],
+                delivery: Some(Delivery::Failed),
+                ..message(1)
+            }]),
+        ] {
+            assert_eq!(Reply::decode(&r.encode()), Some(r));
+        }
+        assert_eq!(
+            encode_raw_frame(Channel::Sms, &Request::Sims.encode()).unwrap(),
+            [0x03, 0x82, 0x04, 0xa0]
+        );
+        assert_eq!(
+            encode_raw_frame(Channel::Sms, &Reply::Sending(SendState::Sent).encode()).unwrap(),
+            [0x05, 0x82, 0x06, 0xa1, 0x00, 0x01]
+        );
+        let one = Request::Send(Outgoing {
+            to: vec!["123".into()],
+            body: "Hi".into(),
+            sim: None,
+            image: None,
+        });
+        assert_eq!(
+            encode_raw_frame(Channel::Sms, &one.encode()).unwrap(),
+            [0x0d, 0x82, 0x05, 0xa2, 0x00, 0x81, 0x63, 0x31, 0x32, 0x33, 0x01, 0x62, 0x48, 0x69]
+        );
+        assert_eq!(SendState::from_code(9), SendState::Failed);
+    }
+
+    #[test]
+    fn sends_are_checked() {
+        let send = |to: Vec<&str>, body: &str, image: Option<(&str, &[u8])>| {
+            Request::decode(
+                &Request::Send(Outgoing {
+                    to: to.into_iter().map(String::from).collect(),
+                    body: body.into(),
+                    sim: None,
+                    image: image.map(|(m, b)| (m.to_owned(), b.to_vec())),
+                })
+                .encode(),
+            )
+        };
+        assert!(send(vec!["1"], "", None).is_none(), "nothing to send");
+        assert!(send(vec![], "x", None).is_none(), "nobody to send to");
+        assert!(send(vec![""], "x", None).is_none());
+        assert!(send(vec!["1"; MAX_RECIPIENTS + 1], "x", None).is_none());
+        assert!(
+            send(vec!["1"], "", Some(("image/png", &JPEG))).is_none(),
+            "type by the bytes"
+        );
+        assert!(send(vec!["1"], "", Some(("image/gif", b"GIF89a"))).is_none());
+        assert!(send(vec!["1"], "", Some(("image/jpeg", &JPEG))).is_some());
+        let big = [JPEG.as_slice(), &vec![0u8; MAX_IMAGE]].concat();
+        assert!(send(vec!["1"], "", Some(("image/jpeg", &big))).is_none());
     }
 
     #[test]
