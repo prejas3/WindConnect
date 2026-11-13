@@ -415,7 +415,7 @@ pamięć odkrywania po zmianie sieci. Pytanie i odpowiedź unicast sprawdza test
 hosta, a filtrowanie broadcast przez prawdziwy układ Wi-Fi bez locka wymaga
 telefonu.
 
-Wersja aplikacji to 0.55.0, a Android `versionCode` to 64. Numery wydań rosną
+Wersja aplikacji to 0.58.0, a Android `versionCode` to 67. Numery wydań rosną
 niezależnie od kolejności kart, aby aktualizacja APK i MSI nie cofała wersji.
 
 ## Pierwsze uruchomienie (WC-34)
