@@ -30,10 +30,55 @@ import kotlinx.coroutines.flow.asStateFlow
  * ANSWER_PHONE_CALLS) and Silence (the ring stream muted, unmuted when the call ends) act only on the ringing call they name.
  * RULE:no number or name is logged; nothing is stored beyond what Android's call log already has.
  */
+/**
+ * CCS/1 RULE:WN-57 review: the ring stream muted for the PC's "Wycisz" is restored even if the call's end is never seen (the
+ * process died, the setting went off mid-ring): the mute is recorded before it is made, undone at the call's end, when calls
+ * stop being watched and at the next start while the phone isn't ringing. Only our own mute: a stream the person had muted
+ * already is left alone and never recorded.
+ */
+class RingMute(context: Context) {
+    private val audio = context.applicationContext.getSystemService(AudioManager::class.java)
+    private val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+
+    /** Ours is in effect (survives the process). */
+    val active: Boolean get() = prefs.getBoolean(KEY, false)
+
+    /** Mutes the ring stream for this call; false when it was muted already (not ours) or Android refused. */
+    fun mute(): Boolean {
+        if (audio.isStreamMute(AudioManager.STREAM_RING)) return false
+        prefs.edit().putBoolean(KEY, true).commit()
+        return try {
+            audio.adjustStreamVolume(AudioManager.STREAM_RING, AudioManager.ADJUST_MUTE, 0)
+            true
+        } catch (_: SecurityException) {
+            prefs.edit().remove(KEY).commit()
+            false
+        }
+    }
+
+    /** Undoes our mute, if there is one. */
+    fun restore() {
+        if (!active) return
+        try { audio.adjustStreamVolume(AudioManager.STREAM_RING, AudioManager.ADJUST_UNMUTE, 0) } catch (_: SecurityException) {}
+        prefs.edit().remove(KEY).commit()
+    }
+
+    /** At start: a mute left from an earlier process goes, unless the phone is ringing right now. */
+    fun recover(ringingNow: Boolean) {
+        if (active && !ringingNow) restore()
+    }
+
+    companion object {
+        private const val PREFS = "wind_calls"
+        private const val KEY = "ring_muted_for_pc"
+    }
+}
+
 class PhoneCalls(context: Context) : CallActionSink {
     private val app = context.applicationContext
     private val main = Handler(Looper.getMainLooper())
     private val audio = app.getSystemService(AudioManager::class.java)
+    private val ringMute = RingMute(app).also { it.recover(audio.mode == AudioManager.MODE_RINGTONE) }
 
     fun canRead(): Boolean = granted(Manifest.permission.READ_PHONE_STATE) && granted(Manifest.permission.READ_CALL_LOG)
     fun canReject(): Boolean = granted(Manifest.permission.ANSWER_PHONE_CALLS)
@@ -49,7 +94,6 @@ class PhoneCalls(context: Context) : CallActionSink {
     @Volatile private var nextCall = 1L
     @Volatile private var ringing = false
     @Volatile private var answered = false
-    @Volatile private var mutedRing = false
 
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -83,10 +127,7 @@ class PhoneCalls(context: Context) : CallActionSink {
         val missedNow = ringing && !answered
         ringing = false; answered = false
         mutableCaller.value = null
-        if (mutedRing) {
-            mutedRing = false
-            try { audio.adjustStreamVolume(AudioManager.STREAM_RING, AudioManager.ADJUST_UNMUTE, 0) } catch (_: SecurityException) {}
-        }
+        ringMute.restore()
         // The call log is written a moment after the state goes idle.
         if (missedNow) main.postDelayed({ refreshMissed() }, 1_500)
     }
@@ -132,6 +173,8 @@ class PhoneCalls(context: Context) : CallActionSink {
             refreshMissed()
         } else {
             try { app.unregisterReceiver(receiver) } catch (_: IllegalArgumentException) {}
+            // The call's end won't be seen any more: our mute goes now.
+            ringMute.restore()
             ringing = false; answered = false
             mutableCaller.value = null
             mutableMissed.value = emptyList()
@@ -157,10 +200,7 @@ class PhoneCalls(context: Context) : CallActionSink {
         } catch (_: SecurityException) {
             // Only the default dialer may: mute the ring stream for this call instead.
         }
-        try {
-            audio.adjustStreamVolume(AudioManager.STREAM_RING, AudioManager.ADJUST_MUTE, 0)
-            mutedRing = true
-        } catch (_: SecurityException) {}
+        ringMute.mute()
         refreshActions()
     }
 }

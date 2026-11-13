@@ -118,8 +118,18 @@ let app, instrument, browser, socket, timer, redirected = false, output = '';
     await panel.locator('#missed-calls').waitFor({ state: 'visible' });
     await panel.locator('#missed-calls').scrollIntoViewIfNeeded();
     await panel.locator('#missed-calls').screenshot({ path: path.join(root, 'pc-panel-missed.png') });
-    // 6. "Połączenia na komputerze" off: a call is only a state (no toast).
+    // 6. WN-57 review: silenced, then the setting goes off mid-ring: our mute is undone at once (not left for good).
+    await delay(1500);
+    const t4 = Date.now();
+    device('emu', 'gsm', 'call', CALLER);
+    const fourth = await toast('call/call-', t4, 'fourth call toast');
+    await invoke('dev_toast_activate', { tag: fourth.tag.split('/')[1], arguments: `call-silence:${fourth.tag.split('call-').pop()}`, input: null });
+    await until(async () => ringMuted() || null, 'ring muted before the setting goes off', 5000);
     command('calls-off');
+    report.unmutedWhenTurnedOff = await until(async () => !ringMuted() || null, 'ring unmuted when the setting goes off mid-ring', 8000).then(() => true);
+    device('emu', 'gsm', 'cancel', CALLER);
+    await until(async () => callState() === 0 || null, 'fourth call over');
+    // 7. "Połączenia na komputerze" off: a call is only a state (no toast).
     await delay(1500);
     const t3 = Date.now();
     device('emu', 'gsm', 'call', CALLER);
