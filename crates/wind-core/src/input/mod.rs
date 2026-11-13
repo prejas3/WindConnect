@@ -6,8 +6,10 @@
 //! A [`crate::session::Session`] wires them up: `Session::input` gives an
 //! [`InputSender`]; `Router::route_input` gives a queue of [`InputEvent`]s.
 
+mod interpolation;
 mod receiver;
 mod sender;
+pub use interpolation::Interpolator;
 
 pub use receiver::{Class, InputEvent, InputReceiver};
 pub use sender::{InputAnnouncement, InputSender, SenderCore, REPEATS};

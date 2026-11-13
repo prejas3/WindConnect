@@ -194,6 +194,7 @@ pub enum InputMessage {
     Scroll(Motion),
     PointerButton(PointerButton),
     InputSession(InputSession),
+    Gesture(InputGesture),
 }
 
 impl InputMessage {
@@ -203,6 +204,7 @@ impl InputMessage {
             Self::Scroll(_) => 1,
             Self::PointerButton(_) => 2,
             Self::InputSession(_) => 3,
+            Self::Gesture(_) => 4,
         }
     }
 }
@@ -230,6 +232,47 @@ pub struct PointerButton {
     pub x: i64,
     pub y: i64,
     /// Epoch after this transition.
+    pub b: u64,
+    pub sx: i64,
+    pub sy: i64,
+}
+
+/// CCS/1 input/2:fixed native gestures only; no text, keycodes or executable payload.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Gesture {
+    TaskView,
+    ShowDesktop,
+    PreviousApp,
+    NextApp,
+    Other(u64),
+}
+impl Gesture {
+    fn code(self) -> u64 {
+        match self {
+            Self::TaskView => 0,
+            Self::ShowDesktop => 1,
+            Self::PreviousApp => 2,
+            Self::NextApp => 3,
+            Self::Other(n) => n,
+        }
+    }
+    fn from_code(n: u64) -> Self {
+        match n {
+            0 => Self::TaskView,
+            1 => Self::ShowDesktop,
+            2 => Self::PreviousApp,
+            3 => Self::NextApp,
+            n => Self::Other(n),
+        }
+    }
+}
+/// CCS/1 FLOW:reliable epoch barrier applies cumulative motion before executing the gesture once.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct InputGesture {
+    pub seq: u64,
+    pub gesture: Gesture,
+    pub x: i64,
+    pub y: i64,
     pub b: u64,
     pub sx: i64,
     pub sy: i64,
@@ -329,6 +372,15 @@ pub(super) fn decode(channel: Channel, payload: Value) -> Result<Message> {
             3 => InputMessage::InputSession(InputSession {
                 s: body.u32(0)?,
                 g: body.u64(1)?,
+            }),
+            4 => InputMessage::Gesture(InputGesture {
+                seq: body.u64(0)?,
+                gesture: Gesture::from_code(body.u64(1)?),
+                x: body.i64(2)?,
+                y: body.i64(3)?,
+                b: body.u64(4)?,
+                sx: body.i64(5)?,
+                sy: body.i64(6)?,
             }),
             _ => return Err(unknown),
         })),
@@ -537,6 +589,15 @@ pub(super) fn encode(msg: &Message) -> Result<Value> {
             InputMessage::InputSession(s) => {
                 b.put(0, uint(s.s.into()));
                 b.put(1, uint(s.g));
+            }
+            InputMessage::Gesture(g) => {
+                b.put(0, uint(g.seq));
+                b.put(1, uint(g.gesture.code()));
+                b.put(2, int(g.x));
+                b.put(3, int(g.y));
+                b.put(4, uint(g.b));
+                b.put(5, int(g.sx));
+                b.put(6, int(g.sy));
             }
         },
     }

@@ -10,6 +10,131 @@ use wind_core::{
 };
 use wind_ffi::{open_client, CoreError, IdentityStorage};
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn touchpad_handles_release_on_replacement_and_cannot_replay_after_off_on() {
+    use wind_core::{
+        input::InputEvent,
+        protocol::{Button, Channel},
+    };
+    use wind_ffi::TouchpadCommand;
+    let client = open_client(
+        Box::new(MemoryStorage::default()),
+        "Phone".into(),
+        "127.0.0.1:0".into(),
+    )
+    .await
+    .unwrap();
+    let key = PublicKey::from_bytes(&client.identity().public_key.try_into().unwrap()).unwrap();
+    let pc = DeviceIdentity::generate().unwrap();
+    let pins = Arc::new(PinnedKeys::new());
+    pins.pin(key);
+    let endpoint = Endpoint::bind("127.0.0.1:0".parse().unwrap(), &pc, pins).unwrap();
+    client
+        .pin_peer(pc.public_key().as_bytes().to_vec())
+        .unwrap();
+    let accepting = endpoint.clone();
+    let server = tokio::spawn(async move {
+        let connection = accepting.accept().await.unwrap().unwrap();
+        let mut router = Router::new();
+        let input = router.route_input_version(2, 64);
+        let (session, _) = Session::accept(
+            connection,
+            LocalInfo {
+                name: "PC".into(),
+                kind: DeviceKind::Computer,
+                app: None,
+            },
+            router,
+        )
+        .await
+        .unwrap();
+        (session, input)
+    });
+    let connection = client
+        .connect(
+            endpoint.local_addr().unwrap().to_string(),
+            pc.public_key().as_bytes().to_vec(),
+        )
+        .await
+        .unwrap();
+    let (session, mut rx) = server.await.unwrap();
+    let caps = connection.watch_touchpad();
+    assert!(caps.current().await);
+    let first = connection.open_touchpad().await.unwrap();
+    assert!(first.gestures());
+    first
+        .send(vec![TouchpadCommand::Left { down: true }])
+        .await
+        .unwrap();
+    assert_eq!(rx.recv().await, Some(InputEvent::Begin(0)));
+    assert_eq!(
+        rx.recv().await,
+        Some(InputEvent::Button {
+            button: Button::Left,
+            down: true
+        })
+    );
+    let second = connection.open_touchpad().await.unwrap();
+    assert_eq!(
+        rx.recv().await,
+        Some(InputEvent::Button {
+            button: Button::Left,
+            down: false
+        })
+    );
+    assert_eq!(rx.recv().await, Some(InputEvent::End(0)));
+    assert!(first
+        .send(vec![TouchpadCommand::Left { down: true }])
+        .await
+        .is_err());
+    first.finish_input().await;
+    second
+        .send(vec![TouchpadCommand::Right { down: true }])
+        .await
+        .unwrap();
+    assert_eq!(rx.recv().await, Some(InputEvent::Begin(1)));
+    assert_eq!(
+        rx.recv().await,
+        Some(InputEvent::Button {
+            button: Button::Right,
+            down: true
+        })
+    );
+    session.set_accepted(Channel::Input, false).await.unwrap();
+    assert!(!caps.next().await.unwrap());
+    assert_eq!(
+        rx.recv().await,
+        Some(InputEvent::Button {
+            button: Button::Right,
+            down: false
+        })
+    );
+    assert_eq!(rx.recv().await, Some(InputEvent::End(1)));
+    assert_eq!(rx.recv().await, Some(InputEvent::Withdrawn));
+    session.set_accepted(Channel::Input, true).await.unwrap();
+    assert!(caps.next().await.unwrap());
+    assert!(second
+        .send(vec![TouchpadCommand::Pointer { dx: 1, dy: 0 }])
+        .await
+        .is_err());
+    let third = connection.open_touchpad().await.unwrap();
+    third.send(vec![TouchpadCommand::TaskView]).await.unwrap();
+    assert_eq!(rx.recv().await, Some(InputEvent::Begin(2)));
+    assert_eq!(
+        rx.recv().await,
+        Some(InputEvent::Gesture(wind_core::protocol::Gesture::TaskView))
+    );
+    third.finish_input().await;
+    assert_eq!(rx.recv().await, Some(InputEvent::End(2)));
+    assert!(third
+        .send(vec![TouchpadCommand::Left { down: true }])
+        .await
+        .is_err());
+    connection.disconnect().await;
+    client.shutdown().await;
+    endpoint.close();
+}
+
 #[derive(Clone, Default)]
 struct MemoryStorage(Arc<Mutex<Option<Vec<u8>>>>);
 

@@ -17,6 +17,7 @@ mod file_transfer;
 mod phone_actions;
 mod phone_extras;
 mod sms_bridge;
+mod touchpad;
 pub use file_transfer::{
     FileCommitResult, FileCommitStatus, FileDestination, FileTransfer, IncomingControl,
     IncomingFile,
@@ -27,6 +28,7 @@ pub use sms_bridge::{
     SmsMessage, SmsMessages, SmsOutgoing, SmsPart, SmsPartInfo, SmsPerson, SmsPhoto, SmsSim,
     SmsSims, SmsSource, SmsThread, SmsThreads,
 };
+pub use touchpad::{TouchpadCapabilities, TouchpadCommand, TouchpadSession};
 
 /// With the relay on, the address gets this long first (a LAN answers in
 /// milliseconds; the relay is the fallback).
@@ -1066,6 +1068,7 @@ impl CoreClient {
         let file_caps = file_transfer::FileCapabilities::new(&session, events);
         let extras = self.start_extras(&session, &file_caps, volume);
         Ok(Arc::new(CoreConnection {
+            touchpad_owner: Arc::new(tokio::sync::Mutex::new(0)),
             file_caps,
             extras,
             files_active: std::sync::atomic::AtomicBool::new(false),
@@ -1310,6 +1313,7 @@ impl CoreClient {
         let file_caps = file_transfer::FileCapabilities::new(&session, events);
         let extras = self.start_extras(&session, &file_caps, volume);
         Ok(Arc::new(CoreConnection {
+            touchpad_owner: Arc::new(tokio::sync::Mutex::new(0)),
             file_caps,
             extras,
             files_active: std::sync::atomic::AtomicBool::new(false),
@@ -1525,6 +1529,7 @@ fn action_error(error: wind_core::actions::RequestError) -> CoreError {
 
 #[derive(uniffi::Object)]
 pub struct CoreConnection {
+    touchpad_owner: Arc<tokio::sync::Mutex<u64>>,
     files: Arc<file_transfer::FileBridge>,
     file_input:
         std::sync::Mutex<Option<tokio::sync::mpsc::Receiver<wind_core::session::FileStream>>>,

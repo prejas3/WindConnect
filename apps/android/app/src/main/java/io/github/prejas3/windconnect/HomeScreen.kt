@@ -21,6 +21,9 @@ import androidx.compose.ui.unit.dp
 import io.github.prejas3.windconnect.core.ConnectionState
 import io.github.prejas3.windconnect.ui.*
 import java.util.Locale
+import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.runtime.getValue
 
 // CCS/1 SEC:peer labels are presentation only; strip control/direction overrides without changing trusted keys.
 internal fun computerLabel(value: String?): String = value.orEmpty().filterNot {
@@ -30,6 +33,8 @@ internal fun computerLabel(value: String?): String = value.orEmpty().filterNot {
 @Composable
 fun HomeScreen(state: PairingUi, onScan: () -> Unit, onDiagnostics: () -> Unit, onNearby: (() -> Unit)? = null, onClipboard: (() -> Unit)? = null, onClipboardEnabled: ((Boolean) -> Unit)? = null, onSendFile: (() -> Unit)? = null) {
     val pcActions = rememberPcActions()
+    val context = LocalContext.current
+    val touchpadAccepted by (context.applicationContext as WindApplication).connections.touchpadAccepted.collectAsStateWithLifecycle()
     val connected = state.connection as? ConnectionState.Connected
     val known = state.hasPairedDevice || connected != null
     val name = if (known) computerLabel(state.computerName) else "Twój komputer"
@@ -67,7 +72,7 @@ fun HomeScreen(state: PairingUi, onScan: () -> Unit, onDiagnostics: () -> Unit, 
         // CCS/1 RULE:actions are disabled until their real channel integrations exist; no simulated send/lock/link result.
         Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             WindAction("Wyślij plik", "lub udostępnij z galerii", "send", onSendFile?.takeIf { connected != null && state.filesAccepted }, Modifier.weight(1f).fillMaxHeight().testTag("homeSend"))
-            WindAction("Touchpad", "i klawiatura", "touch", null, Modifier.weight(1f).fillMaxHeight().testTag("homeTouchpad"))
+            WindAction("Touchpad", "kursor i gesty", "touch", if (connected != null && touchpadAccepted) { { context.startActivity(android.content.Intent(context, TouchpadActivity::class.java)) } } else null, Modifier.weight(1f).fillMaxHeight().testTag("homeTouchpad"))
         }
         Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             // WN-100: the PC's actions (PcActions.kt).

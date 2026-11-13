@@ -607,7 +607,12 @@ impl Session {
             .chain(router.actions.as_ref().map(|(v, _)| (Channel::Actions, *v)))
             .chain(router.find.as_ref().map(|_| (Channel::Find, 1)))
             .chain(router.sms.as_ref().map(|_| (Channel::Sms, 1)))
-            .chain(router.input.as_ref().map(|_| (Channel::Input, 1)))
+            .chain(
+                router
+                    .input
+                    .as_ref()
+                    .map(|_| (Channel::Input, router.input_version)),
+            )
             .map(|(channel, version)| Accept {
                 channel,
                 version,
@@ -628,7 +633,7 @@ impl Session {
             .collect();
         let input = router.input.map(|out| {
             let (tx, rx) = mpsc::channel(INPUT_COMMANDS);
-            tokio::spawn(input_actor(rx, out));
+            tokio::spawn(input_actor(rx, out, router.input_version));
             tx
         });
         let inner = Arc::new(Inner {
@@ -683,6 +688,7 @@ impl Session {
             .input
             .get_or_init(|| {
                 let inner = Arc::downgrade(&self.inner);
+                let gesture_peer = Arc::downgrade(&self.inner);
                 InputSender::new(
                     self.inner.conn.quinn().clone(),
                     Arc::new(move || {
@@ -692,6 +698,16 @@ impl Session {
                             .lock()
                             .unwrap_or_else(|e| e.into_inner());
                         a
+                    }),
+                    Arc::new(move || {
+                        gesture_peer.upgrade().is_some_and(|inner| {
+                            inner
+                                .peer_caps
+                                .read()
+                                .unwrap_or_else(|e| e.into_inner())
+                                .iter()
+                                .any(|c| c.name() == "input" && c.version() == 2)
+                        })
                     }),
                 )
             })
@@ -1604,7 +1620,8 @@ async fn bidi_loop(
 }
 
 fn has_input(caps: &[Capability]) -> bool {
-    caps.iter().any(|c| c.name() == "input" && c.version() == 1)
+    caps.iter()
+        .any(|c| c.name() == "input" && (1..=2).contains(&c.version()))
 }
 
 /// Commands queued to a session's input actor, in arrival order.
@@ -1630,8 +1647,12 @@ const INPUT_COMMANDS: usize = 1024;
 /// the module sees events in exactly the order the state machine made them,
 /// however the stream and datagram sources interleave and however slowly
 /// the module reads.
-async fn input_actor(mut cmds: mpsc::Receiver<InputCmd>, out: mpsc::Sender<InputEvent>) {
-    let mut receiver = InputReceiver::new(true);
+async fn input_actor(
+    mut cmds: mpsc::Receiver<InputCmd>,
+    out: mpsc::Sender<InputEvent>,
+    version: u64,
+) {
+    let mut receiver = InputReceiver::with_version(true, version);
     while let Some(cmd) = cmds.recv().await {
         let mut events = Vec::new();
         match cmd {

@@ -26,6 +26,7 @@ mod send_pipe;
 mod shell_menu;
 mod sms;
 mod toast;
+mod touchpad;
 mod transfer_model;
 mod transfer_progress;
 mod tray;

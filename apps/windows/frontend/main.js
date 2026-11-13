@@ -1,4 +1,5 @@
 const invoke = window.__TAURI__?.core.invoke;
+import './touchpad.js';
 const systemTheme = matchMedia('(prefers-color-scheme: dark)');
 let themeChoice = 'system';
 try { themeChoice = localStorage.getItem('windconnect-theme') || 'system'; } catch { /* Storage may be disabled by host policy. */ }

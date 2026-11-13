@@ -1,5 +1,15 @@
 # Windows
 
+## Touchpad z telefonu (WN-51)
+
+Touchpad jest domyślnie dozwolony dla sparowanego telefonu. Otwórz „Touchpad” na ekranie głównym Androida: jeden palec porusza kursorem, stuknięcie klika, przytrzymanie przeciąga, dwa palce przewijają (z inercją), stuknięcie dwoma palcami daje prawy klik. Przyciski pod obszarem pozwalają też przytrzymać lewy/prawy przycisk. Czułość i naturalne przewijanie są ustawiane na telefonie.
+
+Trzy palce: w górę widok zadań, w dół pulpit, w lewo poprzednia aplikacja, w prawo następna. Wymaga PC z `input/2`; podstawowy ruch działa również z `input/1`. Klawiatura będzie osobną funkcją WN-52.
+
+Panel PC pokazuje „Telefon steruje kursorem · nazwa”. „Wyłącz touchpad” natychmiast wycofuje przyjmowanie wejścia i zwalnia przyciski. Ustawienie pozostaje po ponownym uruchomieniu. Zamknięcie ekranu telefonu, utrata fokusu, blokada i zmiana połączenia zatrzymują wysyłkę; nic nie jest odtwarzane po ponownym połączeniu. Windows może odmówić sterowania aplikacją uruchomioną jako administrator lub bezpiecznym pulpitem: touchpad wyłącza się z komunikatem i wymaga lokalnego ponownego włączenia, bez podnoszenia uprawnień.
+
+CCS/1 PERF:QUIC loopback + wspólny interpolator PC, 360 próbek przy 120 Hz: p95 16,285 ms idle i 11,929 ms z 268 500 992 B transferu; surowe CSV w raporcie karty. To pomiar programowy, bez SendInput i ekranu. Fizyczny dotyk → kursor oraz płynność rzeczywistego monitora 120 Hz: WN-134 (testy końcowe, powiązane z WN-77). Odtworzenie: `WIND_TOUCHPAD_SAMPLES=<folder>` oraz `cargo test -p wind-core --test input touchpad_latency_with_interpolation_idle_and_bulk -- --ignored --nocapture`.
+
 ## Postęp transferów (WN-41)
 
 CCS/1

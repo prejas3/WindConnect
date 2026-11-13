@@ -18,6 +18,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -185,6 +186,12 @@ class WindCore private constructor(
     private val gate = Mutex()
     private val mutableState = MutableStateFlow<ConnectionState>(ConnectionState.Ready)
     val state: StateFlow<ConnectionState> = mutableState.asStateFlow()
+    private val mutableTouchpadAccepted = MutableStateFlow(false)
+    val touchpadAccepted = mutableTouchpadAccepted.asStateFlow()
+    private var touchpadCaps: Job? = null
+    suspend fun openTouchpad(target: String): io.github.prejas3.windconnect.bindings.TouchpadSession = withContext(Dispatchers.IO) {
+        gate.withLock { check(!stopped); val current=connection ?: error("Brak połączenia");check(current.peer().fingerprint==target){"Zmieniono komputer"};current.openTouchpad() }
+    }
     private val mutableFilesAccepted = MutableStateFlow(false)
     val filesAccepted = mutableFilesAccepted.asStateFlow()
     private val mutableFiles = MutableStateFlow<List<io.github.prejas3.windconnect.bindings.FileTransfer>>(emptyList())
@@ -639,6 +646,13 @@ class WindCore private constructor(
         systemClipboard.sessionStarted()
         startFiles(opened)
         connection = opened
+        touchpadCaps?.cancelAndJoin()
+        val touchpadWatch = opened.watchTouchpad()
+        mutableTouchpadAccepted.value = touchpadWatch.current()
+        touchpadCaps = scope.launch {
+            try { while (true) mutableTouchpadAccepted.value = touchpadWatch.next() }
+            finally { touchpadWatch.destroy(); mutableTouchpadAccepted.value = false }
+        }
         mutableState.value = ConnectionState.Connected(peer.name, peer.fingerprint, rtt, opened.route())
         startBattery(opened)
         startMedia(opened)
@@ -986,6 +1000,7 @@ class WindCore private constructor(
     }
 
     private suspend fun releaseConnection() {
+        touchpadCaps?.cancelAndJoin(); touchpadCaps = null; mutableTouchpadAccepted.value = false
         stopFiles()
         stopBattery()
         stopMedia()

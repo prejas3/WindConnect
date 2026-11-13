@@ -1,4 +1,5 @@
 import { createTransfers } from './transfers.js';
+import './touchpad.js';
 const invoke = window.__TAURI__?.core.invoke;
 const renderFiles = createTransfers(document, (action, id) => invoke?.('files_action', { action, id }).catch(value => renderNotice({ message: String(value), error: true })));
 const system = matchMedia('(prefers-color-scheme: dark)');
