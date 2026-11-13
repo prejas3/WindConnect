@@ -97,6 +97,15 @@ class ConnectionOwner(private val application: Application) {
     private val mutableSmsSendAccess = MutableStateFlow(false)
     val smsSendAccess = mutableSmsSendAccess.asStateFlow()
     fun setSmsSendAllowed(value: Boolean) { val opened = core ?: return; scope.launch { opened.setSmsSendAllowed(value) } }
+    // WN-57: calls on the PC (own setting, default off; phone and call-log permissions asked when turned on).
+    private val mutableCallsAllowed = MutableStateFlow(false)
+    val callsAllowed = mutableCallsAllowed.asStateFlow()
+    private val mutableCallsAccess = MutableStateFlow(false)
+    val callsAccess = mutableCallsAccess.asStateFlow()
+    private val mutableCallsReject = MutableStateFlow(false)
+    val callsReject = mutableCallsReject.asStateFlow()
+    fun setCallsAllowed(value: Boolean) { val opened = core ?: return; scope.launch { opened.setCallsAllowed(value) } }
+    fun refreshCalls() { val opened = core ?: return; scope.launch { opened.refreshCalls() } }
 
     suspend fun acquire(): WindCore = gate.withLock {
         val opened = core ?: WindCore.open(application, android.os.Build.MODEL.take(64)).also { opened ->
@@ -119,6 +128,9 @@ class ConnectionOwner(private val application: Application) {
                 launch { opened.smsContacts.collect { mutableSmsContacts.value = it } }
                 launch { opened.smsSendAllowed.collect { mutableSmsSendAllowed.value = it } }
                 launch { opened.smsSendAccess.collect { mutableSmsSendAccess.value = it } }
+                launch { opened.callsAllowed.collect { mutableCallsAllowed.value = it } }
+                launch { opened.callsAccess.collect { mutableCallsAccess.value = it } }
+                launch { opened.callsReject.collect { mutableCallsReject.value = it } }
                 opened.state.collect {
                     mutableState.value = it
                     if (it is ConnectionState.Connected) ReceiveFilesService.ensure(application)

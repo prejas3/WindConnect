@@ -805,3 +805,18 @@ do dostawcy SMS: Android sam zapisuje wysłane wiadomości, więc komputer widzi
 je przez obserwację. Najwyżej 10 wysyłek na minutę (rdzeń). Obrazy z
 odebranych MMS idą na komputer na prośbę (`Part`), jako JPEG do 1600 px.
 Testy: `MmsPduTest`, `SmsRulesTest`, `apps/windows/scripts/check-sms-send-android.cjs`.
+
+## Połączenia na komputerze (WN-57)
+
+Ustawienie „Połączenia na komputerze” (domyślnie wyłączone) prosi przy
+włączeniu o `READ_PHONE_STATE`, `READ_CALL_LOG` (numer dzwoniącego i
+nieodebrane), `ANSWER_PHONE_CALLS` (odrzucanie z komputera) i opcjonalnie
+`READ_CONTACTS` (nazwa). `PhoneCalls` słucha `PHONE_STATE` (numer przychodzi
+tylko z `READ_CALL_LOG`), nadaje każdemu dzwonieniu nowy `call` i dokłada
+dzwoniącego do stanu z `CallWatcher` (PROTOCOL.md §9.10); nieodebrane czyta z
+rejestru połączeń (7 dni, najwyżej 20). Z komputera (§9.12): „Odrzuć” to
+`TelecomManager.endCall`, „Wycisz” wycisza strumień dzwonka (zwykła aplikacja
+nie może użyć `silenceRinger`) i przywraca go po połączeniu; obie działają
+tylko na dzwoniące połączenie, które nazywają. Bez ustawienia komputer dostaje
+sam stan jak w WN-48. Numery nie trafiają do logów.
+Test: `apps/windows/scripts/check-calls-android.cjs`.

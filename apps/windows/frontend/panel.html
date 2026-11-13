@@ -31,6 +31,10 @@
       <div class="volume-row"><button id="phone-mute" class="button quiet small" aria-pressed="false" aria-label="Wycisz telefon"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="speaker" d="M4 9v6h4l5 4V5L8 9z"/><path class="waves" d="M16 9a4 4 0 0 1 0 6m2-9a8 8 0 0 1 0 12"/><path class="cross" d="m16 9 6 6m0-6-6 6"/></svg></button><div id="phone-volume-slider" class="volume-slider" role="slider" tabindex="0" aria-labelledby="phone-volume-title" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span class="fill"></span><span class="thumb"></span></div></div>
       <p id="phone-volume-note" class="subtle" hidden>Zmiana głośności jest wyłączona w ustawieniach WindConnect na telefonie.</p>
     </section>
+    <section id="missed-calls" class="transfers missed-calls" aria-labelledby="missed-title" hidden>
+      <div class="transfers-head"><h2 id="missed-title">Nieodebrane połączenia</h2></div>
+      <ul id="missed-list" class="transfer-list"></ul>
+    </section>
     <section id="notifications" class="transfers notifications" aria-labelledby="notifications-title" hidden>
       <div class="transfers-head"><h2 id="notifications-title">Powiadomienia</h2></div>
       <p class="subtle notifications-note">Odrzucenie tutaj albo zamknięcie wyskakującego powiadomienia (✕) usuwa je też z telefonu.</p>

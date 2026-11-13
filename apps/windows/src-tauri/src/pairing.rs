@@ -83,6 +83,9 @@ pub struct Snapshot {
     /// WN-48: "Wstrzymaj odtwarzanie przy połączeniu", "Głośność z telefonu", and the phone's volume (none without one).
     pub pause_on_call: bool,
     pub volume_remote: bool,
+    /// WN-57: "Połączenia z telefonu", and the phone's missed calls for the panel (newest first).
+    pub call_toasts: bool,
+    pub missed_calls: Vec<crate::calls::MissedView>,
     pub phone_volume: Option<crate::pc_volume::PhoneVolume>,
     /// WN-44: the phone's notifications in the panel, newest first (empty without a session).
     pub notifications: Vec<crate::notify::PanelItem>,
@@ -111,6 +114,8 @@ impl Default for Snapshot {
             quiet_hours: crate::notify::QuietHours::default(),
             pause_on_call: true,
             volume_remote: true,
+            call_toasts: true,
+            missed_calls: Vec::new(),
             phone_volume: None,
             notifications: Vec::new(),
             paired: false,
@@ -163,6 +168,7 @@ enum Action {
     CallVolume {
         pause: Option<bool>,
         volume: Option<bool>,
+        calls: Option<bool>,
     },
     /// WN-48: the panel changes the phone's volume (only what is given).
     PhoneVolume(Option<u8>, Option<bool>),
@@ -499,7 +505,12 @@ async fn run(
         call_volume.pause_on_call,
     ));
     let volume_remote = Arc::new(std::sync::atomic::AtomicBool::new(call_volume.volume));
-    let (accept_call, accept_volume) = (pause_on_call.clone(), volume_remote.clone());
+    let call_toasts = Arc::new(std::sync::atomic::AtomicBool::new(call_volume.calls));
+    let (accept_call, accept_toasts, accept_volume) = (
+        pause_on_call.clone(),
+        call_toasts.clone(),
+        volume_remote.clone(),
+    );
     // WN-44: replies and closes from the toasts come back here.
     let (toast_events_tx, mut toast_events) =
         mpsc::unbounded_channel::<crate::notify::ToastEvent>();
@@ -573,9 +584,12 @@ async fn run(
                 if !accept_notify.load(std::sync::atomic::Ordering::SeqCst) {
                     router.start_disabled(wind_core::protocol::Channel::Notify);
                 }
-                // CCS/1 IO:call/1 from the phone (§9.10, WN-48): a state only, pauses the PC's players.
+                // CCS/1 IO:call/1 from the phone (§9.10, WN-48/57): the state pauses the PC's players; its caller and the missed
+                // calls make toasts. Taken while either setting is on.
                 let call_input = wind_core::call::route(&mut router);
-                if !accept_call.load(std::sync::atomic::Ordering::SeqCst) {
+                if !accept_call.load(std::sync::atomic::Ordering::SeqCst)
+                    && !accept_toasts.load(std::sync::atomic::Ordering::SeqCst)
+                {
                     router.start_disabled(wind_core::protocol::Channel::Call);
                 }
                 // CCS/1 IO:volume/1 both ways (§9.9, WN-48): the phone's level for the panel, its Sets for Core Audio.
@@ -658,18 +672,22 @@ async fn run(
     let (volume_on, _) = watch::channel(volume_remote.load(std::sync::atomic::Ordering::SeqCst));
     let (phone_levels_tx, mut phone_levels) = mpsc::unbounded_channel::<(u8, bool)>();
     let mut call_input: Option<mpsc::Receiver<wind_core::session::ChannelMessage>> = None;
+    // WN-57: the live session's call toasts and missed calls.
+    let mut calls: Option<crate::calls::Calls> = None;
     let mut phone_sets: Option<mpsc::Sender<(Option<u8>, Option<bool>)>> = None;
     let save_call_volume = {
-        let (path, pause, volume) = (
+        let (path, pause, volume, calls) = (
             call_volume_path.clone(),
             pause_on_call.clone(),
             volume_remote.clone(),
+            call_toasts.clone(),
         );
         move || {
             if let Some(path) = &path {
                 let _ = crate::call_pause::CallVolumeSettings {
                     pause_on_call: pause.load(std::sync::atomic::Ordering::SeqCst),
                     volume: volume.load(std::sync::atomic::Ordering::SeqCst),
+                    calls: calls.load(std::sync::atomic::Ordering::SeqCst),
                 }
                 .save(path);
             }
@@ -719,6 +737,7 @@ async fn run(
             notify_input = None;
             notifications = None;
             call_input = None;
+            calls = None;
             phone_sets = None;
             snapshot.phone_volume = None;
         }
@@ -728,6 +747,8 @@ async fn run(
         snapshot.quiet_hours = *quiet_hours.lock().unwrap();
         snapshot.pause_on_call = pause_on_call.load(std::sync::atomic::Ordering::SeqCst);
         snapshot.volume_remote = volume_remote.load(std::sync::atomic::Ordering::SeqCst);
+        snapshot.call_toasts = call_toasts.load(std::sync::atomic::Ordering::SeqCst);
+        snapshot.missed_calls = calls.as_ref().map(|c| c.items()).unwrap_or_default();
         let controllable = active.as_ref().is_some_and(|(s, _): &(Session, _)| {
             s.peer_capabilities()
                 .iter()
@@ -776,12 +797,19 @@ async fn run(
                     // Off: Windows keeps toast content in its store; remove what was shown and the icons.
                     if !on { let _ = toasts.send(crate::notify::Job::Clear); }
                 }
-                Some(Action::CallVolume { pause, volume }) => {
+                Some(Action::CallVolume { pause, volume, calls: toasts_setting }) => {
                     if let Some(on) = pause {
                         pause_on_call.store(on, std::sync::atomic::Ordering::SeqCst);
-                        if let Some((session, _)) = &active { let _ = session.set_accepted(wind_core::protocol::Channel::Call, on).await; }
                         // Off during a call: settle what was paused.
                         if !on { pauser.state(wind_core::call::CallState::Idle); }
+                    }
+                    if let Some(on) = toasts_setting {
+                        call_toasts.store(on, std::sync::atomic::Ordering::SeqCst);
+                        if !on { if let Some(c) = calls.as_mut() { c.clear(); } }
+                    }
+                    if pause.is_some() || toasts_setting.is_some() {
+                        let take = pause_on_call.load(std::sync::atomic::Ordering::SeqCst) || call_toasts.load(std::sync::atomic::Ordering::SeqCst);
+                        if let Some((session, _)) = &active { let _ = session.set_accepted(wind_core::protocol::Channel::Call, take).await; }
                     }
                     if let Some(on) = volume {
                         volume_remote.store(on, std::sync::atomic::Ordering::SeqCst);
@@ -970,6 +998,7 @@ async fn run(
                 snapshot.battery = None;
                 // WN-48: the call state (idle comes first: a pause from a dropped session is settled), both volumes.
                 call_input = Some(session_call);
+                calls = Some(crate::calls::Calls::new(toasts.clone(), snapshot.phone.as_deref().unwrap_or("Telefon")));
                 snapshot.phone_volume = None;
                 tokio::spawn(crate::pc_volume::serve_phone(session_volume, pc_volume.clone(), phone_levels_tx.clone(), volume_remote.clone()));
                 let (tick, ticks) = watch::channel(0u64);
@@ -1033,10 +1062,23 @@ async fn run(
                 crate::notify::ToastEvent::Dismissed { tag } => {
                     notify_dismiss(active.as_ref().map(|(s, _)| s), notifications.as_mut(), &tag).await;
                 }
+                // CCS/1 FLOW:WN-57 call toast "Odrzuć"/"Wycisz" -> call-action/1 (the phone acts only on the call it names).
+                crate::notify::ToastEvent::Call(action) => {
+                    if let Some((session, _)) = &active { let _ = wind_core::call::act(session, action).await; }
+                }
             },
             // CCS/1 FLOW:phone call State -> the call-pause worker (WN-48).
             message = async { match call_input.as_mut() { Some(rx) => rx.recv().await, None => std::future::pending().await } } => match message {
-                Some(message) => { if let Some(state) = wind_core::call::CallState::decode(&message.message) { pauser.state(state); } }
+                Some(message) => match wind_core::call::Message::decode(&message.message) {
+                    Some(wind_core::call::Message::State(call)) => {
+                        if pause_on_call.load(std::sync::atomic::Ordering::SeqCst) { pauser.state(call.state); }
+                        if let Some(c) = calls.as_mut() { c.state(&call, call_toasts.load(std::sync::atomic::Ordering::SeqCst)); }
+                    }
+                    Some(wind_core::call::Message::Missed(list)) => {
+                        if let Some(c) = calls.as_mut() { c.missed(list, call_toasts.load(std::sync::atomic::Ordering::SeqCst)); }
+                    }
+                    None => {}
+                },
                 None => call_input = None,
             },
             Some(level) = pc_levels.recv() => { pc_level.send_replace(Some(level)); continue; },
@@ -1242,6 +1284,7 @@ pub fn call_volume_settings(
     state: tauri::State<'_, Runtime>,
     pause_on_call: Option<bool>,
     volume: Option<bool>,
+    calls: Option<bool>,
 ) -> Result<(), String> {
     if window.label() != "main" {
         return Err("unsupported window".into());
@@ -1251,6 +1294,7 @@ pub fn call_volume_settings(
         .send(Action::CallVolume {
             pause: pause_on_call,
             volume,
+            calls,
         })
         .map_err(|_| "pairing unavailable".into())
 }

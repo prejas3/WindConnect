@@ -59,7 +59,7 @@ pub fn clean(text: &str, max: usize) -> String {
     out
 }
 
-fn escape(text: &str) -> String {
+pub fn escape(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     for c in text.chars() {
         match c {
@@ -215,9 +215,30 @@ pub fn dismissal_syncs(reason: i32) -> bool {
 /// What the toasts tell the session loop.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ToastEvent {
-    Reply { tag: String, text: String },
-    TooLong { tag: String, text: String },
-    Dismissed { tag: String },
+    Reply {
+        tag: String,
+        text: String,
+    },
+    TooLong {
+        tag: String,
+        text: String,
+    },
+    Dismissed {
+        tag: String,
+    },
+    /// WN-57: a call toast's button: `call-reject:<id>` or `call-silence:<id>`.
+    Call(wind_core::call::Action),
+}
+
+/// A call toast's button arguments (WN-57).
+pub fn call_action(arguments: &str) -> Option<wind_core::call::Action> {
+    let (kind, id) = arguments.strip_prefix("call-")?.split_once(':')?;
+    let call = id.parse().ok()?;
+    match kind {
+        "reject" => Some(wind_core::call::Action::Reject { call }),
+        "silence" => Some(wind_core::call::Action::Silence { call }),
+        _ => None,
+    }
 }
 
 static EVENTS: std::sync::OnceLock<tokio::sync::mpsc::UnboundedSender<ToastEvent>> =
@@ -230,6 +251,9 @@ pub fn activated(app: &tauri::AppHandle, tag: &str, arguments: &str, input: Opti
             let _ = events.send(e);
         }
     };
+    if let Some(action) = call_action(arguments) {
+        return send(ToastEvent::Call(action));
+    }
     match activation(arguments, input) {
         Activation::Reply(text) => send(ToastEvent::Reply {
             tag: tag.into(),
@@ -496,6 +520,17 @@ pub enum Job {
     },
     /// Every phone toast and the icon cache (setting off, unpairing).
     Clear,
+    /// WN-57: a ready toast of another feature (calls), in its own group; same tag replaces it.
+    Raw {
+        tag: String,
+        group: &'static str,
+        xml: String,
+        popup: bool,
+    },
+    RemoveRaw {
+        tag: String,
+        group: &'static str,
+    },
 }
 
 /// The phone's notifications in one session: what was shown (an update doesn't pop up again) and the popup limit.
@@ -800,6 +835,30 @@ mod platform {
                     ToastNotificationManager::History()
                         .and_then(|h| h.RemoveGroupWithId(&HSTRING::from(GROUP), &id))
                 }
+                Job::Raw {
+                    tag,
+                    group,
+                    xml,
+                    popup,
+                } => show_xml(&app, &notifier, &xml, &tag, group, popup).map(|toast| {
+                    // Debug builds log it like the phone's toasts (the WN-57 check times call toasts).
+                    #[cfg(debug_assertions)]
+                    LOG.lock().unwrap().push(DevEntry {
+                        tag: format!("{group}/{tag}"),
+                        popup,
+                        received_ms: 0,
+                        shown_ms: wall_ms(),
+                        show_us: 0,
+                        reply: false,
+                    });
+                    alive.insert(format!("{group}/{tag}"), (toast, Instant::now()));
+                }),
+                Job::RemoveRaw { tag, group } => {
+                    alive.remove(&format!("{group}/{tag}"));
+                    ToastNotificationManager::History().and_then(|h| {
+                        h.RemoveGroupedTagWithId(&HSTRING::from(tag), &HSTRING::from(group), &id)
+                    })
+                }
             };
             if let Err(error) = result {
                 eprintln!("notification toast: {error}");
@@ -814,11 +873,30 @@ mod platform {
         icon: Option<&Path>,
         popup: bool,
     ) -> windows::core::Result<ToastNotification> {
+        show_xml(
+            app,
+            notifier,
+            &toast_xml(view, icon),
+            &view.tag,
+            GROUP,
+            popup,
+        )
+    }
+
+    /// Shows a toast from its XML under `tag` in `group`; clicks and closes go to [`activated`] / [`dismissed`].
+    fn show_xml(
+        app: &tauri::AppHandle,
+        notifier: &windows::UI::Notifications::ToastNotifier,
+        xml_text: &str,
+        tag: &str,
+        group: &str,
+        popup: bool,
+    ) -> windows::core::Result<ToastNotification> {
         let xml = XmlDocument::new()?;
-        xml.LoadXml(&HSTRING::from(toast_xml(view, icon)))?;
+        xml.LoadXml(&HSTRING::from(xml_text))?;
         let toast = ToastNotification::CreateToastNotification(&xml)?;
-        toast.SetTag(&HSTRING::from(&view.tag))?;
-        toast.SetGroup(&HSTRING::from(GROUP))?;
+        toast.SetTag(&HSTRING::from(tag))?;
+        toast.SetGroup(&HSTRING::from(group))?;
         toast.SetSuppressPopup(!popup)?;
         let expires = SystemTime::now() + EXPIRES;
         let ticks = expires
@@ -833,7 +911,8 @@ mod platform {
             windows::core::Interface::cast(&when)?;
         toast.SetExpirationTime(&when)?;
         let opener = app.clone();
-        let tag = view.tag.clone();
+        let closed = tag.to_owned();
+        let tag = tag.to_owned();
         toast.Activated(&TypedEventHandler::new(
             move |_, args: windows::core::Ref<windows::core::IInspectable>| {
                 let (arguments, input) = args
@@ -865,7 +944,6 @@ mod platform {
                 Ok(())
             },
         ))?;
-        let closed = view.tag.clone();
         toast.Dismissed(
             &TypedEventHandler::new(
                 move |_,
