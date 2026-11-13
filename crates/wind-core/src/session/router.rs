@@ -63,6 +63,7 @@ pub fn capability_name(channel: Channel) -> Option<&'static str> {
         Channel::Volume => "volume",
         Channel::Call => "call",
         Channel::Sms => "sms",
+        Channel::CallAction => "call-action",
     })
 }
 
@@ -80,6 +81,7 @@ pub fn is_uni(channel: Channel) -> bool {
             | Channel::NotifyAction
             | Channel::Volume
             | Channel::Call
+            | Channel::CallAction
     )
 }
 

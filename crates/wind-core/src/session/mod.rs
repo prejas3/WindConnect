@@ -85,7 +85,7 @@ pub const GOODBYE_FLUSH: Duration = Duration::from_secs(1);
 pub fn send_priority(channel: Channel) -> i32 {
     7 - match channel {
         Channel::Control => 0,
-        Channel::Input | Channel::Call => 1,
+        Channel::Input | Channel::Call | Channel::CallAction => 1,
         Channel::Clipboard => 2,
         Channel::Notify | Channel::NotifyAction => 3,
         Channel::Media | Channel::MediaControl | Channel::Volume => 4,
@@ -586,6 +586,7 @@ impl Session {
             Channel::NotifyAction,
             Channel::Volume,
             Channel::Call,
+            Channel::CallAction,
         ]
         .into_iter()
         .map(|ch| (ch.byte(), tokio::sync::Mutex::new(None)))

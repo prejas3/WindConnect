@@ -17,7 +17,7 @@ mod file_transfer;
 mod phone_extras;
 mod sms_bridge;
 pub use file_transfer::FileTransfer;
-pub use phone_extras::VolumeSink;
+pub use phone_extras::{CallActionSink, CallerInfo, MissedCall, VolumeSink};
 pub use sms_bridge::{
     SmsMessage, SmsMessages, SmsOutgoing, SmsPart, SmsPartInfo, SmsPerson, SmsPhoto, SmsSim,
     SmsSims, SmsSource, SmsThread, SmsThreads,
@@ -436,6 +436,9 @@ pub struct CoreClient {
     /// WN-48: the PC's volume and its requests for the phone's; whether the phone takes them ("Głośność z komputera").
     volume: std::sync::Mutex<Option<Arc<dyn VolumeSink>>>,
     volume_enabled: std::sync::atomic::AtomicBool,
+    /// WN-57: the PC's Reject/Silence; whether the phone takes them ("Połączenia na komputerze").
+    call_actions: std::sync::Mutex<Option<Arc<dyn CallActionSink>>>,
+    call_actions_enabled: std::sync::atomic::AtomicBool,
     /// WN-55: one SMS server for the client (its watches end with each session).
     sms: std::sync::Mutex<Option<Arc<wind_core::sms::Server>>>,
     /// The person's setting and READ_SMS (announce `sms/1`).
@@ -505,6 +508,8 @@ pub async fn open_client(
         notify_actions_enabled: std::sync::atomic::AtomicBool::new(false),
         volume: std::sync::Mutex::new(None),
         volume_enabled: std::sync::atomic::AtomicBool::new(false),
+        call_actions: std::sync::Mutex::new(None),
+        call_actions_enabled: std::sync::atomic::AtomicBool::new(false),
         sms: std::sync::Mutex::new(None),
         sms_enabled: std::sync::atomic::AtomicBool::new(false),
         identity: IdentityInfo {
@@ -584,6 +589,16 @@ impl CoreClient {
     /// Whether new sessions announce `volume/1`; a live one changes with [`CoreConnection::set_volume_accepted`].
     pub fn set_volume_enabled(&self, enabled: bool) {
         self.volume_enabled
+            .store(enabled, std::sync::atomic::Ordering::SeqCst);
+    }
+    /// WN-57: where the PC's Reject/Silence go; without it `call-action/1` is never announced.
+    pub fn set_call_action_sink(&self, sink: Box<dyn CallActionSink>) {
+        *self.call_actions.lock().unwrap() = Some(Arc::from(sink));
+    }
+    /// Whether new sessions announce `call-action/1`; a live one changes with
+    /// [`CoreConnection::set_call_actions_accepted`].
+    pub fn set_call_actions_enabled(&self, enabled: bool) {
+        self.call_actions_enabled
             .store(enabled, std::sync::atomic::Ordering::SeqCst);
     }
     /// WN-44: where the PC's dismissals and replies go.
@@ -1003,6 +1018,7 @@ impl CoreClient {
         let notify_actions = self.route_notify_actions(&mut router);
         let volume = self.route_volume(&mut router);
         let sms = self.route_sms(&mut router);
+        let call_actions = self.route_call_actions(&mut router);
         let (session, events) = tokio::time::timeout(
             Duration::from_secs(10),
             Session::dial(
@@ -1021,6 +1037,7 @@ impl CoreClient {
         self.serve_pc_media(pc_media);
         self.serve_find(find);
         self.serve_sms(sms);
+        self.serve_call_actions(call_actions);
         self.serve_notify_actions(notify_actions);
         let media_allowed = self.serve_media(media);
         let file_caps = file_transfer::FileCapabilities::new(&session, events);
@@ -1167,6 +1184,23 @@ impl CoreClient {
         }
         Some((server, streams))
     }
+    /// WN-57: routes `call-action` when there is a sink; withdrawn at the start unless "Połączenia na komputerze" is on.
+    fn route_call_actions(&self, router: &mut Router) -> Option<phone_extras::CallActionRoute> {
+        let sink = self.call_actions.lock().unwrap().clone()?;
+        let queue = wind_core::call::route_actions(router);
+        if !self
+            .call_actions_enabled
+            .load(std::sync::atomic::Ordering::SeqCst)
+        {
+            router.start_disabled(wind_core::protocol::Channel::CallAction);
+        }
+        Some((sink, queue))
+    }
+    fn serve_call_actions(&self, route: Option<phone_extras::CallActionRoute>) {
+        if let Some((sink, queue)) = route {
+            tokio::spawn(phone_extras::serve_call_actions(sink, queue));
+        }
+    }
     fn serve_sms(&self, route: Option<sms_bridge::SmsRoute>) {
         if let Some((server, streams)) = route {
             tokio::spawn(server.serve(streams));
@@ -1193,7 +1227,7 @@ impl CoreClient {
             reason: "peer address must be an IP address and port".into(),
         })?;
         let mut changes = self.network.subscribe();
-        let ((session, events),(clipboard_input, find, media, pc_media, notify_actions, volume, sms)) = loop {
+        let ((session, events),(clipboard_input, find, media, pc_media, notify_actions, volume, sms, call_actions)) = loop {
             let mut router=Router::new();
             let clipboard_input=wind_core::clipboard::Clipboard::route(&mut router);
             let find = self.route_find(&mut router);
@@ -1202,6 +1236,7 @@ impl CoreClient {
             let notify_actions = self.route_notify_actions(&mut router);
             let volume = self.route_volume(&mut router);
             let sms = self.route_sms(&mut router);
+            let call_actions = self.route_call_actions(&mut router);
             let attempt = tokio::time::timeout(
             wait,
             Session::dial(
@@ -1213,7 +1248,7 @@ impl CoreClient {
             ),
         );
             tokio::select! {
-                result = attempt => break result.map(|r|r.map(|s|(s,(clipboard_input, find, media, pc_media, notify_actions, volume, sms)))),
+                result = attempt => break result.map(|r|r.map(|s|(s,(clipboard_input, find, media, pc_media, notify_actions, volume, sms, call_actions)))),
                 changed = changes.changed() => {
                     if changed.is_err() { return Err(CoreError::Transport { reason: "network observer stopped".into() }); }
                 }
@@ -1226,6 +1261,7 @@ impl CoreClient {
         self.serve_pc_media(pc_media);
         self.serve_find(find);
         self.serve_sms(sms);
+        self.serve_call_actions(call_actions);
         self.serve_notify_actions(notify_actions);
         let media_allowed = self.serve_media(media);
         let file_caps = file_transfer::FileCapabilities::new(&session, events);
@@ -1595,6 +1631,38 @@ impl CoreConnection {
         if let Some(s) = wind_core::call::CallState::from_code(state.into()) {
             self.extras.set_call(s);
         }
+    }
+    /// WN-57: the call state with who calls (`caller` none: the setting off or no number). Idle ends the caller.
+    pub fn set_call(&self, state: u8, caller: Option<CallerInfo>) {
+        if let Some(s) = wind_core::call::CallState::from_code(state.into()) {
+            self.extras.set_call_with(s, caller.map(Into::into));
+        }
+    }
+    /// WN-57: the newest missed calls, newest first (the whole list; empty with the setting off).
+    pub fn set_missed_calls(&self, missed: Vec<MissedCall>) {
+        self.extras.set_missed(
+            missed
+                .into_iter()
+                .filter_map(|m| {
+                    let number = wind_core::sms::clip(&m.number, wind_core::call::MAX_NUMBER);
+                    (!number.is_empty()).then(|| wind_core::call::Missed {
+                        number,
+                        name: m
+                            .name
+                            .map(|n| wind_core::sms::clip(&n, wind_core::call::MAX_NAME))
+                            .filter(|n| !n.is_empty()),
+                        date_ms: m.date_ms,
+                    })
+                })
+                .collect(),
+        );
+    }
+    /// WN-57: announce or withdraw `call-action/1` on this session; true when it changed.
+    pub async fn set_call_actions_accepted(&self, accept: bool) -> Result<bool, CoreError> {
+        self.session
+            .set_accepted(wind_core::protocol::Channel::CallAction, accept)
+            .await
+            .map_err(session_error)
     }
     /// WN-48: STREAM_MUSIC as 0..=100 and muted (goes to the PC while both take `volume/1`).
     pub fn set_volume_level(&self, level: u8, muted: bool) {

@@ -7,6 +7,7 @@ mod autostart;
 mod battery;
 mod brand_icon;
 mod call_pause;
+mod calls;
 mod clipboard;
 mod clipboard_history;
 mod clipboard_image;

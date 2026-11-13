@@ -146,6 +146,22 @@ document.querySelector('#media-progress').addEventListener('keydown', event => {
   mediaAction('seek', Math.min(media.duration_ms, Math.max(0, mediaPosition() + (event.key === 'ArrowRight' ? 10_000 : -10_000))));
 });
 
+// WN-57: the phone's missed calls (newest first, at most 10), as text only.
+const missedTime = new Intl.DateTimeFormat('pl-PL', { weekday: 'short', hour: '2-digit', minute: '2-digit' });
+function renderMissed(items) {
+  const section = document.querySelector('#missed-calls');
+  section.hidden = !items.length;
+  const key = JSON.stringify(items);
+  if (section.dataset.key === key) return;
+  section.dataset.key = key;
+  document.querySelector('#missed-list').replaceChildren(...items.slice(0, 5).map(m => {
+    const li = document.createElement('li'); li.className = 'missed-row';
+    const who = document.createElement('span'); who.className = 'missed-who'; who.textContent = m.who;
+    const when = document.createElement('span'); when.className = 'subtle'; when.textContent = (m.number ? m.number + ' · ' : '') + missedTime.format(new Date(m.date_ms));
+    li.append(who, when); return li;
+  }));
+}
+
 // WN-50: ring the phone; the tile turns into "Zatrzymaj" while it starts or rings. State comes pushed in pairing-state.
 function renderFind(find, connected) {
   const button = document.querySelector('#find-phone');
@@ -186,6 +202,7 @@ function renderPairing(state) {
   document.querySelector('#open-sms').setAttribute('aria-description', state.sms ? 'SMS z telefonu' : 'Telefon nie udostępnia SMS');
   renderMedia(state.connected || connected ? state.media : null);
   renderNotifications(state.notifications, !!(state.connected || connected));
+  renderMissed(state.call_toasts && (state.connected || connected) ? state.missed_calls || [] : []);
   renderPhoneVolume(state.connected || connected ? state.phone_volume : null);
   document.querySelector('#pairing-instructions').hidden = !waiting;
   document.querySelector('#pairing-hint').hidden = !connected;

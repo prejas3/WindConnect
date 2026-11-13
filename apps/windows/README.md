@@ -525,3 +525,15 @@ dostarczono, nie wysłano); potem wiadomość zastępuje zapis z telefonu.
 Zdjęcia z odebranych MMS ładują się przy przewijaniu. Wysyłanie trzeba
 włączyć na telefonie („Wysyłanie z komputera”); do tego czasu pole to mówi.
 Pomiar: `scripts/check-sms-send-android.cjs`.
+
+## Połączenia z telefonu (WN-57)
+
+Ustawienie „Połączenia z telefonu” (okno główne, domyślnie włączone,
+`call-volume.json`) pokazuje połączenie przychodzące jako powiadomienie
+Windows (`calls.rs`, scenariusz incomingCall, bez dźwięku): nazwa kontaktu lub
+numer, „Wycisz” i „Odrzuć” (tylko te, które telefon umie), znika po odebraniu
+lub końcu. Nieodebrane: powiadomienie o nowych i lista w panelu („Nieodebrane
+połączenia”, najwyżej 5). Telefon musi to udostępnić („Połączenia na
+komputerze”). Komputer przyjmuje `call/1`, gdy włączone jest to ustawienie
+albo wstrzymywanie odtwarzania; pauza działa tylko przy tym drugim.
+Pomiar: `scripts/check-calls-android.cjs` (połączenie -> powiadomienie na PC).

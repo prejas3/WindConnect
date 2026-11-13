@@ -31,6 +31,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -792,6 +793,44 @@ class WindCore private constructor(
     // WN-48: the call state for the PC (it pauses its players) and both volumes.
     private var callWatcher: CallWatcher? = null
     private var callNotifications: Job? = null
+    // WN-57: who calls, missed calls, Reject/Silence from the PC: "Połączenia na komputerze" (default off; READ_PHONE_STATE,
+    // READ_CALL_LOG, ANSWER_PHONE_CALLS and optionally READ_CONTACTS asked when turned on).
+    private val phoneCalls = PhoneCalls(appContext).also { client.setCallActionSink(it) }
+    private val mutableCallsAllowed = MutableStateFlow(settings.getBoolean(CALLS_ALLOWED, false))
+    /** "Połączenia na komputerze" (default off). */
+    val callsAllowed: StateFlow<Boolean> = mutableCallsAllowed.asStateFlow()
+    private val mutableCallsAccess = MutableStateFlow(phoneCalls.canRead())
+    /** READ_PHONE_STATE and READ_CALL_LOG granted (re-read by [refreshCalls]). */
+    val callsAccess: StateFlow<Boolean> = mutableCallsAccess.asStateFlow()
+    private val mutableCallsReject = MutableStateFlow(phoneCalls.canReject())
+    /** ANSWER_PHONE_CALLS granted: the PC can reject. */
+    val callsReject: StateFlow<Boolean> = mutableCallsReject.asStateFlow()
+    private val callsOn = MutableStateFlow(false)
+    private var callPush: Job? = null
+    init { applyCallsLocal() }
+    private fun applyCallsLocal(): Boolean {
+        val on = mutableCallsAllowed.value && mutableCallsAccess.value
+        client.setCallActionsEnabled(on)
+        phoneCalls.watch(on)
+        callsOn.value = on
+        return on
+    }
+    private suspend fun applyCalls() {
+        val on = applyCallsLocal()
+        val live = gate.withLock { connection }
+        try { live?.setCallActionsAccepted(on) } catch (error: Exception) { if (error is CancellationException) throw error }
+    }
+    suspend fun setCallsAllowed(value: Boolean) = withContext(Dispatchers.IO) {
+        settings.edit().putBoolean(CALLS_ALLOWED, value).apply()
+        mutableCallsAllowed.value = value
+        applyCalls()
+    }
+    /** Permissions change in the system dialog or settings: re-read them when the app comes back. */
+    suspend fun refreshCalls() = withContext(Dispatchers.IO) {
+        mutableCallsAccess.value = phoneCalls.canRead()
+        mutableCallsReject.value = phoneCalls.canReject()
+        applyCalls()
+    }
     private var phoneVolume: PhoneVolume? = null
     private val mutableVolumeAllowed = MutableStateFlow(settings.getBoolean(VOLUME_ALLOWED, true))
     /** "Głośność z komputera" (default on): the PC shows and changes STREAM_MUSIC, and this shows the PC's. */
@@ -810,8 +849,20 @@ class WindCore private constructor(
     private fun startCallVolume(opened: CoreConnection) {
         // Not clearing the PC's volume: its first Level may already have come with the session.
         stopCallVolume(keepPeer = true)
-        val watcher = CallWatcher(appContext) { state -> opened.setCallState(state.code.toUByte()) }
+        // WN-57: the state (CallWatcher, no permission) joined with who calls and the missed list, when allowed.
+        val state = MutableStateFlow(CallState.Idle)
+        val watcher = CallWatcher(appContext) { state.value = it }
         callWatcher = watcher
+        callPush = scope.launch {
+            launch {
+                combine(state, phoneCalls.caller, callsOn) { s, c, on -> Triple(s, c, on) }.collect { (s, c, on) ->
+                    opened.setCall(s.code.toUByte(), if (on && s != CallState.Idle) c else null)
+                }
+            }
+            launch {
+                combine(phoneCalls.missed, callsOn) { m, on -> if (on) m else emptyList() }.collect { opened.setMissedCalls(it) }
+            }
+        }
         watcher.start()
         callNotifications = scope.launch { CallNotifications.active.collect { watcher.notifications(it.isNotEmpty()) } }
         phoneVolume = PhoneVolume(appContext) { level, muted -> opened.setVolumeLevel(level.toUByte(), muted) }.also { it.start() }
@@ -819,6 +870,7 @@ class WindCore private constructor(
 
     private fun stopCallVolume(keepPeer: Boolean = false) {
         callWatcher?.stop(); callWatcher = null
+        callPush?.cancel(); callPush = null
         callNotifications?.cancel(); callNotifications = null
         phoneVolume?.stop(); phoneVolume = null
         if (!keepPeer) mutablePcVolume.value = null
@@ -896,6 +948,7 @@ class WindCore private constructor(
         private const val RELAY_URL = "relay_url"
         private const val FIND_ALLOWED = "find_allowed"
         private const val SMS_ALLOWED = "sms_allowed"
+        private const val CALLS_ALLOWED = "calls_allowed"
         private const val SMS_SEND_ALLOWED = "sms_send_allowed"
 
         suspend fun open(context: Context, name: String, bindAddress: String = "0.0.0.0:0"): WindCore {

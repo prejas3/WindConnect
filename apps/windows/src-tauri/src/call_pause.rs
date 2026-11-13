@@ -74,6 +74,9 @@ pub struct CallVolumeSettings {
     pub pause_on_call: bool,
     #[serde(default = "on")]
     pub volume: bool,
+    /// WN-57: "Połączenia z telefonu": the incoming-call toast and missed calls (when the phone shares them).
+    #[serde(default = "on")]
+    pub calls: bool,
 }
 
 fn on() -> bool {
@@ -85,6 +88,7 @@ impl Default for CallVolumeSettings {
         Self {
             pause_on_call: true,
             volume: true,
+            calls: true,
         }
     }
 }
@@ -321,7 +325,8 @@ mod tests {
             CallVolumeSettings::parse(Some(b"{\"pause_on_call\":false}")),
             CallVolumeSettings {
                 pause_on_call: false,
-                volume: true
+                volume: true,
+                calls: true
             }
         );
         assert_eq!(
@@ -333,6 +338,7 @@ mod tests {
         let s = CallVolumeSettings {
             pause_on_call: false,
             volume: false,
+            calls: false,
         };
         s.save(&path).unwrap();
         assert_eq!(CallVolumeSettings::load(&path), s);

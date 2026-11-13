@@ -7,7 +7,7 @@ use std::sync::Arc;
 use tokio::sync::{mpsc, watch};
 use tokio::task::JoinHandle;
 use wind_core::{
-    call::{self, CallState},
+    call::{self, Call, CallState, Caller, Missed},
     protocol::Capability,
     session::{ChannelMessage, Session},
     volume::{self, Message, PERIOD},
@@ -24,13 +24,75 @@ pub trait VolumeSink: Send + Sync {
 
 pub(crate) type VolumeRoute = (Arc<dyn VolumeSink>, mpsc::Receiver<ChannelMessage>);
 
+/// WN-57: who calls, with "Połączenia na komputerze" on. `actions`: 1 reject, 2 silence (bits).
+#[derive(uniffi::Record, Clone, Debug)]
+pub struct CallerInfo {
+    pub call: u64,
+    pub number: Option<String>,
+    pub name: Option<String>,
+    pub actions: u8,
+}
+
+/// WN-57: a missed call.
+#[derive(uniffi::Record, Clone, Debug)]
+pub struct MissedCall {
+    pub number: String,
+    pub name: Option<String>,
+    pub date_ms: u64,
+}
+
+/// WN-57: what the PC asks of the ringing call (called off the runtime's workers). `call` is the phone's own call number
+/// from [`CallerInfo::call`]: ignore one that isn't the ringing call.
+#[uniffi::export(callback_interface)]
+pub trait CallActionSink: Send + Sync {
+    fn reject(&self, call: u64);
+    fn silence(&self, call: u64);
+}
+
+pub(crate) type CallActionRoute = (Arc<dyn CallActionSink>, mpsc::Receiver<ChannelMessage>);
+
+/// The PC's `Reject`/`Silence`, in order.
+pub(crate) async fn serve_call_actions(
+    sink: Arc<dyn CallActionSink>,
+    mut queue: mpsc::Receiver<ChannelMessage>,
+) {
+    while let Some(m) = queue.recv().await {
+        let Some(action) = call::Action::decode(&m.message) else {
+            continue;
+        };
+        let sink = sink.clone();
+        let _ = tokio::task::spawn_blocking(move || match action {
+            call::Action::Reject { call } => sink.reject(call),
+            call::Action::Silence { call } => sink.silence(call),
+        })
+        .await;
+    }
+}
+
+fn clip(s: Option<String>, max: usize) -> Option<String> {
+    s.map(|s| wind_core::sms::clip(&s, max))
+        .filter(|s| !s.is_empty())
+}
+
+impl From<CallerInfo> for Caller {
+    fn from(c: CallerInfo) -> Self {
+        Caller {
+            call: c.call,
+            number: clip(c.number, call::MAX_NUMBER),
+            name: clip(c.name, call::MAX_NAME),
+            actions: c.actions & (call::CAN_REJECT | call::CAN_SILENCE),
+        }
+    }
+}
+
 fn accepts(caps: &[Capability], name: &str) -> bool {
     caps.iter().any(|c| c.name() == name && c.version() == 1)
 }
 
 /// The per-session tasks; they end with the session (or when this is dropped).
 pub(crate) struct PhoneExtras {
-    call: watch::Sender<CallState>,
+    call: watch::Sender<Call>,
+    missed: watch::Sender<Option<Vec<Missed>>>,
     level: watch::Sender<Option<(u8, bool)>>,
     enabled: watch::Sender<bool>,
     sets: mpsc::Sender<(Option<u8>, Option<bool>)>,
@@ -44,12 +106,17 @@ impl PhoneExtras {
         volume: Option<VolumeRoute>,
         volume_enabled: bool,
     ) -> Self {
-        let (call_tx, call_rx) = watch::channel(CallState::Idle);
+        let (call_tx, call_rx) = watch::channel(Call {
+            state: CallState::Idle,
+            caller: None,
+        });
+        let (missed_tx, missed_rx) = watch::channel(None);
         let (level_tx, level_rx) = watch::channel(None);
         let (enabled_tx, enabled_rx) = watch::channel(volume_enabled);
         let (sets_tx, sets_rx) = mpsc::channel(32);
         let mut tasks = vec![
             tokio::spawn(send_call(session.clone(), caps.clone(), call_rx)),
+            tokio::spawn(send_missed(session.clone(), caps.clone(), missed_rx)),
             tokio::spawn(send_level(
                 session.clone(),
                 caps.clone(),
@@ -63,6 +130,7 @@ impl PhoneExtras {
         }
         Self {
             call: call_tx,
+            missed: missed_tx,
             level: level_tx,
             enabled: enabled_tx,
             sets: sets_tx,
@@ -71,7 +139,27 @@ impl PhoneExtras {
     }
 
     pub fn set_call(&self, state: CallState) {
-        self.call.send_replace(state);
+        // WN-48 path: the state alone keeps the caller of a call in progress; idle ends it.
+        self.call.send_modify(|c| {
+            c.state = state;
+            if state == CallState::Idle {
+                c.caller = None;
+            }
+        });
+    }
+
+    /// WN-57: the state with who calls (none: the setting off, or no number).
+    pub fn set_call_with(&self, state: CallState, caller: Option<Caller>) {
+        self.call.send_replace(Call {
+            state,
+            caller: caller.filter(|_| state != CallState::Idle),
+        });
+    }
+
+    /// WN-57: the newest missed calls (the whole list).
+    pub fn set_missed(&self, mut missed: Vec<Missed>) {
+        missed.truncate(call::MAX_MISSED);
+        self.missed.send_replace(Some(missed));
     }
 
     pub fn set_level(&self, level: u8, muted: bool) {
@@ -100,14 +188,14 @@ impl Drop for PhoneExtras {
 async fn send_call(
     session: Session,
     mut caps: watch::Receiver<Vec<Capability>>,
-    mut state: watch::Receiver<CallState>,
+    mut state: watch::Receiver<Call>,
 ) {
     let mut accepted = accepts(&caps.borrow_and_update(), "call");
-    let mut sent: Option<CallState> = None;
+    let mut sent: Option<Call> = None;
     loop {
-        let now = *state.borrow_and_update();
-        if accepted && sent != Some(now) {
-            match call::send(&session, now).await {
+        let now = state.borrow_and_update().clone();
+        if accepted && sent.as_ref() != Some(&now) {
+            match call::send_message(&session, &call::Message::State(now.clone())).await {
                 Ok(true) => sent = Some(now),
                 Ok(false) => {}
                 Err(_) => return,
@@ -115,6 +203,37 @@ async fn send_call(
         }
         tokio::select! {
             changed = state.changed() => if changed.is_err() { return },
+            changed = caps.changed() => {
+                if changed.is_err() { return }
+                let next = accepts(&caps.borrow_and_update(), "call");
+                if next && !accepted { sent = None }
+                accepted = next;
+            }
+        }
+    }
+}
+
+/// WN-57: the missed-call list, when it changes and whenever the PC starts accepting `call/1`.
+async fn send_missed(
+    session: Session,
+    mut caps: watch::Receiver<Vec<Capability>>,
+    mut missed: watch::Receiver<Option<Vec<Missed>>>,
+) {
+    let mut accepted = accepts(&caps.borrow_and_update(), "call");
+    let mut sent: Option<Vec<Missed>> = None;
+    loop {
+        let now = missed.borrow_and_update().clone();
+        if let (true, Some(list)) = (accepted, now) {
+            if sent.as_ref() != Some(&list) {
+                match call::send_message(&session, &call::Message::Missed(list.clone())).await {
+                    Ok(true) => sent = Some(list),
+                    Ok(false) => {}
+                    Err(_) => return,
+                }
+            }
+        }
+        tokio::select! {
+            changed = missed.changed() => if changed.is_err() { return },
             changed = caps.changed() => {
                 if changed.is_err() { return }
                 let next = accepts(&caps.borrow_and_update(), "call");

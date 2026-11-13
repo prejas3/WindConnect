@@ -193,7 +193,8 @@ od serwera, przykład w sekcji 7.1), `files` (odpowiedzi odbiorcy pliku) i
 | `0b` | `volume` | uni | strona, której głośność się zmienia (`Level`), albo strona sterująca (`Set`) (§9.9) | 4 |
 | `0c` | `call` | uni | telefon: stan połączenia (§9.10) | 1 |
 | `0d` | `sms` | bidi | komputer; 1 na prośbę o wątki, wiadomości, zdjęcie albo obserwację (§9.11) | 5 |
-| `0e`–`3f` | zarezerwowane dla przyszłych kanałów | | | |
+| `0e` | `call-action` | uni | komputer: odrzuć lub wycisz dzwoniące połączenie telefonu (§9.12) | 1 |
+| `0f`–`3f` | zarezerwowane dla przyszłych kanałów | | | |
 | `40`–`ff` | niedozwolone w v1 | | | |
 
 Zasady:
@@ -222,7 +223,7 @@ Przykład: nagłówek strumienia `control` to `01 00`, strumienia `input` to `01
 
 ### 3.1 Cykl życia strumieni uni
 
-Kanały `clipboard`, `notify`, `notify-action`, `media`, `media-control`, `volume`, `call`, `input` i `battery` mają w każdym kierunku
+Kanały `clipboard`, `notify`, `notify-action`, `media`, `media-control`, `volume`, `call`, `call-action`, `input` i `battery` mają w każdym kierunku
 **kolejkę wiadomości**: ciąg strumieni uni jednego nadawcy dla tego kanału.
 
 1. Nadawca ma naraz najwyżej **jeden otwarty do zapisu** strumień kanału.
@@ -421,7 +422,8 @@ Możliwości v1.0:
 | `notify/1` | strona pokazuje powiadomienia drugiej strony: przyjmuje `Posted`, `Icon`, `Removed`, `Replied` na kanale `notify` (§9.7, WN-42) |
 | `notify-action/1` | powiadomienia strony można odrzucać i na nie odpowiadać: przyjmuje `Dismiss`, `Reply` na kanale `notify-action` (§9.8, WN-44) |
 | `volume/1` | głośność strony można zmieniać, a strona pokazuje głośność drugiej: przyjmuje `Set` i `Level` na kanale `volume` (§9.9, WN-48) |
-| `call/1` | strona wstrzymuje swoje odtwarzacze przy połączeniu drugiej strony: przyjmuje `State` na kanale `call` (§9.10, WN-48) |
+| `call/1` | strona wstrzymuje swoje odtwarzacze przy połączeniu drugiej strony albo pokazuje jej połączenia: przyjmuje `State` i `Missed` na kanale `call` (§9.10, WN-48, WN-57) |
+| `call-action/1` | dzwoniące połączenie strony można odrzucić lub wyciszyć: przyjmuje `Reject` i `Silence` na kanale `call-action` (§9.12, WN-57) |
 | `media/1` | strona pokazuje odtwarzacz drugiej strony: przyjmuje `Now`, `Art`, `Gone` na kanale `media` (§9.6, WN-46) |
 | `media-control/1` | odtwarzaczem strony można sterować: przyjmuje `Command` na kanale `media-control` (§9.6, WN-46) |
 | `input/1` | strona przyjmuje zdarzenia wejścia (kanał `input`, sekcja 8) |
@@ -1744,11 +1746,13 @@ uni z kolejką jak w §3.1; wysyła telefon, przyjmuje komputer z `call/1`.
 
 | typ | nazwa | pola `body` |
 |---|---|---|
-| 0 | `State` | `0 state` uint: 0 bezczynny, 1 dzwoni, 2 rozmowa |
+| 0 | `State` | `0 state` uint: 0 bezczynny, 1 dzwoni, 2 rozmowa; WN-57, opcjonalne: `1 call` uint, numer połączenia na telefonie; `2 number` tekst 1–64 B; `3 name` tekst 1–128 B; `4 actions` uint, bity: 1 można odrzucić, 2 można wyciszyć |
+| 1 | `Missed` | `0 items`: tablica do 20 `[number, name, date]` (tekst 1–64 B, tekst 1–128 B albo `null`, uint ms), od najnowszego (WN-57) |
 
 Zasady:
 
-1. Tylko stan: bez numeru, nazwy ani aplikacji. Rozmowa obejmuje też
+1. Bez ustawienia telefonu „Połączenia na komputerze” (WN-57) tylko stan:
+   bez numeru, nazwy ani aplikacji. Rozmowa obejmuje też
    rozmowy w komunikatorach (Android: tryb `MODE_IN_COMMUNICATION`).
 2. Telefon wysyła stan na starcie każdej sesji (także bezczynny), przy
    każdej zmianie i ponownie, gdy komputer zacznie przyjmować `call/1`.
@@ -1762,6 +1766,21 @@ Zasady:
    telefonii bez numeru (API 29–30), a w trybie wibracji, gdy tryb się nie
    zmienia, powiadomienie kategorii połączenia widziane przez słuchacza
    powiadomień (tylko przy jego zgodzie, §9.7 zasada 9).
+5. **Kto dzwoni (WN-57).** Z ustawieniem „Połączenia na komputerze” i
+   zgodami (Android: `READ_PHONE_STATE`, `READ_CALL_LOG`; nazwa z kontaktów
+   przy `READ_CONTACTS`) `State` dzwonienia i rozmowy przychodzącej niesie
+   `1 call` i, gdy są, `2 number`, `3 name`, `4 actions`. `call` jest nowy
+   dla każdego połączenia; ten sam `call` z nowymi polami (np. nazwa
+   doszła po numerze) zastępuje poprzedni bez nowego powiadomienia.
+   Bezczynność kończy połączenie. Strona bez WN-57 pomija nowe klucze
+   (§4.3), a komputer bez nich pokazuje tylko stan.
+6. `Missed`: cała lista nieodebranych z ostatnich 7 dni, przy starcie sesji,
+   gdy komputer zacznie przyjmować `call/1`, i po każdym nieodebranym; z
+   wyłączonym ustawieniem pusta. Komputer traktuje pierwszą listę w sesji
+   jako stan wyjściowy i powiadamia tylko o nowszych pozycjach.
+7. Komputer przyjmuje `call/1`, gdy ma włączone wstrzymywanie odtwarzania
+   albo powiadomienia o połączeniach; stan wstrzymuje odtwarzacze tylko przy
+   pierwszym ustawieniu.
 
 Przykład (z nagłówkiem długości ramki): nagłówek strumienia `01 0c`;
 `State` dzwoni:
@@ -1906,6 +1925,34 @@ Send do "123", "Hi":                     0d 82 05 a2 00 81 63 31 32 33 01 62 48 
 Sending 1 (wysłana):                     05 82 06 a1 00 01
 ```
 
+### 9.12 Kanał `call-action` (`0e`, WN-57)
+
+Komputer odrzuca albo wycisza dzwoniące połączenie telefonu. Kanał uni z
+kolejką jak w §3.1; wysyła komputer, przyjmuje telefon z `call-action/1`.
+Telefon ogłasza `call-action/1` tylko z ustawieniem „Połączenia na
+komputerze” (§9.10 zasada 5) i wycofuje je razem z nim.
+
+| typ | nazwa | pola `body` |
+|---|---|---|
+| 0 | `Reject` | `0 call` uint |
+| 1 | `Silence` | `0 call` uint |
+
+Zasady:
+
+1. Telefon wykonuje akcję tylko wtedy, gdy połączenie o tym `call` właśnie
+   dzwoni; inne (zakończone, odebrane, następne) pomija bez odpowiedzi, więc
+   spóźnione kliknięcie nie odrzuci nowego połączenia.
+2. `Reject` kończy połączenie (Android: `TelecomManager.endCall`, zgoda
+   `ANSWER_PHONE_CALLS`); bez zgody telefon nie ustawia bitu 1 w `actions` i
+   pomija `Reject`.
+3. `Silence` wycisza dzwonek tego połączenia: system, jeśli pozwala, inaczej
+   wyciszony strumień dzwonka, przywracany, gdy połączenie się skończy.
+4. Wynik widać w `State` na kanale `call` (bezczynny po odrzuceniu).
+
+Przykłady (z nagłówkiem długości ramki): nagłówek strumienia `01 0e`;
+`Reject` połączenia 7: `05 82 00 a1 00 07`; `Silence` połączenia 7:
+`05 82 01 a1 00 07`.
+
 ## 10. Kody błędów
 
 Te same kody służą w polu `code` wiadomości `Error` / `Goodbye` oraz jako
@@ -1963,6 +2010,7 @@ ten strumień (`STOP_SENDING` po stronie odbiorcy), nie połączenie.
 | wiadomości `notify-action` | sekcja 9.8 |
 | `Level` 40 %, bez wyciszenia | `08 82 00 a2 00 18 28 01 f4` (§9.9) |
 | `State` ringing | `05 82 00 a1 00 01` (§9.10) |
+| `Reject` call 7 | `05 82 00 a1 00 07` (§9.12) |
 | wiadomości `sms` | sekcja 9.11 |
 
 Przykłady są wektorami testowymi kodera ramek (WC-06): koder MUSI
