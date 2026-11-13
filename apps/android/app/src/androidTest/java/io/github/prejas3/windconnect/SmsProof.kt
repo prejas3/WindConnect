@@ -9,7 +9,7 @@ import kotlinx.coroutines.withTimeout
 
 /**
  * CCS/1 PURPOSE:WN-55 the phone side of check-sms-android.cjs: "SMS na komputerze" on (READ_SMS/READ_CONTACTS granted by
- * the script), the session held while the PC reads threads; commands from cache/wn55-cmd: "off", "on", "done". No content.
+ * the script), the session held while the PC reads threads; commands from cache/wn55-cmd: "off", "on", "send-on", "send-off" (WN-56), "done". No content.
  */
 object SmsProof {
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
@@ -30,12 +30,15 @@ object SmsProof {
                     when (word) {
                         "off" -> core.setSmsAllowed(false)
                         "on" -> core.setSmsAllowed(true)
+                        "send-on" -> { core.refreshSms(); check(core.smsSendAccess.value) { "SEND_SMS not granted" }; core.setSmsSendAllowed(true) }
+                        "send-off" -> core.setSmsSendAllowed(false)
                         "done" -> break
                     }
                 }
             }
         } finally {
             command.delete()
+            core.setSmsSendAllowed(false)
             core.setSmsAllowed(false)
         }
     }

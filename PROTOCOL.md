@@ -429,7 +429,7 @@ Możliwości v1.0:
 | `actions/1` | strona przyjmuje prośby o akcje (kanał `actions`, §9.2) |
 | `battery/1` | strona przyjmuje stan baterii drugiej strony (kanał `battery`, §9.4, WN-49) |
 | `find/1` | strona potrafi zadzwonić na prośbę drugiej (kanał `find`, §9.5, WN-50) |
-| `sms/1` | strona udostępnia drugiej do odczytu swoje wątki SMS/MMS: przyjmuje prośby na kanale `sms` (§9.11, WN-55) |
+| `sms/1` | strona udostępnia drugiej do odczytu swoje wątki SMS/MMS (WN-55) i, za osobną zgodą, wysyłanie przez siebie (WN-56): przyjmuje prośby na kanale `sms` (§9.11) |
 
 Zasady:
 
@@ -1777,7 +1777,12 @@ wersjonuje je sama możliwość. `sms/1` ogłasza telefon tylko wtedy, gdy
 użytkownik włączył „SMS na komputerze” i system przyznał dostęp do SMS
 (Android: `READ_SMS`); bez jednego z nich telefon wycofuje możliwość (§6,
 zasada 5), zamiast odmawiać każdej prośbie. Komputer nie ogłasza `sms/1`.
-Wysyłanie SMS i treść załączników MMS dopisze WN-56 (nowe typy).
+WN-56 dodało typy 4–6 (karty SIM, wysyłanie, części MMS) i pola 8–9
+wiadomości; zgodnie z §9 zasada 1 to rozszerzenie bez nowej wersji
+możliwości: telefon z wcześniejszą wersją odrzuca nowe typy kodem
+`UNKNOWN_MESSAGE`, a komputer pokazuje wtedy, że wysyłanie jest niedostępne.
+Wysyłanie ma osobną zgodę na telefonie (ustawienie „Wysyłanie z komputera”
+i `SEND_SMS`); bez niej `Sims` i `Send` dostają `End` 1.
 
 **Strumień.** Jedna prośba to jeden strumień bidi otwarty przez komputer:
 nagłówek `01 0d`, jedna wiadomość, FIN. Telefon odpowiada w kierunku
@@ -1794,6 +1799,9 @@ Od komputera:
 | 1 | `Messages` | `0 thread`: uint; `1 before`: uint, opcjonalne; `2 since`: uint, opcjonalne; `3 limit`: uint 1–2000 |
 | 2 | `Photo` | `0 address`: tekst 1–64 B, adres osoby z wątku |
 | 3 | `Watch` | pusta mapa |
+| 4 | `Sims` | pusta mapa; karty SIM do wysyłania (WN-56) |
+| 5 | `Send` | `0 to`: tablica 1–20 adresów (tekst 1–64 B); `1 body`: tekst do 16 KiB; `2 sim`: uint, opcjonalne; `3 image`: bajty 1–786 432, opcjonalne; `4 mime`: tekst `image/jpeg` albo `image/png`, razem z `3` (WN-56) |
+| 6 | `Part` | `0 message`: uint, `id` MMS; `1 part`: uint, `id` części (WN-56) |
 
 Od telefonu:
 
@@ -1804,6 +1812,9 @@ Od telefonu:
 | 2 | `Photo` | `0 png`: bajty 1–65 536, PNG |
 | 3 | `Changed` | pusta mapa |
 | 4 | `End` | `0 status`: uint (tabela niżej) |
+| 5 | `Sims` | `0 items`: tablica do 4 kart `[id, label, slot, default]` (`id` uint, `label` tekst do 64 B, `slot` uint od 0, `default` bool) |
+| 6 | `Sending` | `0 state`: uint: 0 przyjęta przez telefon, 1 wysłana, 2 dostarczona, 3 niewysłana; nieznana wartość to 3 |
+| 7 | `Part` | `0 mime`: tekst 1–64 B; `1 data`: bajty 1–921 600 |
 
 Wątek (mapa): `0 id` uint, `1 date` uint (najnowsza wiadomość, ms od
 epoki), `2 snippet` tekst do 512 B, `3 people` tablica do 20 osób
@@ -1816,7 +1827,10 @@ bool, `2 date` uint (ms od epoki), `3 box` uint (0 odebrana, 1 wysłana,
 2 w trakcie wysyłania, 3 niewysłana; nieznana wartość to 0), `4 body` tekst
 do 16 KiB (może być pusty), `5 address` tekst 1–64 B, opcjonalne (nadawca
 odebranej wiadomości), `6 read` bool, `7 attachments` uint, opcjonalne
-(części MMS inne niż tekst).
+(części MMS inne niż tekst), `8 parts` tablica do 16 par `[id, mime]`,
+opcjonalne (części MMS do pobrania przez `Part`), `9 delivery` uint,
+opcjonalne (raport doręczenia wysłanego SMS: 0 czeka, 1 dostarczona,
+2 niedostarczona; nieznana wartość to 0).
 
 | `status` | znaczenie |
 |---|---|
@@ -1855,7 +1869,25 @@ Zasady:
    czekają.
 6. `Photo` to PNG (sprawdzany po pierwszych bajtach) do 64 KiB; telefon
    bez dostępu do kontaktów odpowiada `End` 2.
-7. Prywatność: teksty i numery nie trafiają do logów żadnej strony.
+7. **Wysyłanie (WN-56).** `Send` z jednym adresem i bez obrazu to SMS
+   (dzielony na części przez telefon); z obrazem albo kilkoma adresami to
+   MMS. Pusta treść bez obrazu, obraz bez `mime` (lub odwrotnie), obraz
+   niezgodny z `mime` po pierwszych bajtach (JPEG `ff d8 ff`, PNG
+   `89 50 4e 47`) albo więcej niż 20 adresów to `MALFORMED_FRAME`. Telefon
+   odpowiada `Sending` 0, gdy przekazał wiadomość systemowi, potem
+   kolejnymi stanami, i kończy `End` 0: po stanie 2 albo 3, dla MMS po
+   stanie 1 (MMS nie ma raportu doręczenia), po 60 s od stanu 1 bez raportu,
+   albo po 120 s bez stanu 1 (wtedy najpierw `Sending` 3). Odmowa przed
+   przekazaniem to sam `End` (1 wyłączone, 3 limit, 4 błąd). Najwyżej 10
+   przyjętych wysyłek na minutę na telefon (kolejne `End` 3); wysyłka nie
+   zajmuje miejsca z zasady 5. Wysłana wiadomość trafia do wątków telefonu
+   (Android zapisuje ją sam), więc obserwacja ją zgłasza.
+8. `Part` zwraca obraz z MMS jako JPEG albo PNG (telefon może go
+   przeskalować i przekodować); części innych niż obraz telefon nie wydaje
+   (`End` 2). Część musi należeć do podanej wiadomości.
+9. `Sims` bez dostępu do listy kart (Android: `READ_PHONE_STATE`) zwraca
+   jedną kartę domyślną; `Send` bez `sim` idzie kartą domyślną telefonu.
+10. Prywatność: teksty i numery nie trafiają do logów żadnej strony.
    Komputer trzyma przeczytane wiadomości tylko w pamięci i usuwa je przy
    połączeniu innego telefonu albo rozparowaniu; pokazuje je jako tekst,
    bez znaków sterujących i kierunkowych.
@@ -1869,6 +1901,9 @@ Messages thread 7, since 1000, limit 1000: 0d 82 01 a3 00 07 02 19 03 e8 03 19 0
 Watch:                                   03 82 03 a0
 Changed:                                 03 82 03 a0
 End 0 (gotowe):                          05 82 04 a1 00 00
+Sims:                                    03 82 04 a0
+Send do "123", "Hi":                     0d 82 05 a2 00 81 63 31 32 33 01 62 48 69
+Sending 1 (wysłana):                     05 82 06 a1 00 01
 ```
 
 ## 10. Kody błędów

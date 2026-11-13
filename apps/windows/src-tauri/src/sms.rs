@@ -70,6 +70,27 @@ pub struct MessageView {
     body: String,
     sender: Option<String>,
     attachments: u32,
+    /// WN-56: the MMS's pictures (`sms_part` with the message key's id).
+    parts: Vec<u64>,
+    /// WN-56: a sent SMS's delivery report: "pending", "delivered" or "failed".
+    delivery: Option<&'static str>,
+}
+
+/// WN-56: what a send is doing, pushed as `sms-send` (id from `sms_send`).
+#[derive(Serialize, Clone, Debug)]
+pub struct SendEvent {
+    id: u64,
+    /// "queued", "sent", "delivered", "failed", or "refused" with `message`.
+    state: &'static str,
+    message: Option<String>,
+    done: bool,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct SimView {
+    id: u64,
+    label: String,
+    default: bool,
 }
 
 #[derive(Serialize, Clone, Debug)]
@@ -142,6 +163,17 @@ fn message_view(m: &sms::Message, names: &HashMap<String, String>) -> MessageVie
         body: clean(&m.body),
         sender: m.address.as_ref().map(|a| clean(names.get(a).unwrap_or(a))),
         attachments: m.attachments,
+        parts: m
+            .parts
+            .iter()
+            .filter(|p| p.mime.starts_with("image/"))
+            .map(|p| p.id)
+            .collect(),
+        delivery: m.delivery.map(|d| match d {
+            sms::Delivery::Pending => "pending",
+            sms::Delivery::Delivered => "delivered",
+            sms::Delivery::Failed => "failed",
+        }),
     }
 }
 
@@ -251,7 +283,9 @@ fn ask_error(e: AskError) -> String {
             "Telefon nie udostępnia SMS. Włącz „SMS na komputerze” w ustawieniach WindConnect na telefonie.".into()
         }
         AskError::Status(Status::NotFound) => "Tego wątku nie ma już na telefonie.".into(),
-        AskError::Status(Status::Busy) => "Telefon jest zajęty. Spróbuj za chwilę.".into(),
+        AskError::Status(Status::Busy) => {
+            "Telefon jest zajęty albo wysłano już 10 wiadomości w tej minucie. Spróbuj za chwilę.".into()
+        }
         _ => "Nie udało się odczytać wiadomości z telefonu.".into(),
     }
 }
@@ -370,6 +404,151 @@ pub async fn sms_older(app: tauri::AppHandle, id: u64) -> Result<ThreadMessages,
     Ok(view(&state, id, false))
 }
 
+/// WN-56: the SIMs to send through, or an error saying sending is off on the phone.
+#[tauri::command]
+pub async fn sms_sims(app: tauri::AppHandle) -> Result<Vec<SimView>, String> {
+    let session = session(&app)?;
+    match sms::sims(&session).await {
+        Ok(sims) => Ok(sims
+            .into_iter()
+            .map(|s| SimView {
+                id: s.id,
+                label: clean(&s.label),
+                default: s.default,
+            })
+            .collect()),
+        Err(AskError::Status(Status::Denied)) => Err(
+            "Wysyłanie jest wyłączone. Włącz „Wysyłanie z komputera” w ustawieniach WindConnect na telefonie.".into(),
+        ),
+        Err(AskError::Session(_)) | Err(AskError::Protocol) => {
+            Err("Telefon nie pozwala wysyłać z komputera (zaktualizuj WindConnect na telefonie).".into())
+        }
+        Err(e) => Err(ask_error(e)),
+    }
+}
+
+/// WN-56: sends through the phone; returns an id, and `sms-send` events follow until `done`.
+/// `image`: base64 JPEG/PNG (the window scales pictures down first).
+#[tauri::command]
+pub async fn sms_send(
+    app: tauri::AppHandle,
+    to: Vec<String>,
+    body: String,
+    sim: Option<u64>,
+    image_mime: Option<String>,
+    image: Option<String>,
+) -> Result<u64, String> {
+    let image = match (image_mime, image) {
+        (Some(mime), Some(data)) => {
+            let bytes = unbase64(&data).ok_or("Nieprawidłowy obraz.")?;
+            if bytes.len() > sms::MAX_IMAGE || !sms::image_matches(&mime, &bytes) {
+                return Err("Obraz jest za duży albo ma nieobsługiwany format (JPEG, PNG).".into());
+            }
+            Some((mime, bytes))
+        }
+        _ => None,
+    };
+    let to: Vec<String> = to
+        .iter()
+        .map(|a| a.trim().to_owned())
+        .filter(|a| !a.is_empty())
+        .collect();
+    if to.is_empty()
+        || to.len() > sms::MAX_RECIPIENTS
+        || to.iter().any(|a| a.len() > sms::MAX_ADDRESS)
+    {
+        return Err("Podaj od 1 do 20 odbiorców.".into());
+    }
+    if body.trim().is_empty() && image.is_none() {
+        return Err("Wiadomość jest pusta.".into());
+    }
+    if body.len() > sms::MAX_BODY {
+        return Err("Wiadomość jest za długa.".into());
+    }
+    let session = session(&app)?;
+    let message = sms::Outgoing {
+        to,
+        body,
+        sim,
+        image,
+    };
+    let mut states = sms::send(&session, message).await.map_err(ask_error)?;
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+    let id = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    tauri::async_runtime::spawn(async move {
+        let mut last = "queued";
+        while let Some(r) = states.recv().await {
+            let event = match r {
+                Ok(state) => {
+                    last = match state {
+                        sms::SendState::Queued => "queued",
+                        sms::SendState::Sent => "sent",
+                        sms::SendState::Delivered => "delivered",
+                        sms::SendState::Failed => "failed",
+                    };
+                    SendEvent {
+                        id,
+                        state: last,
+                        message: None,
+                        done: false,
+                    }
+                }
+                Err(e) => SendEvent {
+                    id,
+                    state: "refused",
+                    message: Some(ask_error(e)),
+                    done: true,
+                },
+            };
+            let _ = app.emit_to(WINDOW, "sms-send", event);
+        }
+        let _ = app.emit_to(
+            WINDOW,
+            "sms-send",
+            SendEvent {
+                id,
+                state: last,
+                message: None,
+                done: true,
+            },
+        );
+    });
+    Ok(id)
+}
+
+/// WN-56: an MMS picture as a `data:` URL (kept in memory like the messages).
+#[tauri::command]
+pub async fn sms_part(app: tauri::AppHandle, message: u64, part: u64) -> Result<String, String> {
+    let key = format!("part:{message}:{part}");
+    if let Some(Some(url)) = app
+        .state::<Sms>()
+        .inner()
+        .0
+        .lock()
+        .unwrap()
+        .photos
+        .get(&key)
+    {
+        return Ok(url.clone());
+    }
+    let session = session(&app)?;
+    let (mime, bytes) = sms::part(&session, message, part)
+        .await
+        .map_err(ask_error)?;
+    if !sms::image_matches(&mime, &bytes) {
+        return Err("Załącznik nie jest obrazem.".into());
+    }
+    let url = format!("data:{mime};base64,{}", base64(&bytes));
+    app.state::<Sms>()
+        .inner()
+        .0
+        .lock()
+        .unwrap()
+        .photos
+        .insert(key, Some(url.clone()));
+    Ok(url)
+}
+
 /// A contact photo as a `data:` URL (the window's CSP allows only those), or none.
 #[tauri::command]
 pub async fn sms_photo(app: tauri::AppHandle, address: String) -> Result<Option<String>, String> {
@@ -421,6 +600,33 @@ pub fn open(app: &tauri::AppHandle) -> tauri::Result<()> {
     window.set_focus()
 }
 
+/// Standard base64 (padding optional); none for anything else.
+fn unbase64(text: &str) -> Option<Vec<u8>> {
+    let value = |c: u8| -> Option<u32> {
+        Some(match c {
+            b'A'..=b'Z' => c - b'A',
+            b'a'..=b'z' => c - b'a' + 26,
+            b'0'..=b'9' => c - b'0' + 52,
+            b'+' => 62,
+            b'/' => 63,
+            _ => return None,
+        } as u32)
+    };
+    let text = text.trim_end_matches('=').as_bytes();
+    if text.len() % 4 == 1 {
+        return None;
+    }
+    let mut out = Vec::with_capacity(text.len() * 3 / 4);
+    for chunk in text.chunks(4) {
+        let mut n = 0u32;
+        for (i, c) in chunk.iter().enumerate() {
+            n |= value(*c)? << (18 - 6 * i);
+        }
+        out.extend_from_slice(&n.to_be_bytes()[1..chunk.len()]);
+    }
+    Some(out)
+}
+
 fn base64(bytes: &[u8]) -> String {
     const A: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
@@ -453,7 +659,26 @@ mod tests {
             address: None,
             read: true,
             attachments: 0,
+            parts: vec![],
+            delivery: None,
         }
+    }
+
+    #[test]
+    fn unbase64_reverses_base64() {
+        for data in [
+            &b""[..],
+            b"f",
+            b"fo",
+            b"foo",
+            b"foob",
+            b"\xff\xd8\xff\x00\x10",
+        ] {
+            assert_eq!(unbase64(&base64(data)).as_deref(), Some(data));
+        }
+        assert_eq!(unbase64("Zg"), Some(b"f".to_vec()));
+        assert_eq!(unbase64("Z"), None);
+        assert_eq!(unbase64("Zm9v!"), None);
     }
 
     #[test]

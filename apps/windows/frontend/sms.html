@@ -5,6 +5,7 @@
     <aside class="threads" aria-label="Wątki">
       <header class="threads-head">
         <h1>Wiadomości</h1>
+        <button id="new-message" class="button quiet small" aria-label="Nowa wiadomość" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
         <button id="refresh" class="button quiet small" aria-label="Odśwież wątki"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.6M20 4v5h-5"/></svg></button>
       </header>
       <input id="search" class="search" type="search" placeholder="Szukaj" aria-label="Szukaj w wątkach" autocomplete="off">
@@ -12,6 +13,7 @@
       <ul id="thread-list" class="thread-list" role="listbox" aria-label="Wątki SMS"></ul>
     </aside>
     <section class="conversation" aria-labelledby="conversation-title">
+      <div class="new-to" id="new-to" hidden><label for="to">Do</label><input id="to" class="search" type="text" inputmode="tel" placeholder="Numer telefonu (kilka: oddziel przecinkami)" autocomplete="off"></div>
       <header class="conversation-head" id="conversation-head" hidden>
         <span class="avatar large" id="conversation-avatar" aria-hidden="true"></span>
         <div><h2 id="conversation-title"></h2><p id="conversation-sub" class="subtle"></p></div>
@@ -26,6 +28,17 @@
         <p id="empty-text">Wiadomości z telefonu pojawią się tutaj. Treść nie jest zapisywana na tym komputerze.</p>
       </div>
       <p id="conversation-status" class="subtle conversation-status" role="status"></p>
+      <form id="composer" class="composer" hidden>
+        <div id="attachment" class="attachment-preview" hidden><img id="attachment-image" alt="Załączony obraz"><button type="button" id="attachment-remove" class="button quiet small" aria-label="Usuń obraz"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div>
+        <div class="composer-row">
+          <button type="button" id="attach" class="button quiet small" aria-label="Dołącz zdjęcie"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="14" rx="2"/><path d="m4 16 5-5 4 4 3-3 4 4"/><circle cx="15" cy="9" r="1.5"/></svg></button>
+          <input id="attach-file" type="file" accept="image/jpeg,image/png,image/webp,image/gif" hidden>
+          <textarea id="body" rows="1" placeholder="Wiadomość SMS" aria-label="Treść wiadomości"></textarea>
+          <select id="sim" class="sim" aria-label="Karta SIM" hidden></select>
+          <button id="send" class="button primary small" type="submit">Wyślij</button>
+        </div>
+        <p id="composer-note" class="subtle composer-note"></p>
+      </form>
     </section>
   </div>
 </body></html>

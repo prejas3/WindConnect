@@ -19,7 +19,8 @@ mod sms_bridge;
 pub use file_transfer::FileTransfer;
 pub use phone_extras::VolumeSink;
 pub use sms_bridge::{
-    SmsMessage, SmsMessages, SmsPerson, SmsPhoto, SmsSource, SmsThread, SmsThreads,
+    SmsMessage, SmsMessages, SmsOutgoing, SmsPart, SmsPartInfo, SmsPerson, SmsPhoto, SmsSim,
+    SmsSims, SmsSource, SmsThread, SmsThreads,
 };
 
 /// With the relay on, the address gets this long first (a LAN answers in
@@ -547,6 +548,12 @@ impl CoreClient {
     pub fn set_sms_enabled(&self, enabled: bool) {
         self.sms_enabled
             .store(enabled, std::sync::atomic::Ordering::SeqCst);
+    }
+    /// WN-56: a send's state from the platform (sent and delivery reports): 0 queued, 1 sent, 2 delivered, 3 failed.
+    pub fn sms_send_state(&self, token: u64, state: u8) {
+        if let Some(server) = self.sms.lock().unwrap().clone() {
+            server.send_state(token, sms_bridge::send_state(state));
+        }
     }
     /// SMS changed on the phone (a content observer): the PC's watches get `Changed`.
     pub fn sms_changed(&self) {

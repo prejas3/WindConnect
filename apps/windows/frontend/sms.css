@@ -36,7 +36,21 @@ body { min-height: 0; overflow: hidden; }
 .bubble .sender { display: block; font-size: var(--text-caption); font-weight: var(--weight-strong); color: var(--accent-ink); }
 .bubble .meta { display: block; text-align: right; font-size: 10.5px; opacity: .75; margin-top: 1px; }
 .bubble .attachment { display: block; font-style: italic; opacity: .85; }
-.conversation-status { position: absolute; left: 0; right: 0; bottom: 0; padding: 6px var(--space-5); background: var(--surface); border-top: 1px solid var(--border); }
+.conversation-status { padding: 6px var(--space-5); background: var(--surface); border-top: 1px solid var(--border); }
 .conversation-status:empty { display: none; }
 .conversation .empty-state { margin: auto; }
+/* WN-56: composing, sending and MMS pictures. */
+.new-to { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-3) var(--space-5); border-bottom: 1px solid var(--border); }
+.new-to .search { margin: 0; flex: 1; }
+.composer { border-top: 1px solid var(--border); padding: var(--space-2) var(--space-4) var(--space-2); background: var(--surface); }
+.composer-row { display: flex; align-items: flex-end; gap: var(--space-2); }
+.composer textarea { flex: 1; resize: none; max-height: 160px; padding: 8px 10px; background: var(--field); border: 1px solid var(--border); border-radius: var(--radius-control); line-height: 1.4; }
+.composer .sim { padding: 6px 8px; background: var(--field); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-control); font: inherit; font-size: var(--text-caption); }
+.composer-note { min-height: 0; margin-top: 2px; }
+.composer-note:empty { display: none; }
+.attachment-preview { position: relative; display: inline-block; margin-bottom: var(--space-2); }
+.attachment-preview img { max-height: 96px; max-width: 160px; border-radius: var(--radius-control); display: block; }
+.attachment-preview button { position: absolute; top: 2px; right: 2px; background: var(--surface); }
+.bubble img.mms { display: block; max-width: 100%; max-height: 320px; border-radius: 10px; margin: 2px 0 4px; background: var(--sink); min-width: 120px; min-height: 80px; }
+.bubble.local { opacity: .85; }
 @media (max-width: 640px) { .sms { grid-template-columns: 220px 1fr; } .bubble { max-width: 85%; } }

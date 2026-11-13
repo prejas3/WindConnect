@@ -14,6 +14,10 @@ import android.provider.ContactsContract
 import android.provider.Telephony
 import io.github.prejas3.windconnect.bindings.SmsMessage
 import io.github.prejas3.windconnect.bindings.SmsMessages
+import io.github.prejas3.windconnect.bindings.SmsOutgoing
+import io.github.prejas3.windconnect.bindings.SmsPart
+import io.github.prejas3.windconnect.bindings.SmsPartInfo
+import io.github.prejas3.windconnect.bindings.SmsSims
 import io.github.prejas3.windconnect.bindings.SmsPerson
 import io.github.prejas3.windconnect.bindings.SmsPhoto
 import io.github.prejas3.windconnect.bindings.SmsSource
@@ -30,6 +34,45 @@ import java.io.ByteArrayOutputStream
 class PhoneSms(context: Context) : SmsSource {
     private val app = context.applicationContext
     private val resolver: ContentResolver = app.contentResolver
+
+    // WN-56: sending from the PC, its own setting (WindCore) and SEND_SMS; states go back to the core by token.
+    @Volatile var sendingAllowed: () -> Boolean = { false }
+    @Volatile var reportSend: (ULong, UByte) -> Unit = { _, _ -> }
+    private val sender = SmsSender(app) { token, state -> reportSend(token, state) }
+    fun canSend(): Boolean = sender.canSend()
+    fun canListSims(): Boolean = sender.canListSims()
+    private fun sending() = canRead() && sendingAllowed() && sender.canSend()
+
+    override fun sims(): SmsSims = try {
+        if (!sending()) SmsSims(DENIED, emptyList()) else SmsSims(OK, sender.sims())
+    } catch (_: Exception) { SmsSims(FAILED, emptyList()) }
+
+    override fun send(token: ULong, message: SmsOutgoing): UByte = if (!sending()) DENIED else sender.send(token, message)
+
+    /** A picture part of an MMS as JPEG (at most 1600 px, within the protocol's 900 KiB); other parts: not found. */
+    override fun part(message: ULong, part: ULong): SmsPart = guarded({ SmsPart(it, "", byteArrayOf()) }) {
+        val mime = resolver.query(Uri.parse("content://mms/part"), arrayOf("ct"), "_id=? AND mid=?",
+            arrayOf(part.toString(), message.toString()), null)?.use { c -> if (c.moveToFirst()) c.getString(0) else null }
+        if (mime == null || !mime.startsWith("image/")) return@guarded SmsPart(NOT_FOUND, "", byteArrayOf())
+        val uri = Uri.parse("content://mms/part/$part")
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+        var sample = 1
+        while (maxOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= PART_PX) sample *= 2
+        val bitmap = resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, BitmapFactory.Options().apply { inSampleSize = sample }) }
+            ?: return@guarded SmsPart(NOT_FOUND, "", byteArrayOf())
+        val scale = minOf(1f, PART_PX.toFloat() / maxOf(bitmap.width, bitmap.height))
+        val fitted = if (scale < 1f) Bitmap.createScaledBitmap(bitmap, (bitmap.width * scale).toInt().coerceAtLeast(1), (bitmap.height * scale).toInt().coerceAtLeast(1), true) else bitmap
+        var quality = 85
+        var jpeg: ByteArray
+        do {
+            jpeg = ByteArrayOutputStream().also { fitted.compress(Bitmap.CompressFormat.JPEG, quality, it) }.toByteArray()
+            quality -= 15
+        } while (jpeg.size > MAX_PART && quality > 20)
+        if (jpeg.size > MAX_PART) SmsPart(NOT_FOUND, "", byteArrayOf()) else SmsPart(OK, "image/jpeg", jpeg)
+    }
+
+    fun close() = sender.close()
 
     fun canRead(): Boolean = granted(Manifest.permission.READ_SMS)
     fun canReadContacts(): Boolean = granted(Manifest.permission.READ_CONTACTS)
@@ -93,14 +136,14 @@ class PhoneSms(context: Context) : SmsSource {
         val (where, args) = range(Telephony.Sms.THREAD_ID, thread, Telephony.Sms.DATE, before, since)
         val out = ArrayList<SmsMessage>(minOf(limit, 1024))
         resolver.query(Telephony.Sms.CONTENT_URI,
-            arrayOf(Telephony.Sms._ID, Telephony.Sms.DATE, Telephony.Sms.TYPE, Telephony.Sms.BODY, Telephony.Sms.ADDRESS, Telephony.Sms.READ),
+            arrayOf(Telephony.Sms._ID, Telephony.Sms.DATE, Telephony.Sms.TYPE, Telephony.Sms.BODY, Telephony.Sms.ADDRESS, Telephony.Sms.READ, Telephony.Sms.STATUS),
             "$where AND ${Telephony.Sms.TYPE}<>${Telephony.Sms.MESSAGE_TYPE_DRAFT}", args,
             "${Telephony.Sms.DATE} DESC, ${Telephony.Sms._ID} DESC")?.use { c ->
             while (out.size < limit && c.moveToNext()) {
                 val folder = SmsRules.smsFolder(c.getInt(2))
                 out += SmsMessage(c.getLong(0).toULong(), false, c.getLong(1).coerceAtLeast(0).toULong(), folder,
                     SmsRules.clean(c.getString(3) ?: ""), if (folder == INBOX) c.getString(4)?.takeIf { it.isNotEmpty() && it.length <= 64 } else null,
-                    c.getInt(5) != 0, 0u)
+                    c.getInt(5) != 0, 0u, emptyList(), if (folder == INBOX) null else SmsRules.providerDelivery(c.getInt(6)))
             }
         }
         return out
@@ -117,7 +160,7 @@ class PhoneSms(context: Context) : SmsSource {
             while (out.size < limit && c.moveToNext()) {
                 val ms = c.getLong(1).coerceAtLeast(0) * 1000
                 if ((before != null && ms > before) || (since != null && ms < since)) continue
-                out += SmsMessage(c.getLong(0).toULong(), true, ms.toULong(), SmsRules.mmsFolder(c.getInt(2)), "", null, c.getInt(3) != 0, 0u)
+                out += SmsMessage(c.getLong(0).toULong(), true, ms.toULong(), SmsRules.mmsFolder(c.getInt(2)), "", null, c.getInt(3) != 0, 0u, emptyList(), null)
             }
         }
         return out
@@ -127,12 +170,16 @@ class PhoneSms(context: Context) : SmsSource {
     private fun withParts(m: SmsMessage): SmsMessage {
         val text = StringBuilder()
         var attachments = 0u
-        resolver.query(Uri.parse("content://mms/part"), arrayOf("ct", "text"), "mid=?", arrayOf(m.id.toString()), null)?.use { c ->
+        val parts = ArrayList<SmsPartInfo>()
+        resolver.query(Uri.parse("content://mms/part"), arrayOf("ct", "text", "_id"), "mid=?", arrayOf(m.id.toString()), null)?.use { c ->
             while (c.moveToNext()) {
-                when (c.getString(0)) {
+                when (val ct = c.getString(0)) {
                     "text/plain" -> c.getString(1)?.let { if (text.isNotEmpty()) text.append('\n'); text.append(it) }
                     "application/smil" -> {}
-                    else -> attachments++
+                    else -> {
+                        attachments++
+                        if (ct != null && ct.startsWith("image/") && ct.length <= 64 && parts.size < 16) parts += SmsPartInfo(c.getLong(2).toULong(), ct)
+                    }
                 }
             }
         }
@@ -142,7 +189,7 @@ class PhoneSms(context: Context) : SmsSource {
                 if (c.moveToFirst()) address = c.getString(0)?.takeIf { it.isNotEmpty() && it.length <= 64 && it != "insert-address-token" }
             }
         }
-        return m.copy(body = SmsRules.clean(text.toString()), attachments = attachments, address = address)
+        return m.copy(body = SmsRules.clean(text.toString()), attachments = attachments, address = address, parts = parts)
     }
 
     private fun range(threadColumn: String, thread: Long, dateColumn: String, before: Long?, since: Long?): Pair<String, Array<String>> {
@@ -230,5 +277,7 @@ class PhoneSms(context: Context) : SmsSource {
         private const val INBOX: UByte = 0u
         private const val PHOTO_PX = 96
         private const val MAX_PHOTO = 64 * 1024
+        private const val PART_PX = 1600
+        private const val MAX_PART = 900 * 1024
     }
 }

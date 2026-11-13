@@ -81,6 +81,15 @@ async function loadThreads(refresh) {
 }
 
 const statusLabel = { sent: '', pending: ' · wysyłanie…', failed: ' · nie wysłano' };
+const deliveryLabel = { pending: ' · wysłano', delivered: ' · dostarczono', failed: ' · niedostarczono' };
+const pictures = new IntersectionObserver(entries => {
+  for (const entry of entries) {
+    if (!entry.isIntersecting) continue;
+    const img = entry.target; pictures.unobserve(img);
+    invoke('sms_part', { message: Number(img.dataset.message), part: Number(img.dataset.part) })
+      .then(url => { img.src = url; }).catch(() => { img.replaceWith(Object.assign(document.createElement('span'), { className: 'attachment', textContent: 'Nie udało się pobrać zdjęcia' })); });
+  }
+}, { rootMargin: '200px' });
 function renderMessages(thread, answer, keepBottom) {
   const box = $('#messages');
   const fromBottom = box.scrollHeight - box.scrollTop;
@@ -98,10 +107,18 @@ function renderMessages(thread, answer, keepBottom) {
     li.dataset.key = m.key;
     if (group && m.folder === 'in' && m.sender) { const s = document.createElement('span'); s.className = 'sender'; s.textContent = m.sender; li.append(s); }
     if (m.body) li.append(document.createTextNode(m.body));
-    if (m.attachments) { const a = document.createElement('span'); a.className = 'attachment'; a.textContent = m.attachments === 1 ? 'Załącznik (pokaże go kolejna wersja)' : `Załączniki: ${m.attachments}`; li.append(a); }
-    const meta = document.createElement('span'); meta.className = 'meta'; meta.textContent = time.format(d) + (statusLabel[m.folder] || ''); li.append(meta);
+    // WN-56: MMS pictures load when scrolled into view; other parts stay a note.
+    for (const part of m.parts || []) {
+      const img = document.createElement('img'); img.className = 'mms'; img.alt = 'Zdjęcie z MMS';
+      img.dataset.message = m.key.slice(1); img.dataset.part = part; pictures.observe(img); li.append(img);
+    }
+    const other = m.attachments - (m.parts?.length || 0);
+    if (other > 0) { const a = document.createElement('span'); a.className = 'attachment'; a.textContent = other === 1 ? 'Załącznik (np. dźwięk lub wizytówka)' : `Załączniki: ${other}`; li.append(a); }
+    const meta = document.createElement('span'); meta.className = 'meta';
+    meta.textContent = time.format(d) + (statusLabel[m.folder] || '') + (m.folder === 'sent' && m.delivery ? deliveryLabel[m.delivery] : ''); li.append(meta);
     fragment.append(li);
   }
+  for (const local of localSends.values()) if (local.thread === selected) fragment.append(localBubble(local));
   $('#message-list').replaceChildren(fragment);
   $('#older').hidden = answer.complete || !status.available;
   box.scrollTop = keepBottom ? box.scrollHeight : box.scrollHeight - fromBottom;
@@ -119,6 +136,7 @@ async function open(id) {
   const started = performance.now();
   const ticket = ++opening;
   selected = id;
+  composing = false; $('#new-to').hidden = true; renderComposer();
   const thread = threads.find(t => t.id === id);
   renderThreads();
   if (thread) header(thread);
@@ -172,6 +190,141 @@ function applyStatus(next) {
   status = next;
   renderThreads();
   if (next.available && !was.available) changed();
+  loadSims();
+}
+
+// CCS/1 FLOW:WN-56 composer -> sms_send (phone's SIM, picture scaled here) -> local bubble -> `sms-send` states -> on
+// sent/failed the phone's own record replaces it through the watch. Sending is its own setting on the phone (sms_sims).
+let sims = null, simsNote = '', composing = false, attachment = null;
+const localSends = new Map();
+async function loadSims() {
+  if (!status.available) { sims = null; simsNote = ''; return renderComposer(); }
+  try { sims = await invoke('sms_sims'); simsNote = ''; } catch (e) { sims = null; simsNote = String(e); }
+  renderComposer();
+}
+const canSend = () => status.available && !!sims?.length;
+function recipients() {
+  if (composing) return $('#to').value.split(/[,;]/).map(a => a.trim()).filter(Boolean);
+  return threads.find(t => t.id === selected)?.people.map(p => p.address) || [];
+}
+const GSM = /^[@£$¥èéùìòÇ\nØø\rÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ !"#¤%&'()*+,\-./0-9:;<=>?¡A-ZÄÖÑÜ§¿a-zäöñüà^{}\\\[~\]|€]*$/;
+function segments(text) {
+  if (!text) return '';
+  const gsm = GSM.test(text);
+  const single = gsm ? 160 : 70, multi = gsm ? 153 : 67;
+  const n = text.length <= single ? 1 : Math.ceil(text.length / multi);
+  return `${text.length} znaków · ${n} SMS${gsm ? '' : ' (znaki spoza GSM)'}`;
+}
+function renderComposer() {
+  $('#new-message').hidden = !status.available;
+  $('#composer').hidden = !status.available || (selected === null && !composing);
+  const ok = canSend();
+  for (const id of ['#send', '#attach', '#body']) $(id).disabled = !ok;
+  const select = $('#sim');
+  select.hidden = !ok || sims.length < 2;
+  if (ok && select.dataset.ids !== sims.map(s => s.id).join()) {
+    select.replaceChildren(...sims.map(s => Object.assign(document.createElement('option'), { value: s.id, textContent: s.label, selected: s.default })));
+    select.dataset.ids = sims.map(s => s.id).join();
+  }
+  const mms = !!attachment || recipients().length > 1;
+  $('#body').placeholder = mms ? 'Wiadomość MMS' : 'Wiadomość SMS';
+  say('#composer-note', !ok ? simsNote : mms ? 'Wyślesz MMS' + (recipients().length > 1 ? ' do grupy' : '') + '.' : segments($('#body').value));
+}
+function localBubble(local) {
+  const li = document.createElement('li');
+  li.className = 'bubble out local' + (local.state === 'failed' || local.state === 'refused' ? ' failed' : '');
+  li.dataset.local = local.id;
+  if (local.url) { const img = document.createElement('img'); img.className = 'mms'; img.alt = 'Wysyłane zdjęcie'; img.src = local.url; li.append(img); }
+  if (local.body) li.append(document.createTextNode(local.body));
+  const meta = document.createElement('span'); meta.className = 'meta';
+  meta.textContent = ({ queued: 'wysyłanie…', sent: 'wysłano', delivered: 'dostarczono', failed: 'nie wysłano', refused: local.message || 'nie wysłano' })[local.state];
+  li.append(meta);
+  return li;
+}
+function showLocal(local) {
+  const list = $('#message-list');
+  const old = list.querySelector(`[data-local="${local.id}"]`);
+  if (local.thread !== selected) return;
+  if (old) old.replaceWith(localBubble(local)); else list.append(localBubble(local));
+  $('#messages').scrollTop = $('#messages').scrollHeight;
+}
+
+// Pictures: scaled to at most 1280 px and re-encoded as JPEG of at most 300 KB (what carriers take), on a white ground.
+function readImage(file) {
+  return new Promise((resolve, reject) => {
+    // A data: URL: the window's CSP allows no blob: images.
+    const reader = new FileReader();
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, 1280 / Math.max(img.naturalWidth, img.naturalHeight));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(img.naturalWidth * scale)); canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
+      const ctx = canvas.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height); ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      let quality = .85, data;
+      do { data = canvas.toDataURL('image/jpeg', quality); quality -= .15; } while (data.length * .75 > 300 * 1024 && quality > .2);
+      if (data.length * .75 > 700 * 1024) return reject(Error('Obraz jest za duży.'));
+      resolve({ mime: 'image/jpeg', url: data, data: data.slice(data.indexOf(',') + 1) });
+    };
+    img.onerror = () => reject(Error('Nie udało się wczytać obrazu.'));
+    reader.onload = () => { img.src = reader.result; };
+    reader.onerror = () => reject(Error('Nie udało się wczytać obrazu.'));
+    reader.readAsDataURL(file);
+  });
+}
+$('#attach').addEventListener('click', () => $('#attach-file').click());
+$('#attach-file').addEventListener('change', async event => {
+  const file = event.target.files?.[0]; event.target.value = '';
+  if (!file) return;
+  try { attachment = await readImage(file); $('#attachment-image').src = attachment.url; $('#attachment').hidden = false; }
+  catch (e) { say('#composer-note', e.message); }
+  renderComposer();
+});
+$('#attachment-remove').addEventListener('click', () => { attachment = null; $('#attachment').hidden = true; renderComposer(); });
+$('#body').addEventListener('input', event => {
+  const t = event.currentTarget; t.style.height = 'auto'; t.style.height = Math.min(160, t.scrollHeight) + 'px'; renderComposer();
+});
+$('#body').addEventListener('keydown', event => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); $('#composer').requestSubmit(); } });
+$('#to').addEventListener('input', renderComposer);
+$('#new-message').addEventListener('click', () => {
+  composing = true; selected = null; renderThreads();
+  $('#new-to').hidden = false; $('#conversation-head').hidden = true; $('#messages').hidden = true; $('#empty').hidden = true;
+  say('#conversation-status', ''); renderComposer(); $('#to').focus();
+});
+$('#composer').addEventListener('submit', async event => {
+  event.preventDefault();
+  const to = recipients(), body = $('#body').value;
+  if (!canSend() || !to.length || (!body.trim() && !attachment)) return;
+  const sim = $('#sim').hidden ? null : Number($('#sim').value);
+  const sent = attachment;
+  $('#send').disabled = true;
+  try {
+    const id = await invoke('sms_send', { to, body, sim, imageMime: sent?.mime ?? null, image: sent?.data ?? null });
+    const local = { id, thread: composing ? null : selected, to, body, url: sent?.url, state: 'queued' };
+    localSends.set(id, local);
+    $('#body').value = ''; $('#body').style.height = ''; attachment = null; $('#attachment').hidden = true;
+    showLocal(local);
+  } catch (e) { say('#composer-note', String(e)); }
+  finally { renderComposer(); }
+});
+function digits(a) { return a.replace(/\D/g, '').slice(-9); }
+async function sendEvent({ id, state, message, done }) {
+  const local = localSends.get(id);
+  if (!local) return;
+  local.state = state; local.message = message;
+  showLocal(local);
+  if (state === 'refused') { say('#composer-note', message || 'Nie wysłano.'); return localSends.delete(id); }
+  // The phone recorded it (sent or failed): its own message takes over through the watch.
+  if (state === 'sent' || state === 'delivered' || state === 'failed' || done) {
+    localSends.delete(id);
+    if (state === 'failed') say('#composer-note', 'Nie wysłano wiadomości. Sprawdź zasięg i spróbuj ponownie.');
+    if (local.thread === null) {
+      await loadThreads(true);
+      const want = local.to.map(digits).sort().join();
+      const t = threads.find(t => t.people.map(p => digits(p.address)).sort().join() === want);
+      if (t) return open(t.id);
+    }
+    changed();
+  }
 }
 
 $('#search').addEventListener('input', renderThreads);
@@ -190,8 +343,10 @@ document.addEventListener('keydown', event => {
 
 if (invoke) {
   listen('sms-status', e => applyStatus(e.payload));
-  listen('sms-changed', () => changed());
+  listen('sms-changed', () => { changed(); loadSims(); });
+  listen('sms-send', e => sendEvent(e.payload));
   status = await invoke('sms_status');
   await loadThreads(false);
   if (status.available) loadThreads(true);
+  loadSims();
 }
