@@ -18,6 +18,7 @@ QUIC v1 (RFC 9000) + TLS 1.3, ALPN "windconnect/1"
 ├── strumień uni   clipboard    (1 aktywny na kierunek, §3.1) ramki CBOR
 ├── strumień uni   notify       (jw.)                         ramki CBOR
 ├── strumień uni   media        (jw.)                         ramki CBOR
+├── strumień uni   notify-action (jw., §9.8)                  ramki CBOR
 ├── strumień uni   input        (jw., przyciski)              ramki CBOR
 ├── strumień bidi  files × N    (1–8 na transfer, §9.1)       ramki CBOR
 ├── strumień bidi  actions × N  (1 na prośbę, §9.2)           ramki CBOR
@@ -186,7 +187,8 @@ od serwera, przykład w sekcji 7.1), `files` (odpowiedzi odbiorcy pliku) i
 | `07` | `battery` | uni | nadawca stanu baterii (§9.4) | 6 |
 | `08` | `find` | bidi | proszący o dzwonienie; 1 na dzwonienie (§9.5) | 5 |
 | `09` | `media-control` | uni | nadawca poleceń dla odtwarzacza drugiej strony (§9.6) | 4 |
-| `0a`–`3f` | zarezerwowane dla przyszłych kanałów | | | |
+| `0a` | `notify-action` | uni | strona pokazująca powiadomienia drugiej strony: odrzucenie, odpowiedź (§9.8) | 3 |
+| `0b`–`3f` | zarezerwowane dla przyszłych kanałów | | | |
 | `40`–`ff` | niedozwolone w v1 | | | |
 
 Zasady:
@@ -215,7 +217,7 @@ Przykład: nagłówek strumienia `control` to `01 00`, strumienia `input` to `01
 
 ### 3.1 Cykl życia strumieni uni
 
-Kanały `clipboard`, `notify`, `media`, `media-control`, `input` i `battery` mają w każdym kierunku
+Kanały `clipboard`, `notify`, `notify-action`, `media`, `media-control`, `input` i `battery` mają w każdym kierunku
 **kolejkę wiadomości**: ciąg strumieni uni jednego nadawcy dla tego kanału.
 
 1. Nadawca ma naraz najwyżej **jeden otwarty do zapisu** strumień kanału.
@@ -411,7 +413,8 @@ Możliwości v1.0:
 |---|---|
 | `clipboard/1` | strona obsługuje kanał `clipboard` (tekst) |
 | `clipboard/2` | jak `clipboard/1` oraz obrazy PNG (§9.3.1, WN-36) |
-| `notify/1` | strona pokazuje powiadomienia drugiej strony: przyjmuje `Posted`, `Icon`, `Removed` na kanale `notify` (§9.7, WN-42) |
+| `notify/1` | strona pokazuje powiadomienia drugiej strony: przyjmuje `Posted`, `Icon`, `Removed`, `Replied` na kanale `notify` (§9.7, WN-42) |
+| `notify-action/1` | powiadomienia strony można odrzucać i na nie odpowiadać: przyjmuje `Dismiss`, `Reply` na kanale `notify-action` (§9.8, WN-44) |
 | `media/1` | strona pokazuje odtwarzacz drugiej strony: przyjmuje `Now`, `Art`, `Gone` na kanale `media` (§9.6, WN-46) |
 | `media-control/1` | odtwarzaczem strony można sterować: przyjmuje `Command` na kanale `media-control` (§9.6, WN-46) |
 | `input/1` | strona przyjmuje zdarzenia wejścia (kanał `input`, sekcja 8) |
@@ -1583,9 +1586,10 @@ Od strony z powiadomieniami:
 
 | typ | nazwa | pola `body` |
 |---|---|---|
-| 0 | `Posted` | `0 id` 16 B; `1 app` tekst ≤ 64 B (nazwa aplikacji); `2 package` tekst ≤ 128 B (identyfikator aplikacji, dla pamięci ikon i filtrów WN-45); `3 title`? tekst ≤ 256 B; `4 text`? tekst ≤ 1024 B; `5 time` uint (ms od epoki Uniksa, chwila opublikowania); `6 icon`? 8 B, klucz `Icon` |
+| 0 | `Posted` | `0 id` 16 B; `1 app` tekst ≤ 64 B (nazwa aplikacji); `2 package` tekst ≤ 128 B (identyfikator aplikacji, dla pamięci ikon i filtrów WN-45); `3 title`? tekst ≤ 256 B; `4 text`? tekst ≤ 1024 B; `5 time` uint (ms od epoki Uniksa, chwila opublikowania); `6 icon`? 8 B, klucz `Icon`; `7 reply`? tekst ≤ 64 B: etykieta akcji odpowiedzi, jest tylko wtedy, gdy na powiadomienie można odpowiedzieć (§9.8, WN-44) |
 | 1 | `Icon` | `0 key` 8 B (pierwsze 8 B SHA-256 obrazu); `1 png` PNG ≤ 16 KiB (nadawca: 64 px na bok) |
 | 2 | `Removed` | `0 id` 16 B: powiadomienie zniknęło u nadawcy (odrzucone albo anulowane) |
+| 3 | `Replied` | `0 id` 16 B; `1 ok` bool: czy odpowiedź z `Reply` (§9.8) poszła do aplikacji (WN-44) |
 
 Zasady:
 
@@ -1623,12 +1627,65 @@ Zasady:
 9. **Zgoda.** Na Androidzie odczyt wymaga osobnej zgody (§9.6, zasada 6):
    własny wpis w systemowym dostępie do powiadomień i ustawienie
    „Powiadomienia na komputerze”, domyślnie wyłączone.
+10. `7 reply` i `Replied` (WN-44) to dodatki zgodne (sekcja 9, zasada 1):
+    odbiorca bez nich pomija nieznane pole (§4.3) i nieznany typ (§4.4).
+    Nadawca ustawia `reply` tylko dla akcji, która przyjmuje dowolny tekst
+    (na Androidzie: `RemoteInput` z `getAllowFreeFormInput()`, nie
+    kontekstowa; najpierw `SEMANTIC_ACTION_REPLY`, potem pierwsza taka).
 
 Przykład (z nagłówkiem długości ramki): nagłówek strumienia `01 02`;
 `Removed` z `id` = 16 × `07`, 22 B:
 
 ```text
 15 82 02 a1 00 50 07 07 07 07 07 07 07 07 07 07 07 07 07 07 07 07
+```
+
+`Replied` z tym samym `id`, `ok` = true, 24 B:
+
+```text
+17 82 03 a2 00 50 07 07 07 07 07 07 07 07 07 07 07 07 07 07 07 07 01 f5
+```
+
+### 9.8 Kanał `notify-action` (`0a`, WN-44)
+
+Odrzucenie powiadomienia i odpowiedź na nie ze strony, która je pokazuje
+(§9.7). Kanał uni z kolejką jak w §3.1; otwiera go strona pokazująca
+powiadomienia, przyjmuje strona, która je wysłała i ogłosiła
+`notify-action/1`.
+
+| typ | nazwa | pola `body` |
+|---|---|---|
+| 0 | `Dismiss` | `0 id` 16 B: odrzuć to powiadomienie |
+| 1 | `Reply` | `0 id` 16 B; `1 text` tekst 1–1024 B: wyślij tę odpowiedź akcją odpowiedzi powiadomienia |
+
+Zasady:
+
+1. Strona ogłasza `notify-action/1` tylko wtedy, gdy wysyła powiadomienia
+   (§9.7, zasada 9: zgoda i dostęp), także w trakcie sesji (§6, zasada 5).
+2. Strona wykonuje akcję **tylko** dla `id` wysłanego przez nią w tej
+   sesji i wciąż obecnego; każde inne `id` pomija (na `Reply` odsyła
+   tylko `Replied` z `ok` = false).
+3. `Dismiss` odrzuca powiadomienie u nadawcy tak, jak zrobiłby to
+   użytkownik; nadawca odsyła potem zwykłe `Removed` (§9.7, zasada 6).
+   Strona pokazująca usuwa je u siebie od razu i znosi `Removed` dla
+   nieznanego już `id`.
+4. `Reply` idzie do aplikacji tak, jakby tekst wpisano na urządzeniu
+   nadawcy (Android: `RemoteInput.addResultsToIntent`, źródło
+   `SOURCE_FREE_FORM_INPUT`). Po próbie nadawca odsyła `Replied` (§9.7);
+   aplikacja zwykle publikuje też zmienione powiadomienie (`Posted`).
+5. Tekst odpowiedzi nie jest zapisywany ani logowany po żadnej stronie.
+   Tekst pusty albo dłuższy niż 1024 B to błędna wiadomość: odbiorca jej nie
+   przycina, tylko pomija; strona pokazująca NIE MOŻE wysłać takiego
+   tekstu (interfejs blokuje wysłanie z komunikatem).
+6. Strona pokazująca wysyła `Dismiss` tylko na wyraźne zamknięcie przez
+   użytkownika (nie po wygaśnięciu ani usunięciu przez siebie).
+
+Przykłady (z nagłówkiem długości ramki): nagłówek strumienia `01 0a`;
+`id` = 16 × `07`. `Dismiss`, 22 B, i `Reply` z tekstem `ok`, 26 B:
+
+```text
+15 82 00 a1 00 50 07 07 07 07 07 07 07 07 07 07 07 07 07 07 07 07
+19 82 01 a2 00 50 07 07 07 07 07 07 07 07 07 07 07 07 07 07 07 07 01 62 6f 6b
 ```
 
 ## 10. Kody błędów
@@ -1685,6 +1742,7 @@ ten strumień (`STOP_SENDING` po stronie odbiorcy), nie połączenie.
 | wiadomości `find` | sekcja 9.5 |
 | wiadomości `media`, `media-control` | sekcja 9.6 |
 | wiadomości `notify` | sekcja 9.7 |
+| wiadomości `notify-action` | sekcja 9.8 |
 
 Przykłady są wektorami testowymi kodera ramek (WC-06): koder MUSI
 produkować dokładnie te bajty, a dekoder odtwarzać z nich te wiadomości.

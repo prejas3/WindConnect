@@ -241,6 +241,23 @@ class WindCore private constructor(
     val notifyAccess: StateFlow<Boolean> = mutableNotifyAccess.asStateFlow()
     private val icons = AppIcons(appContext)
     private var notifyJob: Job? = null
+    /** WN-44: ids sent to the PC in this session; the PC may dismiss and reply only to these. */
+    private val sentIds = java.util.Collections.synchronizedSet(HashSet<List<Byte>>())
+    private val notifyActions = object : io.github.prejas3.windconnect.bindings.NotifyActionSink {
+        override fun dismiss(id: ByteArray) {
+            if (id.toList() in sentIds) NotifyListenerService.dismiss(id)
+        }
+        override fun reply(id: ByteArray, text: String) {
+            val ok = id.toList() in sentIds && NotifyListenerService.reply(appContext, id, text)
+            scope.launch {
+                val live = gate.withLock { connection }
+                try { live?.notificationReplied(id, ok) } catch (error: Exception) { if (error is CancellationException) throw error }
+            }
+        }
+    }.also { sink ->
+        client.setNotifyActionSink(sink)
+        client.setNotifyActionsEnabled(mutableNotifyAllowed.value && mutableNotifyAccess.value)
+    }
     private val mutableNotifySends = MutableSharedFlow<NotifySend>(extraBufferCapacity = 64, onBufferOverflow = BufferOverflow.DROP_OLDEST)
     /** Each notification handed to the core and what came of it (diagnostics and the WN-42 latency proof; no content). */
     val notifySends: SharedFlow<NotifySend> = mutableNotifySends.asSharedFlow()
@@ -610,6 +627,8 @@ class WindCore private constructor(
         stopNotify()
         if (!(mutableNotifyAllowed.value && mutableNotifyAccess.value)) return
         val events = Channel<NotificationEvent>(256, BufferOverflow.DROP_OLDEST)
+        sentIds.clear()
+        NotifyListenerService.forget()
         NotifyListenerService.sink = { events.trySend(it) }
         notifyJob = scope.launch {
             try {
@@ -619,10 +638,11 @@ class WindCore private constructor(
                             is NotificationEvent.Posted -> {
                                 val n = event.notification.copy(app = icons.label(event.packageName))
                                 val outcome = opened.sendNotification(n, icons.icon(event.packageName))
+                                if (outcome == "sent" || outcome == "held") sentIds.add(n.id.toList())
                                 mutableNotifySends.tryEmit(NotifySend(outcome, n.timeMs.toLong(), System.currentTimeMillis(),
                                     SystemClock.elapsedRealtime() - event.posted, n.packageName))
                             }
-                            is NotificationEvent.Removed -> opened.notificationRemoved(event.id)
+                            is NotificationEvent.Removed -> { sentIds.remove(event.id.toList()); opened.notificationRemoved(event.id) }
                         }
                     } catch (error: Exception) {
                         if (error is CancellationException) throw error
@@ -643,8 +663,10 @@ class WindCore private constructor(
     suspend fun refreshNotify() = withContext(Dispatchers.IO) {
         mutableNotifyAccess.value = NotifyListenerService.granted(appContext)
         val enabled = mutableNotifyAllowed.value && mutableNotifyAccess.value
+        client.setNotifyActionsEnabled(enabled)
         gate.withLock {
             val live = connection ?: return@withLock
+            try { live.setNotifyActionsAccepted(enabled) } catch (error: Exception) { if (error is CancellationException) throw error }
             if (enabled && notifyJob == null) startNotify(live)
             if (!enabled && notifyJob != null) stopNotify()
         }

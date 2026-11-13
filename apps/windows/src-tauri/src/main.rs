@@ -339,12 +339,17 @@ fn main() {
             pairing::media_action,
             pairing::share_media,
             pairing::phone_notifications,
+            pairing::notify_action,
             #[cfg(debug_assertions)]
             battery::dev_battery_alerts,
             #[cfg(debug_assertions)]
             notify::dev_notify_log,
             #[cfg(debug_assertions)]
             notify::dev_notify_history,
+            #[cfg(debug_assertions)]
+            notify::dev_toast_activate,
+            #[cfg(debug_assertions)]
+            notify::dev_toast_dismissed,
             actions::actions_snapshot,
             actions::set_action_enabled,
             actions::edit_custom_actions,

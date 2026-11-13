@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 
 use tokio::sync::mpsc::Receiver;
 use wind_core::identity::DeviceIdentity;
-use wind_core::notify::{self, icon_key, Message, Outcome, Posted, Sender};
+use wind_core::notify::{self, icon_key, Action, Message, Outcome, Posted, Sender};
 use wind_core::protocol::{Channel, DeviceKind};
 use wind_core::session::{ChannelMessage, LocalInfo, Router, Session};
 use wind_core::transport::{Endpoint, PinnedKeys};
@@ -28,10 +28,16 @@ struct Pair {
     pc: Session,
     phone: Session,
     shown: Option<Receiver<ChannelMessage>>,
+    /// The phone's queue of the PC's dismissals and replies (notify-action/1, WN-44).
+    actions: Option<Receiver<ChannelMessage>>,
     _endpoints: (Endpoint, Endpoint),
 }
 
 async fn pair(pc_takes: bool) -> Pair {
+    pair_with(pc_takes, false).await
+}
+
+async fn pair_with(pc_takes: bool, phone_acts: bool) -> Pair {
     let (iphone, ipc) = (
         DeviceIdentity::generate().unwrap(),
         DeviceIdentity::generate().unwrap(),
@@ -49,7 +55,9 @@ async fn pair(pc_takes: bool) -> Pair {
     let mut pc_router = Router::new();
     let shown = pc_takes.then(|| notify::route(&mut pc_router));
     let server = tokio::spawn(Session::accept(s, info("PC"), pc_router));
-    let (phone, _) = Session::connect(c, info("Pixel"), Router::new())
+    let mut phone_router = Router::new();
+    let actions = phone_acts.then(|| notify::route_actions(&mut phone_router));
+    let (phone, _) = Session::connect(c, info("Pixel"), phone_router)
         .await
         .unwrap();
     let (pc, _) = server.await.unwrap().unwrap();
@@ -57,6 +65,7 @@ async fn pair(pc_takes: bool) -> Pair {
         pc,
         phone,
         shown,
+        actions,
         _endpoints: (a, b),
     }
 }
@@ -70,6 +79,7 @@ fn note(id: u8, text: &str) -> Posted {
         text: Some(text.into()),
         time_ms: 1_794_500_000_000,
         icon: None,
+        reply: None,
     }
 }
 
@@ -232,4 +242,65 @@ async fn nothing_without_the_capability() {
         "never went out"
     );
     drop(p.pc);
+}
+
+#[tokio::test]
+async fn the_pc_dismisses_and_replies() {
+    let mut p = pair_with(true, true).await;
+    let sender = Sender::new(p.phone.clone());
+    assert_eq!(
+        sender
+            .posted(
+                Posted {
+                    reply: Some("Odpowiedz".into()),
+                    ..note(1, "Będziesz?")
+                },
+                None,
+                false
+            )
+            .await
+            .unwrap(),
+        Outcome::Sent
+    );
+    let shown = p.shown.as_mut().unwrap();
+    assert!(
+        matches!(next(shown).await, Message::Posted(n) if n.reply.as_deref() == Some("Odpowiedz"))
+    );
+    let reply = Action::Reply {
+        id: [1; 16],
+        text: "Tak, o 19".into(),
+    };
+    assert!(notify::act(&p.pc, &reply).await.unwrap());
+    assert!(notify::act(&p.pc, &Action::Dismiss { id: [1; 16] })
+        .await
+        .unwrap());
+    let actions = p.actions.as_mut().unwrap();
+    for want in [reply, Action::Dismiss { id: [1; 16] }] {
+        let m = tokio::time::timeout(T, actions.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(m.channel, Channel::NotifyAction);
+        assert_eq!(Action::decode(&m.message), Some(want));
+    }
+    // The phone tells how the reply went.
+    assert_eq!(sender.replied([1; 16], true).await.unwrap(), Outcome::Sent);
+    assert_eq!(
+        next(shown).await,
+        Message::Replied {
+            id: [1; 16],
+            ok: true
+        }
+    );
+}
+
+#[tokio::test]
+async fn no_actions_without_the_phones_consent() {
+    let p = pair_with(true, false).await;
+    assert!(
+        !notify::act(&p.pc, &Action::Dismiss { id: [1; 16] })
+            .await
+            .unwrap(),
+        "the phone didn't announce notify-action/1"
+    );
 }

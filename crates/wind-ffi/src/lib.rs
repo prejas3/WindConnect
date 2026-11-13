@@ -100,7 +100,40 @@ pub struct PhoneNotification {
     pub time_ms: u64,
     /// It shows a progress bar: only its start and end go out.
     pub progress: bool,
+    /// The label of its reply action, when it can be replied to (WN-44).
+    pub reply: Option<String>,
 }
+
+/// WN-44 (§9.8): the PC's dismissals and replies for notifications this phone sent in the session. The phone checks the id
+/// itself (only its own, from this session); a reply's outcome goes back with [`CoreConnection::notification_replied`].
+#[uniffi::export(callback_interface)]
+pub trait NotifyActionSink: Send + Sync {
+    fn dismiss(&self, id: Vec<u8>);
+    fn reply(&self, id: Vec<u8>, text: String);
+}
+
+async fn serve_notify_actions(
+    sink: Arc<dyn NotifyActionSink>,
+    mut queue: tokio::sync::mpsc::Receiver<wind_core::session::ChannelMessage>,
+) {
+    while let Some(message) = queue.recv().await {
+        let Some(action) = wind_core::notify::Action::decode(&message.message) else {
+            continue;
+        };
+        let sink = sink.clone();
+        // A platform callback may block briefly; off the runtime's workers.
+        let _ = tokio::task::spawn_blocking(move || match action {
+            wind_core::notify::Action::Dismiss { id } => sink.dismiss(id.to_vec()),
+            wind_core::notify::Action::Reply { id, text } => sink.reply(id.to_vec(), text),
+        })
+        .await;
+    }
+}
+
+type NotifyActionRoute = (
+    Arc<dyn NotifyActionSink>,
+    tokio::sync::mpsc::Receiver<wind_core::session::ChannelMessage>,
+);
 
 fn notification_id(id: &[u8]) -> Result<[u8; 16], CoreError> {
     id.try_into().map_err(|_| CoreError::InvalidInput {
@@ -385,6 +418,9 @@ pub struct CoreClient {
     /// WN-47: the PC's player shown here, and whether the person wants it.
     pc_media: std::sync::Mutex<Option<Arc<dyn PcMediaSink>>>,
     pc_media_enabled: std::sync::atomic::AtomicBool,
+    /// WN-44: the PC's dismissals and replies, and whether the phone takes them (notifications on, access granted).
+    notify_actions: std::sync::Mutex<Option<Arc<dyn NotifyActionSink>>>,
+    notify_actions_enabled: std::sync::atomic::AtomicBool,
 }
 
 #[derive(uniffi::Record, Clone, Debug)]
@@ -445,6 +481,8 @@ pub async fn open_client(
         media_enabled: std::sync::atomic::AtomicBool::new(false),
         pc_media: std::sync::Mutex::new(None),
         pc_media_enabled: std::sync::atomic::AtomicBool::new(true),
+        notify_actions: std::sync::Mutex::new(None),
+        notify_actions_enabled: std::sync::atomic::AtomicBool::new(false),
         identity: IdentityInfo {
             public_key: identity.public_key().as_bytes().to_vec(),
             fingerprint: identity.fingerprint().to_hex(),
@@ -489,6 +527,16 @@ impl CoreClient {
     /// one changes with [`CoreConnection::set_media_control_accepted`].
     pub fn set_media_enabled(&self, enabled: bool) {
         self.media_enabled
+            .store(enabled, std::sync::atomic::Ordering::SeqCst);
+    }
+    /// WN-44: where the PC's dismissals and replies go.
+    pub fn set_notify_action_sink(&self, sink: Box<dyn NotifyActionSink>) {
+        *self.notify_actions.lock().unwrap() = Some(Arc::from(sink));
+    }
+    /// Whether new sessions announce `notify-action/1`; a live one changes with
+    /// [`CoreConnection::set_notify_actions_accepted`].
+    pub fn set_notify_actions_enabled(&self, enabled: bool) {
+        self.notify_actions_enabled
             .store(enabled, std::sync::atomic::Ordering::SeqCst);
     }
     /// WN-47: where the PC's player goes.
@@ -895,6 +943,7 @@ impl CoreClient {
         let find = self.route_find(&mut router);
         let media = self.route_media(&mut router);
         let pc_media = self.route_pc_media(&mut router);
+        let notify_actions = self.route_notify_actions(&mut router);
         let (session, _) = tokio::time::timeout(
             Duration::from_secs(10),
             Session::dial(
@@ -912,6 +961,7 @@ impl CoreClient {
         .map_err(session_error)?;
         self.serve_pc_media(pc_media);
         self.serve_find(find);
+        self.serve_notify_actions(notify_actions);
         let media_allowed = self.serve_media(media);
         Ok(Arc::new(CoreConnection {
             clipboard: std::sync::Mutex::new(None),
@@ -994,6 +1044,23 @@ impl CoreClient {
         }
         Some((sink, queue))
     }
+    /// WN-44: routes `notify-action` when there is a sink; withdrawn at the start unless notifications are on.
+    fn route_notify_actions(&self, router: &mut Router) -> Option<NotifyActionRoute> {
+        let sink = self.notify_actions.lock().unwrap().clone()?;
+        let queue = wind_core::notify::route_actions(router);
+        if !self
+            .notify_actions_enabled
+            .load(std::sync::atomic::Ordering::SeqCst)
+        {
+            router.start_disabled(wind_core::protocol::Channel::NotifyAction);
+        }
+        Some((sink, queue))
+    }
+    fn serve_notify_actions(&self, route: Option<NotifyActionRoute>) {
+        if let Some((sink, queue)) = route {
+            tokio::spawn(serve_notify_actions(sink, queue));
+        }
+    }
     fn serve_pc_media(&self, route: Option<PcMediaRoute>) {
         if let Some((sink, queue)) = route {
             tokio::spawn(serve_pc_media(sink, queue));
@@ -1020,12 +1087,13 @@ impl CoreClient {
             reason: "peer address must be an IP address and port".into(),
         })?;
         let mut changes = self.network.subscribe();
-        let ((session, _),(clipboard_input, find, media, pc_media)) = loop {
+        let ((session, _),(clipboard_input, find, media, pc_media, notify_actions)) = loop {
             let mut router=Router::new();
             let clipboard_input=wind_core::clipboard::Clipboard::route(&mut router);
             let find = self.route_find(&mut router);
             let media = self.route_media(&mut router);
             let pc_media = self.route_pc_media(&mut router);
+            let notify_actions = self.route_notify_actions(&mut router);
             let attempt = tokio::time::timeout(
             wait,
             Session::dial(
@@ -1037,7 +1105,7 @@ impl CoreClient {
             ),
         );
             tokio::select! {
-                result = attempt => break result.map(|r|r.map(|s|(s,(clipboard_input, find, media, pc_media)))),
+                result = attempt => break result.map(|r|r.map(|s|(s,(clipboard_input, find, media, pc_media, notify_actions)))),
                 changed = changes.changed() => {
                     if changed.is_err() { return Err(CoreError::Transport { reason: "network observer stopped".into() }); }
                 }
@@ -1049,6 +1117,7 @@ impl CoreClient {
         .map_err(session_error)?;
         self.serve_pc_media(pc_media);
         self.serve_find(find);
+        self.serve_notify_actions(notify_actions);
         let media_allowed = self.serve_media(media);
         Ok(Arc::new(CoreConnection {
             clipboard: std::sync::Mutex::new(None),
@@ -1392,11 +1461,27 @@ impl CoreConnection {
             text: notification.text,
             time_ms: notification.time_ms,
             icon: None,
+            reply: notification.reply,
         };
         self.notify
             .posted(posted, icon, notification.progress)
             .await
             .map(|o| o.name().into())
+            .map_err(session_error)
+    }
+    /// WN-44: how a reply the PC asked for went (`Replied`).
+    pub async fn notification_replied(&self, id: Vec<u8>, ok: bool) -> Result<String, CoreError> {
+        self.notify
+            .replied(notification_id(&id)?, ok)
+            .await
+            .map(|o| o.name().into())
+            .map_err(session_error)
+    }
+    /// WN-44: announce or withdraw `notify-action/1` (the PC may dismiss and reply) on this session.
+    pub async fn set_notify_actions_accepted(&self, accept: bool) -> Result<bool, CoreError> {
+        self.session
+            .set_accepted(wind_core::protocol::Channel::NotifyAction, accept)
+            .await
             .map_err(session_error)
     }
     /// WN-42: gone on the phone; `Removed` goes out only for an id sent in this session.

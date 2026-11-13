@@ -52,6 +52,8 @@ pub enum Channel {
     Find = 8,
     /// Commands for this side's media players (§9.6, WN-46).
     MediaControl = 9,
+    /// Dismiss or reply to the other side's notifications (§9.8, WN-44).
+    NotifyAction = 10,
 }
 
 impl Channel {
@@ -74,6 +76,7 @@ impl Channel {
             7 => Self::Battery,
             8 => Self::Find,
             9 => Self::MediaControl,
+            10 => Self::NotifyAction,
             _ => return Err(FrameError::UnknownChannel(b)),
         })
     }
@@ -245,7 +248,7 @@ mod tests {
             decode_stream_header([0x00, 0xff]),
             Err(FrameError::UnsupportedVersion(0))
         );
-        for b in [0x0a, 0x3f, 0x40, 0xff] {
+        for b in [0x0b, 0x3f, 0x40, 0xff] {
             assert_eq!(
                 decode_stream_header([0x01, b]),
                 Err(FrameError::UnknownChannel(b))

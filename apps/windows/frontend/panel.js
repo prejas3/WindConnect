@@ -180,6 +180,7 @@ function renderPairing(state) {
   renderBattery(state.connected || connected ? state.battery : null);
   renderFind(state.find, !!(state.connected || connected));
   renderMedia(state.connected || connected ? state.media : null);
+  renderNotifications(state.notifications, !!(state.connected || connected));
   document.querySelector('#pairing-instructions').hidden = !waiting;
   document.querySelector('#pairing-hint').hidden = !connected;
   const refresh = document.querySelector('#pairing-refresh');
@@ -297,3 +298,4 @@ async function start() {
 }
 start().catch(error);
 import './clipboard.js';
+import { renderNotifications } from './notifications.js';

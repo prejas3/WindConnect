@@ -61,12 +61,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let Some(m) = m else { break };
                     match Message::decode(&m.message) {
                         Some(Message::Posted(n)) => println!(
-                            "NOTIFY_POSTED id={} app={:?} package={:?} title={:?} text={:?} time={} icon={}",
-                            hex(&n.id), n.app, n.package, n.title, n.text, n.time_ms,
+                            "NOTIFY_POSTED id={} app={:?} package={:?} title={:?} text={:?} time={} reply={:?} icon={}",
+                            hex(&n.id), n.app, n.package, n.title, n.text, n.time_ms, n.reply,
                             n.icon.map(|k| hex(&k)).unwrap_or_default()
                         ),
                         Some(Message::Icon { key, png }) => println!("NOTIFY_ICON key={} bytes={}", hex(&key), png.len()),
                         Some(Message::Removed { id }) => println!("NOTIFY_REMOVED id={}", hex(&id)),
+                        Some(Message::Replied { id, ok }) => println!("NOTIFY_REPLIED id={} ok={ok}", hex(&id)),
                         None => println!("NOTIFY_MALFORMED type={}", m.message.ty),
                     }
                 }

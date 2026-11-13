@@ -4,6 +4,11 @@
 //! bounded) and XML-escaped; icons are decoded and re-encoded as 64 px PNG before Windows reads them, stored as
 //! `<key hex>.png` only. Nothing is logged. Windows keeps toast content in its notification store: each expires after
 //! [`EXPIRES`], and the setting turned off or an unpairing removes them and the icon cache.
+//! WN-44: a reply field on toasts that can be replied to and in the panel (`notify-action/1` to the phone, never trimmed:
+//! over [`wind_core::notify::MAX_REPLY`] bytes it isn't sent); closing a popup (✕) or ✕ in the panel dismisses it on the phone.
+//! The reply text is never logged nor kept after it was sent. LIMIT:an unpackaged app gets a toast's events only while its
+//! ToastNotification object lives here: the worker keeps them until removed or expired; after a restart, old toasts in
+//! Action Center at most open the app, and clearing in Action Center fires nothing (no dismissal on the phone).
 use std::collections::{HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
@@ -85,6 +90,8 @@ pub struct ToastView {
     pub phone: String,
     /// The icon's key in hex, when the notification names one.
     pub icon: Option<String>,
+    /// The reply action's label, when it can be replied to (WN-44).
+    pub reply: Option<String>,
 }
 
 impl ToastView {
@@ -104,6 +111,11 @@ impl ToastView {
             text: some(&n.text, TEXT_CHARS),
             phone: clean(phone, 64),
             icon: n.icon.map(|k| hex(&k)),
+            reply: n
+                .reply
+                .as_deref()
+                .map(|r| clean(r, 64))
+                .filter(|r| !r.is_empty()),
             app,
         }
     }
@@ -137,6 +149,12 @@ pub fn toast_xml(view: &ToastView, icon: Option<&Path>) -> String {
         ));
     }
     x.push_str("</binding></visual>");
+    if view.reply.is_some() {
+        // WN-44: typed here, sent in the background (the app stays where it is).
+        x.push_str(&format!(
+            r#"<actions><input id="{REPLY_INPUT}" type="text" placeHolderContent="Odpowiedz…"/><action content="Wyślij" arguments="{REPLY_ARGUMENT}" hint-inputId="{REPLY_INPUT}" activationType="background"/></actions>"#
+        ));
+    }
     let header = if view.package.is_empty() {
         &view.app
     } else {
@@ -150,6 +168,128 @@ pub fn toast_xml(view: &ToastView, icon: Option<&Path>) -> String {
     x.push_str("</toast>");
     x
 }
+
+/// The toast's text box and its button's arguments (WN-44).
+pub const REPLY_INPUT: &str = "reply";
+pub const REPLY_ARGUMENT: &str = "reply";
+
+/// What a click on a toast asks for.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Activation {
+    /// The toast's body (or anything but the reply button): open the panel.
+    OpenPanel,
+    Reply(String),
+    /// The reply button with nothing typed.
+    Empty,
+    /// Longer than the protocol allows: not sent, never trimmed; the panel shows it with the text kept.
+    TooLong(String),
+}
+
+/// A toast click by its arguments and the typed text (as `ToastActivatedEventArgs` gives them).
+pub fn activation(arguments: &str, input: Option<&str>) -> Activation {
+    if arguments != REPLY_ARGUMENT {
+        return Activation::OpenPanel;
+    }
+    let text = input.unwrap_or("").trim();
+    if text.is_empty() {
+        Activation::Empty
+    } else if text.len() > wind_core::notify::MAX_REPLY {
+        Activation::TooLong(text.to_owned())
+    } else {
+        Activation::Reply(text.to_owned())
+    }
+}
+
+/// Why a toast went away, as `ToastDismissalReason` numbers it: 0 the person, 1 the app (removed by us), 2 timed out.
+/// Only the person's own close dismisses it on the phone.
+pub fn dismissal_syncs(reason: i32) -> bool {
+    reason == 0
+}
+
+/// What the toasts tell the session loop.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ToastEvent {
+    Reply { tag: String, text: String },
+    TooLong { tag: String, text: String },
+    Dismissed { tag: String },
+}
+
+static EVENTS: std::sync::OnceLock<tokio::sync::mpsc::UnboundedSender<ToastEvent>> =
+    std::sync::OnceLock::new();
+
+/// A toast click, from WinRT (or the debug command): the panel opens, or a reply goes to the session loop.
+pub fn activated(app: &tauri::AppHandle, tag: &str, arguments: &str, input: Option<&str>) {
+    let send = |e| {
+        if let Some(events) = EVENTS.get() {
+            let _ = events.send(e);
+        }
+    };
+    match activation(arguments, input) {
+        Activation::Reply(text) => send(ToastEvent::Reply {
+            tag: tag.into(),
+            text,
+        }),
+        Activation::Empty => {}
+        Activation::TooLong(text) => {
+            send(ToastEvent::TooLong {
+                tag: tag.into(),
+                text,
+            });
+            open_panel(app);
+        }
+        Activation::OpenPanel => open_panel(app),
+    }
+}
+
+/// A toast went away: the person's own close dismisses it on the phone.
+pub fn dismissed(tag: &str, reason: i32) {
+    if dismissal_syncs(reason) {
+        if let Some(events) = EVENTS.get() {
+            let _ = events.send(ToastEvent::Dismissed { tag: tag.into() });
+        }
+    }
+}
+
+fn open_panel(app: &tauri::AppHandle) {
+    let panel = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        let _ = crate::panel::show(&panel);
+    });
+}
+
+/// A tag as the toasts use it: the notification id in lower-case hex.
+pub fn id_of(tag: &str) -> Option<[u8; 16]> {
+    if tag.len() != 32
+        || !tag
+            .bytes()
+            .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+    {
+        return None;
+    }
+    let mut id = [0u8; 16];
+    for (i, b) in id.iter_mut().enumerate() {
+        *b = u8::from_str_radix(&tag[i * 2..i * 2 + 2], 16).ok()?;
+    }
+    Some(id)
+}
+
+/// One of the phone's notifications in the panel (WN-44): texts cleaned, shown as text only.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct PanelItem {
+    pub tag: String,
+    pub app: String,
+    pub title: Option<String>,
+    pub text: Option<String>,
+    /// The reply action's label; none: it can't be replied to.
+    pub reply: Option<String>,
+    /// "sending", "sent", "failed", "too-long"; none before any reply.
+    pub status: Option<&'static str>,
+    /// A reply that wasn't sent (too long from a toast): kept for the panel's field, never logged.
+    pub draft: Option<String>,
+}
+
+/// The panel keeps the newest this many.
+pub const PANEL_ITEMS: usize = 20;
 
 /// Popups allowed: at most [`BURST`] in any [`BURST_WINDOW`].
 #[derive(Default)]
@@ -254,6 +394,8 @@ pub struct Notifications {
     phone: String,
     shown: HashSet<[u8; 16]>,
     burst: Burst,
+    /// Newest first, at most [`PANEL_ITEMS`].
+    items: VecDeque<PanelItem>,
 }
 
 fn wall_ms() -> u64 {
@@ -270,7 +412,47 @@ impl Notifications {
             phone: phone.into(),
             shown: HashSet::new(),
             burst: Burst::default(),
+            items: VecDeque::new(),
         }
+    }
+
+    /// The panel's list, newest first.
+    pub fn items(&self) -> Vec<PanelItem> {
+        self.items.iter().cloned().collect()
+    }
+
+    fn item(&mut self, tag: &str) -> Option<&mut PanelItem> {
+        self.items.iter_mut().find(|i| i.tag == tag)
+    }
+
+    /// The id of a notification shown in this session; anything else is none (never acted on).
+    pub fn known(&self, tag: &str) -> Option<[u8; 16]> {
+        id_of(tag).filter(|id| self.shown.contains(id))
+    }
+
+    /// A reply went to the phone; `ok` false: the phone doesn't take it now.
+    pub fn reply_sent(&mut self, tag: &str, ok: bool) {
+        if let Some(i) = self.item(tag) {
+            i.status = Some(if ok { "sending" } else { "failed" });
+            i.draft = None;
+        }
+    }
+
+    /// A reply too long to send (from a toast): kept for the panel, not sent.
+    pub fn too_long(&mut self, tag: &str, text: String) {
+        if let Some(i) = self.item(tag) {
+            i.status = Some("too-long");
+            i.draft = Some(text);
+        }
+    }
+
+    /// Dismissed here (toast ✕ or the panel): off the list and the toasts; the phone is told by the caller.
+    pub fn dismiss(&mut self, tag: &str) {
+        self.items.retain(|i| i.tag != tag);
+        if let Some(id) = id_of(tag) {
+            self.shown.remove(&id);
+        }
+        let _ = self.jobs.send(Job::Remove { tag: tag.into() });
     }
 
     /// Folds one message in (already decoded and bounded by the core).
@@ -282,8 +464,21 @@ impl Notifications {
                 let update = !self.shown.insert(n.id);
                 // An update replaces its toast quietly; a burst beyond the limit goes to Action Center only.
                 let popup = !update && self.burst.admit(received);
+                let view = ToastView::new(&n, &self.phone);
+                let status = self.item(&view.tag).and_then(|i| i.status);
+                self.items.retain(|i| i.tag != view.tag);
+                self.items.push_front(PanelItem {
+                    tag: view.tag.clone(),
+                    app: view.app.clone(),
+                    title: view.title.clone(),
+                    text: view.text.clone(),
+                    reply: view.reply.clone(),
+                    status,
+                    draft: None,
+                });
+                self.items.truncate(PANEL_ITEMS);
                 Job::Show {
-                    view: ToastView::new(&n, &self.phone),
+                    view,
                     popup,
                     received,
                     received_ms: wall_ms(),
@@ -291,7 +486,15 @@ impl Notifications {
             }
             Message::Removed { id } => {
                 self.shown.remove(&id);
-                Job::Remove { tag: hex(&id) }
+                let tag = hex(&id);
+                self.items.retain(|i| i.tag != tag);
+                Job::Remove { tag }
+            }
+            Message::Replied { id, ok } => {
+                if let Some(i) = self.item(&hex(&id)) {
+                    i.status = Some(if ok { "sent" } else { "failed" });
+                }
+                return;
             }
         };
         let _ = self.jobs.send(job);
@@ -307,6 +510,8 @@ pub struct DevEntry {
     pub shown_ms: u64,
     /// Received in the session loop -> ToastNotifier.Show returned.
     pub show_us: u64,
+    /// The toast carried a reply field (WN-44).
+    pub reply: bool,
 }
 
 #[cfg(debug_assertions)]
@@ -325,8 +530,32 @@ pub fn dev_notify_history(app: tauri::AppHandle) -> Result<Vec<String>, String> 
     platform::history(&app)
 }
 
-/// Starts the worker; icons live in `dir`.
-pub fn worker(app: &tauri::AppHandle, dir: PathBuf) -> mpsc::Sender<Job> {
+/// A toast click as WinRT would deliver it (debug: the native check can't click system toasts reliably).
+#[cfg(debug_assertions)]
+#[tauri::command]
+pub fn dev_toast_activate(
+    app: tauri::AppHandle,
+    tag: String,
+    arguments: String,
+    input: Option<String>,
+) {
+    activated(&app, &tag, &arguments, input.as_deref());
+}
+
+/// A toast closed as WinRT would report it (`reason` as `ToastDismissalReason`).
+#[cfg(debug_assertions)]
+#[tauri::command]
+pub fn dev_toast_dismissed(tag: String, reason: i32) {
+    dismissed(&tag, reason);
+}
+
+/// Starts the worker; icons live in `dir`; toast clicks and closes go to `events`.
+pub fn worker(
+    app: &tauri::AppHandle,
+    dir: PathBuf,
+    events: tokio::sync::mpsc::UnboundedSender<ToastEvent>,
+) -> mpsc::Sender<Job> {
+    let _ = EVENTS.set(events);
     let (tx, rx) = mpsc::channel();
     let app = app.clone();
     std::thread::Builder::new()
@@ -369,7 +598,11 @@ mod platform {
                 return;
             }
         };
+        // An unpackaged app gets a toast's events only while its object lives (WN-44 review): kept until removed/expired.
+        let mut alive: std::collections::HashMap<String, (ToastNotification, Instant)> =
+            std::collections::HashMap::new();
         for job in jobs {
+            alive.retain(|_, (_, at)| at.elapsed() < EXPIRES);
             let result = match job {
                 Job::Icon { key, png } => reencode(&png).and_then(|p| {
                     icons.store(&key, &p).map(|_| ()).map_err(|e| {
@@ -390,7 +623,18 @@ mod platform {
                         .as_deref()
                         .and_then(|k| icons.path(k))
                         .filter(|p| p.exists());
-                    let shown = show(&app, &notifier, &view, icon.as_deref(), popup);
+                    let shown = show(&app, &notifier, &view, icon.as_deref(), popup).map(|toast| {
+                        if alive.len() >= 256 {
+                            if let Some(oldest) = alive
+                                .iter()
+                                .min_by_key(|(_, (_, at))| *at)
+                                .map(|(k, _)| k.clone())
+                            {
+                                alive.remove(&oldest);
+                            }
+                        }
+                        alive.insert(view.tag.clone(), (toast, Instant::now()));
+                    });
                     #[cfg(debug_assertions)]
                     if shown.is_ok() {
                         LOG.lock().unwrap().push(DevEntry {
@@ -399,16 +643,21 @@ mod platform {
                             received_ms,
                             shown_ms: wall_ms(),
                             show_us: received.elapsed().as_micros() as u64,
+                            reply: view.reply.is_some(),
                         });
                     }
                     #[cfg(not(debug_assertions))]
                     let _ = (received, received_ms);
                     shown
                 }
-                Job::Remove { tag } => ToastNotificationManager::History().and_then(|h| {
-                    h.RemoveGroupedTagWithId(&HSTRING::from(tag), &HSTRING::from(GROUP), &id)
-                }),
+                Job::Remove { tag } => {
+                    alive.remove(&tag);
+                    ToastNotificationManager::History().and_then(|h| {
+                        h.RemoveGroupedTagWithId(&HSTRING::from(tag), &HSTRING::from(GROUP), &id)
+                    })
+                }
                 Job::Clear => {
+                    alive.clear();
                     icons.clear();
                     ToastNotificationManager::History()
                         .and_then(|h| h.RemoveGroupWithId(&HSTRING::from(GROUP), &id))
@@ -426,7 +675,7 @@ mod platform {
         view: &ToastView,
         icon: Option<&Path>,
         popup: bool,
-    ) -> windows::core::Result<()> {
+    ) -> windows::core::Result<ToastNotification> {
         let xml = XmlDocument::new()?;
         xml.LoadXml(&HSTRING::from(toast_xml(view, icon)))?;
         let toast = ToastNotification::CreateToastNotification(&xml)?;
@@ -446,14 +695,54 @@ mod platform {
             windows::core::Interface::cast(&when)?;
         toast.SetExpirationTime(&when)?;
         let opener = app.clone();
-        toast.Activated(&TypedEventHandler::new(move |_, _| {
-            let panel = opener.clone();
-            let _ = opener.run_on_main_thread(move || {
-                let _ = crate::panel::show(&panel);
-            });
-            Ok(())
-        }))?;
-        notifier.Show(&toast)
+        let tag = view.tag.clone();
+        toast.Activated(&TypedEventHandler::new(
+            move |_, args: windows::core::Ref<windows::core::IInspectable>| {
+                let (arguments, input) = args
+                    .as_ref()
+                    .and_then(|a| {
+                        windows::core::Interface::cast::<
+                            windows::UI::Notifications::ToastActivatedEventArgs,
+                        >(a)
+                        .ok()
+                    })
+                    .map(|a| {
+                        let arguments = a.Arguments().map(|s| s.to_string()).unwrap_or_default();
+                        let input = a
+                            .UserInput()
+                            .ok()
+                            .and_then(|set| set.Lookup(&HSTRING::from(REPLY_INPUT)).ok())
+                            .and_then(|v| {
+                                windows::core::Interface::cast::<
+                                        windows::Foundation::IPropertyValue,
+                                    >(&v)
+                                    .ok()
+                            })
+                            .and_then(|v| v.GetString().ok())
+                            .map(|s| s.to_string());
+                        (arguments, input)
+                    })
+                    .unwrap_or_default();
+                activated(&opener, &tag, &arguments, input.as_deref());
+                Ok(())
+            },
+        ))?;
+        let closed = view.tag.clone();
+        toast.Dismissed(
+            &TypedEventHandler::new(
+                move |_,
+                      args: windows::core::Ref<
+                    windows::UI::Notifications::ToastDismissedEventArgs,
+                >| {
+                    if let Some(a) = args.as_ref() {
+                        dismissed(&closed, a.Reason().map(|r| r.0).unwrap_or(-1));
+                    }
+                    Ok(())
+                },
+            ),
+        )?;
+        notifier.Show(&toast)?;
+        Ok(toast)
     }
 
     /// Decodes the sender's PNG and encodes a fresh 64 px one: Windows never reads the sender's bytes.
@@ -533,6 +822,7 @@ mod tests {
             text: Some("Będziesz o 19?".into()),
             time_ms: 0,
             icon: Some([1; 8]),
+            reply: None,
         }
     }
 
@@ -691,5 +981,140 @@ mod tests {
         assert!(!first.exists(), "the oldest went first");
         cache.clear();
         assert!(!dir.path().join("notify-icons").exists());
+    }
+
+    #[test]
+    fn a_reply_field_only_when_it_can_be_replied_to() {
+        let plain = toast_xml(&ToastView::new(&posted(), "Pixel 9"), None);
+        assert!(!plain.contains("<actions>"), "{plain}");
+        let n = Posted {
+            reply: Some("Odpowiedz\u{202E}<x>".into()),
+            ..posted()
+        };
+        let view = ToastView::new(&n, "Pixel 9");
+        assert_eq!(
+            view.reply.as_deref(),
+            Some("Odpowiedz <x>"),
+            "bidi control becomes a space"
+        );
+        let x = toast_xml(&view, None);
+        assert!(
+            x.contains(r#"<input id="reply" type="text" placeHolderContent="Odpowiedz…"/>"#),
+            "{x}"
+        );
+        assert!(
+            x.contains(r#"arguments="reply" hint-inputId="reply" activationType="background""#),
+            "{x}"
+        );
+        assert!(
+            x.find("</visual>").unwrap() < x.find("<actions>").unwrap(),
+            "actions after visual: {x}"
+        );
+        let blank = Posted {
+            reply: Some("\n\u{200B}".into()),
+            ..posted()
+        };
+        assert_eq!(ToastView::new(&blank, "P").reply, None);
+    }
+
+    #[test]
+    fn toast_activation_by_arguments_and_input() {
+        assert_eq!(activation("", None), Activation::OpenPanel);
+        assert_eq!(
+            activation("windconnect-notify", Some("x")),
+            Activation::OpenPanel
+        );
+        assert_eq!(
+            activation("reply", Some("  Tak, o 19 ")),
+            Activation::Reply("Tak, o 19".into())
+        );
+        assert_eq!(activation("reply", Some(" \t")), Activation::Empty);
+        assert_eq!(activation("reply", None), Activation::Empty);
+        let max = "ą".repeat(wind_core::notify::MAX_REPLY / 2);
+        assert_eq!(
+            activation("reply", Some(&max)),
+            Activation::Reply(max.clone())
+        );
+        let over = format!("{max}x");
+        assert_eq!(
+            activation("reply", Some(&over)),
+            Activation::TooLong(over.clone()),
+            "never trimmed"
+        );
+    }
+
+    #[test]
+    fn only_the_persons_close_dismisses_on_the_phone() {
+        assert!(dismissal_syncs(0), "UserCanceled");
+        assert!(!dismissal_syncs(1), "ApplicationHidden: removed by us");
+        assert!(!dismissal_syncs(2), "TimedOut: still in Action Center");
+        assert!(!dismissal_syncs(-1));
+    }
+
+    #[test]
+    fn tags_back_to_ids() {
+        assert_eq!(id_of(&"ab".repeat(16)), Some([0xab; 16]));
+        assert_eq!(id_of(&"AB".repeat(16)), None);
+        assert_eq!(id_of("ab"), None);
+        assert_eq!(id_of(&"zz".repeat(16)), None);
+    }
+
+    #[test]
+    fn the_panel_list_follows_the_phone() {
+        let (tx, rx) = mpsc::channel();
+        let mut n = Notifications::new(tx, "Pixel 9");
+        let with = |i: u8, reply: bool| Posted {
+            id: [i; 16],
+            reply: reply.then(|| "Odpowiedz".into()),
+            ..posted()
+        };
+        for i in 0..(PANEL_ITEMS as u8 + 5) {
+            n.apply(Message::Posted(with(i, i % 2 == 0)));
+        }
+        let items = n.items();
+        assert_eq!(items.len(), PANEL_ITEMS);
+        assert_eq!(
+            items[0].tag,
+            hex(&[PANEL_ITEMS as u8 + 4; 16]),
+            "newest first"
+        );
+        assert_eq!(items[0].reply.as_deref(), Some("Odpowiedz"));
+        assert_eq!(items[1].reply, None);
+        // Only ids shown in this session are acted on.
+        let tag = hex(&[24; 16]);
+        assert_eq!(n.known(&tag), Some([24; 16]));
+        assert_eq!(n.known(&hex(&[99; 16])), None);
+        // A reply: queued, then the phone's answer; an update keeps the status.
+        n.reply_sent(&tag, true);
+        assert_eq!(n.items()[0].status, Some("sending"));
+        n.apply(Message::Replied {
+            id: [24; 16],
+            ok: true,
+        });
+        assert_eq!(n.items()[0].status, Some("sent"));
+        n.apply(Message::Posted(with(24, true)));
+        assert_eq!(n.items()[0].status, Some("sent"));
+        n.apply(Message::Replied {
+            id: [24; 16],
+            ok: false,
+        });
+        assert_eq!(n.items()[0].status, Some("failed"));
+        // Too long from a toast: kept as a draft for the panel.
+        n.too_long(&tag, "długi".into());
+        assert_eq!(n.items()[0].draft.as_deref(), Some("długi"));
+        assert_eq!(n.items()[0].status, Some("too-long"));
+        n.reply_sent(&tag, true);
+        assert_eq!(n.items()[0].draft, None, "not kept after sending");
+        // Removed on the phone, or dismissed here: off the list (and the toast).
+        n.apply(Message::Removed { id: [24; 16] });
+        assert!(n.items().iter().all(|i| i.tag != tag));
+        let other = hex(&[23; 16]);
+        let _ = rx.try_iter().count();
+        n.dismiss(&other);
+        assert!(n.items().iter().all(|i| i.tag != other));
+        assert_eq!(n.known(&other), None, "acted on once");
+        assert!(rx
+            .try_iter()
+            .any(|j| matches!(j, Job::Remove { tag } if tag == other)));
     }
 }

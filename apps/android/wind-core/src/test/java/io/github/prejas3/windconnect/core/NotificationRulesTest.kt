@@ -85,6 +85,27 @@ class NotificationRulesTest {
         assertNull(NotificationRules.clean("\n \t", 10))
     }
 
+    @Test fun theReplyActionIsChosenCarefully() {
+        val reply = Notification.Action.SEMANTIC_ACTION_REPLY
+        val none = Notification.Action.SEMANTIC_ACTION_NONE
+        fun a(label: String, semantic: Int = none, contextual: Boolean = false, vararg freeForm: Boolean) =
+            ActionParts(label, semantic, contextual, freeForm.toList())
+        // Mark as read (no input), then Reply (free-form): the reply.
+        assertEquals(1, NotificationRules.replyAction(listOf(a("Przeczytane"), a("Odpowiedz", none, false, true))))
+        // Two with free-form input: SEMANTIC_ACTION_REPLY wins over the first.
+        assertEquals(2, NotificationRules.replyAction(listOf(a("Notatka", none, false, true), a("x"), a("Odpowiedz", reply, false, true))))
+        // Contextual (system smart replies) and data-only / choice-only inputs don't count.
+        assertEquals(null, NotificationRules.replyAction(listOf(a("Smart", reply, true, true), a("Wybór", reply, false, false))))
+        assertEquals(null, NotificationRules.replyAction(emptyList()))
+        // The label goes to the PC (cleaned, bounded); a reply action without one gets a default.
+        val withReply = NotificationRules.content(parts().copy(actions = listOf(a("Przeczytane"), a("  Odpowiedz\n", none, false, true))), own)!!
+        assertEquals("Odpowiedz", withReply.reply)
+        assertEquals(1, withReply.replyIndex)
+        val blank = NotificationRules.content(parts().copy(actions = listOf(ActionParts(null, reply, false, listOf(true)))), own)!!
+        assertEquals("Odpowiedz", blank.reply)
+        assertNull(NotificationRules.content(parts(), own)!!.reply)
+    }
+
     @Test fun idsAreStableSaltedAndShort() {
         val salt = ByteArray(16) { it.toByte() }
         val key = "0|org.thoughtcrime.securesms|42|null|10123"
