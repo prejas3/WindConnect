@@ -58,6 +58,8 @@ pub enum Channel {
     Volume = 11,
     /// The phone's call state, for pausing the PC's players (§9.10, WN-48).
     Call = 12,
+    /// The phone's SMS threads and messages, read from the PC (§9.11, WN-55).
+    Sms = 13,
 }
 
 impl Channel {
@@ -83,6 +85,7 @@ impl Channel {
             10 => Self::NotifyAction,
             11 => Self::Volume,
             12 => Self::Call,
+            13 => Self::Sms,
             _ => return Err(FrameError::UnknownChannel(b)),
         })
     }
@@ -254,7 +257,7 @@ mod tests {
             decode_stream_header([0x00, 0xff]),
             Err(FrameError::UnsupportedVersion(0))
         );
-        for b in [0x0d, 0x3f, 0x40, 0xff] {
+        for b in [0x0e, 0x3f, 0x40, 0xff] {
             assert_eq!(
                 decode_stream_header([0x01, b]),
                 Err(FrameError::UnknownChannel(b))

@@ -23,6 +23,7 @@ mod pc_media;
 mod pc_volume;
 mod send_pipe;
 mod shell_menu;
+mod sms;
 mod toast;
 mod transfer_model;
 mod transfer_progress;
@@ -230,6 +231,7 @@ fn main() {
         .manage(actions::Runtime::default())
         .manage(files::Runtime::default())
         .manage(clipboard::Runtime::default())
+        .manage(sms::Sms::default())
         .setup(move |app| {
             if let Err(error) = shell_menu::install() {
                 eprintln!("Explorer menu unavailable: {error}");
@@ -367,6 +369,15 @@ fn main() {
             files::files_snapshot,
             files::files_action,
             clipboard::clipboard_snapshot,
+            sms::sms_status,
+            sms::sms_threads,
+            sms::sms_thread,
+            sms::sms_older,
+            sms::sms_photo,
+            sms::sms_open,
+            sms::sms_sims,
+            sms::sms_send,
+            sms::sms_part,
             clipboard::clipboard_action,
             clipboard::clipboard_history
         ])

@@ -182,6 +182,13 @@ class PairingTest {
             try { CallProof.hold(core) } finally { kotlinx.coroutines.runBlocking { connections.release(core) } }
             return
         }
+        // WN-55: the phone side of check-sms-android.cjs: SMS on, the session held while the PC reads threads.
+        if (InstrumentationRegistry.getArguments().getString("smsProof") == "true") {
+            val connections = (context as WindApplication).connections
+            val core = kotlinx.coroutines.runBlocking { connections.acquire() }
+            try { SmsProof.hold(core) } finally { kotlinx.coroutines.runBlocking { connections.release(core) } }
+            return
+        }
         // WN-45: the phone side of check-notify-filter-android.cjs: the app filter driven by the script, the session held.
         if (InstrumentationRegistry.getArguments().getString("notifyFilterProof") == "true") {
             val connections = (context as WindApplication).connections

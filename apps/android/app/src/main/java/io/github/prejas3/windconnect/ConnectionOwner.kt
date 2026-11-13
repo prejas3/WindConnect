@@ -82,6 +82,21 @@ class ConnectionOwner(private val application: Application) {
     fun setPcVolume(level: Int? = null, muted: Boolean? = null) { core?.setPcVolume(level, muted) }
     fun setVolumeAllowed(value: Boolean) { val opened = core ?: return; scope.launch { opened.setVolumeAllowed(value) } }
     fun setFindAllowed(value: Boolean) { val opened = core ?: return; scope.launch { opened.setFindAllowed(value) } }
+    // WN-55: SMS read on the PC (own consent, default off; READ_SMS asked when turned on).
+    private val mutableSmsAllowed = MutableStateFlow(false)
+    val smsAllowed = mutableSmsAllowed.asStateFlow()
+    private val mutableSmsAccess = MutableStateFlow(false)
+    val smsAccess = mutableSmsAccess.asStateFlow()
+    private val mutableSmsContacts = MutableStateFlow(false)
+    val smsContacts = mutableSmsContacts.asStateFlow()
+    fun setSmsAllowed(value: Boolean) { val opened = core ?: return; scope.launch { opened.setSmsAllowed(value) } }
+    fun refreshSms() { val opened = core ?: return; scope.launch { opened.refreshSms() } }
+    // WN-56: sending from the PC (own setting, default off; SEND_SMS asked when turned on).
+    private val mutableSmsSendAllowed = MutableStateFlow(false)
+    val smsSendAllowed = mutableSmsSendAllowed.asStateFlow()
+    private val mutableSmsSendAccess = MutableStateFlow(false)
+    val smsSendAccess = mutableSmsSendAccess.asStateFlow()
+    fun setSmsSendAllowed(value: Boolean) { val opened = core ?: return; scope.launch { opened.setSmsSendAllowed(value) } }
 
     suspend fun acquire(): WindCore = gate.withLock {
         val opened = core ?: WindCore.open(application, android.os.Build.MODEL.take(64)).also { opened ->
@@ -99,6 +114,11 @@ class ConnectionOwner(private val application: Application) {
                 launch { opened.notifyApps.collect { mutableNotifyApps.value = it } }
                 launch { opened.pcVolume.collect { mutablePcVolume.value = it } }
                 launch { opened.volumeAllowed.collect { mutableVolumeAllowed.value = it } }
+                launch { opened.smsAllowed.collect { mutableSmsAllowed.value = it } }
+                launch { opened.smsAccess.collect { mutableSmsAccess.value = it } }
+                launch { opened.smsContacts.collect { mutableSmsContacts.value = it } }
+                launch { opened.smsSendAllowed.collect { mutableSmsSendAllowed.value = it } }
+                launch { opened.smsSendAccess.collect { mutableSmsSendAccess.value = it } }
                 opened.state.collect {
                     mutableState.value = it
                     if (it is ConnectionState.Connected) ReceiveFilesService.ensure(application)

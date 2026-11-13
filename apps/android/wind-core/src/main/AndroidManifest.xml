@@ -35,6 +35,14 @@
         <receiver
             android:name="io.github.prejas3.windconnect.core.FindStopReceiver"
             android:exported="false" />
+        <!-- WN-56: MMS PDUs from the PC, read by Android's MMS service through a one-off URI grant. Not exported. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.mmsout"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/mms_out" />
+        </provider>
         <!-- WN-36: received clipboard images. Not exported: reachable only through the clip's URI grant. -->
         <provider
             android:name="io.github.prejas3.windconnect.core.ClipImageProvider"

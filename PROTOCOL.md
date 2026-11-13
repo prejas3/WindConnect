@@ -192,7 +192,8 @@ od serwera, przykład w sekcji 7.1), `files` (odpowiedzi odbiorcy pliku) i
 | `0a` | `notify-action` | uni | strona pokazująca powiadomienia drugiej strony: odrzucenie, odpowiedź (§9.8) | 3 |
 | `0b` | `volume` | uni | strona, której głośność się zmienia (`Level`), albo strona sterująca (`Set`) (§9.9) | 4 |
 | `0c` | `call` | uni | telefon: stan połączenia (§9.10) | 1 |
-| `0d`–`3f` | zarezerwowane dla przyszłych kanałów | | | |
+| `0d` | `sms` | bidi | komputer; 1 na prośbę o wątki, wiadomości, zdjęcie albo obserwację (§9.11) | 5 |
+| `0e`–`3f` | zarezerwowane dla przyszłych kanałów | | | |
 | `40`–`ff` | niedozwolone w v1 | | | |
 
 Zasady:
@@ -428,6 +429,7 @@ Możliwości v1.0:
 | `actions/1` | strona przyjmuje prośby o akcje (kanał `actions`, §9.2) |
 | `battery/1` | strona przyjmuje stan baterii drugiej strony (kanał `battery`, §9.4, WN-49) |
 | `find/1` | strona potrafi zadzwonić na prośbę drugiej (kanał `find`, §9.5, WN-50) |
+| `sms/1` | strona udostępnia drugiej do odczytu swoje wątki SMS/MMS (WN-55) i, za osobną zgodą, wysyłanie przez siebie (WN-56): przyjmuje prośby na kanale `sms` (§9.11) |
 
 Zasady:
 
@@ -1039,7 +1041,8 @@ dokumentu:
    9.1), odbiorca pisze w kierunku powrotnym odpowiedzi bez nagłówka, a
    koniec transferu to FIN obu stron. Strumień `files` przyjmuje tylko
    strona, która ogłosiła `files/1`. Tak samo `actions` (§9.2, nagłówek
-   `01 06`), który przyjmuje tylko strona z `actions/1`.
+   `01 06`), który przyjmuje tylko strona z `actions/1`, i `sms` (§9.11,
+   nagłówek `01 0d`), który przyjmuje tylko strona z `sms/1`.
 
 ### 9.1 Kanał `files` (`05`, WC-38)
 
@@ -1767,6 +1770,142 @@ Przykład (z nagłówkiem długości ramki): nagłówek strumienia `01 0c`;
 05 82 00 a1 00 01
 ```
 
+### 9.11 Kanał `sms` (`0d`, WN-55)
+
+Odczyt wątków SMS/MMS telefonu na komputerze. Wiadomości `sms/1`;
+wersjonuje je sama możliwość. `sms/1` ogłasza telefon tylko wtedy, gdy
+użytkownik włączył „SMS na komputerze” i system przyznał dostęp do SMS
+(Android: `READ_SMS`); bez jednego z nich telefon wycofuje możliwość (§6,
+zasada 5), zamiast odmawiać każdej prośbie. Komputer nie ogłasza `sms/1`.
+WN-56 dodało typy 4–6 (karty SIM, wysyłanie, części MMS) i pola 8–9
+wiadomości; zgodnie z §9 zasada 1 to rozszerzenie bez nowej wersji
+możliwości: telefon z wcześniejszą wersją odrzuca nowe typy kodem
+`UNKNOWN_MESSAGE`, a komputer pokazuje wtedy, że wysyłanie jest niedostępne.
+Wysyłanie ma osobną zgodę na telefonie (ustawienie „Wysyłanie z komputera”
+i `SEND_SMS`); bez niej `Sims` i `Send` dostają `End` 1.
+
+**Strumień.** Jedna prośba to jeden strumień bidi otwarty przez komputer:
+nagłówek `01 0d`, jedna wiadomość, FIN. Telefon odpowiada w kierunku
+powrotnym (bez nagłówka) zerem lub więcej partii, potem dokładnie jednym
+`End` i FIN. Wyjątek: `Watch` trwa, dopóki któraś strona nie zakończy
+strumienia. Ramki do 1 MiB (§4.2); telefon dzieli odpowiedź na partie
+około 256 KiB.
+
+Od komputera:
+
+| typ | nazwa | pola `body` |
+|---|---|---|
+| 0 | `Threads` | `0 limit`: uint 1–500; najnowsze wątki, od najnowszego |
+| 1 | `Messages` | `0 thread`: uint; `1 before`: uint, opcjonalne; `2 since`: uint, opcjonalne; `3 limit`: uint 1–2000 |
+| 2 | `Photo` | `0 address`: tekst 1–64 B, adres osoby z wątku |
+| 3 | `Watch` | pusta mapa |
+| 4 | `Sims` | pusta mapa; karty SIM do wysyłania (WN-56) |
+| 5 | `Send` | `0 to`: tablica 1–20 adresów (tekst 1–64 B); `1 body`: tekst do 16 KiB; `2 sim`: uint, opcjonalne; `3 image`: bajty 1–786 432, opcjonalne; `4 mime`: tekst `image/jpeg` albo `image/png`, razem z `3` (WN-56) |
+| 6 | `Part` | `0 message`: uint, `id` MMS; `1 part`: uint, `id` części (WN-56) |
+
+Od telefonu:
+
+| typ | nazwa | pola `body` |
+|---|---|---|
+| 0 | `Threads` | `0 items`: tablica do 500 wątków |
+| 1 | `Messages` | `0 items`: tablica do 2000 wiadomości |
+| 2 | `Photo` | `0 png`: bajty 1–65 536, PNG |
+| 3 | `Changed` | pusta mapa |
+| 4 | `End` | `0 status`: uint (tabela niżej) |
+| 5 | `Sims` | `0 items`: tablica do 4 kart `[id, label, slot, default]` (`id` uint, `label` tekst do 64 B, `slot` uint od 0, `default` bool) |
+| 6 | `Sending` | `0 state`: uint: 0 przyjęta przez telefon, 1 wysłana, 2 dostarczona, 3 niewysłana; nieznana wartość to 3 |
+| 7 | `Part` | `0 mime`: tekst 1–64 B; `1 data`: bajty 1–921 600 |
+
+Wątek (mapa): `0 id` uint, `1 date` uint (najnowsza wiadomość, ms od
+epoki), `2 snippet` tekst do 512 B, `3 people` tablica do 20 osób
+`[address, name, photo]` (`address` tekst 1–64 B, `name` tekst do 128 B
+albo `null`, `photo` bool: `Photo` dla tego adresu coś znajdzie),
+`4 unread` uint, `5 count` uint.
+
+Wiadomość (mapa): `0 id` uint (jednoznaczny w obrębie rodzaju), `1 mms`
+bool, `2 date` uint (ms od epoki), `3 box` uint (0 odebrana, 1 wysłana,
+2 w trakcie wysyłania, 3 niewysłana; nieznana wartość to 0), `4 body` tekst
+do 16 KiB (może być pusty), `5 address` tekst 1–64 B, opcjonalne (nadawca
+odebranej wiadomości), `6 read` bool, `7 attachments` uint, opcjonalne
+(części MMS inne niż tekst), `8 parts` tablica do 16 par `[id, mime]`,
+opcjonalne (części MMS do pobrania przez `Part`), `9 delivery` uint,
+opcjonalne (raport doręczenia wysłanego SMS: 0 czeka, 1 dostarczona,
+2 niedostarczona; nieznana wartość to 0).
+
+| `status` | znaczenie |
+|---|---|
+| 0 | gotowe |
+| 1 | odmowa: brak dostępu do SMS albo funkcja wyłączona |
+| 2 | nie ma: wątku albo zdjęcia dla adresu |
+| 3 | zajęte: za dużo obserwacji |
+| 4 | błąd odczytu |
+
+Nieznany `status` komputer traktuje jak `4`.
+
+Zasady:
+
+1. Prośba musi przyjść w 5 s od otwarcia strumienia (inaczej `CANCELLED`).
+   Błędna wiadomość albo pole poza zakresem (np. `limit` 0 lub ponad
+   maksimum): `MALFORMED_FRAME`; nieznany typ: `UNKNOWN_MESSAGE`; w obu
+   przypadkach `STOP_SENDING` i `RESET_STREAM`, bez odpowiedzi. Wartości
+   spoza zakresu odbiorca odrzuca, nie przycina.
+2. `Messages` zwraca wiadomości wątku od najnowszej, najwyżej `limit`, o
+   dacie nie późniejszej niż `before` i nie wcześniejszej niż `since`
+   (obie granice włącznie). Szkice się nie liczą. **Synchronizacja
+   przyrostowa:** komputer pyta z `since` = data najnowszej znanej
+   wiadomości, a starsze strony z `before` = data najstarszej; granice
+   włącznie powtarzają wiadomości z tej samej milisekundy, więc komputer
+   scala je po parze (`mms`, `id`). Strona bez nowych wiadomości kończy
+   przewijanie wstecz.
+3. Odpowiedź z większą liczbą elementów niż `limit` prośby, albo partia
+   innego typu niż prośba, to błąd: komputer zatrzymuje strumień
+   (`CANCELLED`) i odrzuca całą odpowiedź.
+4. `Watch`: telefon wysyła `Changed`, gdy zmienią się SMS lub MMS (nowa,
+   usunięta, przeczytana), zebrane w 250 ms; komputer wtedy pyta od nowa
+   o wątki i o otwarty wątek z `since`. Najwyżej 2 obserwacje naraz na
+   sesję; kolejna dostaje od razu `End` 3. Wycofanie `sms/1` kończy
+   obserwację (§6, zasada 5).
+5. Najwyżej 4 prośby (bez `Watch`) obsługiwane naraz na sesję; kolejne
+   czekają.
+6. `Photo` to PNG (sprawdzany po pierwszych bajtach) do 64 KiB; telefon
+   bez dostępu do kontaktów odpowiada `End` 2.
+7. **Wysyłanie (WN-56).** `Send` z jednym adresem i bez obrazu to SMS
+   (dzielony na części przez telefon); z obrazem albo kilkoma adresami to
+   MMS. Pusta treść bez obrazu, obraz bez `mime` (lub odwrotnie), obraz
+   niezgodny z `mime` po pierwszych bajtach (JPEG `ff d8 ff`, PNG
+   `89 50 4e 47`) albo więcej niż 20 adresów to `MALFORMED_FRAME`. Telefon
+   odpowiada `Sending` 0, gdy przekazał wiadomość systemowi, potem
+   kolejnymi stanami, i kończy `End` 0: po stanie 2 albo 3, dla MMS po
+   stanie 1 (MMS nie ma raportu doręczenia), po 60 s od stanu 1 bez raportu,
+   albo po 120 s bez stanu 1 (wtedy najpierw `Sending` 3). Odmowa przed
+   przekazaniem to sam `End` (1 wyłączone, 3 limit, 4 błąd). Najwyżej 10
+   przyjętych wysyłek na minutę na telefon (kolejne `End` 3); wysyłka nie
+   zajmuje miejsca z zasady 5. Wysłana wiadomość trafia do wątków telefonu
+   (Android zapisuje ją sam), więc obserwacja ją zgłasza.
+8. `Part` zwraca obraz z MMS jako JPEG albo PNG (telefon może go
+   przeskalować i przekodować); części innych niż obraz telefon nie wydaje
+   (`End` 2). Część musi należeć do podanej wiadomości.
+9. `Sims` bez dostępu do listy kart (Android: `READ_PHONE_STATE`) zwraca
+   jedną kartę domyślną; `Send` bez `sim` idzie kartą domyślną telefonu.
+10. Prywatność: teksty i numery nie trafiają do logów żadnej strony.
+   Komputer trzyma przeczytane wiadomości tylko w pamięci i usuwa je przy
+   połączeniu innego telefonu albo rozparowaniu; pokazuje je jako tekst,
+   bez znaków sterujących i kierunkowych.
+
+Przykłady (z nagłówkiem długości ramki):
+
+```text
+nagłówek strumienia:                     01 0d
+Threads limit 200:                       06 82 00 a1 00 18 c8
+Messages thread 7, since 1000, limit 1000: 0d 82 01 a3 00 07 02 19 03 e8 03 19 03 e8
+Watch:                                   03 82 03 a0
+Changed:                                 03 82 03 a0
+End 0 (gotowe):                          05 82 04 a1 00 00
+Sims:                                    03 82 04 a0
+Send do "123", "Hi":                     0d 82 05 a2 00 81 63 31 32 33 01 62 48 69
+Sending 1 (wysłana):                     05 82 06 a1 00 01
+```
+
 ## 10. Kody błędów
 
 Te same kody służą w polu `code` wiadomości `Error` / `Goodbye` oraz jako
@@ -1824,6 +1963,7 @@ ten strumień (`STOP_SENDING` po stronie odbiorcy), nie połączenie.
 | wiadomości `notify-action` | sekcja 9.8 |
 | `Level` 40 %, bez wyciszenia | `08 82 00 a2 00 18 28 01 f4` (§9.9) |
 | `State` ringing | `05 82 00 a1 00 01` (§9.10) |
+| wiadomości `sms` | sekcja 9.11 |
 
 Przykłady są wektorami testowymi kodera ramek (WC-06): koder MUSI
 produkować dokładnie te bajty, a dekoder odtwarzać z nich te wiadomości.

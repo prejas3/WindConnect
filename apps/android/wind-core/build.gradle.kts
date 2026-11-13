@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "io.github.prejas3.windconnect"
-version = "0.54.0"
+version = "0.55.0"
 
 val repositoryRoot = rootProject.projectDir.resolve("../..").canonicalFile
 // WN-95: Rust builds share the repository's Cargo target folder, so the
@@ -99,6 +99,8 @@ tasks.matching { it.name == "sourceReleaseJar" || it.name == "releaseSourcesJar"
 
 dependencies {
     implementation("androidx.annotation:annotation:1.9.1")
+    // WN-56: FileProvider and receiver flags for MMS sending; the version the app already ships (Apache-2.0).
+    implementation("androidx.core:core:1.13.1")
     api("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     implementation("net.java.dev.jna:jna:5.17.0@aar")
     testImplementation("junit:junit:4.13.2")

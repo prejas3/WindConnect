@@ -415,7 +415,7 @@ pamięć odkrywania po zmianie sieci. Pytanie i odpowiedź unicast sprawdza test
 hosta, a filtrowanie broadcast przez prawdziwy układ Wi-Fi bez locka wymaga
 telefonu.
 
-Wersja aplikacji to 0.54.0, a Android `versionCode` to 63. Numery wydań rosną
+Wersja aplikacji to 0.55.0, a Android `versionCode` to 64. Numery wydań rosną
 niezależnie od kolejności kart, aby aktualizacja APK i MSI nie cofała wersji.
 
 ## Pierwsze uruchomienie (WC-34)
@@ -771,3 +771,37 @@ przy wyciszeniu nie wyłącza wyciszenia, `VolumeScale.plan`). Ustawienie
 „Głośność komputera” na ekranie głównym (suwak bez „odbijania”, wycisz).
 Testy: `CallVolumeTest` (jednostkowy), `PcVolumeTest` (Compose) i
 `apps/windows/scripts/check-call-volume-android.cjs`.
+
+## SMS na komputerze (WN-55)
+
+`PhoneSms` udostępnia komputerowi wątki SMS/MMS do odczytu (PROTOCOL.md
+§9.11): lista wątków (`mms-sms/conversations?simple=true`, adresy z
+`canonical-addresses`, nieprzeczytane z `sms`/`mms`), wiadomości wątku
+(SMS i tekst MMS, od najnowszej, `before`/`since` włącznie, bez szkiców),
+nazwy i zdjęcia kontaktów (`PhoneLookup`, PNG 96 px do 64 KiB). Zmiany
+dostawcy (`ContentObserver` na `content://mms-sms/`) budzą obserwację
+komputera; rdzeń zbiera je w 250 ms.
+Ustawienie „SMS na komputerze” (domyślnie wyłączone) prosi o `READ_SMS` i
+`READ_CONTACTS` dopiero przy włączeniu, po wyjaśnieniu; kontakty są
+opcjonalne (bez nich same numery). Odmowa zostawia przełącznik wyłączony,
+reszta aplikacji działa. Uprawnienie jest sprawdzane przy każdej prośbie,
+więc cofnięcie go w ustawieniach Androida działa od razu. Treść i numery
+nie trafiają do logów.
+Decyzja D2: uprawnienia SMS deklaruje tylko ta wersja (GitHub/F-Droid);
+wariant Google Play musi je pominąć.
+Test: `apps/windows/scripts/check-sms-android.cjs` (z `SmsProof`).
+
+### Wysyłanie z komputera (WN-56)
+
+Osobne ustawienie „Wysyłanie z komputera” (widoczne przy włączonym odczycie,
+domyślnie wyłączone) prosi o `SEND_SMS` i opcjonalnie `READ_PHONE_STATE`
+(tylko lista kart SIM) dopiero przy włączeniu. `SmsSender` wysyła tekst do
+jednego numeru jako SMS (`divideMessage` + `sendMultipartTextMessage` z
+raportami wysłania i doręczenia, kartą wybraną na PC), a obraz lub kilku
+odbiorców jako MMS: `MmsPdu` (minimalne M-Send.req z SMIL) -> plik w
+`cache/mms-out` -> `FileProvider` (`${applicationId}.mmsout`) ->
+`sendMultimediaMessage`. Jako aplikacja SMS niedomyślna WindConnect nie pisze
+do dostawcy SMS: Android sam zapisuje wysłane wiadomości, więc komputer widzi
+je przez obserwację. Najwyżej 10 wysyłek na minutę (rdzeń). Obrazy z
+odebranych MMS idą na komputer na prośbę (`Part`), jako JPEG do 1600 px.
+Testy: `MmsPduTest`, `SmsRulesTest`, `apps/windows/scripts/check-sms-send-android.cjs`.
