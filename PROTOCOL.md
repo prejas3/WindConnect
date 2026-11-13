@@ -19,6 +19,8 @@ QUIC v1 (RFC 9000) + TLS 1.3, ALPN "windconnect/1"
 ├── strumień uni   notify       (jw.)                         ramki CBOR
 ├── strumień uni   media        (jw.)                         ramki CBOR
 ├── strumień uni   notify-action (jw., §9.8)                  ramki CBOR
+├── strumień uni   volume       (jw., §9.9)                   ramki CBOR
+├── strumień uni   call         (jw., §9.10)                  ramki CBOR
 ├── strumień uni   input        (jw., przyciski)              ramki CBOR
 ├── strumień bidi  files × N    (1–8 na transfer, §9.1)       ramki CBOR
 ├── strumień bidi  actions × N  (1 na prośbę, §9.2)           ramki CBOR
@@ -188,7 +190,9 @@ od serwera, przykład w sekcji 7.1), `files` (odpowiedzi odbiorcy pliku) i
 | `08` | `find` | bidi | proszący o dzwonienie; 1 na dzwonienie (§9.5) | 5 |
 | `09` | `media-control` | uni | nadawca poleceń dla odtwarzacza drugiej strony (§9.6) | 4 |
 | `0a` | `notify-action` | uni | strona pokazująca powiadomienia drugiej strony: odrzucenie, odpowiedź (§9.8) | 3 |
-| `0b`–`3f` | zarezerwowane dla przyszłych kanałów | | | |
+| `0b` | `volume` | uni | strona, której głośność się zmienia (`Level`), albo strona sterująca (`Set`) (§9.9) | 4 |
+| `0c` | `call` | uni | telefon: stan połączenia (§9.10) | 1 |
+| `0d`–`3f` | zarezerwowane dla przyszłych kanałów | | | |
 | `40`–`ff` | niedozwolone w v1 | | | |
 
 Zasady:
@@ -217,7 +221,7 @@ Przykład: nagłówek strumienia `control` to `01 00`, strumienia `input` to `01
 
 ### 3.1 Cykl życia strumieni uni
 
-Kanały `clipboard`, `notify`, `notify-action`, `media`, `media-control`, `input` i `battery` mają w każdym kierunku
+Kanały `clipboard`, `notify`, `notify-action`, `media`, `media-control`, `volume`, `call`, `input` i `battery` mają w każdym kierunku
 **kolejkę wiadomości**: ciąg strumieni uni jednego nadawcy dla tego kanału.
 
 1. Nadawca ma naraz najwyżej **jeden otwarty do zapisu** strumień kanału.
@@ -415,6 +419,8 @@ Możliwości v1.0:
 | `clipboard/2` | jak `clipboard/1` oraz obrazy PNG (§9.3.1, WN-36) |
 | `notify/1` | strona pokazuje powiadomienia drugiej strony: przyjmuje `Posted`, `Icon`, `Removed`, `Replied` na kanale `notify` (§9.7, WN-42) |
 | `notify-action/1` | powiadomienia strony można odrzucać i na nie odpowiadać: przyjmuje `Dismiss`, `Reply` na kanale `notify-action` (§9.8, WN-44) |
+| `volume/1` | głośność strony można zmieniać, a strona pokazuje głośność drugiej: przyjmuje `Set` i `Level` na kanale `volume` (§9.9, WN-48) |
+| `call/1` | strona wstrzymuje swoje odtwarzacze przy połączeniu drugiej strony: przyjmuje `State` na kanale `call` (§9.10, WN-48) |
 | `media/1` | strona pokazuje odtwarzacz drugiej strony: przyjmuje `Now`, `Art`, `Gone` na kanale `media` (§9.6, WN-46) |
 | `media-control/1` | odtwarzaczem strony można sterować: przyjmuje `Command` na kanale `media-control` (§9.6, WN-46) |
 | `input/1` | strona przyjmuje zdarzenia wejścia (kanał `input`, sekcja 8) |
@@ -1696,6 +1702,71 @@ Przykłady (z nagłówkiem długości ramki): nagłówek strumienia `01 0a`;
 19 82 01 a2 00 50 07 07 07 07 07 07 07 07 07 07 07 07 07 07 07 07 01 62 6f 6b
 ```
 
+### 9.9 Kanał `volume` (`0b`, WN-48)
+
+Głośność wyjścia każdej strony, pokazywana i zmieniana przez drugą (na
+Windows: domyślne urządzenie odtwarzania, Core Audio; na Androidzie:
+`STREAM_MUSIC`). Kanał uni z kolejką jak w §3.1, w obu kierunkach.
+
+| typ | nazwa | pola `body` |
+|---|---|---|
+| 0 | `Level` | `0 level` uint 0–100; `1 muted` bool: głośność nadawcy |
+| 1 | `Set` | `0 level`? uint 0–100; `1 muted`? bool, co najmniej jedno: zmień głośność odbiorcy |
+
+Zasady:
+
+1. `volume/1` znaczy: „moją głośność można zmieniać i pokazuję twoją”.
+   Strona wysyła `Level` tylko, gdy druga ogłosiła `volume/1` (i sama ma
+   włączone ustawienie), na starcie, przy każdej zmianie (także z klawiszy
+   czy miksera systemu) i ponownie, gdy druga strona zacznie przyjmować
+   `volume/1`; najwyżej co 100 ms, wychodzi najnowsza.
+2. `Set` zmienia tylko to, co podaje: sam `level` nigdy nie wyłącza
+   wyciszenia. Odbiorca stosuje najwyżej 10 `Set` na sekundę (wygrywa
+   najnowszy). `level` ponad 100, zły typ albo pusty `Set` to błędna
+   wiadomość: odbiorca jej nie przycina, tylko pomija.
+3. Urządzenie o stałej głośności (np. część wyjść HDMI/S/PDIF/USB, Android
+   `isVolumeFixed`) pomija `level`; `Level` zgłasza to, co jest naprawdę.
+
+Przykład (z nagłówkiem długości ramki): nagłówek strumienia `01 0b`;
+`Level` 40 %, bez wyciszenia:
+
+```text
+08 82 00 a2 00 18 28 01 f4
+```
+
+### 9.10 Kanał `call` (`0c`, WN-48)
+
+Stan połączenia telefonu, żeby komputer wstrzymał swoje odtwarzacze. Kanał
+uni z kolejką jak w §3.1; wysyła telefon, przyjmuje komputer z `call/1`.
+
+| typ | nazwa | pola `body` |
+|---|---|---|
+| 0 | `State` | `0 state` uint: 0 bezczynny, 1 dzwoni, 2 rozmowa |
+
+Zasady:
+
+1. Tylko stan: bez numeru, nazwy ani aplikacji. Rozmowa obejmuje też
+   rozmowy w komunikatorach (Android: tryb `MODE_IN_COMMUNICATION`).
+2. Telefon wysyła stan na starcie każdej sesji (także bezczynny), przy
+   każdej zmianie i ponownie, gdy komputer zacznie przyjmować `call/1`.
+   Dzwonienie i rozmowa wychodzą od razu; bezczynność po 1,5 s stałego
+   spokoju.
+3. Komputer przy „dzwoni” albo „rozmowa” wstrzymuje każdy grający
+   odtwarzacz i pamięta, które; przy „bezczynny” wznawia tylko te, które
+   wstrzymał, jeśli nadal są wstrzymane, i nie później niż 30 min potem.
+   Koniec sesji nie czyści tej listy: rozstrzyga ją następny `State`.
+4. Na Androidzie bez nowych uprawnień: tryb dźwięku (API 31+), stan
+   telefonii bez numeru (API 29–30), a w trybie wibracji, gdy tryb się nie
+   zmienia, powiadomienie kategorii połączenia widziane przez słuchacza
+   powiadomień (tylko przy jego zgodzie, §9.7 zasada 9).
+
+Przykład (z nagłówkiem długości ramki): nagłówek strumienia `01 0c`;
+`State` dzwoni:
+
+```text
+05 82 00 a1 00 01
+```
+
 ## 10. Kody błędów
 
 Te same kody służą w polu `code` wiadomości `Error` / `Goodbye` oraz jako
@@ -1751,6 +1822,8 @@ ten strumień (`STOP_SENDING` po stronie odbiorcy), nie połączenie.
 | wiadomości `media`, `media-control` | sekcja 9.6 |
 | wiadomości `notify` | sekcja 9.7 |
 | wiadomości `notify-action` | sekcja 9.8 |
+| `Level` 40 %, bez wyciszenia | `08 82 00 a2 00 18 28 01 f4` (§9.9) |
+| `State` ringing | `05 82 00 a1 00 01` (§9.10) |
 
 Przykłady są wektorami testowymi kodera ramek (WC-06): koder MUSI
 produkować dokładnie te bajty, a dekoder odtwarzać z nich te wiadomości.

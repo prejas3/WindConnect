@@ -183,6 +183,7 @@ function renderPairing(state) {
   renderFind(state.find, !!(state.connected || connected));
   renderMedia(state.connected || connected ? state.media : null);
   renderNotifications(state.notifications, !!(state.connected || connected));
+  renderPhoneVolume(state.connected || connected ? state.phone_volume : null);
   document.querySelector('#pairing-instructions').hidden = !waiting;
   document.querySelector('#pairing-hint').hidden = !connected;
   const refresh = document.querySelector('#pairing-refresh');
@@ -260,3 +261,4 @@ async function start() {
 start().catch(error);
 import './clipboard.js';
 import { renderNotifications } from './notifications.js';
+import { renderPhoneVolume } from './phonevolume.js';

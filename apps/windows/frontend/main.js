@@ -136,3 +136,4 @@ import './clipboard.js';
 import './onboarding.js';
 import './pcmedia.js';
 import './notify.js';
+import './callvolume.js';

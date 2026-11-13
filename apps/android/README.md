@@ -745,3 +745,19 @@ nie przechodzi przez „Nie przeszkadzać” telefonu
 (`Ranking.matchesInterruptionFilter()`), idzie z `quiet`: na PC bez
 wyskakiwania i dźwięku. Testy: `NotifyAppsTest` (jednostkowy i Compose) oraz
 `apps/windows/scripts/check-notify-filter-android.cjs`.
+
+## Połączenia i głośność dla komputera (WN-48)
+
+`CallWatcher` podaje rdzeniowi stan połączenia (PROTOCOL.md §9.10) bez
+nowych uprawnień i bez zmian w manifeście: tryb dźwięku
+(`addOnModeChangedListener`, API 31+), stan telefonii bez numeru
+(`LISTEN_CALL_STATE`, API 29-30) oraz powiadomienie kategorii połączenia od
+słuchacza powiadomień (tryb wibracji, tylko przy zgodzie „Powiadomienia na
+komputerze”). Dzwonienie i rozmowa idą od razu, bezczynność po 1,5 s.
+`PhoneVolume` zgłasza `STREAM_MUSIC` (obserwator `Settings.System`, bez
+odpytywania) i stosuje `Set` z komputera tylko w tym, co podaje (sam poziom
+przy wyciszeniu nie wyłącza wyciszenia, `VolumeScale.plan`). Ustawienie
+„Głośność z komputera” (domyślnie włączone) ogłasza `volume/1`; karta
+„Głośność komputera” na ekranie głównym (suwak bez „odbijania”, wycisz).
+Testy: `CallVolumeTest` (jednostkowy), `PcVolumeTest` (Compose) i
+`apps/windows/scripts/check-call-volume-android.cjs`.

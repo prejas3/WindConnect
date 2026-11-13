@@ -30,6 +30,8 @@ pub fn frame_limit(channel: Channel, first: bool) -> usize {
         Channel::MediaControl => MAX_CONTROL_FRAME,
         // Dismiss, or a reply of at most 1 KiB (§9.8).
         Channel::NotifyAction => MAX_CONTROL_FRAME,
+        // One small state or level per message (§9.9, §9.10).
+        Channel::Volume | Channel::Call => MAX_CONTROL_FRAME,
         _ => MAX_STREAM_FRAME,
     }
 }

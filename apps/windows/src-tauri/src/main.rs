@@ -6,6 +6,7 @@ mod actions;
 mod autostart;
 mod battery;
 mod brand_icon;
+mod call_pause;
 mod clipboard;
 mod clipboard_history;
 mod clipboard_image;
@@ -19,6 +20,7 @@ mod notify;
 mod pairing;
 mod panel;
 mod pc_media;
+mod pc_volume;
 mod send_pipe;
 mod shell_menu;
 mod toast;
@@ -342,6 +344,12 @@ fn main() {
             pairing::share_media,
             pairing::phone_notifications,
             pairing::notify_quiet_hours,
+            pairing::call_volume_settings,
+            pairing::phone_volume,
+            #[cfg(debug_assertions)]
+            call_pause::dev_call_log,
+            #[cfg(debug_assertions)]
+            pc_volume::dev_volume_log,
             pairing::notify_action,
             #[cfg(debug_assertions)]
             battery::dev_battery_alerts,

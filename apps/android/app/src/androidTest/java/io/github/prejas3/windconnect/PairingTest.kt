@@ -171,6 +171,13 @@ class PairingTest {
             } finally { kotlinx.coroutines.runBlocking { connections.release(core) } }
             return
         }
+        // WN-48: the phone side of check-call-volume-android.cjs: the session held, volume and settings driven by the script.
+        if (InstrumentationRegistry.getArguments().getString("callProof") == "true") {
+            val connections = (context as WindApplication).connections
+            val core = kotlinx.coroutines.runBlocking { connections.acquire() }
+            try { CallProof.hold(core) } finally { kotlinx.coroutines.runBlocking { connections.release(core) } }
+            return
+        }
         // WN-45: the phone side of check-notify-filter-android.cjs: the app filter driven by the script, the session held.
         if (InstrumentationRegistry.getArguments().getString("notifyFilterProof") == "true") {
             val connections = (context as WindApplication).connections
