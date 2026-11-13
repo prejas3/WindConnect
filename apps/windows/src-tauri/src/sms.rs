@@ -265,6 +265,11 @@ fn restart_watch(app: &tauri::AppHandle) {
     }));
 }
 
+/// WN-100: the live phone session (the same one the SMS window uses), for other features' commands.
+pub fn phone_session(app: &tauri::AppHandle) -> Option<Session> {
+    app.state::<Sms>().inner().0.lock().unwrap().session.clone()
+}
+
 fn session(app: &tauri::AppHandle) -> Result<Session, String> {
     app.state::<Sms>()
         .inner()

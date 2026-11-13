@@ -199,6 +199,8 @@ function renderPairing(state) {
   renderFind(state.find, !!(state.connected || connected));
   // WN-55: the "Wiadomości" window; it explains itself when the phone doesn't share SMS.
   document.querySelector('#open-sms').hidden = !(state.connected || connected);
+  // WN-100: links to the phone, when it takes them.
+  document.querySelector('#open-on-phone').hidden = !((state.connected || connected) && state.open_on_phone);
   document.querySelector('#open-sms').setAttribute('aria-description', state.sms ? 'SMS z telefonu' : 'Telefon nie udostępnia SMS');
   renderMedia(state.connected || connected ? state.media : null);
   renderNotifications(state.notifications, !!(state.connected || connected));
@@ -243,6 +245,18 @@ function renderDrag(over) {
   document.querySelector('#drop-title').textContent = `Upuść, aby wysłać na ${phone}`;
   document.querySelector('#drop-zone').hidden = !over;
 }
+const openStatus = { done: 'Otwarto na telefonie', refused: 'Telefon odrzucił: otwieranie linków z komputera jest wyłączone', 'bad-argument': 'To nie jest adres http(s)', failed: 'Nie udało się otworzyć linku', busy: 'Za dużo próśb, spróbuj za chwilę', unavailable: 'Telefon nie przyjmuje linków' };
+document.querySelector('#open-on-phone').addEventListener('submit', async event => {
+  event.preventDefault();
+  const input = document.querySelector('#phone-url');
+  const status = document.querySelector('#open-on-phone-status');
+  if (!input.value.trim()) return;
+  try {
+    const result = await invoke?.('open_on_phone', { url: input.value });
+    status.textContent = openStatus[result] || 'Nie udało się otworzyć linku';
+    if (result === 'done') input.value = '';
+  } catch (e) { error(e); }
+});
 document.querySelector('#open-sms').addEventListener('click', () => invoke?.('sms_open').catch(error));
 document.querySelector('#send-files').addEventListener('click', () => invoke?.('files_action', { action: 'pick' }).catch(error));
 document.querySelector('#find-phone').addEventListener('click', event => {

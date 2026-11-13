@@ -72,6 +72,8 @@ pub struct Snapshot {
     pub find: FindView,
     /// WN-55: the phone offers its SMS (sms/1): the panel's "Wiadomości" button.
     pub sms: bool,
+    /// WN-100: the phone takes links (actions/1): the panel's "Otwórz na telefonie".
+    pub open_on_phone: bool,
     /// The phone's player (WN-46); None without a session, access or player.
     pub media: Option<crate::media::MediaView>,
     /// WN-47: "Udostępnij odtwarzanie telefonowi" (the PC's player on the phone).
@@ -108,6 +110,7 @@ impl Default for Snapshot {
             battery: None,
             find: FindView::default(),
             sms: false,
+            open_on_phone: false,
             media: None,
             share_media: true,
             phone_notifications: true,
@@ -772,6 +775,11 @@ async fn run(
             s.peer_capabilities()
                 .iter()
                 .any(|c| c.name() == "sms" && c.version() == 1)
+        });
+        snapshot.open_on_phone = active.as_ref().is_some_and(|(s, _): &(Session, _)| {
+            s.peer_capabilities()
+                .iter()
+                .any(|c| c.name() == "actions" && c.version() == 1)
         });
         snapshot.devices = device_rows(&store, active_key.as_ref());
         snapshot.paired = has_paired_in(&store);

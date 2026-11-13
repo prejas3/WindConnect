@@ -365,6 +365,7 @@ fn main() {
             #[cfg(debug_assertions)]
             notify::dev_toast_dismissed,
             actions::actions_snapshot,
+            actions::open_on_phone,
             actions::set_action_enabled,
             actions::edit_custom_actions,
             files::files_snapshot,
