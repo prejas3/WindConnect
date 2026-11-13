@@ -177,7 +177,7 @@ internal class PcPlayer(context: Context, private val pcName: () -> String?, pri
             }
         }.trimEnd().take(256)
 
-        private fun deceptive(c: Char) = c in '​'..'‏' || c in '‪'..'‮' || c in '⁦'..'⁩' || c == '﻿'
+        private fun deceptive(c: Char) = c in '\u200B'..'\u200F' || c in '\u202A'..'\u202E' || c in '\u2066'..'\u2069' || c == '\uFEFF'
 
         /** §9.6 bits back to PlaybackState actions. */
         fun playbackActions(bits: Long): Long {
