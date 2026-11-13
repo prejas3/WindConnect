@@ -12,7 +12,8 @@ import kotlinx.coroutines.flow.*
 import java.io.File
 import java.util.UUID
 
-internal data class FileSendStatus(val busy: Boolean = false, val message: String = "", val count: Int = 0, val completed: Int = 0, val target: String = "")
+internal data class TransferRow(val name: String, val done: Long, val size: Long, val state: String)
+internal data class FileSendStatus(val busy: Boolean = false, val message: String = "", val count: Int = 0, val completed: Int = 0, val target: String = "", val done: Long = 0, val total: Long? = null, val rate: Long? = null, val rows: List<TransferRow> = emptyList(), val canRetry: Boolean = false)
 internal object FileSending {
     @Volatile var debugPhase = "idle"
     fun trace(phase: String) { if (BuildConfig.DEBUG) debugPhase = phase }
@@ -53,8 +54,8 @@ class SendFilesService : Service() {
         return START_NOT_STICKY
     }
 
-    private fun status(message: String, count: Int, completed: Int) {
-        FileSending.update(FileSendStatus(true, message, count, completed, targetName))
+    private fun status(message: String, count: Int, completed: Int, done: Long = 0, total: Long? = null, rate: Long? = null, rows: List<TransferRow> = emptyList()) {
+        FileSending.update(FileSendStatus(true, message, count, completed, targetName, done, total, rate, rows))
         val now = android.os.SystemClock.elapsedRealtime()
         if (now - lastNotice >= 1_000) {
             lastNotice = now
@@ -67,13 +68,17 @@ class SendFilesService : Service() {
         var opened: WindCore? = null
         var batch: File? = null
         val pending = linkedMapOf<String, File>()
+        val indices = linkedMapOf<String, Int>()
+        val confirmed = mutableSetOf<Int>()
+        var uris = emptyList<Uri>()
         var updates: Job? = null
         var reconnect: Job? = null
         var completed = 0
         val count = input.size
         var result = FileSendStatus(false, "Anulowano wysyłanie plików", count, completed)
         try {
-            val uris = FileImport.checkedUris(input)
+            FileRetry.selection = null
+            uris = FileImport.checkedUris(input)
             require(uris.isNotEmpty()) { "Brak plików do wysłania" }
             status("Łączenie z wybranym komputerem…", count, completed)
             val core = owner.acquire()
@@ -109,14 +114,21 @@ class SendFilesService : Service() {
             check(directory.mkdir()) { "Nie można przygotować wysyłki" }
             batch = directory
             var failed = false
+            var stagedBytes = 0L
+            var stagedFiles = 0
+            val rate = TransferRate()
             fun process() {
                 val rows = core.files.value.associateBy { it.id }
                 val done = pending.keys.filter { rows[it]?.state == "done" }
-                done.forEach { id -> pending.remove(id)?.delete(); completed++ }
+                done.forEach { id -> pending.remove(id)?.delete(); indices[id]?.let { confirmed.add(it) }; completed++ }
                 if (pending.keys.any { rows[it]?.state in listOf("failed", "cancelled") }) failed = true
                 val waiting = pending.keys.any { rows[it]?.state == "waiting" }
-                val bytes = pending.keys.sumOf { rows[it]?.done?.toLong() ?: 0L }
-                status(if (waiting) "Czeka na ponowne połączenie · $completed z $count" else "Wysłano $completed z $count plików · ${bytes / (1024 * 1024)} MiB w toku", count, completed)
+                val batchRows = indices.keys.mapNotNull { rows[it] }
+                val bytes = batchRows.sumOf { it.done.toLong() }
+                val speed = rate.update(android.os.SystemClock.elapsedRealtime(), bytes, !waiting && batchRows.any { it.state == "running" })
+                status(if (waiting) "Czeka na ponowne połączenie" else "Odebrano $completed z $count plików", count, completed, bytes,
+                    stagedBytes.takeIf { stagedFiles == count }, speed,
+                    batchRows.take(100).map { TransferRow(it.name, it.done.toLong(), it.size.toLong(), it.state) })
             }
             suspend fun awaitProgress(until: () -> Boolean) {
                 process()
@@ -138,19 +150,28 @@ class SendFilesService : Service() {
                 status("Przygotowywanie pliku ${index + 1} z $count…", count, completed)
                 val source = withContext(Dispatchers.IO) { FileImport.describe(this@SendFilesService, uri, used) }
                 FileSending.trace("staging")
+                var lastStageProgress = 0L
                 val (file, size) = FileImport.stage(this, source, directory, staged) { bytes ->
-                    FileSending.message("Przygotowano ${bytes / (1024 * 1024)} MiB pliku ${index + 1} z $count")
+                    val now = android.os.SystemClock.elapsedRealtime()
+                    if (now - lastStageProgress >= 100) {
+                        lastStageProgress = now
+                        FileSending.message("Przygotowano ${transferBytes(bytes)} pliku ${index + 1} z $count")
+                    }
                 }
                 staged += size
+                stagedBytes += size; stagedFiles++
                 currentCoroutineContext().ensureActive()
                 withTimeout(120_000) { core.state.first { it is ConnectionState.Connected } }
                 // CCS/1 SEC:register the committed engine ID even if user cancellation races the FFI return.
-                withContext(NonCancellable) { pending[core.queueStagedFile(file, peer.fingerprint)] = file }
+                withContext(NonCancellable) {
+                    val id = core.queueStagedFile(file, peer.fingerprint)
+                    pending[id] = file; indices[id] = index
+                }
                 process()
             }
             awaitProgress { pending.isEmpty() }
             check(!failed && completed == count) { "Nie wszystkie pliki zostały odebrane" }
-            result = FileSendStatus(false, "Wysłano $completed plików do $targetName", count, completed, targetName)
+            result = FileSendStatus(false, "Wysłano $completed plików do $targetName", count, completed, targetName, stagedBytes, stagedBytes)
         } catch (error: Exception) {
             val message = when (error) {
                 is TimeoutCancellationException -> "Nie ukończono wysyłki w czasie oczekiwania. Sprawdź połączenie i spróbuj ponownie."
@@ -173,6 +194,7 @@ class SendFilesService : Service() {
                         val core = opened
                         if (core != null) {
                             pending.keys.forEach { try { core.cancelFile(it) } catch (_: Exception) { } }
+                            core.files.value.filter { it.id in indices && it.state == "done" }.forEach { indices[it.id]?.let(confirmed::add) }
                             FileSending.trace("cleanup-files")
                             try { batch?.let { removeBatch(core.outbox.canonicalFile, it) } }
                             catch (_: Exception) { /* CCS/1 STATE:abandoned private batch is retried by the next batch's cleanup. */ }
@@ -180,6 +202,9 @@ class SendFilesService : Service() {
                         }
                     }
                 } finally {
+                    val remaining = FileRetry.remaining(uris, confirmed)
+                    FileRetry.selection = if (remaining.isNotEmpty() && target != null) RetrySelection(remaining, target) else null
+                    result = result.copy(completed = confirmed.size, canRetry = FileRetry.selection != null)
                     terminal = true
                     FileSending.trace("terminal")
                     FileSending.update(result)
@@ -193,9 +218,18 @@ class SendFilesService : Service() {
     }
 
     private fun notification(text: String, busy: Boolean): Notification {
-        val open = PendingIntent.getActivity(this, 40, Intent(this, ShareFilesActivity::class.java), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val open = PendingIntent.getActivity(this, 40, Intent(this, ShareFilesActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val progress = FileSending.status.value
+        val detail = if (busy) "${transferBytes(progress.done)}${progress.total?.let { " z ${transferBytes(it)}" } ?: ""} · ${progress.rate?.let { transferBytes(it) + "/s" } ?: "—"}" else text
         return Notification.Builder(this, CHANNEL).setSmallIcon(R.drawable.ic_connection).setContentTitle("Wysyłanie plików")
-            .setContentText(text).setContentIntent(open).setOnlyAlertOnce(true).setOngoing(busy).setVisibility(Notification.VISIBILITY_PRIVATE)
+            .setContentText(detail).setSubText(text).setContentIntent(open).setOnlyAlertOnce(true).setOngoing(busy).setVisibility(Notification.VISIBILITY_PRIVATE)
+            .apply { if (busy) {
+                val total = progress.total
+                if (total == null) setProgress(0, 0, true)
+                else setProgress(1000, if (total == 0L) 0 else ((progress.done.coerceAtMost(total) * 1000) / total).toInt(), false)
+            } }
+            .apply { if (!busy && progress.canRetry) addAction(Notification.Action.Builder(null, "Ponów", open).apply { if (android.os.Build.VERSION.SDK_INT >= 31) setAuthenticationRequired(true) }.build()) }
             .apply { if (busy) addAction(Notification.Action.Builder(null, "Anuluj", PendingIntent.getService(this@SendFilesService, 41,
                 Intent(this@SendFilesService, SendFilesService::class.java).setAction(CANCEL), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)).build()) }
             .build()

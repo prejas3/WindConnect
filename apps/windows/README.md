@@ -1,5 +1,12 @@
 # Windows
 
+## Postęp transferów (WN-41)
+
+CCS/1
+FLOW:panel pokazuje do50najnowszych transferów w obu kierunkach, stan, potwierdzone bajty/rozmiar, prędkość i dostępne akcje. Stabilne wiersze DOM zachowują focus podczas aktualizacji. Prędkość: monotoniczne delty, okno1s + EMA; „—” przed pierwszym oknem i podczas oczekiwania. Nieznany rozmiar ma pasek nieokreślony (obecny silnik zna rozmiar po imporcie źródła). Stany/bajty są łączone przed serializacją/IPC do najnowszego snapshotu w oknie100ms; jedno oczekujące deadline, żadnego timera idle. Systemowe powiadomienie Androida jest osobno ograniczone do1/s.
+SEC:Anuluj/Ponów/Otwórz folder rozwiązywane natywnie po ID. Niejednoznaczne ID (różne urządzenia/kierunki) odrzucane. Ponów tylko nieudany/anulowany outbound i nadal sparowany oryginalny peer; brak przekierowania na aktualny telefon. Odebrane pliki wymagają ponowienia po stronie nadawcy. Otwórz folder sprawdza w chwili kliknięcia lokalny plik source lub zweryfikowany incoming saved_as, canonical/containment/reparse; SHOpenFolderAndSelectItems zaznacza plik w Eksploratorze, nie uruchamia go. Przeniesiony/usunięty plik daje czytelny komunikat.
+CHECK:`check-send-ui.cjs` (Playwright): obie palety150%, keyboard/focus po100aktualizacjach, akcje, indeterminate i niezaufane nazwy. `check-transfer-performance.cjs` + release example `transfers_bench`: prawdziwy QUIC,1GiB i256x1MiB, mediana3prób off/on z produkcyjnym modelem i rendererem Chromium; cel >=95% baseline. Raw timings i event cadence w TEMP/performance.json. Początkowa nieograniczona emisja: mała partia86.2% (FAIL); po coalescing pierwszy pomiar104.2%/117.1%; powtórzenie256MiB miało91.4% (FAIL) przy dużym rozrzucie czasu. Finalny fixture używa dłuższej próby1GiB i zrównoważonej kolejności off/on: duży99.35%, mała partia101.28% (PASS); raw timings w run record. Wartości >100% oznaczają wahania hosta, nie deklarację przyspieszenia. Nie jest to pomiar realnego Wi-Fi ani wyświetlania fizycznego ekranu co100ms.
+
 ## Odbiór plików z Androida (WN-40)
 
 CCS/1

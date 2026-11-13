@@ -24,6 +24,8 @@ mod pc_volume;
 mod send_pipe;
 mod shell_menu;
 mod toast;
+mod transfer_model;
+mod transfer_progress;
 mod tray;
 
 #[tauri::command]

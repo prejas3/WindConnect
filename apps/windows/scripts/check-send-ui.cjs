@@ -26,6 +26,8 @@ const stub = () => {
       { id: '4'.repeat(32), name: 'a.txt', size: 5, done: 5, state: 'done', reason: null },
     ],
   };
+  files.rows.forEach(r => { r.direction = 'outgoing'; r.canRetry = ['failed','cancelled'].includes(r.state); r.canOpen = true; r.rate = r.state === 'running' ? 2000000 : null; });
+  window.__files = files;
   window.__calls = [];
   window.__listeners = {};
   window.__TAURI__ = {
@@ -52,9 +54,13 @@ const stub = () => {
     await page.goto(url);
     await page.locator('#transfers:not([hidden])').waitFor();
     await page.evaluate(() => document.fonts.ready);
-    assert.equal(await page.locator('#transfers-list li').count(), 4);
-    assert.match(await page.locator('#transfers-title').textContent(), /Wysyłanie na Galaxy S25 Ultra/);
-    assert.match(await page.locator('#transfers-summary').textContent(), /3 w toku · 310 MB z 900 MB/);
+    assert.equal(await page.locator('#transfers-list li').count(), 5, JSON.stringify({errors,html:await page.locator('#transfers-list').innerHTML()}));
+    assert.match(await page.locator('#transfers-title').textContent(), /Transfery plików/);
+    assert.match(await page.locator('#transfers-summary').textContent(), /3 w toku/);
+    await page.getByRole('button', { name: 'Anuluj: Prezentacja.pptx' }).focus();
+    await page.evaluate(() => { window.__focusedTransfer = document.activeElement; for(let i=0;i<100;i++){window.__files.rows[0].done++;window.__listeners['files-state']({payload:window.__files});} });
+    assert(await page.evaluate(() => document.activeElement === window.__focusedTransfer), 'progress updates preserve keyboard focus');
+    await page.evaluate(() => { const fonts=[...document.querySelectorAll('body *')].map(e=>[e,parseFloat(getComputedStyle(e).fontSize)]); for(const [element,pixels] of fonts) element.style.fontSize=(pixels*1.5)+'px'; });
     for (const theme of ['light', 'dark']) {
       await page.evaluate(t => { document.documentElement.dataset.theme = t; }, theme);
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, `overflow ${theme}`);
@@ -75,6 +81,11 @@ const stub = () => {
     await page.locator('#transfers-clear').click();
     const calls = await page.evaluate(() => window.__calls.filter(c => c[0] === 'files_action').map(c => [c[1].action, c[1].id || null]));
     assert.deepEqual(calls, [['pick', null], ['cancel', '1'.repeat(32)], ['retry', '3'.repeat(32)], ['clear', null]]);
+    await page.evaluate(() => {const row={id:'5'.repeat(32),direction:'incoming',name:'<img src=x onerror=alert(1)>',size:null,done:123,state:'running',rate:null};window.__listeners['files-state']({payload:{rows:[row]}});});
+    assert.equal(await page.locator('#transfers-list img').count(),0);
+    assert.equal(await page.locator('#transfers-list [role=progressbar]').getAttribute('aria-valuenow'),null);
+    assert.match(await page.locator('#transfers-list small').textContent(),/123 B/);
+    assert.equal(await page.getByRole('button',{name:/Ponów:/}).count(),0);
     await page.evaluate(() => window.__listeners['files-state']({ payload: { phone: 'Galaxy S25 Ultra', active: 0, activeSize: 0, activeDone: 0, rows: [] } }));
     assert.equal(await page.locator('#transfers').isVisible(), false);
     assert.deepEqual(errors, []);
