@@ -14,12 +14,14 @@ use zeroize::{Zeroize, Zeroizing};
 
 uniffi::setup_scaffolding!();
 mod file_transfer;
+mod phone_actions;
 mod phone_extras;
 mod sms_bridge;
 pub use file_transfer::{
     FileCommitResult, FileCommitStatus, FileDestination, FileTransfer, IncomingControl,
     IncomingFile,
 };
+pub use phone_actions::UrlOpener;
 pub use phone_extras::{CallActionSink, CallerInfo, MissedCall, VolumeSink};
 pub use sms_bridge::{
     SmsMessage, SmsMessages, SmsOutgoing, SmsPart, SmsPartInfo, SmsPerson, SmsPhoto, SmsSim,
@@ -439,6 +441,9 @@ pub struct CoreClient {
     /// WN-48: the PC's volume and its requests for the phone's; whether the phone takes them ("Głośność z komputera").
     volume: std::sync::Mutex<Option<Arc<dyn VolumeSink>>>,
     volume_enabled: std::sync::atomic::AtomicBool,
+    /// WN-100: where the PC's links open, and "Otwieraj linki z komputera" (read for every request).
+    url_opener: std::sync::Mutex<Option<Arc<dyn UrlOpener>>>,
+    open_links: Arc<std::sync::atomic::AtomicBool>,
     /// WN-57: the PC's Reject/Silence; whether the phone takes them ("Połączenia na komputerze").
     call_actions: std::sync::Mutex<Option<Arc<dyn CallActionSink>>>,
     call_actions_enabled: std::sync::atomic::AtomicBool,
@@ -511,6 +516,8 @@ pub async fn open_client(
         notify_actions_enabled: std::sync::atomic::AtomicBool::new(false),
         volume: std::sync::Mutex::new(None),
         volume_enabled: std::sync::atomic::AtomicBool::new(false),
+        url_opener: std::sync::Mutex::new(None),
+        open_links: Arc::new(std::sync::atomic::AtomicBool::new(true)),
         call_actions: std::sync::Mutex::new(None),
         call_actions_enabled: std::sync::atomic::AtomicBool::new(false),
         sms: std::sync::Mutex::new(None),
@@ -593,6 +600,15 @@ impl CoreClient {
     pub fn set_volume_enabled(&self, enabled: bool) {
         self.volume_enabled
             .store(enabled, std::sync::atomic::Ordering::SeqCst);
+    }
+    /// WN-100: where links from the PC open; without it the phone announces no `actions/1`.
+    pub fn set_url_opener(&self, opener: Box<dyn UrlOpener>) {
+        *self.url_opener.lock().unwrap() = Some(Arc::from(opener));
+    }
+    /// "Otwieraj linki z komputera": off, the PC's `open-url` is refused (status 1), read for every request.
+    pub fn set_open_links(&self, allowed: bool) {
+        self.open_links
+            .store(allowed, std::sync::atomic::Ordering::SeqCst);
     }
     /// WN-57: where the PC's Reject/Silence go; without it `call-action/1` is never announced.
     pub fn set_call_action_sink(&self, sink: Box<dyn CallActionSink>) {
@@ -1024,6 +1040,7 @@ impl CoreClient {
         let volume = self.route_volume(&mut router);
         let sms = self.route_sms(&mut router);
         let call_actions = self.route_call_actions(&mut router);
+        let actions = self.route_actions(&mut router);
         let (session, events) = tokio::time::timeout(
             Duration::from_secs(10),
             Session::dial(
@@ -1043,6 +1060,7 @@ impl CoreClient {
         self.serve_find(find);
         self.serve_sms(sms);
         self.serve_call_actions(call_actions);
+        self.serve_actions(&session, actions);
         self.serve_notify_actions(notify_actions);
         let media_allowed = self.serve_media(media);
         let file_caps = file_transfer::FileCapabilities::new(&session, events);
@@ -1202,6 +1220,21 @@ impl CoreClient {
         }
         Some((sink, queue))
     }
+    /// WN-100: routes `actions` when there is a URL opener (announced even with links off: the PC then gets "refused").
+    fn route_actions(&self, router: &mut Router) -> Option<phone_actions::ActionRoute> {
+        let opener = self.url_opener.lock().unwrap().clone()?;
+        Some((opener, router.route_actions(4)))
+    }
+    fn serve_actions(&self, session: &Session, route: Option<phone_actions::ActionRoute>) {
+        if let Some((opener, streams)) = route {
+            let host = wind_core::actions::ActionHost::new(
+                Arc::new(phone_actions::PhonePolicy(self.open_links.clone())),
+                Arc::new(phone_actions::PhoneExecutor(opener)),
+                self.trust.clone(),
+            );
+            tokio::spawn(host.serve(session.clone(), streams));
+        }
+    }
     fn serve_call_actions(&self, route: Option<phone_extras::CallActionRoute>) {
         if let Some((sink, queue)) = route {
             tokio::spawn(phone_extras::serve_call_actions(sink, queue));
@@ -1233,7 +1266,7 @@ impl CoreClient {
             reason: "peer address must be an IP address and port".into(),
         })?;
         let mut changes = self.network.subscribe();
-        let ((session, events),(clipboard_input, find, media, pc_media, notify_actions, volume, sms, call_actions, file_input)) = loop {
+        let ((session, events),(clipboard_input, find, media, pc_media, notify_actions, volume, sms, call_actions, actions, file_input)) = loop {
             let mut router=Router::new();
             let file_input=router.route_files(1,32);
             router.start_disabled(wind_core::protocol::Channel::Files);
@@ -1245,6 +1278,7 @@ impl CoreClient {
             let volume = self.route_volume(&mut router);
             let sms = self.route_sms(&mut router);
             let call_actions = self.route_call_actions(&mut router);
+            let actions = self.route_actions(&mut router);
             let attempt = tokio::time::timeout(
             wait,
             Session::dial(
@@ -1256,7 +1290,7 @@ impl CoreClient {
             ),
         );
             tokio::select! {
-                result = attempt => break result.map(|r|r.map(|s|(s,(clipboard_input, find, media, pc_media, notify_actions, volume, sms, call_actions, file_input)))),
+                result = attempt => break result.map(|r|r.map(|s|(s,(clipboard_input, find, media, pc_media, notify_actions, volume, sms, call_actions, actions, file_input)))),
                 changed = changes.changed() => {
                     if changed.is_err() { return Err(CoreError::Transport { reason: "network observer stopped".into() }); }
                 }
@@ -1270,6 +1304,7 @@ impl CoreClient {
         self.serve_find(find);
         self.serve_sms(sms);
         self.serve_call_actions(call_actions);
+        self.serve_actions(&session, actions);
         self.serve_notify_actions(notify_actions);
         let media_allowed = self.serve_media(media);
         let file_caps = file_transfer::FileCapabilities::new(&session, events);

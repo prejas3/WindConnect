@@ -472,3 +472,24 @@ mod tests {
         assert!(d.custom[0].args.is_empty());
     }
 }
+
+/// WN-100: "Otwórz na telefonie" in the panel: asks the phone to open `url` (§9.2 `open-url`). Checked here first with the
+/// same rule the phone applies; the answer is a status for the panel: "done", "refused", "bad-argument", "failed", "busy",
+/// or "unavailable" (no phone, or it doesn't take links).
+#[tauri::command]
+pub async fn open_on_phone(app: tauri::AppHandle, url: String) -> Result<&'static str, String> {
+    let url = url.trim().to_owned();
+    if !wind_core::actions::check_url(&url) {
+        return Ok("bad-argument");
+    }
+    let Some(session) = crate::sms::phone_session(&app) else {
+        return Ok("unavailable");
+    };
+    match wind_core::actions::run(&session, OPEN_URL, Some(&url)).await {
+        Ok(status) => Ok(status_name(status)),
+        Err(wind_core::actions::RequestError::Session(
+            wind_core::session::SessionError::CapabilityMissing(_),
+        )) => Ok("unavailable"),
+        Err(_) => Ok("failed"),
+    }
+}

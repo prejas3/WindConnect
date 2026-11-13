@@ -29,6 +29,7 @@ internal fun computerLabel(value: String?): String = value.orEmpty().filterNot {
 
 @Composable
 fun HomeScreen(state: PairingUi, onScan: () -> Unit, onDiagnostics: () -> Unit, onNearby: (() -> Unit)? = null, onClipboard: (() -> Unit)? = null, onClipboardEnabled: ((Boolean) -> Unit)? = null, onSendFile: (() -> Unit)? = null) {
+    val pcActions = rememberPcActions()
     val connected = state.connection as? ConnectionState.Connected
     val known = state.hasPairedDevice || connected != null
     val name = if (known) computerLabel(state.computerName) else "Twój komputer"
@@ -69,14 +70,16 @@ fun HomeScreen(state: PairingUi, onScan: () -> Unit, onDiagnostics: () -> Unit, 
             WindAction("Touchpad", "i klawiatura", "touch", null, Modifier.weight(1f).fillMaxHeight().testTag("homeTouchpad"))
         }
         Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            WindAction("Zablokuj PC", "Win+L zdalnie", "lock", null, Modifier.weight(1f).fillMaxHeight().testTag("homeLock"))
-            WindAction("Otwórz na PC", "ostatni link", "external", null, Modifier.weight(1f).fillMaxHeight().testTag("homeLink"))
+            // WN-100: the PC's actions (PcActions.kt).
+            WindAction("Zablokuj PC", "Win+L zdalnie", "lock", pcActions.lock.takeIf { connected != null }, Modifier.weight(1f).fillMaxHeight().testTag("homeLock"))
+            WindAction("Otwórz na PC", "ostatni link", "external", pcActions.openLink.takeIf { connected != null }, Modifier.weight(1f).fillMaxHeight().testTag("homeLink"))
         }
         Text("Akcje oznaczone jako niedostępne nie są jeszcze gotowe lub komputer ich teraz nie przyjmuje.", color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
     }
     if (onClipboard != null && onClipboardEnabled != null) ClipboardControls(state, onClipboard, onClipboardEnabled)
     PcMediaCard() // WN-47: the PC's player; shown only when the PC has one.
     PcVolumeCard() // WN-48: the PC's volume; shown while the PC shares it.
+    PcActionsCard(pcActions, connected != null) // WN-100: the outcome, the link box and the PC's own actions.
     if (known) ReceiveFilesControls()
     Text("Ostatnie transfery", style = MaterialTheme.typography.titleMedium)
     WindCard(Modifier.fillMaxWidth().testTag("recentTransfers")) {

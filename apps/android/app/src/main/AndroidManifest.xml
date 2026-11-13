@@ -60,6 +60,16 @@
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
+        <!-- WN-100: "Otwórz na PC" in the share sheet for text with a link; no UI, a toast says how it went. -->
+        <activity android:name=".OpenOnPcActivity" android:exported="true" android:label="@string/open_on_pc"
+            android:excludeFromRecents="true" android:taskAffinity="" android:noHistory="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+        </activity>
         <activity android:name=".SendClipboardActivity" android:exported="false" android:excludeFromRecents="true" android:taskAffinity="" android:noHistory="true" />
         <activity android:name=".LauncherShortcutActivity" android:exported="true"
             android:excludeFromRecents="true" android:taskAffinity="" android:noHistory="true" />

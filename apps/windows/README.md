@@ -537,3 +537,12 @@ połączenia”, najwyżej 5). Telefon musi to udostępnić („Połączenia na
 komputerze”). Komputer przyjmuje `call/1`, gdy włączone jest to ustawienie
 albo wstrzymywanie odtwarzania; pauza działa tylko przy tym drugim.
 Pomiar: `scripts/check-calls-android.cjs` (połączenie -> powiadomienie na PC).
+
+## Otwórz na telefonie (WN-100)
+
+Pole „Otwórz na telefonie” w panelu (gdy telefon przyjmuje `actions/1`)
+wysyła adres http(s) do telefonu (PROTOCOL.md §9.2 `open-url`, sprawdzony
+`check_url` już na PC). Telefon otwiera go od razu albo pokazuje
+powiadomienie, gdy jest w tle; wyłączone na telefonie -> „Telefon
+odrzucił…”. Telefon wykonuje tylko otwarcie linku, nic innego.
+Pomiar: `scripts/check-actions-android.cjs`.

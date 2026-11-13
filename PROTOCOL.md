@@ -1269,6 +1269,13 @@ Nieznany `status` proszący traktuje jak `3`.
 7. Akcja własna uruchamia program wskazany przez użytkownika tego
    urządzenia z jego stałymi argumentami, bez powłoki systemowej (na
    Windowsie tylko plik `.exe`, nie skrypt `.bat`/`.cmd`).
+8. **Telefon jako wykonujący (WN-100).** Telefon ogłasza `actions/1` i
+   oferuje wyłącznie `open-url` (nie blokuje, nie usypia, nie ma akcji
+   własnych), dopóki jego użytkownik ma włączone „Otwieraj linki z
+   komputera”; wyłączone daje status `1`. Adres po sprawdzeniu z zasady 5
+   otwiera się od razu, gdy aplikacja jest na ekranie; w tle Android nie
+   pozwala uruchomić aktywności, więc telefon pokazuje powiadomienie do
+   stuknięcia i odpowiada `0` (link podany osobie).
 
 Przykłady (ramki z długością):
 

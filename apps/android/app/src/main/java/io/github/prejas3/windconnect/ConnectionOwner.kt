@@ -97,6 +97,12 @@ class ConnectionOwner(private val application: Application) {
     private val mutableSmsSendAccess = MutableStateFlow(false)
     val smsSendAccess = mutableSmsSendAccess.asStateFlow()
     fun setSmsSendAllowed(value: Boolean) { val opened = core ?: return; scope.launch { opened.setSmsSendAllowed(value) } }
+    // WN-100: actions on the PC, and links from it.
+    private val mutableOpenLinks = MutableStateFlow(true)
+    val openLinks = mutableOpenLinks.asStateFlow()
+    fun setOpenLinks(value: Boolean) { core?.setOpenLinks(value) }
+    suspend fun runPcAction(id: String, url: String? = null): String = core?.runPcAction(id, url) ?: "unavailable"
+    suspend fun pcActions(): List<io.github.prejas3.windconnect.bindings.RemoteAction> = core?.pcActions() ?: emptyList()
     // WN-57: calls on the PC (own setting, default off; phone and call-log permissions asked when turned on).
     private val mutableCallsAllowed = MutableStateFlow(false)
     val callsAllowed = mutableCallsAllowed.asStateFlow()
@@ -129,6 +135,7 @@ class ConnectionOwner(private val application: Application) {
                 launch { opened.smsSendAllowed.collect { mutableSmsSendAllowed.value = it } }
                 launch { opened.smsSendAccess.collect { mutableSmsSendAccess.value = it } }
                 launch { opened.callsAllowed.collect { mutableCallsAllowed.value = it } }
+                launch { opened.openLinks.collect { mutableOpenLinks.value = it } }
                 launch { opened.callsAccess.collect { mutableCallsAccess.value = it } }
                 launch { opened.callsReject.collect { mutableCallsReject.value = it } }
                 opened.state.collect {
