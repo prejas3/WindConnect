@@ -64,6 +64,13 @@ class ConnectionOwner(private val application: Application) {
     fun setNotifyAppMode(mode: io.github.prejas3.windconnect.core.NotifyAppMode) { core?.setNotifyAppMode(mode) }
     fun setNotifyApp(packageName: String, on: Boolean) { core?.setNotifyApp(packageName, on) }
     fun appLabel(packageName: String): String = core?.appLabel(packageName) ?: packageName
+    // WN-48: the PC's volume, and whether the PC may show/change STREAM_MUSIC (and this shows the PC's).
+    private val mutablePcVolume = MutableStateFlow<io.github.prejas3.windconnect.core.PcVolume?>(null)
+    val pcVolume = mutablePcVolume.asStateFlow()
+    private val mutableVolumeAllowed = MutableStateFlow(true)
+    val volumeAllowed = mutableVolumeAllowed.asStateFlow()
+    fun setPcVolume(level: Int? = null, muted: Boolean? = null) { core?.setPcVolume(level, muted) }
+    fun setVolumeAllowed(value: Boolean) { val opened = core ?: return; scope.launch { opened.setVolumeAllowed(value) } }
     fun setFindAllowed(value: Boolean) { val opened = core ?: return; scope.launch { opened.setFindAllowed(value) } }
 
     suspend fun acquire(): WindCore = gate.withLock {
@@ -80,6 +87,8 @@ class ConnectionOwner(private val application: Application) {
                 launch { opened.notifyAllowed.collect { mutableNotifyAllowed.value = it } }
                 launch { opened.notifyAccess.collect { mutableNotifyAccess.value = it } }
                 launch { opened.notifyApps.collect { mutableNotifyApps.value = it } }
+                launch { opened.pcVolume.collect { mutablePcVolume.value = it } }
+                launch { opened.volumeAllowed.collect { mutableVolumeAllowed.value = it } }
                 opened.state.collect { mutableState.value = it }
             }
         }

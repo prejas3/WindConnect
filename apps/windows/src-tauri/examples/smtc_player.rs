@@ -2,7 +2,7 @@
 //! thumbnail, 200 s, Playing) under its own explicit AUMID `WindConnect.TestPlayer`, so the PC app's debug filter
 //! (WINDCONNECT_TEST_MEDIA_APP) follows only it and never the person's players. Plays no sound.
 //! IO:stdout lines `ready`, `event <play|pause|next|previous|seek ms>` with a monotonic ms stamp; stdin `no-next` turns NEXT off,
-//! `quit` ends. Synthetic data only.
+//! `stop` / `play` set the status as if by hand (WN-48), `quit` ends. Synthetic data only.
 #[cfg(windows)]
 fn main() -> windows::core::Result<()> {
     use std::io::{BufRead, Write};
@@ -146,6 +146,15 @@ fn main() -> windows::core::Result<()> {
             "no-next" => {
                 smtc.SetIsNextEnabled(false)?;
                 log("next-disabled".into());
+            }
+            // WN-48: the person stops or plays it by hand (check-call-volume-android.cjs).
+            "stop" => {
+                smtc.SetPlaybackStatus(MediaPlaybackStatus::Stopped)?;
+                log("stopped".into());
+            }
+            "play" => {
+                smtc.SetPlaybackStatus(MediaPlaybackStatus::Playing)?;
+                log("playing".into());
             }
             "quit" => break,
             _ => {}

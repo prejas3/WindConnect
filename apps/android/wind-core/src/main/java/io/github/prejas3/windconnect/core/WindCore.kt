@@ -59,6 +59,9 @@ sealed interface ConnectionState {
  * One notification handed to the core (WN-42): [outcome] "sent" / "held" / "dropped" / "not-accepted"; [postTimeMs] Android's
  * postTime and [doneMs] the wall clock when the core returned; [listenerToDoneMs] from the listener's callback to then.
  */
+/** WN-48: the PC's output volume, 0..100. */
+data class PcVolume(val level: Int, val muted: Boolean)
+
 data class NotifySend(val outcome: String, val postTimeMs: Long, val doneMs: Long, val listenerToDoneMs: Long, val packageName: String)
 
 /** CCS/1 M:WindCore | IO:coroutines + StateFlow -> UniFFI -> authenticated QUIC session */
@@ -228,7 +231,7 @@ class WindCore private constructor(
         filesCapabilityJob?.cancel(); filesCapabilityJob = null
         mutableFilesAccepted.value = false
     }
-    private var connection: CoreConnection? = null
+    @Volatile private var connection: CoreConnection? = null
     private var watcher: Job? = null
     // WN-49: the battery goes to the PC only while a session is live.
     private val battery = BatteryReporter(context)
@@ -517,6 +520,7 @@ class WindCore private constructor(
         startBattery(opened)
         startMedia(opened)
         startNotify(opened)
+        startCallVolume(opened)
         watcher = scope.launch {
             // CCS/1 FLOW:end code -> unpaired: forget this connection's TLS peer | busy/untrusted: hold retries (WC-28).
             val end = opened.waitEnd()
@@ -527,6 +531,7 @@ class WindCore private constructor(
                     stopBattery()
                     stopMedia()
                     stopNotify()
+                    stopCallVolume()
                     pcPlayer.clear()
                     when (end) {
                         "unpaired" -> {
@@ -729,6 +734,56 @@ class WindCore private constructor(
         }
     }
 
+    // WN-48: the call state for the PC (it pauses its players) and both volumes.
+    private var callWatcher: CallWatcher? = null
+    private var callNotifications: Job? = null
+    private var phoneVolume: PhoneVolume? = null
+    private val mutableVolumeAllowed = MutableStateFlow(settings.getBoolean(VOLUME_ALLOWED, true))
+    /** "Głośność z komputera" (default on): the PC shows and changes STREAM_MUSIC, and this shows the PC's. */
+    val volumeAllowed: StateFlow<Boolean> = mutableVolumeAllowed.asStateFlow()
+    private val mutablePcVolume = MutableStateFlow<PcVolume?>(null)
+    /** The PC's output volume, or null without one. */
+    val pcVolume: StateFlow<PcVolume?> = mutablePcVolume.asStateFlow()
+    private val volumeSink = object : io.github.prejas3.windconnect.bindings.VolumeSink {
+        override fun peerLevel(level: UByte, muted: Boolean) { mutablePcVolume.value = PcVolume(level.toInt(), muted) }
+        override fun set(level: UByte?, muted: Boolean?) { phoneVolume?.set(level?.toInt(), muted) }
+    }.also { sink ->
+        client.setVolumeSink(sink)
+        client.setVolumeEnabled(mutableVolumeAllowed.value)
+    }
+
+    private fun startCallVolume(opened: CoreConnection) {
+        // Not clearing the PC's volume: its first Level may already have come with the session.
+        stopCallVolume(keepPeer = true)
+        val watcher = CallWatcher(appContext) { state -> opened.setCallState(state.code.toUByte()) }
+        callWatcher = watcher
+        watcher.start()
+        callNotifications = scope.launch { CallNotifications.active.collect { watcher.notifications(it.isNotEmpty()) } }
+        phoneVolume = PhoneVolume(appContext) { level, muted -> opened.setVolumeLevel(level.toUByte(), muted) }.also { it.start() }
+    }
+
+    private fun stopCallVolume(keepPeer: Boolean = false) {
+        callWatcher?.stop(); callWatcher = null
+        callNotifications?.cancel(); callNotifications = null
+        phoneVolume?.stop(); phoneVolume = null
+        if (!keepPeer) mutablePcVolume.value = null
+    }
+
+    /** WN-48: the person changes the PC's volume (only what is given); the latest wins. */
+    fun setPcVolume(level: Int? = null, muted: Boolean? = null) {
+        val live = connection ?: return
+        live.sendVolumeSet(level?.coerceIn(0, 100)?.toUByte(), muted)
+    }
+
+    suspend fun setVolumeAllowed(value: Boolean) = withContext(Dispatchers.IO) {
+        settings.edit().putBoolean(VOLUME_ALLOWED, value).apply()
+        mutableVolumeAllowed.value = value
+        client.setVolumeEnabled(value)
+        if (!value) mutablePcVolume.value = null
+        val live = gate.withLock { connection }
+        try { live?.setVolumeAccepted(value) } catch (error: Exception) { if (error is CancellationException) throw error }
+    }
+
     /** WN-45: the app filter (mode, switches, the apps seen); null until first read. */
     val notifyApps: StateFlow<NotifyAppsState?> = NotifyApps.states(appContext)
 
@@ -759,6 +814,7 @@ class WindCore private constructor(
         stopBattery()
         stopMedia()
         stopNotify()
+        stopCallVolume()
         pcPlayer.clear()
         watcher?.cancel()
         watcher = null
@@ -780,6 +836,7 @@ class WindCore private constructor(
         internal const val SETTINGS_FILE = SETTINGS
         internal const val MEDIA_ALLOWED = "media_allowed"
         internal const val NOTIFY_ALLOWED = "notify_allowed"
+        private const val VOLUME_ALLOWED = "volume_allowed"
         private const val PC_MEDIA_ALLOWED = "pc_media_allowed"
         private const val RELAY_URL = "relay_url"
         private const val FIND_ALLOWED = "find_allowed"
