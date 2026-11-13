@@ -7,6 +7,10 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+    <!-- WN-55: SMS read on the PC, asked only when the person turns "SMS na komputerze" on. Decision D2: this is the
+         GitHub/F-Droid build; a Google Play variant must leave these out (Play restricts SMS permissions). -->
+    <uses-permission android:name="android.permission.READ_SMS" />
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
     <uses-feature android:name="android.hardware.camera.any" android:required="false" />
     <application
         android:name=".WindApplication"

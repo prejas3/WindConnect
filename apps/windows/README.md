@@ -499,3 +499,17 @@ Testy: testy jednostkowe (`call_pause`: jedna pauza na połączenie, wznowienie 
 RULE:nadawca toastów jak przy baterii (`toast.rs`): w debug PowerShell, w release zarejestrowany AUMID „WindConnect” (sprawdzenie z instalatora: WN-118).
 
 Testy: testy jednostkowe (`notify`: XML, escapowanie i sanityzacja, brak tytułu, granice, limit wyskakujących, ciche aktualizacje, nazwy i limit pamięci ikon), `node apps/windows/scripts/check-notify-settings-ui.cjs` (przełącznik z podstawionym IPC, Light/Dark) i `node apps/windows/scripts/check-notify-toasts-android.cjs` (prawdziwa aplikacja debug + emulator; parowanie QR, potem `NotifyProof` dwa razy w jednej sesji: z asystentem powiadomień i bez). Sprawdza: dokładnie 21 toastów na przebieg (20 + rozmowa; odtwarzacz i niezmienione ponowienie nic), uśpione na telefonie znika z Windows, pozostałe 20 w historii, ≤ 5 wyskakujących w 2 s, jedna ikona 64 px, wyłączenie ustawienia czyści historię i ikony. Opóźnienie (zegary skorygowane o przesunięcie emulatora): wywołanie słuchacza na telefonie -> `Show` na PC p95 < 250 ms (sprawdzane; zmierzone ok. 20 ms), `postTime` -> `Show` raportowane (z asystentem ok. 230 ms przez systemowe wstrzymanie ok. 200 ms, bez niego ok. 30 ms). Wymaga `JAVA_HOME`, `ZXING_CORE_JAR`, `PLAYWRIGHT_MODULE`, `ANDROID_SERIAL`.
+
+## Wiadomości SMS (WN-55)
+
+Przycisk „Wiadomości” w panelu (gdy telefon jest połączony) otwiera osobne
+okno: wątki po lewej, rozmowa po prawej (PROTOCOL.md §9.11, `sms/1`).
+Telefon udostępnia SMS dopiero po włączeniu „SMS na komputerze” i zgodzie na
+dostęp do SMS; bez tego okno mówi, co włączyć. Wątek otwiera się z pamięci
+(`sms.rs`) i dociąga tylko nowsze wiadomości (`since`); pierwsze otwarcie
+pobiera 1000 najnowszych, starsze strony przy przewinięciu do góry. Zmiany na
+telefonie przychodzą przez obserwację (`Watch` → `sms-changed`). Treść jest
+tylko w pamięci aplikacji (bez zapisu na dysku), znika przy połączeniu innego
+telefonu albo rozparowaniu i trafia na stronę wyłącznie jako tekst.
+Pomiar: `scripts/check-sms-android.cjs` (prawdziwa aplikacja + emulator,
+1000 SMS w wątku, otwarcie od kliknięcia do narysowania).

@@ -15,8 +15,12 @@ use zeroize::{Zeroize, Zeroizing};
 uniffi::setup_scaffolding!();
 mod file_transfer;
 mod phone_extras;
+mod sms_bridge;
 pub use file_transfer::FileTransfer;
 pub use phone_extras::VolumeSink;
+pub use sms_bridge::{
+    SmsMessage, SmsMessages, SmsPerson, SmsPhoto, SmsSource, SmsThread, SmsThreads,
+};
 
 /// With the relay on, the address gets this long first (a LAN answers in
 /// milliseconds; the relay is the fallback).
@@ -431,6 +435,10 @@ pub struct CoreClient {
     /// WN-48: the PC's volume and its requests for the phone's; whether the phone takes them ("Głośność z komputera").
     volume: std::sync::Mutex<Option<Arc<dyn VolumeSink>>>,
     volume_enabled: std::sync::atomic::AtomicBool,
+    /// WN-55: one SMS server for the client (its watches end with each session).
+    sms: std::sync::Mutex<Option<Arc<wind_core::sms::Server>>>,
+    /// The person's setting and READ_SMS (announce `sms/1`).
+    sms_enabled: std::sync::atomic::AtomicBool,
 }
 
 #[derive(uniffi::Record, Clone, Debug)]
@@ -496,6 +504,8 @@ pub async fn open_client(
         notify_actions_enabled: std::sync::atomic::AtomicBool::new(false),
         volume: std::sync::Mutex::new(None),
         volume_enabled: std::sync::atomic::AtomicBool::new(false),
+        sms: std::sync::Mutex::new(None),
+        sms_enabled: std::sync::atomic::AtomicBool::new(false),
         identity: IdentityInfo {
             public_key: identity.public_key().as_bytes().to_vec(),
             fingerprint: identity.fingerprint().to_hex(),
@@ -525,6 +535,24 @@ impl CoreClient {
     pub fn set_find_enabled(&self, enabled: bool) {
         self.find_enabled
             .store(enabled, std::sync::atomic::Ordering::SeqCst);
+    }
+    /// WN-55: the phone's SMS store; without it `sms/1` is never announced.
+    pub fn set_sms_source(&self, source: Box<dyn SmsSource>) {
+        *self.sms.lock().unwrap() = Some(wind_core::sms::Server::new(Arc::new(
+            sms_bridge::PlatformSms(source),
+        )));
+    }
+    /// Whether new sessions announce `sms/1` (the setting on and READ_SMS granted); a live one changes with
+    /// [`CoreConnection::set_sms_accepted`].
+    pub fn set_sms_enabled(&self, enabled: bool) {
+        self.sms_enabled
+            .store(enabled, std::sync::atomic::Ordering::SeqCst);
+    }
+    /// SMS changed on the phone (a content observer): the PC's watches get `Changed`.
+    pub fn sms_changed(&self) {
+        if let Some(server) = self.sms.lock().unwrap().clone() {
+            server.changed();
+        }
     }
     /// The person stopped the ring on the phone (the PC gets state 1).
     pub fn stop_ringing(&self) {
@@ -967,6 +995,7 @@ impl CoreClient {
         let pc_media = self.route_pc_media(&mut router);
         let notify_actions = self.route_notify_actions(&mut router);
         let volume = self.route_volume(&mut router);
+        let sms = self.route_sms(&mut router);
         let (session, events) = tokio::time::timeout(
             Duration::from_secs(10),
             Session::dial(
@@ -984,6 +1013,7 @@ impl CoreClient {
         .map_err(session_error)?;
         self.serve_pc_media(pc_media);
         self.serve_find(find);
+        self.serve_sms(sms);
         self.serve_notify_actions(notify_actions);
         let media_allowed = self.serve_media(media);
         let file_caps = file_transfer::FileCapabilities::new(&session, events);
@@ -1121,6 +1151,20 @@ impl CoreClient {
             tokio::spawn(serve_pc_media(sink, queue));
         }
     }
+    /// WN-55: routes `sms` when there is a source; withdrawn at the start unless allowed and granted.
+    fn route_sms(&self, router: &mut Router) -> Option<sms_bridge::SmsRoute> {
+        let server = self.sms.lock().unwrap().clone()?;
+        let streams = router.route_sms(8);
+        if !self.sms_enabled.load(std::sync::atomic::Ordering::SeqCst) {
+            router.start_disabled(wind_core::protocol::Channel::Sms);
+        }
+        Some((server, streams))
+    }
+    fn serve_sms(&self, route: Option<sms_bridge::SmsRoute>) {
+        if let Some((server, streams)) = route {
+            tokio::spawn(server.serve(streams));
+        }
+    }
     fn serve_find(
         &self,
         find: Option<(
@@ -1142,7 +1186,7 @@ impl CoreClient {
             reason: "peer address must be an IP address and port".into(),
         })?;
         let mut changes = self.network.subscribe();
-        let ((session, events),(clipboard_input, find, media, pc_media, notify_actions, volume)) = loop {
+        let ((session, events),(clipboard_input, find, media, pc_media, notify_actions, volume, sms)) = loop {
             let mut router=Router::new();
             let clipboard_input=wind_core::clipboard::Clipboard::route(&mut router);
             let find = self.route_find(&mut router);
@@ -1150,6 +1194,7 @@ impl CoreClient {
             let pc_media = self.route_pc_media(&mut router);
             let notify_actions = self.route_notify_actions(&mut router);
             let volume = self.route_volume(&mut router);
+            let sms = self.route_sms(&mut router);
             let attempt = tokio::time::timeout(
             wait,
             Session::dial(
@@ -1161,7 +1206,7 @@ impl CoreClient {
             ),
         );
             tokio::select! {
-                result = attempt => break result.map(|r|r.map(|s|(s,(clipboard_input, find, media, pc_media, notify_actions, volume)))),
+                result = attempt => break result.map(|r|r.map(|s|(s,(clipboard_input, find, media, pc_media, notify_actions, volume, sms)))),
                 changed = changes.changed() => {
                     if changed.is_err() { return Err(CoreError::Transport { reason: "network observer stopped".into() }); }
                 }
@@ -1173,6 +1218,7 @@ impl CoreClient {
         .map_err(session_error)?;
         self.serve_pc_media(pc_media);
         self.serve_find(find);
+        self.serve_sms(sms);
         self.serve_notify_actions(notify_actions);
         let media_allowed = self.serve_media(media);
         let file_caps = file_transfer::FileCapabilities::new(&session, events);
@@ -1626,6 +1672,14 @@ impl CoreConnection {
     pub async fn set_media_control_accepted(&self, accept: bool) -> Result<bool, CoreError> {
         self.session
             .set_accepted(wind_core::protocol::Channel::MediaControl, accept)
+            .await
+            .map_err(session_error)
+    }
+    /// WN-55: announce or withdraw `sms/1` on this session (the setting "SMS na komputerze" with READ_SMS); true
+    /// when it changed. Withdrawn, the PC's watch ends and new requests are refused.
+    pub async fn set_sms_accepted(&self, accept: bool) -> Result<bool, CoreError> {
+        self.session
+            .set_accepted(wind_core::protocol::Channel::Sms, accept)
             .await
             .map_err(session_error)
     }
