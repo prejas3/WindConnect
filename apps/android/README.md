@@ -721,3 +721,19 @@ potem `Replied`. `Dismiss` to `cancelNotification` słuchacza; potem zwykłe
 `Removed`. Tylko dla id wysłanych w tej sesji (`WindCore.sentIds`; słuchacz
 pamięta klucz i akcję odpowiedzi 256 najnowszych, bez treści). Tekst
 odpowiedzi nie jest logowany ani przechowywany.
+
+### Filtr aplikacji i „Nie przeszkadzać” (WN-45)
+
+W karcie „Powiadomienia na komputerze”: tryb „Wszystkie oprócz wyłączonych”
+(domyślny) albo „Tylko wybrane” (nowe aplikacje wyłączone) i przełącznik na
+aplikację. Lista to aplikacje widziane przez słuchacza (nazwy pakietów, do
+300, bez treści) i te z bieżących powiadomień, bez `QUERY_ALL_PACKAGES` i
+bez zmian w manifeście. Wyłączona aplikacja jest odrzucana w słuchaczu, zanim
+cokolwiek trafi do rdzenia (`AppFilter`), i jeszcze raz w miejscu wysyłki
+(`NotifyForwarder`: powiadomienie z kolejki sprzed blokady jest pomijane, z
+ikoną). Zablokowanie aplikacji wysyła `Removed` dla jej powiadomień z tej
+sesji i zapomina je dla odpowiedzi i odrzucania (WN-44). Powiadomienie, które
+nie przechodzi przez „Nie przeszkadzać” telefonu
+(`Ranking.matchesInterruptionFilter()`), idzie z `quiet`: na PC bez
+wyskakiwania i dźwięku. Testy: `NotifyAppsTest` (jednostkowy i Compose) oraz
+`apps/windows/scripts/check-notify-filter-android.cjs`.

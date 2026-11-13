@@ -58,6 +58,12 @@ class ConnectionOwner(private val application: Application) {
     val notifyAccess = mutableNotifyAccess.asStateFlow()
     fun setNotifyAllowed(value: Boolean) { val opened = core ?: return; scope.launch { opened.setNotifyAllowed(value) } }
     fun refreshNotify() { val opened = core ?: return; scope.launch { opened.refreshNotify() } }
+    // WN-45: which apps go to the PC.
+    private val mutableNotifyApps = MutableStateFlow<io.github.prejas3.windconnect.core.NotifyAppsState?>(null)
+    val notifyApps = mutableNotifyApps.asStateFlow()
+    fun setNotifyAppMode(mode: io.github.prejas3.windconnect.core.NotifyAppMode) { core?.setNotifyAppMode(mode) }
+    fun setNotifyApp(packageName: String, on: Boolean) { core?.setNotifyApp(packageName, on) }
+    fun appLabel(packageName: String): String = core?.appLabel(packageName) ?: packageName
     fun setFindAllowed(value: Boolean) { val opened = core ?: return; scope.launch { opened.setFindAllowed(value) } }
 
     suspend fun acquire(): WindCore = gate.withLock {
@@ -73,6 +79,7 @@ class ConnectionOwner(private val application: Application) {
                 launch { opened.pcMediaAllowed.collect { mutablePcMediaAllowed.value = it } }
                 launch { opened.notifyAllowed.collect { mutableNotifyAllowed.value = it } }
                 launch { opened.notifyAccess.collect { mutableNotifyAccess.value = it } }
+                launch { opened.notifyApps.collect { mutableNotifyApps.value = it } }
                 opened.state.collect { mutableState.value = it }
             }
         }

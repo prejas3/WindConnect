@@ -288,14 +288,17 @@ class WindCore private constructor(
     val notifyAccess: StateFlow<Boolean> = mutableNotifyAccess.asStateFlow()
     private val icons = AppIcons(appContext)
     private var notifyJob: Job? = null
-    /** WN-44: ids sent to the PC in this session; the PC may dismiss and reply only to these. */
-    private val sentIds = java.util.Collections.synchronizedSet(HashSet<List<Byte>>())
+    /** WN-44/45: what this session sent (the PC may dismiss and reply only to these) and the filter at the send point. */
+    @Volatile private var forwarder: NotifyForwarder? = null
+    /** WN-45: the running session's event queue (filter changes go through it, in order with the notifications). */
+    @Volatile private var notifyEvents: Channel<NotificationEvent>? = null
+    private fun sentNow(id: ByteArray) = forwarder?.isSent(id) == true
     private val notifyActions = object : io.github.prejas3.windconnect.bindings.NotifyActionSink {
         override fun dismiss(id: ByteArray) {
-            if (id.toList() in sentIds) NotifyListenerService.dismiss(id)
+            if (sentNow(id)) NotifyListenerService.dismiss(id)
         }
         override fun reply(id: ByteArray, text: String) {
-            val ok = id.toList() in sentIds && NotifyListenerService.reply(appContext, id, text)
+            val ok = sentNow(id) && NotifyListenerService.reply(appContext, id, text)
             scope.launch {
                 val live = gate.withLock { connection }
                 try { live?.notificationReplied(id, ok) } catch (error: Exception) { if (error is CancellationException) throw error }
@@ -676,22 +679,24 @@ class WindCore private constructor(
         stopNotify()
         if (!(mutableNotifyAllowed.value && mutableNotifyAccess.value)) return
         val events = Channel<NotificationEvent>(256, BufferOverflow.DROP_OLDEST)
-        sentIds.clear()
         NotifyListenerService.forget()
+        val forward = NotifyForwarder(
+            allows = { NotifyApps.allows(appContext, it) },
+            send = { n, packageName -> opened.sendNotification(n.copy(app = icons.label(packageName)), icons.icon(packageName)) },
+            removed = { opened.notificationRemoved(it) },
+            forget = { NotifyListenerService.forget(it) },
+        )
+        forwarder = forward
+        notifyEvents = events
         NotifyListenerService.sink = { events.trySend(it) }
         notifyJob = scope.launch {
             try {
                 for (event in events) {
                     try {
-                        when (event) {
-                            is NotificationEvent.Posted -> {
-                                val n = event.notification.copy(app = icons.label(event.packageName))
-                                val outcome = opened.sendNotification(n, icons.icon(event.packageName))
-                                if (outcome == "sent" || outcome == "held") sentIds.add(n.id.toList())
-                                mutableNotifySends.tryEmit(NotifySend(outcome, n.timeMs.toLong(), System.currentTimeMillis(),
-                                    SystemClock.elapsedRealtime() - event.posted, n.packageName))
-                            }
-                            is NotificationEvent.Removed -> { sentIds.remove(event.id.toList()); opened.notificationRemoved(event.id) }
+                        val outcome = forward.handle(event)
+                        if (event is NotificationEvent.Posted && outcome != null) {
+                            mutableNotifySends.tryEmit(NotifySend(outcome, event.notification.timeMs.toLong(), System.currentTimeMillis(),
+                                SystemClock.elapsedRealtime() - event.posted, event.notification.packageName))
                         }
                     } catch (error: Exception) {
                         if (error is CancellationException) throw error
@@ -704,6 +709,8 @@ class WindCore private constructor(
 
     private fun stopNotify() {
         NotifyListenerService.sink = null
+        notifyEvents = null
+        forwarder = null
         notifyJob?.cancel()
         notifyJob = null
     }
@@ -711,6 +718,7 @@ class WindCore private constructor(
     /** Re-reads access (the person may have changed it in system settings) and applies it, live too. */
     suspend fun refreshNotify() = withContext(Dispatchers.IO) {
         mutableNotifyAccess.value = NotifyListenerService.granted(appContext)
+        NotifyListenerService.recordActive(appContext)
         val enabled = mutableNotifyAllowed.value && mutableNotifyAccess.value
         client.setNotifyActionsEnabled(enabled)
         gate.withLock {
@@ -719,6 +727,24 @@ class WindCore private constructor(
             if (enabled && notifyJob == null) startNotify(live)
             if (!enabled && notifyJob != null) stopNotify()
         }
+    }
+
+    /** WN-45: the app filter (mode, switches, the apps seen); null until first read. */
+    val notifyApps: StateFlow<NotifyAppsState?> = NotifyApps.states(appContext)
+
+    /** WN-45: an app's label for the filter's list. */
+    fun appLabel(packageName: String): String = icons.label(packageName)
+
+    /** WN-45: "Wszystkie oprócz wyłączonych" or "Tylko wybrane"; blocked apps' notifications go away on the PC. */
+    fun setNotifyAppMode(mode: NotifyAppMode) {
+        NotifyApps.setMode(appContext, mode)
+        notifyEvents?.trySend(NotificationEvent.FilterChanged)
+    }
+
+    /** WN-45: an app on or off for the PC, in the current mode. */
+    fun setNotifyApp(packageName: String, on: Boolean) {
+        NotifyApps.set(appContext, packageName, on)
+        notifyEvents?.trySend(NotificationEvent.FilterChanged)
     }
 
     suspend fun setNotifyAllowed(value: Boolean) {

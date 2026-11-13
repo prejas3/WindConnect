@@ -48,6 +48,8 @@ pub struct Posted {
     pub icon: Option<[u8; 8]>,
     /// The label of its reply action, when it can be replied to (WN-44).
     pub reply: Option<String>,
+    /// It doesn't interrupt on the sender (Do not disturb): shown without a popup or sound (WN-45).
+    pub quiet: bool,
 }
 
 impl Posted {
@@ -202,6 +204,9 @@ impl Message {
                 if let Some(r) = &n.reply {
                     f.push((7, t(r)));
                 }
+                if n.quiet {
+                    f.push((8, Value::Bool(true)));
+                }
                 RawMessage::new(0, map(f))
             }
             Self::Icon { key, png } => RawMessage::new(
@@ -238,6 +243,11 @@ impl Message {
                     Some(v) => Some(fixed(v)?),
                 },
                 reply: text(&f, 7, MAX_REPLY_LABEL)?,
+                quiet: match get(&f, 8) {
+                    None => false,
+                    Some(Value::Bool(b)) => *b,
+                    Some(_) => return None,
+                },
             })),
             1 => Some(Self::Icon {
                 key: fixed(get(&f, 0)?)?,
@@ -538,7 +548,36 @@ mod tests {
             time_ms: 1_794_500_000_000,
             icon: Some([3; 8]),
             reply: None,
+            quiet: false,
         }
+    }
+
+    #[test]
+    fn quiet_is_optional_and_only_true_goes_out() {
+        let loud = note("x");
+        let quiet = Posted {
+            quiet: true,
+            ..note("x")
+        };
+        assert_eq!(
+            Message::decode(&Message::Posted(quiet.clone()).encode()),
+            Some(Message::Posted(quiet.clone()))
+        );
+        // Absent when false: a WN-44 receiver sees the same bytes as before.
+        let plain = Message::Posted(loud.clone()).encode();
+        let Value::Map(f) = &plain.body else { panic!() };
+        assert!(f.iter().all(|(k, _)| *k != Value::Int(8)));
+        assert_eq!(
+            Message::decode(&Message::Posted(quiet).encode())
+                .map(|m| matches!(m, Message::Posted(p) if p.quiet)),
+            Some(true)
+        );
+        // A wrong type is a malformed message.
+        let mut bad = Message::Posted(loud).encode();
+        if let Value::Map(f) = &mut bad.body {
+            f.push((Value::Int(8), Value::Int(1)));
+        }
+        assert_eq!(Message::decode(&bad), None);
     }
 
     #[test]

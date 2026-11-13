@@ -339,6 +339,7 @@ fn main() {
             pairing::media_action,
             pairing::share_media,
             pairing::phone_notifications,
+            pairing::notify_quiet_hours,
             pairing::notify_action,
             #[cfg(debug_assertions)]
             battery::dev_battery_alerts,

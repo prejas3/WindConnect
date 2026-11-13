@@ -76,6 +76,8 @@ pub struct Snapshot {
     pub share_media: bool,
     /// WN-43: "Powiadomienia z telefonu" (the phone's notifications as toasts; notify/1).
     pub phone_notifications: bool,
+    /// WN-45: "Ciche godziny" for the phone's notifications.
+    pub quiet_hours: crate::notify::QuietHours,
     /// WN-44: the phone's notifications in the panel, newest first (empty without a session).
     pub notifications: Vec<crate::notify::PanelItem>,
     /// A phone is paired: [`has_paired_in`], the rule the first window
@@ -99,6 +101,7 @@ impl Default for Snapshot {
             media: None,
             share_media: true,
             phone_notifications: true,
+            quiet_hours: crate::notify::QuietHours::default(),
             notifications: Vec::new(),
             paired: false,
         }
@@ -146,6 +149,8 @@ enum Action {
     ShareMedia(bool),
     /// WN-43: show the phone's notifications, or stop (and remove those shown).
     PhoneNotifications(bool),
+    /// WN-45: the quiet hours changed.
+    QuietHours(crate::notify::QuietHours),
     /// WN-44: a reply typed in the panel for one of the phone's notifications (by its tag).
     NotifyReply(String, String),
     /// WN-44: ✕ in the panel: dismiss it here and on the phone.
@@ -437,13 +442,29 @@ async fn run(
     let accept_share = share_media.clone();
     // WN-43: the phone's notifications as toasts (default on: the phone side asks for consent, WN-42).
     let notify_path = key_store.path().parent().map(|d| d.join("notify.json"));
-    let phone_notifications = Arc::new(std::sync::atomic::AtomicBool::new(
-        notify_path
-            .as_ref()
-            .and_then(|p| std::fs::read(p).ok())
-            .and_then(|b| serde_json::from_slice::<bool>(&b).ok())
-            .unwrap_or(true),
-    ));
+    // WN-45: with the quiet hours (an old bare `true`/`false` file still reads; a damaged one gives the defaults).
+    let notify_settings = notify_path
+        .as_deref()
+        .map(crate::notify::NotifySettings::load)
+        .unwrap_or_default();
+    let phone_notifications = Arc::new(std::sync::atomic::AtomicBool::new(notify_settings.enabled));
+    let quiet_hours = Arc::new(std::sync::Mutex::new(notify_settings.quiet));
+    let save_notify = {
+        let (path, enabled, quiet) = (
+            notify_path.clone(),
+            phone_notifications.clone(),
+            quiet_hours.clone(),
+        );
+        move || {
+            if let Some(path) = &path {
+                let settings = crate::notify::NotifySettings {
+                    enabled: enabled.load(std::sync::atomic::Ordering::SeqCst),
+                    quiet: *quiet.lock().unwrap(),
+                };
+                let _ = settings.save(path);
+            }
+        }
+    };
     let accept_notify = phone_notifications.clone();
     // WN-44: replies and closes from the toasts come back here.
     let (toast_events_tx, mut toast_events) =
@@ -630,6 +651,7 @@ async fn run(
         snapshot.share_media = share_media.load(std::sync::atomic::Ordering::SeqCst);
         snapshot.phone_notifications =
             phone_notifications.load(std::sync::atomic::Ordering::SeqCst);
+        snapshot.quiet_hours = *quiet_hours.lock().unwrap();
         snapshot.notifications = notifications
             .as_ref()
             .map(|n| n.items())
@@ -660,10 +682,14 @@ async fn run(
                 }
                 Some(Action::PhoneNotifications(on)) => {
                     phone_notifications.store(on, std::sync::atomic::Ordering::SeqCst);
-                    if let Some(path) = &notify_path { let _ = std::fs::write(path, if on { b"true" as &[u8] } else { b"false" }); }
+                    save_notify();
                     if let Some((session, _)) = &active { let _ = session.set_accepted(wind_core::protocol::Channel::Notify, on).await; }
                     // Off: Windows keeps toast content in its store; remove what was shown and the icons.
                     if !on { let _ = toasts.send(crate::notify::Job::Clear); }
+                }
+                Some(Action::QuietHours(quiet)) => {
+                    *quiet_hours.lock().unwrap() = quiet;
+                    save_notify();
                 }
                 Some(Action::NotifyReply(tag, text)) => {
                     notify_reply(active.as_ref().map(|(s, _)| s), notifications.as_mut(), &tag, text).await;
@@ -823,7 +849,9 @@ async fn run(
                 media_input = Some(session_media);
                 media_commands = Some(session_commands);
                 notify_input = Some(session_notify);
-                notifications = Some(crate::notify::Notifications::new(toasts.clone(), snapshot.phone.as_deref().unwrap_or("Telefon")));
+                let quiet = quiet_hours.clone();
+                notifications = Some(crate::notify::Notifications::new(toasts.clone(), snapshot.phone.as_deref().unwrap_or("Telefon"))
+                    .silenced_by(move || crate::notify::silenced_now(&quiet.lock().unwrap())));
                 pc_media = None;
                 if share_media.load(std::sync::atomic::Ordering::SeqCst) {
                     pc_media = crate::pc_media::PcMedia::start(session.clone(), tokio::runtime::Handle::current());
@@ -1072,6 +1100,27 @@ pub fn phone_notifications(
     state
         .commands
         .send(Action::PhoneNotifications(enabled))
+        .map_err(|_| "pairing unavailable".into())
+}
+/// WN-45: "Ciche godziny" (main window): on/off and from/to in minutes after local midnight, 15-minute steps.
+#[tauri::command]
+pub fn notify_quiet_hours(
+    window: tauri::WebviewWindow,
+    state: tauri::State<'_, Runtime>,
+    on: bool,
+    from: u16,
+    to: u16,
+) -> Result<(), String> {
+    if window.label() != "main" {
+        return Err("unsupported window".into());
+    }
+    let quiet = crate::notify::QuietHours { on, from, to };
+    if !quiet.valid() {
+        return Err("invalid quiet hours".into());
+    }
+    state
+        .commands
+        .send(Action::QuietHours(quiet))
         .map_err(|_| "pairing unavailable".into())
 }
 /// WN-46: a button of the phone's player ("play", "pause", "toggle", "next", "previous",
