@@ -25,6 +25,11 @@
         <button id="media-next" class="button quiet small" aria-label="Następny utwór"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17 5v14M6 6l8 6-8 6z"/></svg></button>
       </div>
     </section>
+    <section id="notifications" class="transfers notifications" aria-labelledby="notifications-title" hidden>
+      <div class="transfers-head"><h2 id="notifications-title">Powiadomienia</h2></div>
+      <p class="subtle notifications-note">Odrzucenie tutaj albo zamknięcie wyskakującego powiadomienia (✕) usuwa je też z telefonu.</p>
+      <ul id="notification-list" class="transfer-list notification-list"></ul>
+    </section>
     <section id="transfers" class="transfers" aria-labelledby="transfers-title" hidden>
       <div class="transfers-head"><h2 id="transfers-title">Wysyłanie</h2><button id="transfers-clear" class="button quiet small" hidden>Wyczyść</button></div>
       <p id="transfers-summary" class="subtle" role="status"></p>

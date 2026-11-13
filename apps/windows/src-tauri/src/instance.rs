@@ -16,10 +16,17 @@ mod platform {
         }
     }
     pub fn claim(activate: bool) -> io::Result<Option<Instance>> {
-        let name: Vec<u16> = "Local\\io.github.prejas3.windconnect"
-            .encode_utf16()
-            .chain(Some(0))
-            .collect();
+        #[allow(unused_mut)]
+        let mut name = String::from("Local\\io.github.prejas3.windconnect");
+        // Debug with a test data folder: its own instance, so checks run beside the person's installed app.
+        #[cfg(debug_assertions)]
+        if let Some(dir) = std::env::var_os("WINDCONNECT_TEST_DATA_DIR") {
+            use std::hash::{Hash, Hasher};
+            let mut h = std::collections::hash_map::DefaultHasher::new();
+            dir.hash(&mut h);
+            name.push_str(&format!(".test-{:016x}", h.finish()));
+        }
+        let name: Vec<u16> = name.encode_utf16().chain(Some(0)).collect();
         let handle = unsafe { CreateMutexW(std::ptr::null(), 0, name.as_ptr()) };
         if handle.is_null() {
             return Err(io::Error::last_os_error());

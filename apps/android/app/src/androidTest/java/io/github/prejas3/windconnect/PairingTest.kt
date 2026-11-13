@@ -163,6 +163,13 @@ class PairingTest {
             } finally { kotlinx.coroutines.runBlocking { connections.release(core) } }
             return
         }
+        // WN-44: the phone side of check-notify-reply-android.cjs: notifications on, the session held while the PC replies and dismisses.
+        if (InstrumentationRegistry.getArguments().getString("notifyReplyProof") == "true") {
+            val connections = (context as WindApplication).connections
+            val core = kotlinx.coroutines.runBlocking { connections.acquire() }
+            try { NotifyProof.hold(core) } finally { kotlinx.coroutines.runBlocking { connections.release(core) } }
+            return
+        }
         // WN-47: the phone side of check-pc-media-android.cjs (the PC's player on the phone).
         if (InstrumentationRegistry.getArguments().getString("pcMediaProof") == "true") { PcMediaProof.run(compose); return }
         if (InstrumentationRegistry.getArguments().getString("clipboardProof") == "true") {

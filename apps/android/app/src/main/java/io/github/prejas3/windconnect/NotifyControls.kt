@@ -42,7 +42,8 @@ fun NotifyControls() {
     WindCard {
         Text("Powiadomienia na komputerze", style = MaterialTheme.typography.titleMedium)
         Text("Nowe powiadomienia z telefonu (aplikacja, tytuł, treść, ikona) trafiają na sparowany komputer, gdy jest połączony. " +
-            "Nic nie idzie przez chmurę ani nie jest zapisywane. Stałe powiadomienia (np. odtwarzacz, nawigacja w tle) są pomijane.")
+            "Nic nie idzie przez chmurę ani nie jest zapisywane. Stałe powiadomienia (np. odtwarzacz, nawigacja w tle) są pomijane. " +
+            "Z komputera można odpowiedzieć na wiadomość i odrzucić powiadomienie; odrzucone na jednym urządzeniu znika z drugiego.")
         Text("To osobna zgoda: w ustawieniach Androida wybierz „WindConnect: powiadomienia na komputerze”. " +
             "Dostęp dla multimediów nie wystarcza i nie jest tu używany. Android 15 może ukrywać treść wrażliwą (np. kody SMS); " +
             "komputer zobaczy wtedy „Treść ukryta” albo nic.", style = MaterialTheme.typography.bodySmall)

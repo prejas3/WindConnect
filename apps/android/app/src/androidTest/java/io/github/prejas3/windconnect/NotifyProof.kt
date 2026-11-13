@@ -30,6 +30,26 @@ object NotifyProof {
             android.os.ParcelFileDescriptor.AutoCloseInputStream(fd).use { it.readBytes().decodeToString() }
         }
 
+    /**
+     * WN-44: the setting on (access granted by the script), "notifyReplyReady" once the listener is bound, then the session is held
+     * until the script writes cache/wn44-done (at most 5 min) while the PC replies to and dismisses real apps' notifications.
+     */
+    fun hold(core: WindCore) = runBlocking {
+        val context = instrumentation.targetContext
+        assertTrue("the script grants NotifyListenerService's access", NotifyListenerService.granted(context))
+        val done = java.io.File(context.cacheDir, "wn44-done").apply { delete() }
+        try {
+            core.setNotifyAllowed(true)
+            withTimeout(10_000) { while (!core.notifyAccess.value) { core.refreshNotify(); delay(100) } }
+            delay(1_500)
+            instrumentation.sendStatus(0, Bundle().apply { putString("notifyReplyReady", "true") })
+            withTimeout(300_000) { while (!done.exists()) delay(200) }
+        } finally {
+            done.delete()
+            core.setNotifyAllowed(false)
+        }
+    }
+
     fun run(core: WindCore, tag: String, measure: String?) = runBlocking {
         assertTrue("the script grants NotifyListenerService's access", NotifyListenerService.granted(instrumentation.targetContext))
         val sends = Collections.synchronizedList(mutableListOf<NotifySend>())

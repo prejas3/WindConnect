@@ -76,6 +76,8 @@ pub struct Snapshot {
     pub share_media: bool,
     /// WN-43: "Powiadomienia z telefonu" (the phone's notifications as toasts; notify/1).
     pub phone_notifications: bool,
+    /// WN-44: the phone's notifications in the panel, newest first (empty without a session).
+    pub notifications: Vec<crate::notify::PanelItem>,
     /// A phone is paired: [`has_paired_in`], the rule the first window
     /// follows too (WN-113). A phone owed an unpair notice doesn't count.
     pub paired: bool,
@@ -97,6 +99,7 @@ impl Default for Snapshot {
             media: None,
             share_media: true,
             phone_notifications: true,
+            notifications: Vec::new(),
             paired: false,
         }
     }
@@ -143,6 +146,10 @@ enum Action {
     ShareMedia(bool),
     /// WN-43: show the phone's notifications, or stop (and remove those shown).
     PhoneNotifications(bool),
+    /// WN-44: a reply typed in the panel for one of the phone's notifications (by its tag).
+    NotifyReply(String, String),
+    /// WN-44: ✕ in the panel: dismiss it here and on the phone.
+    NotifyDismiss(String),
     /// A button of the phone's player in the panel (WN-46).
     Media(wind_core::media::Action),
     /// Find my phone (WN-50): ring it, or stop the ring.
@@ -438,6 +445,9 @@ async fn run(
             .unwrap_or(true),
     ));
     let accept_notify = phone_notifications.clone();
+    // WN-44: replies and closes from the toasts come back here.
+    let (toast_events_tx, mut toast_events) =
+        mpsc::unbounded_channel::<crate::notify::ToastEvent>();
     let toasts = crate::notify::worker(
         &app,
         key_store
@@ -445,6 +455,7 @@ async fn run(
             .parent()
             .ok_or("identity directory missing")?
             .join("notify-icons"),
+        toast_events_tx,
     );
     let trust = Arc::new(PinnedKeys::new());
     let loaded = store.load()?;
@@ -619,6 +630,10 @@ async fn run(
         snapshot.share_media = share_media.load(std::sync::atomic::Ordering::SeqCst);
         snapshot.phone_notifications =
             phone_notifications.load(std::sync::atomic::Ordering::SeqCst);
+        snapshot.notifications = notifications
+            .as_ref()
+            .map(|n| n.items())
+            .unwrap_or_default();
         snapshot.media = player.view.clone();
         crate::battery::set(&app, snapshot.battery);
         snapshot.find.available = active.as_ref().is_some_and(|(s, _): &(Session, _)| {
@@ -649,6 +664,12 @@ async fn run(
                     if let Some((session, _)) = &active { let _ = session.set_accepted(wind_core::protocol::Channel::Notify, on).await; }
                     // Off: Windows keeps toast content in its store; remove what was shown and the icons.
                     if !on { let _ = toasts.send(crate::notify::Job::Clear); }
+                }
+                Some(Action::NotifyReply(tag, text)) => {
+                    notify_reply(active.as_ref().map(|(s, _)| s), notifications.as_mut(), &tag, text).await;
+                }
+                Some(Action::NotifyDismiss(tag)) => {
+                    notify_dismiss(active.as_ref().map(|(s, _)| s), notifications.as_mut(), &tag).await;
                 }
                 Some(Action::Media(action)) => {
                     if let Some((session, _)) = &active {
@@ -852,6 +873,18 @@ async fn run(
                 Some(message) => { if let Some(m) = wind_core::media::Message::decode(&message.message) { player.apply(m); } }
                 None => media_input = None,
             },
+            // CCS/1 FLOW:toast reply/close (WinRT, any thread) -> notify-action/1 to the phone (WN-44).
+            Some(event) = toast_events.recv() => match event {
+                crate::notify::ToastEvent::Reply { tag, text } => {
+                    notify_reply(active.as_ref().map(|(s, _)| s), notifications.as_mut(), &tag, text).await;
+                }
+                crate::notify::ToastEvent::TooLong { tag, text } => {
+                    if let Some(n) = notifications.as_mut() { n.too_long(&tag, text); }
+                }
+                crate::notify::ToastEvent::Dismissed { tag } => {
+                    notify_dismiss(active.as_ref().map(|(s, _)| s), notifications.as_mut(), &tag).await;
+                }
+            },
             // CCS/1 FLOW:phone Posted/Icon/Removed -> Notifications (popup or quiet) -> toast worker (WN-43).
             message = async { match notify_input.as_mut() { Some(rx) => rx.recv().await, None => std::future::pending().await } } => match message {
                 Some(message) => { if let (Some(n), Some(m)) = (notifications.as_mut(), wind_core::notify::Message::decode(&message.message)) { n.apply(m); } }
@@ -959,6 +992,71 @@ pub fn share_media(
     state
         .commands
         .send(Action::ShareMedia(enabled))
+        .map_err(|_| "pairing unavailable".into())
+}
+/// WN-44: a reply for one of the phone's notifications shown in this session; the text is never logged.
+async fn notify_reply(
+    session: Option<&Session>,
+    notifications: Option<&mut crate::notify::Notifications>,
+    tag: &str,
+    text: String,
+) {
+    let (Some(session), Some(n)) = (session, notifications) else {
+        return;
+    };
+    let Some(id) = n.known(tag) else { return };
+    let sent = wind_core::notify::act(session, &wind_core::notify::Action::Reply { id, text })
+        .await
+        .unwrap_or(false);
+    n.reply_sent(tag, sent);
+}
+
+/// WN-44: dismissed on the PC (toast ✕ or the panel): gone here, and on the phone when it takes `notify-action/1`.
+async fn notify_dismiss(
+    session: Option<&Session>,
+    notifications: Option<&mut crate::notify::Notifications>,
+    tag: &str,
+) {
+    let Some(n) = notifications else { return };
+    let id = n.known(tag);
+    n.dismiss(tag);
+    if let (Some(session), Some(id)) = (session, id) {
+        let _ = wind_core::notify::act(session, &wind_core::notify::Action::Dismiss { id }).await;
+    }
+}
+
+/// WN-44: from the panel: "reply" (with `text`, 1–1024 bytes; never trimmed) or "dismiss", by the notification's tag.
+#[tauri::command]
+pub fn notify_action(
+    window: tauri::WebviewWindow,
+    state: tauri::State<'_, Runtime>,
+    action: &str,
+    tag: String,
+    text: Option<String>,
+) -> Result<(), String> {
+    if window.label() != "panel" {
+        return Err("unsupported window".into());
+    }
+    if crate::notify::id_of(&tag).is_none() {
+        return Err("unknown notification".into());
+    }
+    let action = match (action, text) {
+        ("reply", Some(text)) => {
+            let text = text.trim().to_owned();
+            if text.is_empty() {
+                return Err("empty reply".into());
+            }
+            if text.len() > wind_core::notify::MAX_REPLY {
+                return Err("too-long".into());
+            }
+            Action::NotifyReply(tag, text)
+        }
+        ("dismiss", _) => Action::NotifyDismiss(tag),
+        _ => return Err("unknown action".into()),
+    };
+    state
+        .commands
+        .send(action)
         .map_err(|_| "pairing unavailable".into())
 }
 /// WN-43: "Powiadomienia z telefonu" on or off (main window settings).

@@ -77,3 +77,20 @@ body { min-height: 100vh; overflow: auto; }
 .device-list .connected { color: var(--accent); }.device-list .owed { color: var(--warning); }
 .device-list .field { margin: 6px 0 0; }.device-list .confirm { margin-top: 6px; font-size: 12px; }
 .device-list .confirm .button-row, .device-list .field .button-row { display: flex; gap: 4px; justify-content: flex-end; margin-top: 6px; }
+/* WN-44: the phone's notifications; texts from other apps go in as text only (notifications.js). */
+.notifications-note { font-size: 11px; margin: -4px 0 0; }
+.notification-list li { grid-template-columns: minmax(0,1fr); gap: 6px; }
+.notification-list li + li { border-top: 1px solid var(--border); padding-top: 8px; }
+.notification-head { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: start; gap: 6px; }
+.notification-head > div { min-width: 0; }
+.notification-app { font-size: 11px; color: var(--sub); }
+.notification-text { margin: 2px 0 0; font-size: 12px; color: var(--sub); overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.notification-dismiss { min-height: 26px; padding: 3px 6px; }
+.notification-dismiss svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; }
+.notification-reply { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 6px; align-items: center; }
+.notification-reply input { min-width: 0; font: inherit; font-size: 12px; padding: 5px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); color: var(--text); }
+.notification-reply input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.notification-reply input[aria-invalid="true"] { border-color: var(--danger); }
+.notification-status { grid-column: 1 / -1; font-size: 11px; color: var(--sub); }
+.notification-status:empty { display: none; }
+.notification-status.problem { color: var(--danger); }

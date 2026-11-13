@@ -34,10 +34,28 @@ internal data class NotificationParts(
     val text: CharSequence?,
     val progressMax: Int,
     val progressIndeterminate: Boolean,
+    /** Its actions, in order (WN-44: the reply action). */
+    val actions: List<ActionParts> = emptyList(),
 )
 
-/** A notification as it goes to the PC, before the id and the app's label. */
-internal data class NotificationContent(val title: String?, val text: String?, val progress: Boolean)
+/** One notification action, as far as replying goes. */
+internal data class ActionParts(
+    val label: CharSequence?,
+    /** Notification.Action.SEMANTIC_ACTION_* (API 28+). */
+    val semantic: Int,
+    val contextual: Boolean,
+    /** Its RemoteInputs: whether each takes free-form text. */
+    val freeForm: List<Boolean>,
+)
+
+/** A notification as it goes to the PC, before the id and the app's label. [replyIndex]: its reply action, if any. */
+internal data class NotificationContent(
+    val title: String?,
+    val text: String?,
+    val progress: Boolean,
+    val reply: String? = null,
+    val replyIndex: Int? = null,
+)
 
 /**
  * CCS/1 M:WN-42 the phone's notifications for the PC (PROTOCOL.md §9.7). RULE:persistent ones (ongoing, foreground service,
@@ -70,8 +88,21 @@ internal object NotificationRules {
         } else clean(parts.bigText ?: parts.text, MAX_TEXT)
         if (title == null && text == null) return null
         val progress = parts.progressMax > 0 || parts.progressIndeterminate || parts.category == Notification.CATEGORY_PROGRESS
-        return NotificationContent(title, text, progress)
+        val replyIndex = replyAction(parts.actions)
+        val reply = replyIndex?.let { clean(parts.actions[it].label, MAX_REPLY_LABEL) ?: "Odpowiedz" }
+        return NotificationContent(title, text, progress, reply, replyIndex)
     }
+
+    /**
+     * WN-44: the action a reply from the PC goes to. One that takes free-form text, not contextual (system smart replies);
+     * SEMANTIC_ACTION_REPLY first, else the first such one. Null: it can't be replied to.
+     */
+    fun replyAction(actions: List<ActionParts>): Int? {
+        val candidates = actions.indices.filter { !actions[it].contextual && actions[it].freeForm.any { free -> free } }
+        return candidates.firstOrNull { actions[it].semantic == Notification.Action.SEMANTIC_ACTION_REPLY } ?: candidates.firstOrNull()
+    }
+
+    const val MAX_REPLY_LABEL = 64
 
     /** Plain text, one line, no control or bidi characters, at most [max] UTF-8 bytes; null when nothing is left. */
     fun clean(text: CharSequence?, max: Int): String? {
@@ -124,6 +155,9 @@ internal fun StatusBarNotification.parts(): NotificationParts {
         text = extras.getCharSequence(Notification.EXTRA_TEXT),
         progressMax = extras.getInt(Notification.EXTRA_PROGRESS_MAX, 0),
         progressIndeterminate = extras.getBoolean(Notification.EXTRA_PROGRESS_INDETERMINATE, false),
+        actions = (n.actions ?: emptyArray()).map { a ->
+            ActionParts(a.title, a.semanticAction, a.isContextual, (a.remoteInputs ?: emptyArray()).map { it.allowFreeFormInput })
+        },
     )
 }
 
@@ -175,6 +209,8 @@ class NotifyListenerService : NotificationListenerService() {
         if (!allowed(this)) return
         val content = NotificationRules.content(sbn.parts(), packageName) ?: return
         val id = NotificationRules.id(sbn.key, salt(this))
+        // WN-44: what a dismissal or a reply from the PC needs (the core checks the id was sent in this session).
+        remember(id, sbn.key, content.replyIndex?.let { sbn.notification.actions?.getOrNull(it) })
         deliver(NotificationEvent.Posted(PhoneNotification(
             id = id,
             app = "",
@@ -183,17 +219,53 @@ class NotifyListenerService : NotificationListenerService() {
             text = content.text,
             timeMs = sbn.postTime.toULong(),
             progress = content.progress,
+            reply = content.reply,
         ), sbn.packageName, at))
     }
 
     override fun onNotificationRemoved(sbn: StatusBarNotification) {
         val deliver = sink ?: return
         if (!allowed(this)) return
-        deliver(NotificationEvent.Removed(NotificationRules.id(sbn.key, salt(this))))
+        val id = NotificationRules.id(sbn.key, salt(this))
+        synchronized(known) { known.remove(id.toList()) }
+        deliver(NotificationEvent.Removed(id))
     }
 
     companion object {
         @Volatile private var current: WeakReference<NotifyListenerService>? = null
+        /** WN-44: notifications shown to the PC: their key and reply action, newest 256 (no texts kept). */
+        private val known = object : LinkedHashMap<List<Byte>, Pair<String, Notification.Action?>>(64, 0.75f, true) {
+            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<List<Byte>, Pair<String, Notification.Action?>>?) = size > 256
+        }
+
+        private fun remember(id: ByteArray, key: String, reply: Notification.Action?) {
+            synchronized(known) { known[id.toList()] = key to reply }
+        }
+
+        /** Forgets every notification (a new session: the PC may act only on what it is sent from now on). */
+        internal fun forget() = synchronized(known) { known.clear() }
+
+        /** WN-44: the PC dismissed it; false when it isn't known or the listener isn't bound. */
+        internal fun dismiss(id: ByteArray): Boolean {
+            val key = synchronized(known) { known[id.toList()]?.first } ?: return false
+            val listener = current?.get() ?: return false
+            return try { listener.cancelNotification(key); true } catch (_: Exception) { false }
+        }
+
+        /**
+         * WN-44: the PC's reply, through the notification's own reply action (RemoteInput), as if typed on the phone.
+         * The text isn't kept or logged. False: not known, no reply action, or the app's PendingIntent is gone.
+         */
+        internal fun reply(context: Context, id: ByteArray, text: String): Boolean {
+            val action = synchronized(known) { known[id.toList()]?.second } ?: return false
+            val inputs = action.remoteInputs?.filter { it.allowFreeFormInput } ?: return false
+            if (inputs.isEmpty()) return false
+            val intent = android.content.Intent()
+            val results = Bundle().apply { inputs.forEach { putCharSequence(it.resultKey, text) } }
+            android.app.RemoteInput.addResultsToIntent(inputs.toTypedArray(), intent, results)
+            android.app.RemoteInput.setResultsSource(intent, android.app.RemoteInput.SOURCE_FREE_FORM_INPUT)
+            return try { action.actionIntent.send(context, 0, intent); true } catch (_: Exception) { false }
+        }
         /** Set by [WindCore] while a session may take notifications. */
         @Volatile internal var sink: ((NotificationEvent) -> Unit)? = null
         @Volatile private var cachedSalt: ByteArray? = null

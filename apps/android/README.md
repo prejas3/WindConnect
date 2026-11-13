@@ -699,3 +699,17 @@ $env:ANDROID_SERIAL = "emulator-5590"; node apps/android/scripts/check-notify-an
 `notify_peer` udaje komputer z `notify/1`. Pierwszy przebieg mierzy
 wywołanie słuchacza → zapis, drugi (asystent wyłączony na czas testu)
 `postTime` → zapis; oba p95 < 50 ms.
+
+### Odpowiedź i odrzucanie z komputera (WN-44)
+
+Przy włączonej funkcji i przyznanym dostępie telefon ogłasza też
+`notify-action/1` (PROTOCOL.md §9.8; na żywo przy zmianie). `Posted` dostaje
+`reply` (etykietę), gdy powiadomienie ma akcję z `RemoteInput` przyjmującym
+dowolny tekst: najpierw `SEMANTIC_ACTION_REPLY`, potem pierwsza taka;
+kontekstowe (systemowe szybkie odpowiedzi) pomijane (`NotificationRules.replyAction`).
+`Reply` z komputera idzie przez `RemoteInput.addResultsToIntent` +
+`SOURCE_FREE_FORM_INPUT` i `PendingIntent` akcji, jak wpisana na telefonie,
+potem `Replied`. `Dismiss` to `cancelNotification` słuchacza; potem zwykłe
+`Removed`. Tylko dla id wysłanych w tej sesji (`WindCore.sentIds`; słuchacz
+pamięta klucz i akcję odpowiedzi 256 najnowszych, bez treści). Tekst
+odpowiedzi nie jest logowany ani przechowywany.

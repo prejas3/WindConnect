@@ -24,6 +24,10 @@ pub const MAX_TITLE: usize = 256;
 pub const MAX_TEXT: usize = 1024;
 /// The app icon, PNG only, at most this many bytes (64 px a side, by the sender).
 pub const MAX_ICON: usize = 16 * 1024;
+/// The reply action's label (WN-44).
+pub const MAX_REPLY_LABEL: usize = 64;
+/// A reply's text, UTF-8 bytes at most (1 at least).
+pub const MAX_REPLY: usize = 1024;
 /// One `Posted` per id at most this often.
 pub const WINDOW: Duration = Duration::from_secs(1);
 /// Ids remembered per session (sent ones, for `Removed` and the window); the oldest go first.
@@ -42,6 +46,8 @@ pub struct Posted {
     pub time_ms: u64,
     /// Key of the [`Message::Icon`] that goes with it.
     pub icon: Option<[u8; 8]>,
+    /// The label of its reply action, when it can be replied to (WN-44).
+    pub reply: Option<String>,
 }
 
 impl Posted {
@@ -61,8 +67,60 @@ impl Posted {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Message {
     Posted(Posted),
-    Icon { key: [u8; 8], png: Vec<u8> },
-    Removed { id: [u8; 16] },
+    Icon {
+        key: [u8; 8],
+        png: Vec<u8>,
+    },
+    Removed {
+        id: [u8; 16],
+    },
+    /// Whether a [`Action::Reply`] went out to the app (WN-44).
+    Replied {
+        id: [u8; 16],
+        ok: bool,
+    },
+}
+
+/// On channel `notify-action`, from the side showing the notifications (§9.8, WN-44).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Action {
+    Dismiss { id: [u8; 16] },
+    Reply { id: [u8; 16], text: String },
+}
+
+impl Action {
+    pub fn encode(&self) -> RawMessage {
+        match self {
+            Self::Dismiss { id } => RawMessage::new(
+                0,
+                Value::Map(vec![(Value::Int(0), Value::Bytes(id.to_vec()))]),
+            ),
+            Self::Reply { id, text } => RawMessage::new(
+                1,
+                Value::Map(vec![
+                    (Value::Int(0), Value::Bytes(id.to_vec())),
+                    (Value::Int(1), Value::Text(text.clone())),
+                ]),
+            ),
+        }
+    }
+
+    /// `None` for an unknown type or a malformed one (an empty or too long reply: never trimmed).
+    pub fn decode(m: &RawMessage) -> Option<Self> {
+        let f = fields(m)?;
+        let id = fixed(get(&f, 0)?)?;
+        match m.ty {
+            0 => Some(Self::Dismiss { id }),
+            1 => match get(&f, 1)? {
+                Value::Text(t) if !t.is_empty() && t.len() <= MAX_REPLY => Some(Self::Reply {
+                    id,
+                    text: t.clone(),
+                }),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
 }
 
 type Fields<'a> = Vec<(u64, &'a Value)>;
@@ -141,6 +199,9 @@ impl Message {
                 if let Some(k) = n.icon {
                     f.push((6, Value::Bytes(k.to_vec())));
                 }
+                if let Some(r) = &n.reply {
+                    f.push((7, t(r)));
+                }
                 RawMessage::new(0, map(f))
             }
             Self::Icon { key, png } => RawMessage::new(
@@ -151,6 +212,10 @@ impl Message {
                 ]),
             ),
             Self::Removed { id } => RawMessage::new(2, map(vec![(0, Value::Bytes(id.to_vec()))])),
+            Self::Replied { id, ok } => RawMessage::new(
+                3,
+                map(vec![(0, Value::Bytes(id.to_vec())), (1, Value::Bool(*ok))]),
+            ),
         }
     }
 
@@ -172,6 +237,7 @@ impl Message {
                     None => None,
                     Some(v) => Some(fixed(v)?),
                 },
+                reply: text(&f, 7, MAX_REPLY_LABEL)?,
             })),
             1 => Some(Self::Icon {
                 key: fixed(get(&f, 0)?)?,
@@ -183,6 +249,13 @@ impl Message {
             2 => Some(Self::Removed {
                 id: fixed(get(&f, 0)?)?,
             }),
+            3 => Some(Self::Replied {
+                id: fixed(get(&f, 0)?)?,
+                ok: match get(&f, 1)? {
+                    Value::Bool(b) => *b,
+                    _ => return None,
+                },
+            }),
             _ => None,
         }
     }
@@ -191,6 +264,20 @@ impl Message {
 /// Routes `notify/1`: the queue gets the peer's notifications.
 pub fn route(router: &mut Router) -> mpsc::Receiver<ChannelMessage> {
     router.route(Channel::Notify, 1, 32)
+}
+
+/// Routes `notify-action/1` (WN-44): the queue gets the peer's dismissals and replies for notifications sent here.
+pub fn route_actions(router: &mut Router) -> mpsc::Receiver<ChannelMessage> {
+    router.route(Channel::NotifyAction, 1, 16)
+}
+
+/// Asks the peer to dismiss or reply to one of its notifications. `Ok(false)`: it doesn't take `notify-action/1`.
+pub async fn act(session: &Session, action: &Action) -> Result<bool, SessionError> {
+    match session.send(Channel::NotifyAction, &action.encode()).await {
+        Ok(()) => Ok(true),
+        Err(SessionError::CapabilityMissing(_)) => Ok(false),
+        Err(e) => Err(e),
+    }
 }
 
 /// What [`Throttle::posted`] says to do with a notification.
@@ -401,6 +488,20 @@ impl Sender {
         }
     }
 
+    /// The outcome of a reply the peer asked for (WN-44).
+    pub async fn replied(&self, id: [u8; 16], ok: bool) -> Result<Outcome, SessionError> {
+        let _order = self.state.lock().await;
+        match self
+            .session
+            .send(Channel::Notify, &Message::Replied { id, ok }.encode())
+            .await
+        {
+            Ok(()) => Ok(Outcome::Sent),
+            Err(SessionError::CapabilityMissing(_)) => Ok(Outcome::NotAccepted),
+            Err(e) => Err(e),
+        }
+    }
+
     /// Gone on the phone: `Removed`, only when the id went out in this session.
     pub async fn removed(&self, id: [u8; 16]) -> Result<Outcome, SessionError> {
         let mut s = self.state.lock().await;
@@ -436,7 +537,97 @@ mod tests {
             text: Some(text.into()),
             time_ms: 1_794_500_000_000,
             icon: Some([3; 8]),
+            reply: None,
         }
+    }
+
+    #[test]
+    fn replies_and_dismissals_round_trip() {
+        let can = Posted {
+            reply: Some("Odpowiedz".into()),
+            ..note("x")
+        };
+        assert_eq!(
+            Message::decode(&Message::Posted(can.clone()).encode()),
+            Some(Message::Posted(can))
+        );
+        let long_label = Posted {
+            reply: Some("x".repeat(MAX_REPLY_LABEL + 1)),
+            ..note("x")
+        };
+        assert_eq!(Message::decode(&Message::Posted(long_label).encode()), None);
+        for m in [
+            Message::Replied {
+                id: [7; 16],
+                ok: true,
+            },
+            Message::Replied {
+                id: [7; 16],
+                ok: false,
+            },
+        ] {
+            assert_eq!(Message::decode(&m.encode()), Some(m));
+        }
+        for a in [
+            Action::Dismiss { id: [7; 16] },
+            Action::Reply {
+                id: [7; 16],
+                text: "Będę o 19 \u{1F44D}".into(),
+            },
+            Action::Reply {
+                id: [7; 16],
+                text: "x".repeat(MAX_REPLY),
+            },
+        ] {
+            assert_eq!(Action::decode(&a.encode()), Some(a));
+        }
+        let too_long = Action::Reply {
+            id: [7; 16],
+            text: "x".repeat(MAX_REPLY + 1),
+        };
+        assert_eq!(Action::decode(&too_long.encode()), None, "never trimmed");
+        let empty = Action::Reply {
+            id: [7; 16],
+            text: String::new(),
+        };
+        assert_eq!(Action::decode(&empty.encode()), None);
+        let mut dismiss = vec![0x15, 0x82, 0x00, 0xa1, 0x00, 0x50];
+        dismiss.extend([7; 16]);
+        assert_eq!(
+            encode_raw_frame(
+                Channel::NotifyAction,
+                &Action::Dismiss { id: [7; 16] }.encode()
+            )
+            .unwrap(),
+            dismiss
+        );
+        // PROTOCOL.md §9.7 / §9.8 examples.
+        let mut reply = vec![0x19, 0x82, 0x01, 0xa2, 0x00, 0x50];
+        reply.extend([7; 16]);
+        reply.extend([0x01, 0x62, 0x6f, 0x6b]);
+        let ok = Action::Reply {
+            id: [7; 16],
+            text: "ok".into(),
+        };
+        assert_eq!(
+            encode_raw_frame(Channel::NotifyAction, &ok.encode()).unwrap(),
+            reply
+        );
+        let mut replied = vec![0x17, 0x82, 0x03, 0xa2, 0x00, 0x50];
+        replied.extend([7; 16]);
+        replied.extend([0x01, 0xf5]);
+        assert_eq!(
+            encode_raw_frame(
+                Channel::Notify,
+                &Message::Replied {
+                    id: [7; 16],
+                    ok: true
+                }
+                .encode()
+            )
+            .unwrap(),
+            replied
+        );
     }
 
     #[test]
