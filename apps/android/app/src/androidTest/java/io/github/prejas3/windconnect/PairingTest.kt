@@ -136,6 +136,10 @@ class PairingTest {
         val elapsed = android.os.SystemClock.elapsedRealtime() - start
         assertTrue("decoded QR to connected session must stay below 10s: $elapsed", elapsed < 10000)
         InstrumentationRegistry.getInstrumentation().sendStatus(0, android.os.Bundle().apply { putString("qrToConnectedMs", elapsed.toString()) })
+        if (InstrumentationRegistry.getArguments().getString("transferProgressProof") == "true") {
+            compose.onNodeWithTag("pairingDone").performScrollTo().performClick()
+            TransferProgressProof.run(compose); return
+        }
         if (InstrumentationRegistry.getArguments().getString("connectionNotificationProof") == "true") {
             compose.onNodeWithTag("pairingDone").performScrollTo().performClick()
             ConnectionNotificationProof.run(compose); return

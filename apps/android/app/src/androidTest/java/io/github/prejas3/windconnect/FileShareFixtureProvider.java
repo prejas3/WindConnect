@@ -16,11 +16,12 @@ public class FileShareFixtureProvider extends ContentProvider {
         if (kind.equals("images")) return String.format(Locale.ROOT, "photo%02d.jpg", index);
         if (kind.equals("mixed")) return new String[]{"mixed.JPG", "clip.mp4", "paper.pdf", "mystery"}[index];
         if (kind.equals("unsafe")) return "../CON?.jpg";
+        if (kind.equals("retry")) return "retry-" + index + ".txt";
         return kind + ".jpg";
     }
     private String kind(Uri uri) {
         List<String> parts = uri.getPathSegments();
-        if (parts.size() != 2 || !Arrays.asList("images", "mixed", "unknown", "unsafe", "denied", "oversize", "cancel").contains(parts.get(0))) throw new IllegalArgumentException();
+        if (parts.size() != 2 || !Arrays.asList("images", "mixed", "unknown", "unsafe", "denied", "oversize", "cancel", "retry").contains(parts.get(0))) throw new IllegalArgumentException();
         int index = Integer.parseInt(parts.get(1));
         if (index < 0 || index > 19) throw new IllegalArgumentException();
         return parts.get(0);
@@ -41,6 +42,18 @@ public class FileShareFixtureProvider extends ContentProvider {
         if (!mode.equals("r")) throw new IllegalArgumentException();
         String kind = kind(uri);
         File file = file(uri);
+        if (kind.equals("retry") && uri.getLastPathSegment().equals("2")) {
+            File failed = new File(getContext().getCacheDir(), "wn41-failed-once");
+            if (!failed.exists()) {
+                File gate = new File(getContext().getCacheDir(), "wn41-first-two-done");
+                long deadline = android.os.SystemClock.elapsedRealtime() + 30000;
+                while (!gate.exists() && android.os.SystemClock.elapsedRealtime() < deadline) {
+                    try { Thread.sleep(25); } catch (InterruptedException interrupted) { throw new FileNotFoundException(); }
+                }
+                try { failed.createNewFile(); } catch (IOException failure) { throw new FileNotFoundException(); }
+                throw new FileNotFoundException("synthetic first-attempt failure after two receiver confirmations");
+            }
+        }
         if (kind.equals("cancel") || kind.equals("images")) {
             try {
                 ParcelFileDescriptor[] pipe = ParcelFileDescriptor.createReliablePipe();

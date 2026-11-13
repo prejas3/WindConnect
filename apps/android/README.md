@@ -1,5 +1,13 @@
 # Android
 
+## Postęp i ponawianie plików (WN-41)
+
+CCS/1
+RULE:własne ekrany korzystają ze zdarzeń silnika (postęp co100ms, bez odpytywania/timera idle); systemowe powiadomienie ma pasek postępu i bajty/prędkość najwyżej raz/s oraz natychmiastowy stan końcowy/Anuluj. Nie obiecujemy odświeżania SystemUI co100ms. Prędkość: monotoniczne delty, okno1s + EMA; przed pełnym oknem i podczas oczekiwania „—”. Podczas importowania źródeł łączny rozmiar nie jest jeszcze znany: pasek nieokreślony, bez wymyślonego procentu. Po przygotowaniu wszystkich źródeł: rzeczywiste bajty potwierdzone przez odbiornik / rozmiar.
+FLOW:po błędzie lub anulowaniu „Ponów niewysłane” -> lekki openFileDescriptor/close każdego pozostałego URI -> ponowne potwierdzenie tego samego, nadal sparowanego PC -> nowy import/transfer. Pliki potwierdzone jako odebrane nie są ponawiane. Utrata grantu wymaga ponownego wyboru źródeł. Potwierdzenie i limity WN-40 pozostają; żadnego automatycznego wysyłania z akcji powiadomienia, utrwalania grantów ani przechowywania nieudanych kopii GiB.
+LIMIT:wybór do ponowienia żyje tylko w procesie; po jego zakończeniu wybierz pliki ponownie. Długie pomiary fizycznego Wi-Fi/baterii są odłożone. Android nie ma jeszcze publicznego odbioru: „Otwórz folder” dotyczy PC; odbiór Androida to WN-120. TalkBack dostaje semantyczny postęp, nie komunikat live co100ms.
+CHECK:`scripts/check-android-transfer-progress.cjs`: prawdziwe źródła z osobnego UID i receiver TEMP;5plików,2potwierdzone, kontrolowany błąd odczytu, Ponów wysyła tylko3; brak grantu blokuje potwierdzenie; indeterminate w Activity/powiadomieniu. Wymaga debug APK/androidTest, files_peer i jawnego ANDROID_SERIAL jednorazowego emulatora, JAVA_HOME/ANDROID_HOME. Nie uruchamiać na telefonie użytkownika.
+
 ## Szybkie akcje powiadomienia (WN-97)
 
 CCS/1

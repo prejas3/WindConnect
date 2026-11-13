@@ -1,0 +1,9 @@
+/* WN-41: isolated transfer layout, existing WindConnect tokens. */
+#transfers-list { max-height: 280px; overflow-y: auto; }
+#transfers-list li { display: block; padding: 8px 0; border-bottom: 1px solid var(--border); }
+#transfers-list .name { white-space: normal; overflow-wrap: anywhere; }
+#transfers-list small { overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.transfer-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; margin-top: 6px; }
+#transfers-list .progress { margin-top: 6px; }
+#transfers-list .progress.indeterminate span { width: 35%; opacity: .55; }
+@media (prefers-reduced-motion: reduce) { #transfers-list .progress span { transition: none; } }

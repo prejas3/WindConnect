@@ -3,22 +3,18 @@
 //! RULE:the phone is the connected one, else the last paired; transfers wait in the engine's queue until it connects.
 //! RULE:incoming files/1 uses the same engine, with local type folders (WN-40).
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     path::{Path, PathBuf},
     sync::{atomic::AtomicBool, Mutex, OnceLock},
 };
 use tauri::{Emitter, Manager};
 use wind_core::{
-    files::{
-        id_hex, Direction, FailReason, FileEngine, FilesConfig, FilesError, TransferInfo,
-        TransferState,
-    },
-    protocol::ErrorCode,
+    files::{Direction, FileEngine, FilesConfig, FilesError, TransferInfo, TransferState},
     session::Session,
 };
 
 /// Rows the panel gets (newest first).
-pub const MAX_ROWS: usize = 50;
+pub use crate::transfer_model::{snapshot_of, Snapshot};
 
 #[derive(Clone)]
 struct Target {
@@ -29,6 +25,9 @@ struct Target {
 #[derive(Default)]
 pub struct Runtime {
     engine: OnceLock<FileEngine>,
+    inbox: OnceLock<PathBuf>,
+    data_dir: OnceLock<PathBuf>,
+    rates: Mutex<HashMap<String, crate::transfer_progress::Rate>>,
     target: Mutex<Option<Target>>,
     /// Paths that came before the engine or a paired phone.
     pending: Mutex<Vec<PathBuf>>,
@@ -37,92 +36,9 @@ pub struct Runtime {
 }
 
 #[derive(Clone, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Row {
-    id: String,
-    name: String,
-    size: u64,
-    done: u64,
-    state: &'static str,
-    reason: Option<&'static str>,
-}
-
-#[derive(Clone, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Snapshot {
-    phone: Option<String>,
-    rows: Vec<Row>,
-    /// Over unfinished transfers.
-    active: usize,
-    active_size: u64,
-    active_done: u64,
-}
-
-#[derive(Clone, serde::Serialize)]
 pub struct Notice {
     message: String,
     error: bool,
-}
-
-fn state_name(state: &TransferState) -> (&'static str, Option<&'static str>) {
-    match state {
-        TransferState::Queued => ("queued", None),
-        TransferState::Running => ("running", None),
-        TransferState::Waiting => ("waiting", Some("Czeka na połączenie z telefonem")),
-        TransferState::Done => ("done", None),
-        TransferState::Cancelled { by_peer } => (
-            "cancelled",
-            Some(if *by_peer {
-                "Anulowano na telefonie"
-            } else {
-                "Anulowano"
-            }),
-        ),
-        TransferState::Failed(reason) => (
-            "failed",
-            Some(match reason {
-                FailReason::NoSpace => "Brak miejsca na telefonie",
-                FailReason::SourceChanged => "Plik zmienił się podczas wysyłania",
-                FailReason::Refused(ErrorCode::CapabilityMissing) | FailReason::Withdrawn => {
-                    "Telefon nie przyjmuje teraz plików"
-                }
-                FailReason::Refused(_) => "Telefon odrzucił plik",
-                FailReason::Protocol(_) => "Błąd połączenia",
-                FailReason::Io(_) => "Nie można odczytać pliku",
-            }),
-        ),
-    }
-}
-
-/// What the panel shows: outgoing transfers, newest first.
-pub fn snapshot_of(phone: Option<String>, transfers: &[TransferInfo]) -> Snapshot {
-    let outgoing: Vec<&TransferInfo> = transfers
-        .iter()
-        .filter(|t| t.direction == Direction::Outgoing)
-        .collect();
-    let active: Vec<&&TransferInfo> = outgoing.iter().filter(|t| !t.state.is_finished()).collect();
-    Snapshot {
-        phone,
-        active: active.len(),
-        active_size: active.iter().map(|t| t.size).sum(),
-        active_done: active.iter().map(|t| t.done).sum(),
-        rows: outgoing
-            .iter()
-            .rev()
-            .take(MAX_ROWS)
-            .map(|t| {
-                let (state, reason) = state_name(&t.state);
-                Row {
-                    id: id_hex(&t.id),
-                    name: t.path.clone(),
-                    size: t.size,
-                    done: t.done,
-                    state,
-                    reason,
-                }
-            })
-            .collect(),
-    }
 }
 
 /// Queues each path for `peer`. Returns how many files were queued and
@@ -189,6 +105,8 @@ pub fn init(app: &tauri::AppHandle, data_dir: &Path) -> std::io::Result<()> {
     let inbox = downloads()
         .unwrap_or_else(|| data_dir.join("Downloads"))
         .join("WindConnect");
+    let _ = runtime.inbox.set(inbox.clone());
+    let _ = runtime.data_dir.set(data_dir.to_path_buf());
     let mut config = FilesConfig::new(inbox, data_dir.join("partials"));
     config.type_folders = true;
     let engine = FileEngine::new(config)?;
@@ -196,10 +114,13 @@ pub fn init(app: &tauri::AppHandle, data_dir: &Path) -> std::io::Result<()> {
     let _ = runtime.engine.set(engine);
     let handle = app.clone();
     tokio::spawn(async move {
-        while updates.changed().await.is_ok() {
-            let transfers = updates.borrow_and_update().clone();
+        let mut last = None;
+        while let Some(transfers) =
+            crate::transfer_model::next_snapshot(&mut updates, &mut last).await
+        {
             let phone = phone_name(&handle);
-            let snapshot = snapshot_of(phone, &transfers);
+            let mut snapshot = snapshot_of(phone, &transfers);
+            apply_rates(&handle.state::<Runtime>(), &mut snapshot);
             let _ = handle.emit_to("panel", "files-state", snapshot.clone());
             let _ = handle.emit_to("main", "files-state", snapshot);
         }
@@ -215,6 +136,23 @@ fn phone_name(app: &tauri::AppHandle) -> Option<String> {
         .unwrap()
         .as_ref()
         .and_then(|t| t.name.clone())
+}
+
+fn apply_rates(runtime: &Runtime, snapshot: &mut Snapshot) {
+    static START: OnceLock<std::time::Instant> = OnceLock::new();
+    let now = START
+        .get_or_init(std::time::Instant::now)
+        .elapsed()
+        .as_millis() as u64;
+    let mut rates = runtime.rates.lock().unwrap();
+    rates.retain(|key, _| snapshot.rows.iter().any(|r| r.key == *key));
+    for row in &mut snapshot.rows {
+        row.rate =
+            rates
+                .entry(row.key.clone())
+                .or_default()
+                .update(now, row.done, row.state == "running");
+    }
 }
 
 /// The phone files go to: the paired one (at start), then whichever connects.
@@ -373,12 +311,14 @@ pub fn files_snapshot(
         .get()
         .map(|e| e.transfers())
         .unwrap_or_default();
-    Ok(snapshot_of(phone, &transfers))
+    let mut snapshot = snapshot_of(phone, &transfers);
+    apply_rates(&state, &mut snapshot);
+    Ok(snapshot)
 }
 
 fn parse_id(id: Option<&str>) -> Result<wind_core::files::TransferId, String> {
     let id = id.ok_or("missing id")?;
-    if id.len() != 32 {
+    if id.len() != 32 || !id.is_ascii() {
         return Err("bad id".into());
     }
     let mut out = [0u8; 16];
@@ -386,6 +326,70 @@ fn parse_id(id: Option<&str>) -> Result<wind_core::files::TransferId, String> {
         *byte = u8::from_str_radix(&id[i * 2..i * 2 + 2], 16).map_err(|_| "bad id")?;
     }
     Ok(out)
+}
+
+pub fn checked_open_path(row: &TransferInfo, inbox: &Path) -> Result<PathBuf, String> {
+    let missing = "Plik został przeniesiony lub usunięty";
+    let source = match row.direction {
+        Direction::Outgoing => row.source.as_ref(),
+        Direction::Incoming if row.state == TransferState::Done => row.saved_as.as_ref(),
+        _ => None,
+    }
+    .ok_or(missing)?;
+    for ancestor in source.ancestors() {
+        let meta = std::fs::symlink_metadata(ancestor).map_err(|_| missing)?;
+        if meta.file_type().is_symlink() {
+            return Err("Nie można otworzyć dowiązania".into());
+        }
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::MetadataExt;
+            if meta.file_attributes() & 0x400 != 0 {
+                return Err("Nie można otworzyć punktu ponownej analizy".into());
+            }
+        }
+    }
+    if !source.is_file() {
+        return Err(missing.into());
+    }
+    let path = source.canonicalize().map_err(|_| missing)?;
+    if row.direction == Direction::Incoming
+        && !path.starts_with(inbox.canonicalize().map_err(|_| missing)?)
+    {
+        return Err("Plik poza folderem odbioru".into());
+    }
+    Ok(path)
+}
+
+#[cfg(windows)]
+fn select_in_explorer(path: &Path) -> Result<(), String> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::{System::Com::*, UI::Shell::*};
+    let wide: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
+    // SAFETY: own COM apartment and PIDL; opens the parent with the item selected, never executes it.
+    unsafe {
+        let initialized = CoInitializeEx(std::ptr::null(), COINIT_APARTMENTTHREADED as u32);
+        let item = ILCreateFromPathW(wide.as_ptr());
+        let result = if item.is_null() {
+            -1
+        } else {
+            let result = SHOpenFolderAndSelectItems(item, 0, std::ptr::null(), 0);
+            ILFree(item);
+            result
+        };
+        if initialized >= 0 {
+            CoUninitialize();
+        }
+        if result < 0 {
+            Err("Nie można otworzyć folderu w Eksploratorze".into())
+        } else {
+            Ok(())
+        }
+    }
+}
+#[cfg(not(windows))]
+fn select_in_explorer(_: &Path) -> Result<(), String> {
+    Err("Eksplorator jest dostępny na Windows".into())
 }
 
 #[tauri::command]
@@ -406,12 +410,49 @@ pub fn files_action(
         return Ok(());
     }
     let engine = state.engine.get().ok_or("files unavailable")?;
+    if action != "clear" {
+        let id = parse_id(id)?;
+        let rows = engine.transfers();
+        let matching: Vec<_> = rows.iter().filter(|t| t.id == id).collect();
+        // CCS/1 SEC:wire IDs are peer-controlled inbound; ambiguity must never act on another transfer.
+        if matching.len() != 1 {
+            return Err("Nie można jednoznacznie wybrać transferu".into());
+        }
+        let row = matching[0];
+        if action == "retry" {
+            if row.direction != Direction::Outgoing
+                || !matches!(
+                    row.state,
+                    TransferState::Failed(_) | TransferState::Cancelled { .. }
+                )
+            {
+                return Err("Nie można ponowić tego transferu".into());
+            }
+            let directory = state.data_dir.get().ok_or("Brak listy urządzeń")?;
+            let paired = wind_core::pairing::PairedDevicesFile::in_dir(directory)
+                .load()
+                .map_err(|e| e.to_string())?;
+            if !paired
+                .devices
+                .iter()
+                .any(|p| p.key.fingerprint().as_bytes() == &row.peer)
+            {
+                return Err("Urządzenie nie jest już sparowane".into());
+            }
+        }
+        if action == "open" {
+            let path = checked_open_path(row, state.inbox.get().ok_or("Brak folderu odbioru")?)?;
+            return select_in_explorer(&path);
+        }
+    }
     match action {
         "cancel" => engine.cancel(&parse_id(id)?),
         "retry" => engine.retry(&parse_id(id)?),
         "clear" => {
             for t in engine.transfers() {
-                if t.direction == Direction::Outgoing && t.state.is_finished() {
+                if t.state.is_finished()
+                    && engine.transfers().iter().filter(|r| r.id == t.id).count() == 1
+                {
                     let _ = engine.forget(&t.id);
                 }
             }
@@ -428,11 +469,64 @@ mod tests {
     use std::net::SocketAddr;
     use std::sync::Arc;
     use wind_core::{
+        files::FailReason,
         identity::DeviceIdentity,
         protocol::DeviceKind,
         session::{LocalInfo, Router},
         transport::{Endpoint, PinnedKeys},
     };
+
+    fn incoming(path: PathBuf) -> TransferInfo {
+        TransferInfo {
+            id: [1; 16],
+            peer: [2; 32],
+            direction: Direction::Incoming,
+            path: "safe.txt".into(),
+            size: 4,
+            done: 4,
+            state: TransferState::Done,
+            source: None,
+            saved_as: Some(path),
+        }
+    }
+    #[test]
+    fn folder_selection_is_verified_local_and_contained() {
+        let temp = tempfile::tempdir().unwrap();
+        let inbox = temp.path().join("inbox");
+        std::fs::create_dir(&inbox).unwrap();
+        let file = inbox.join("safe.txt");
+        std::fs::write(&file, "safe").unwrap();
+        let row = incoming(file.clone());
+        assert_eq!(
+            checked_open_path(&row, &inbox).unwrap(),
+            file.canonicalize().unwrap()
+        );
+        let outside = temp.path().join("outside.exe");
+        std::fs::write(&outside, "not executable").unwrap();
+        assert!(checked_open_path(&incoming(outside), &inbox).is_err());
+        let mut unfinished = row.clone();
+        unfinished.state = TransferState::Running;
+        assert!(checked_open_path(&unfinished, &inbox).is_err());
+        std::fs::remove_file(file).unwrap();
+        assert_eq!(
+            checked_open_path(&row, &inbox).unwrap_err(),
+            "Plik został przeniesiony lub usunięty"
+        );
+        assert!(parse_id(Some("ąąąąąąąąąąąąąąąą")).is_err());
+    }
+    #[test]
+    fn incoming_rows_are_not_hidden_or_offered_outgoing_retry() {
+        let mut row = incoming(PathBuf::from("local/safe.txt"));
+        let done = snapshot_of(None, &[row.clone()]);
+        assert_eq!(done.rows.len(), 1);
+        assert_eq!(done.rows[0].direction, "incoming");
+        assert!(!done.rows[0].can_retry);
+        assert!(done.rows[0].can_open);
+        row.state = TransferState::Failed(FailReason::NoSpace);
+        let failed = snapshot_of(None, &[row]);
+        assert!(!failed.rows[0].can_retry);
+        assert!(!failed.rows[0].can_open);
+    }
 
     #[test]
     fn picker_results() {
@@ -545,5 +639,11 @@ mod tests {
         let s = snapshot_of(Some("Pixel".into()), &pc_engine.transfers());
         assert_eq!((s.active, s.rows.len()), (0, 3));
         assert!(s.rows.iter().all(|r| r.state == "done"));
+        for transfer in pc_engine.transfers() {
+            assert!(
+                pc_engine.retry(&transfer.id).is_err(),
+                "receiver-confirmed files must never be requeued"
+            );
+        }
     }
 }

@@ -48,13 +48,16 @@ public class FileShareSourceActivity extends Activity {
             getSharedPreferences("fixture", MODE_PRIVATE).edit().putString("picker", uri.toString()).apply();
             return;
         }
-        if (!Arrays.asList("images", "mixed", "unknown", "unsafe", "denied", "oversize", "cancel").contains(kind)) throw new IllegalArgumentException();
-        int count = kind.equals("images") ? 20 : kind.equals("mixed") ? 4 : 1;
+        if (!Arrays.asList("images", "mixed", "unknown", "unsafe", "denied", "oversize", "cancel", "retry").contains(kind)) throw new IllegalArgumentException();
+        if (kind.equals("retry")) { new File(getCacheDir(), "wn41-failed-once").delete(); new File(getCacheDir(), "wn41-first-two-done").delete(); }
+        int count = kind.equals("images") ? 20 : kind.equals("mixed") ? 4 : kind.equals("retry") ? 5 : 1;
         File directory = new File(getCacheDir(), "wn40-source/" + kind); directory.mkdirs();
         ArrayList<Uri> uris = new ArrayList<>(); JSONArray manifest = new JSONArray();
         for (int index = 0; index < count; index++) {
             File file = new File(directory, Integer.toString(index));
-            if (kind.equals("cancel")) {
+            if (kind.equals("retry")) {
+                Files.write(file.toPath(), ("WN41 retry file " + index).getBytes(StandardCharsets.UTF_8));
+            } else if (kind.equals("cancel")) {
                 byte[] bytes = new byte[65536]; Arrays.fill(bytes, (byte)42);
                 try (OutputStream output = new FileOutputStream(file)) { for (int i = 0; i < 160; i++) output.write(bytes); }
             } else if (kind.equals("mixed") && index > 0) {

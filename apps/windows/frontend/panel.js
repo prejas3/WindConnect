@@ -1,4 +1,6 @@
+import { createTransfers } from './transfers.js';
 const invoke = window.__TAURI__?.core.invoke;
+const renderFiles = createTransfers(document, (action, id) => invoke?.('files_action', { action, id }).catch(value => renderNotice({ message: String(value), error: true })));
 const system = matchMedia('(prefers-color-scheme: dark)');
 function theme() {
   let choice = 'system';
@@ -206,47 +208,6 @@ function renderPairing(state) {
   if (state.qr && Array.isArray(state.qr.dark)) state.qr.dark.fill(false);
 }
 // CCS/1 FLOW:files-state (engine, <=10/s) -> summary + newest rows; files-drag -> drop zone; files-notice -> status line.
-const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-function bytes(value) { let i = 0; while (value >= 1024 && i < units.length - 1) { value /= 1024; i++; } return `${value.toFixed(i && value < 10 ? 1 : 0)} ${units[i]}`; }
-const stateText = { queued: 'W kolejce', running: 'Wysyłanie', waiting: 'Czeka na telefon', done: 'Wysłano', failed: 'Nie wysłano', cancelled: 'Anulowano' };
-function fileRow(row) {
-  const item = document.createElement('li');
-  const text = document.createElement('div');
-  const name = document.createElement('span');
-  name.className = 'name'; name.textContent = row.name; name.title = row.name;
-  const detail = document.createElement('small');
-  const percent = row.size ? Math.floor(row.done * 100 / row.size) : 100;
-  detail.textContent = row.reason || (row.state === 'running' ? `${percent}% · ${bytes(row.size)}` : `${stateText[row.state] || row.state} · ${bytes(row.size)}`);
-  if (row.state === 'failed') detail.className = 'problem';
-  text.append(name, detail);
-  item.append(text);
-  const action = ['queued', 'running', 'waiting'].includes(row.state) ? 'cancel' : ['failed', 'cancelled'].includes(row.state) ? 'retry' : null;
-  if (action) {
-    const button = document.createElement('button');
-    button.className = 'button quiet small';
-    button.textContent = action === 'cancel' ? 'Anuluj' : 'Ponów';
-    button.setAttribute('aria-label', `${button.textContent}: ${row.name}`);
-    button.addEventListener('click', () => invoke?.('files_action', { action, id: row.id }).catch(error));
-    item.append(button);
-  }
-  return item;
-}
-function renderFiles(state) {
-  const section = document.querySelector('#transfers');
-  section.hidden = state.rows.length === 0;
-  if (section.hidden) return;
-  const finished = state.rows.filter(r => ['done', 'failed', 'cancelled'].includes(r.state)).length;
-  const percent = state.activeSize ? Math.floor(state.activeDone * 100 / state.activeSize) : 100;
-  document.querySelector('#transfers-title').textContent = state.active ? `Wysyłanie na ${state.phone || 'telefon'}` : 'Wysłane pliki';
-  document.querySelector('#transfers-summary').textContent = state.active ? `${state.active} w toku · ${bytes(state.activeDone)} z ${bytes(state.activeSize)}` : `${finished} zakończone`;
-  const total = document.querySelector('#transfers-total');
-  total.hidden = !state.active;
-  total.setAttribute('aria-valuenow', String(percent));
-  total.style.setProperty('--done', `${percent}%`);
-  const rows = [...state.rows].sort((a, b) => (a.state === 'running' ? -1 : 0) - (b.state === 'running' ? -1 : 0)).slice(0, 4);
-  document.querySelector('#transfers-list').replaceChildren(...rows.map(fileRow));
-  document.querySelector('#transfers-clear').hidden = finished === 0;
-}
 let noticeTimer;
 function renderNotice(notice) {
   const element = document.querySelector('#files-notice');
@@ -266,7 +227,7 @@ document.querySelector('#find-phone').addEventListener('click', event => {
   const ringing = event.currentTarget.getAttribute('aria-pressed') === 'true';
   invoke?.('pairing_action', { action: ringing ? 'ring-stop' : 'ring' }).catch(error);
 });
-document.querySelector('#transfers-clear').addEventListener('click', () => invoke?.('files_action', { action: 'clear' }).catch(error));
+
 const pairingActions = { 'pairing-refresh': 'refresh', 'pairing-cancel': 'close', 'pairing-sas': 'sas', 'pairing-accept': 'sas-accept', 'pairing-reject': 'sas-reject' };
 document.querySelectorAll(Object.keys(pairingActions).map(id => `#${id}`).join(',')).forEach(button => button.addEventListener('click', () => invoke?.('pairing_action', { action: pairingActions[button.id] }).catch(error)));
 // CCS/1 PERF:preload font/layout before ready; two frames acknowledge content submission, not physical display scanout.
