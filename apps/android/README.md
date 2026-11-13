@@ -1,5 +1,13 @@
 # Android
 
+## Szybkie akcje powiadomienia (WN-97)
+
+CCS/1
+FLOW:stałe powiadomienie połączenia: przy połączeniu „Wyślij schowek”, „Wyślij plik” (tylko gdy PC przyjmuje files/1), „Zatrzymaj”. Dotknięcie treści otwiera urządzenie. Bez połączenia: „Otwórz urządzenie”, „Połącz ponownie”, „Zatrzymaj”. Zmiana możliwości odbiornika aktualizuje akcje; same pomiary RTT nie przebudowują powiadomienia.
+SEC:obie akcje uruchamiają bezpośrednio Activity przez jawny, immutable PendingIntent. API31+ wymaga uwierzytelnienia; publiczna wersja powiadomienia nie ma akcji wysyłania ani nazwy urządzenia. Activity sprawdza Keyguard i prosi o odblokowanie przed odczytem schowka/automatycznym pickerem, także na API29–30. Schowek czytany dopiero przy focus; plik wybierany w DocumentsUI, potem własne potwierdzenie WN-40. Anulowanie wyboru niczego nie wysyła. Ponowne kliknięcia wracają do jednego ekranu; zachowują wybór lub status/Anuluj aktywnej wysyłki i nie otwierają kolejnych pickerów.
+LIMIT:POST_NOTIFICATIONS musi być przyznane, a stałe połączenie włączone, aby akcje były widoczne. Wygląd systemowego powiadomienia/pickera określa Android/One UI; ekrany aplikacji używają WindApp/WindButton. Test S25 obu akcji pozostaje wymagany.
+CHECK:`cw-progress --title "WN-97 akcje powiadomienia" -- node scripts/check-android-connection-notification.cjs`, z jawnym ANDROID_SERIAL jednorazowego emulatora i JAVA_HOME/ANDROID_HOME, po debug APK/androidTest oraz build example files_peer. Fixture używa efemerycznego parowania i folderu TEMP; sprawdza tekst, hash pliku, kategorie, wycofanie files/1 i brak akcji po rozłączeniu. Nigdy nie uruchamiać na telefonie użytkownika.
+
 ## Wysyłanie plików na PC (WN-40)
 
 CCS/1
