@@ -2,6 +2,7 @@
 use sha2::{Digest, Sha256};
 use std::{path::PathBuf, sync::Arc, time::Duration};
 use wind_core::{
+    clipboard::{Clipboard, Sink},
     files::{FileEngine, FilesConfig, TransferState},
     identity::DeviceIdentity,
     pairing::{PairedDevicesFile, PairingConfig, PairingListener},
@@ -9,6 +10,13 @@ use wind_core::{
     session::{LocalInfo, Router, Session},
     transport::{Endpoint, PinnedKeys},
 };
+
+struct FixtureClipboard(PathBuf);
+impl Sink for FixtureClipboard {
+    fn apply(&self, text: &str) -> bool {
+        std::fs::write(self.0.join("clipboard.txt"), text).is_ok()
+    }
+}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -56,13 +64,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let mut updates = engine.subscribe();
     let accepting = endpoint.clone();
     let receiver = engine.clone();
+    let clipboard = Arc::new(Clipboard::default());
+    clipboard.set_sink(Arc::new(FixtureClipboard(directory.clone())));
     let active = Arc::new(std::sync::Mutex::new(Vec::<Session>::new()));
     let connected = active.clone();
     let acceptor = tokio::spawn(async move {
+        let mut clipboard_connections = Vec::new();
         while let Some(incoming) = accepting.accept().await {
             if let Ok(connection) = incoming {
                 let mut router = Router::new();
                 let input = router.route_files(1, 32);
+                let clipboard_input = Clipboard::route(&mut router);
                 if let Ok(Ok((session, _))) = tokio::time::timeout(
                     Duration::from_secs(6),
                     Session::accept(
@@ -78,6 +90,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 .await
                 {
                     connected.lock().unwrap().push(session.clone());
+                    clipboard_connections.push(clipboard.attach(session.clone(), clipboard_input));
                     receiver.attach(session, Some(input));
                 }
             }
@@ -87,11 +100,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     tokio::pin!(deadline);
     let mut stop = tokio::time::interval(Duration::from_millis(250));
     let mut dropped = false;
+    let mut files_disabled = false;
     loop {
         tokio::select! {
             _ = &mut deadline => break,
             _ = stop.tick() => {
                 if directory.join("done").exists() { break; }
+                let disable = directory.join("disable-files").exists();
+                if disable != files_disabled {
+                    let sessions = active.lock().unwrap().clone();
+                    for session in sessions {
+                        session.set_accepted(wind_core::protocol::Channel::Files, !disable).await?;
+                    }
+                    files_disabled = disable;
+                }
                 if !dropped && directory.join("drop-once").exists() {
                     for session in active.lock().unwrap().drain(..) {
                         session.connection().close(wind_core::protocol::ErrorCode::GoingAway, b"fixture reconnect");

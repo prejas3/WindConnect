@@ -41,6 +41,13 @@ class SendClipboardActivity : ComponentActivity() {
     private fun sendIfFocused() {
         val opened = core ?: return
         if (!focused || sent) return
+        val keyguard = getSystemService(android.app.KeyguardManager::class.java)
+        if (keyguard.isKeyguardLocked) {
+            keyguard.requestDismissKeyguard(this, object : android.app.KeyguardManager.KeyguardDismissCallback() {
+                override fun onDismissSucceeded() { sendIfFocused() }
+            })
+            return
+        }
         sent = true
         lifecycleScope.launch {
             try {

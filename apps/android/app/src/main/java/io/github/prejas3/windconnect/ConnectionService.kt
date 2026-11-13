@@ -13,6 +13,8 @@ import android.os.IBinder
 import io.github.prejas3.windconnect.core.ConnectionState
 import io.github.prejas3.windconnect.core.WindCore
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 
 /** CCS/1 PURPOSE:visible, user-stoppable ownership of the paired LAN connection across UI/boot. */
 class ConnectionService : Service() {
@@ -21,6 +23,7 @@ class ConnectionService : Service() {
     private var reconnect: Job? = null
     private var peerName = "Sparowany komputer"
     private var current: ConnectionState = ConnectionState.Ready
+    private var filesAccepted = false
 
     override fun onCreate() {
         super.onCreate()
@@ -39,8 +42,12 @@ class ConnectionService : Service() {
                 if (peers.isEmpty() || !enabled(this@ConnectionService)) { stopSelf(); return@launch }
                 peerName = peers.last().name.ifBlank { "Sparowany komputer" }
                 launch {
-                    opened.state.collect { state ->
+                    combine(opened.state, opened.filesAccepted) { state, files -> state to files }
+                        .distinctUntilChanged { old, new ->
+                            notificationState(old.first, old.second) == notificationState(new.first, new.second)
+                        }.collect { (state, files) ->
                         current = state
+                        filesAccepted = files
                         if (state is ConnectionState.Connected) peerName = state.peerName
                         updateNotification()
                     }
@@ -98,15 +105,23 @@ class ConnectionService : Service() {
         }
         val open = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val clipboard = PendingIntent.getActivity(this, 3, Intent(this, SendClipboardActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val file = PendingIntent.getActivity(this, 97, Intent(this, ShareFilesActivity::class.java)
+            .setAction(ShareFilesActivity.PICK)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         fun command(action: String, request: Int) = PendingIntent.getService(this, request, Intent(this, ConnectionService::class.java).setAction(action), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         return Notification.Builder(this, CHANNEL)
             .setSmallIcon(R.drawable.ic_connection)
             .setContentTitle(peerName).setContentText(text)
             .setContentIntent(open).setOngoing(true).setOnlyAlertOnce(true)
             .setVisibility(Notification.VISIBILITY_PRIVATE).setCategory(Notification.CATEGORY_SERVICE)
-            .addAction(Notification.Action.Builder(null, "Otwórz urządzenie", open).build())
+            .setPublicVersion(Notification.Builder(this, CHANNEL).setSmallIcon(R.drawable.ic_connection)
+                .setContentTitle("WindConnect").setContentText("Odblokuj, aby zobaczyć połączenie")
+                .setContentIntent(open).build())
+            .apply { if (!connected) addAction(Notification.Action.Builder(null, "Otwórz urządzenie", open).build()) }
             .apply { if (!connected) addAction(Notification.Action.Builder(null, "Połącz ponownie", command(RETRY, 1)).build()) }
             .apply { if (connected) addAction(Notification.Action.Builder(null, "Wyślij schowek", clipboard).apply { if (android.os.Build.VERSION.SDK_INT >= 31) setAuthenticationRequired(true) }.build()) }
+            .apply { if (connected && filesAccepted) addAction(Notification.Action.Builder(null, "Wyślij plik", file).apply { if (android.os.Build.VERSION.SDK_INT >= 31) setAuthenticationRequired(true) }.build()) }
             .addAction(Notification.Action.Builder(null, "Zatrzymaj", command(STOP, 2)).build())
             .build()
     }
@@ -124,6 +139,11 @@ class ConnectionService : Service() {
     }
 
     companion object {
+        internal fun notificationState(state: ConnectionState, files: Boolean): List<Any?> = when (state) {
+            is ConnectionState.Connected -> listOf("connected", state.peerName, state.route, files)
+            ConnectionState.Connecting -> listOf("connecting")
+            else -> listOf("disconnected")
+        }
         const val CHANNEL = "connection"
         const val ID = 29
         private const val STOP = "io.github.prejas3.windconnect.STOP"

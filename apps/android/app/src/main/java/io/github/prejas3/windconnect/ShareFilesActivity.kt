@@ -75,7 +75,10 @@ class FileShareViewModel(private val application: Application) : AndroidViewMode
 class ShareFilesActivity : ComponentActivity() {
     private val model by viewModels<FileShareViewModel>()
     private var selectedUris by mutableStateOf<List<Uri>>(emptyList())
+    private var pendingPicker = false
+    private var pickerInFlight = false
     private val picker = registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        pickerInFlight = false
         try { selectedUris = FileImport.checkedUris(uris); model.preview(selectedUris) }
         catch (_: Exception) { model.fail("Nieprawidłowy wybór plików") }
     }
@@ -105,7 +108,7 @@ class ShareFilesActivity : ComponentActivity() {
                         Text("Pliki: ${sending.count} · odebrano: ${sending.completed}")
                         Text("Możesz zamknąć ekran. Wysyłanie będzie kontynuowane w tle.", style = MaterialTheme.typography.bodySmall)
                     } else {
-                    WindButton("Wybierz pliki", { picker.launch(arrayOf("*/*")) }, Modifier.testTag("pickFiles"), enabled = !sending.busy, kind = ButtonKind.Secondary)
+                    WindButton("Wybierz pliki", { pendingPicker = true; openPendingPicker() }, Modifier.testTag("pickFiles"), enabled = !sending.busy, kind = ButtonKind.Secondary)
                     Text("Wybrane pliki: ${selectedUris.size}", Modifier.testTag("selectedFileCount"))
                     Text("Komputer docelowy", style = MaterialTheme.typography.titleMedium)
                     if (model.peers.isEmpty()) Text("Najpierw sparuj komputer w WindConnect.")
@@ -127,10 +130,42 @@ class ShareFilesActivity : ComponentActivity() {
                 }
             }
         }
-        if (savedInstanceState == null && intent.action == PICK && !FileSending.status.value.busy) picker.launch(arrayOf("*/*"))
+        pendingPicker = savedInstanceState == null && intent.action == PICK && !FileSending.status.value.busy
+        pickerInFlight = savedInstanceState?.getBoolean("pickerInFlight") ?: false
+    }
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus && pendingPicker) {
+            val keyguard = getSystemService(android.app.KeyguardManager::class.java)
+            if (keyguard.isKeyguardLocked) {
+                keyguard.requestDismissKeyguard(this, object : android.app.KeyguardManager.KeyguardDismissCallback() {
+                    override fun onDismissSucceeded() { openPendingPicker() }
+                })
+            } else openPendingPicker()
+        }
+    }
+    private fun openPendingPicker() {
+        if (!pendingPicker || pickerInFlight || isFinishing || isDestroyed || !hasWindowFocus()) return
+        val keyguard = getSystemService(android.app.KeyguardManager::class.java)
+        if (keyguard.isKeyguardLocked) return
+        pendingPicker = false
+        if (!FileSending.status.value.busy) {
+            pickerInFlight = true
+            picker.launch(arrayOf("*/*"))
+        }
     }
     override fun onSaveInstanceState(outState: Bundle) {
+        outState.putBoolean("pickerInFlight", pickerInFlight)
         outState.putParcelableArrayList("selected", ArrayList(selectedUris)); super.onSaveInstanceState(outState)
+    }
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        // CCS/1 RULE:a notification tap never replaces selected content or an active batch.
+        if (intent.action == PICK && !FileSending.status.value.busy && selectedUris.isEmpty() && !pickerInFlight) {
+            pendingPicker = true
+            openPendingPicker()
+        }
     }
     companion object { const val PICK = "io.github.prejas3.windconnect.PICK_FILES" }
 }
