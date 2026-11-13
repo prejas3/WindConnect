@@ -19,12 +19,228 @@ use wind_core::transport::{Connection, Endpoint, PinnedKeys};
 const LOCALHOST: SocketAddr = SocketAddr::new(std::net::IpAddr::V4(Ipv4Addr::LOCALHOST), 0);
 const T: Duration = Duration::from_secs(60);
 
+#[derive(Debug)]
+struct CommitGate {
+    entered: std::sync::atomic::AtomicBool,
+    release: std::sync::atomic::AtomicBool,
+    fail: bool,
+}
+impl wind_core::files::IncomingCommit for CommitGate {
+    fn commit(
+        &self,
+        file: &wind_core::files::VerifiedIncoming,
+        cancelled: Arc<std::sync::atomic::AtomicBool>,
+    ) -> std::io::Result<()> {
+        use std::sync::atomic::Ordering::SeqCst;
+        assert_eq!(std::fs::metadata(&file.path)?.len(), file.size);
+        self.entered.store(true, SeqCst);
+        while !self.release.load(SeqCst) && !cancelled.load(SeqCst) {
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        if cancelled.load(SeqCst) {
+            return Err(std::io::ErrorKind::Interrupted.into());
+        }
+        if self.fail {
+            return Err(std::io::ErrorKind::StorageFull.into());
+        }
+        Ok(())
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn sender_waits_for_publication_and_never_sees_false_success() {
+    use std::sync::atomic::Ordering::SeqCst;
+    for mode in 0..3 {
+        let dir = tempfile::tempdir().unwrap();
+        let source = random_file(dir.path(), "publish.json", 128_001, 2);
+        let inbox = dir.path().join("receiver");
+        let gate = Arc::new(CommitGate {
+            entered: false.into(),
+            release: false.into(),
+            fail: mode == 1,
+        });
+        let mut cfg = FilesConfig::new(&inbox, partials_of(&inbox));
+        cfg.incoming_commit = Some(gate.clone());
+        let sender = engine(&dir.path().join("sender"));
+        let receiver = FileEngine::new(cfg).unwrap();
+        let net = Net::new();
+        let _sessions = net.attach(&sender, &receiver).await;
+        let id = sender.send(net.b_fp, &source).unwrap()[0];
+        tokio::time::timeout(T, async {
+            while !gate.entered.load(SeqCst) {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .unwrap();
+        let mut updates = sender.subscribe();
+        assert!(
+            !updates.borrow()[0].state.is_finished(),
+            "ACK must wait for destination publication"
+        );
+        if mode == 2 {
+            receiver.cancel_incoming(&net.a_fp, &id).unwrap();
+        }
+        gate.release.store(true, SeqCst);
+        let rows = until(&mut updates, "publication outcome", |rows| {
+            rows[0].state.is_finished()
+        })
+        .await;
+        match mode {
+            0 => assert_eq!(rows[0].state, TransferState::Done),
+            1 => assert_eq!(rows[0].state, TransferState::Failed(FailReason::NoSpace)),
+            _ => assert_eq!(rows[0].state, TransferState::Cancelled { by_peer: true }),
+        }
+        if mode != 0 {
+            let mut incoming = receiver.subscribe();
+            until(&mut incoming, "failed private file removed", |rows| {
+                rows[0].state.is_finished()
+            })
+            .await;
+            tokio::time::timeout(T, async {
+                while !walkdir(&inbox).is_empty() {
+                    tokio::time::sleep(Duration::from_millis(5)).await;
+                }
+            })
+            .await
+            .unwrap();
+        }
+    }
+}
+
 fn info(name: &str) -> LocalInfo {
     LocalInfo {
         name: name.into(),
         kind: DeviceKind::Computer,
         app: Some("test".into()),
     }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn hostile_incoming_id_cannot_cancel_or_forget_an_outgoing_file() {
+    use std::sync::atomic::Ordering::SeqCst;
+    let dir = tempfile::tempdir().unwrap();
+    let inbox = dir.path().join("receiver");
+    let gate = Arc::new(CommitGate {
+        entered: false.into(),
+        release: false.into(),
+        fail: false,
+    });
+    let mut cfg = FilesConfig::new(&inbox, partials_of(&inbox));
+    cfg.incoming_commit = Some(gate.clone());
+    let receiver = FileEngine::new(cfg).unwrap();
+    let sender = engine(&dir.path().join("sender"));
+    let source = random_file(dir.path(), "outgoing.json", 100, 2);
+    let id = receiver.send([99; 32], &source).unwrap()[0];
+    let net = Net::new();
+    let (sa, _sb) = net.attach(&sender, &receiver).await;
+    let mut stream = sa.open_files().await.unwrap();
+    write_raw(
+        &mut stream.send,
+        Channel::Files,
+        &ToReceiver::Offer(Offer {
+            id,
+            path: "incoming.json".into(),
+            size: 0,
+            chunk: 256 * 1024,
+            streams: 1,
+            modified: None,
+        })
+        .encode(),
+    )
+    .await
+    .unwrap();
+    tokio::time::timeout(T, async {
+        while !gate.entered.load(SeqCst) {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .unwrap();
+    assert!(
+        receiver.cancel(&id).is_err(),
+        "ambiguous controls must refuse"
+    );
+    receiver.cancel_incoming(&net.a_fp, &id).unwrap();
+    assert_eq!(
+        receiver
+            .transfers()
+            .iter()
+            .find(|r| r.direction == Direction::Outgoing)
+            .unwrap()
+            .state,
+        TransferState::Queued
+    );
+    receiver.cancel_outgoing(&id).unwrap();
+    let mut updates = receiver.subscribe();
+    until(&mut updates, "incoming cancellation", |rows| {
+        rows.iter()
+            .any(|r| r.direction == Direction::Incoming && r.state.is_finished())
+    })
+    .await;
+    receiver.forget_incoming(&net.a_fp, &id).unwrap();
+    assert_eq!(receiver.transfers().len(), 1);
+    assert_eq!(receiver.transfers()[0].direction, Direction::Outgoing);
+    assert_eq!(
+        receiver.transfers()[0].state,
+        TransferState::Cancelled { by_peer: false }
+    );
+    gate.release.store(true, SeqCst);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn incoming_limits_include_publication_and_release_the_reservation() {
+    use std::sync::atomic::Ordering::SeqCst;
+    let dir = tempfile::tempdir().unwrap();
+    let inbox = dir.path().join("receiver");
+    let gate = Arc::new(CommitGate {
+        entered: false.into(),
+        release: false.into(),
+        fail: false,
+    });
+    let mut cfg = FilesConfig::new(&inbox, partials_of(&inbox));
+    cfg.incoming_commit = Some(gate.clone());
+    cfg.max_incoming_file = 5000;
+    cfg.max_incoming_active = 6000;
+    cfg.incoming_copies = 2;
+    let sender = engine(&dir.path().join("sender"));
+    let receiver = FileEngine::new(cfg).unwrap();
+    let net = Net::new();
+    let _sessions = net.attach(&sender, &receiver).await;
+    let first = random_file(dir.path(), "first.json", 4000, 1);
+    let second = random_file(dir.path(), "second.json", 4000, 2);
+    let too_large = random_file(dir.path(), "too-large.json", 5001, 3);
+    sender.send(net.b_fp, &first).unwrap();
+    tokio::time::timeout(T, async {
+        while !gate.entered.load(SeqCst) {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .unwrap();
+    sender.send(net.b_fp, &second).unwrap();
+    sender.send(net.b_fp, &too_large).unwrap();
+    let mut updates = sender.subscribe();
+    until(&mut updates, "aggregate and per-file limits", |rows| {
+        rows.iter()
+            .filter(|r| r.state == TransferState::Failed(FailReason::NoSpace))
+            .count()
+            == 2
+    })
+    .await;
+    gate.release.store(true, SeqCst);
+    until(&mut updates, "publication releases bytes", |rows| {
+        rows.iter().any(|r| r.state == TransferState::Done)
+    })
+    .await;
+    sender.send(net.b_fp, &second).unwrap();
+    until(&mut updates, "next valid file accepted", |rows| {
+        rows.iter()
+            .filter(|r| r.state == TransferState::Done)
+            .count()
+            == 2
+    })
+    .await;
 }
 
 /// Two paired endpoints that can connect again and again.

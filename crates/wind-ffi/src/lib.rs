@@ -16,7 +16,10 @@ uniffi::setup_scaffolding!();
 mod file_transfer;
 mod phone_extras;
 mod sms_bridge;
-pub use file_transfer::FileTransfer;
+pub use file_transfer::{
+    FileCommitResult, FileCommitStatus, FileDestination, FileTransfer, IncomingControl,
+    IncomingFile,
+};
 pub use phone_extras::{CallActionSink, CallerInfo, MissedCall, VolumeSink};
 pub use sms_bridge::{
     SmsMessage, SmsMessages, SmsOutgoing, SmsPart, SmsPartInfo, SmsPerson, SmsPhoto, SmsSim,
@@ -1011,6 +1014,8 @@ impl CoreClient {
                 reason: e.to_string(),
             })?;
         let mut router = Router::new();
+        let file_input = router.route_files(1, 32);
+        router.start_disabled(wind_core::protocol::Channel::Files);
         let clipboard_input = wind_core::clipboard::Clipboard::route(&mut router);
         let find = self.route_find(&mut router);
         let media = self.route_media(&mut router);
@@ -1047,6 +1052,7 @@ impl CoreClient {
             extras,
             files_active: std::sync::atomic::AtomicBool::new(false),
             files: self.files.clone(),
+            file_input: std::sync::Mutex::new(Some(file_input)),
             clipboard: std::sync::Mutex::new(None),
             clipboard_shared: self.clipboard.clone(),
             battery: wind_core::battery::Sender::default(),
@@ -1227,8 +1233,10 @@ impl CoreClient {
             reason: "peer address must be an IP address and port".into(),
         })?;
         let mut changes = self.network.subscribe();
-        let ((session, events),(clipboard_input, find, media, pc_media, notify_actions, volume, sms, call_actions)) = loop {
+        let ((session, events),(clipboard_input, find, media, pc_media, notify_actions, volume, sms, call_actions, file_input)) = loop {
             let mut router=Router::new();
+            let file_input=router.route_files(1,32);
+            router.start_disabled(wind_core::protocol::Channel::Files);
             let clipboard_input=wind_core::clipboard::Clipboard::route(&mut router);
             let find = self.route_find(&mut router);
             let media = self.route_media(&mut router);
@@ -1248,7 +1256,7 @@ impl CoreClient {
             ),
         );
             tokio::select! {
-                result = attempt => break result.map(|r|r.map(|s|(s,(clipboard_input, find, media, pc_media, notify_actions, volume, sms, call_actions)))),
+                result = attempt => break result.map(|r|r.map(|s|(s,(clipboard_input, find, media, pc_media, notify_actions, volume, sms, call_actions, file_input)))),
                 changed = changes.changed() => {
                     if changed.is_err() { return Err(CoreError::Transport { reason: "network observer stopped".into() }); }
                 }
@@ -1271,6 +1279,7 @@ impl CoreClient {
             extras,
             files_active: std::sync::atomic::AtomicBool::new(false),
             files: self.files.clone(),
+            file_input: std::sync::Mutex::new(Some(file_input)),
             clipboard: std::sync::Mutex::new(None),
             clipboard_shared: self.clipboard.clone(),
             battery: wind_core::battery::Sender::default(),
@@ -1482,6 +1491,8 @@ fn action_error(error: wind_core::actions::RequestError) -> CoreError {
 #[derive(uniffi::Object)]
 pub struct CoreConnection {
     files: Arc<file_transfer::FileBridge>,
+    file_input:
+        std::sync::Mutex<Option<tokio::sync::mpsc::Receiver<wind_core::session::FileStream>>>,
     file_caps: file_transfer::FileCapabilities,
     /// WN-48: the call state and both volumes.
     extras: phone_extras::PhoneExtras,

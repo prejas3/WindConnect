@@ -77,6 +77,7 @@ fun HomeScreen(state: PairingUi, onScan: () -> Unit, onDiagnostics: () -> Unit, 
     if (onClipboard != null && onClipboardEnabled != null) ClipboardControls(state, onClipboard, onClipboardEnabled)
     PcMediaCard() // WN-47: the PC's player; shown only when the PC has one.
     PcVolumeCard() // WN-48: the PC's volume; shown while the PC shares it.
+    if (known) ReceiveFilesControls()
     Text("Ostatnie transfery", style = MaterialTheme.typography.titleMedium)
     WindCard(Modifier.fillMaxWidth().testTag("recentTransfers")) {
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {

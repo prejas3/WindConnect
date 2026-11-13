@@ -1,11 +1,21 @@
 # Android
 
+## Odbiór do publicznych Pobranych (WN-120)
+
+CCS/1
+FLOW:sparowana, dopuszczona sesja -> checksum chunków FileEngine -> prywatny zweryfikowany plik -> MediaStore.Downloads IS_PENDING -> fsync + dziennik -> publiczne Download/WindConnect/<podfoldery> -> dopiero wire Complete. Domyślny hook silnika None; Windows zachowuje swój zapis. Android nie wymaga READ/WRITE_EXTERNAL_STORAGE ani MANAGE_EXTERNAL_STORAGE. Router próby/standby ma files/1 wyłączone; tylko adopted session i gotowy sink z właścicielem FGS włącza odbiór.
+LIFECYCLE:domyślny przełącznik odbioru ON. ConnectionService po startForeground utrzymuje odbiór przy włączonym połączeniu w tle. Przy otwartej Activity tymczasowy ReceiveFilesService przejmuje lease; nie zmienia decyzji o połączeniu w tle. Po zamknięciu ostatniej Activity kończy się po aktywnym odbiorze. Nieudany start FGS nie reklamuje odbioru. Wyłączenie odbioru cofa capability i anuluje przyjęte transfery.
+STORAGE:limit2GiB/plik,4GiB aktywnych transferów (rezerwacja obejmuje publikację), preflight2×rozmiar+64MiB na prywatną i publiczną kopię. MediaStore wybiera wolną nazwę bez nadpisywania; dziennik i UI odczytują rzeczywiste DISPLAY_NAME/RELATIVE_PATH. Nazwy NFC bez kontroli/bidi, do16segmentów,240bajtów/segment i4096bajtów wejścia; MIME z ostatniego rozszerzenia, fallback octet-stream. To klasyfikacja, nie ocena bezpieczeństwa pliku.
+RECOVERY:AtomicFile, pełny peer-fingerprint:id, ścieżka/rozmiar/SHA256 i fazy pending/ready/published. Restart usuwa wyłącznie własne pending rows/prywatne kopie; ready już widoczne zostaje published, a ponowienie tego tokenu nie tworzy duplikatu. Dziennik do512receipts/4MiB; brak miejsca w historii odmawia odbioru. Jawne „Wyczyść historię” zachowuje pliki publiczne, ale zapomina idempotencję starych tokenów. Nie usuwamy plików widocznych po późnym anulowaniu/błędzie; po publikacji użytkownik zarządza nimi w Pobranych.
+UI:ekran główny i powiadomienie prowadzą do odbioru/historii; Anuluj identyfikuje incoming przez peer+id, wysyłanie przez outbound id. Powiadomienie max1/s podczas transferu + natychmiastowe zakończenie; nazwy ukryte na ekranie blokady. Otwórz wymaga osobnego stuknięcia, content URI z czasowym read grant i systemowego wyboru aplikacji. „Pokaż w Pobranych” uruchamia systemową listę pobrań. Brak auto-open/uruchamiania APK.
+CHECK:IncomingFilesTest na rzeczywistym MediaStore (rozszerzenia json/tar.gz/brak/apk, kolizje, checksum, idempotencja, ENOSPC/cancel, sześć punktów przerwania). scripts/check-android-receive-recovery.cjs dodatkowo force-stopuje rzeczywisty proces w każdej fazie i sprawdza brak pending/duplikatów po ponowieniu. scripts/check-android-receive-files.cjs: prawdziwe QR/TLS Windows -> Android,7plików z folderem i1GiB, niezależne SHA256 i Complete nadawcy. Wymaga zbudowanych debug APK/androidTest, cargo build --locked -p windconnect-windows --example files_peer oraz jawnego ANDROID_SERIAL jednorazowego emulatora, JAVA_HOME/ANDROID_HOME. Dane/logi w TEMP; nie uruchamiać na telefonie użytkownika. Krótki test S25: pliki+folder w Moje pliki/Pobrane/WindConnect, ręczne otwarcie, anulowanie bez pliku częściowego. Długie Wi-Fi/bateria pozostają na końcu lane.
+
 ## Postęp i ponawianie plików (WN-41)
 
 CCS/1
 RULE:własne ekrany korzystają ze zdarzeń silnika (postęp co100ms, bez odpytywania/timera idle); systemowe powiadomienie ma pasek postępu i bajty/prędkość najwyżej raz/s oraz natychmiastowy stan końcowy/Anuluj. Nie obiecujemy odświeżania SystemUI co100ms. Prędkość: monotoniczne delty, okno1s + EMA; przed pełnym oknem i podczas oczekiwania „—”. Podczas importowania źródeł łączny rozmiar nie jest jeszcze znany: pasek nieokreślony, bez wymyślonego procentu. Po przygotowaniu wszystkich źródeł: rzeczywiste bajty potwierdzone przez odbiornik / rozmiar.
 FLOW:po błędzie lub anulowaniu „Ponów niewysłane” -> lekki openFileDescriptor/close każdego pozostałego URI -> ponowne potwierdzenie tego samego, nadal sparowanego PC -> nowy import/transfer. Pliki potwierdzone jako odebrane nie są ponawiane. Utrata grantu wymaga ponownego wyboru źródeł. Potwierdzenie i limity WN-40 pozostają; żadnego automatycznego wysyłania z akcji powiadomienia, utrwalania grantów ani przechowywania nieudanych kopii GiB.
-LIMIT:wybór do ponowienia żyje tylko w procesie; po jego zakończeniu wybierz pliki ponownie. Długie pomiary fizycznego Wi-Fi/baterii są odłożone. Android nie ma jeszcze publicznego odbioru: „Otwórz folder” dotyczy PC; odbiór Androida to WN-120. TalkBack dostaje semantyczny postęp, nie komunikat live co100ms.
+LIMIT:wybór do ponowienia żyje tylko w procesie; po jego zakończeniu wybierz pliki ponownie. Długie pomiary fizycznego Wi-Fi/baterii są odłożone. „Otwórz folder” dotyczy PC; publiczny odbiór Androida opisuje WN-120 powyżej. TalkBack dostaje semantyczny postęp, nie komunikat live co100ms.
 CHECK:`scripts/check-android-transfer-progress.cjs`: prawdziwe źródła z osobnego UID i receiver TEMP;5plików,2potwierdzone, kontrolowany błąd odczytu, Ponów wysyła tylko3; brak grantu blokuje potwierdzenie; indeterminate w Activity/powiadomieniu. Wymaga debug APK/androidTest, files_peer i jawnego ANDROID_SERIAL jednorazowego emulatora, JAVA_HOME/ANDROID_HOME. Nie uruchamiać na telefonie użytkownika.
 
 ## Szybkie akcje powiadomienia (WN-97)
@@ -405,7 +415,7 @@ pamięć odkrywania po zmianie sieci. Pytanie i odpowiedź unicast sprawdza test
 hosta, a filtrowanie broadcast przez prawdziwy układ Wi-Fi bez locka wymaga
 telefonu.
 
-Wersja aplikacji to 0.41.0, a Android `versionCode` to 50. Numery wydań rosną
+Wersja aplikacji to 0.55.0, a Android `versionCode` to 64. Numery wydań rosną
 niezależnie od kolejności kart, aby aktualizacja APK i MSI nie cofała wersji.
 
 ## Pierwsze uruchomienie (WC-34)

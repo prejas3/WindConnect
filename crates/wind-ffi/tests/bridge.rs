@@ -41,6 +41,23 @@ impl wind_ffi::ClipboardSink for TestClipboard {
 }
 struct Progress(Arc<Mutex<bool>>);
 
+struct FileDestination(Arc<Mutex<Vec<wind_ffi::IncomingFile>>>);
+impl wind_ffi::FileDestination for FileDestination {
+    fn commit(
+        &self,
+        file: wind_ffi::IncomingFile,
+        control: Arc<wind_ffi::IncomingControl>,
+    ) -> wind_ffi::FileCommitResult {
+        assert!(!control.is_cancelled());
+        assert_eq!(std::fs::read(&file.source).unwrap(), b"outside");
+        self.0.lock().unwrap().push(file);
+        wind_ffi::FileCommitResult {
+            status: wind_ffi::FileCommitStatus::Published,
+            error: None,
+        }
+    }
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn ffi_files_require_adoption_and_outbox_and_track_capability_withdrawal() {
     let client = open_client(
@@ -112,6 +129,11 @@ async fn ffi_files_require_adoption_and_outbox_and_track_capability_withdrawal()
         .await
         .unwrap();
     let session = server.await.unwrap();
+    assert!(
+        session.open_files().await.is_err(),
+        "standby never advertises reception"
+    );
+    assert!(connection.set_file_receiving(true).await.is_err());
     assert!(connection.files_accepted());
     assert!(
         connection
@@ -121,6 +143,10 @@ async fn ffi_files_require_adoption_and_outbox_and_track_capability_withdrawal()
         "standby must not queue"
     );
     connection.activate_files().await;
+    assert!(
+        connection.set_file_receiving(true).await.is_err(),
+        "adoption alone is not a destination"
+    );
     assert!(connection
         .queue_files(vec![outside.display().to_string()])
         .await
@@ -163,6 +189,42 @@ async fn ffi_files_require_adoption_and_outbox_and_track_capability_withdrawal()
     let saved = received.saved_as.unwrap();
     assert_eq!(saved.parent().unwrap().file_name().unwrap(), "Obrazy");
     assert_eq!(std::fs::read(saved).unwrap(), b"verified file bytes");
+    let committed = Arc::new(Mutex::new(Vec::new()));
+    client.set_file_destination(Box::new(FileDestination(committed.clone())));
+    connection.set_file_receiving(true).await.unwrap();
+    tokio::time::timeout(Duration::from_secs(3), async {
+        while session.open_files().await.is_err() {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    let incoming_id = engine
+        .send(*key.fingerprint().as_bytes(), &outside)
+        .unwrap()[0];
+    tokio::time::timeout(Duration::from_secs(5), async {
+        let mut updates = engine.subscribe();
+        while !engine
+            .transfers()
+            .iter()
+            .any(|row| row.id == incoming_id && row.state == wind_core::files::TransferState::Done)
+        {
+            updates.changed().await.unwrap();
+        }
+    })
+    .await
+    .unwrap();
+    let file = committed.lock().unwrap()[0].clone();
+    assert_eq!(file.peer, pc.fingerprint().to_hex());
+    assert_eq!(file.name, "outside.JPG");
+    assert!(client
+        .file_transfers()
+        .unwrap()
+        .iter()
+        .any(|row| row.incoming && row.id == file.id && row.state == "done"));
+    client.release_incoming_file(file.peer, file.id).unwrap();
+    assert!(!std::path::Path::new(&file.source).exists());
+    connection.set_file_receiving(false).await.unwrap();
     session
         .set_accepted(wind_core::protocol::Channel::Files, false)
         .await

@@ -192,6 +192,38 @@ class WindCore private constructor(
     val outbox get() = java.io.File(appContext.noBackupFilesDir, "file-outbox")
     private var filesCapabilityJob: Job? = null
     private var filesReady = false
+    private var incomingStore: IncomingFiles? = null
+    private var receivingReady = false
+    private val mutableReceivedFiles = MutableStateFlow<List<ReceivedFile>>(emptyList())
+    val receivedFiles = mutableReceivedFiles.asStateFlow()
+    private val mutableReceiveError = MutableStateFlow("")
+    val receiveError = mutableReceiveError.asStateFlow()
+
+    /** Called only after the app's receiving foreground service owns a lease. */
+    suspend fun enableFileReceiving() = withContext(Dispatchers.IO) {
+        prepareFiles()
+        gate.withLock {
+            if (incomingStore == null) {
+                val store = IncomingFiles(appContext)
+                client.setFileDestination(store)
+                incomingStore = store
+                scope.launch { store.receipts.collect { mutableReceivedFiles.value = it } }
+                scope.launch { store.error.collect { mutableReceiveError.value = it } }
+            }
+            receivingReady = true
+            connection?.let { it.activateFiles(); it.setFileReceiving(true) }
+        }
+    }
+    suspend fun disableFileReceiving() = withContext(Dispatchers.IO) {
+        gate.withLock { receivingReady = false; connection?.setFileReceiving(false) }
+        if (filesReady) client.fileTransfers().filter { it.incoming && it.state !in listOf("done", "failed", "cancelled") }.forEach { try { client.cancelIncomingFile(it.peer, it.id) } catch (_: Exception) { } }
+    }
+    suspend fun cancelIncoming(peer: String, id: String) = withContext(Dispatchers.IO) { client.cancelIncomingFile(peer, id) }
+    suspend fun incomingActive(): Boolean = withContext(Dispatchers.IO) {
+        if (!filesReady) false else client.fileTransfers().any { it.incoming && it.state !in listOf("done", "failed", "cancelled") }
+    }
+    suspend fun receivedUri(key: String): android.net.Uri? = withContext(Dispatchers.IO) { incomingStore?.receiptUri(key) }
+    suspend fun clearReceiveHistory() = withContext(Dispatchers.IO) { incomingStore?.clearHistory() }
 
     /** CCS/1 RULE:optional file storage failures must not prevent clipboard/connection startup. */
     suspend fun prepareFiles() = withContext(Dispatchers.IO) {
@@ -201,7 +233,14 @@ class WindCore private constructor(
                 client.configureFiles(java.io.File(root, "inbox").absolutePath, java.io.File(root, "partials").absolutePath, outbox.absolutePath)
                 filesReady = true
                 scope.launch {
-                    try { while (true) mutableFiles.value = client.nextFileTransfers() }
+                    try { while (true) {
+                        val rows = client.nextFileTransfers()
+                        mutableFiles.value = rows
+                        // A public receipt is already journalled before native Done; discard only its private copy.
+                        withContext(Dispatchers.IO) { rows.filter { it.incoming && it.state in listOf("done", "failed", "cancelled") }.forEach { row ->
+                            try { client.releaseIncomingFile(row.peer, row.id) } catch (_: Exception) { }
+                        } }
+                    } }
                     catch (failure: Exception) { if (failure is CancellationException) throw failure }
                 }
                 connection?.activateFiles()
@@ -222,6 +261,7 @@ class WindCore private constructor(
     private suspend fun startFiles(active: CoreConnection) {
         filesCapabilityJob?.cancel()
         if (filesReady) active.activateFiles()
+        if (receivingReady) active.setFileReceiving(true)
         mutableFilesAccepted.value = active.filesAccepted()
         filesCapabilityJob = scope.launch {
             try { while (true) mutableFilesAccepted.value = active.nextFilesAccepted() }

@@ -26,6 +26,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             .ok_or("TEMP fixture directory required")?,
     );
     let identity = DeviceIdentity::generate()?;
+    let send_directory = std::env::args().nth(2).map(PathBuf::from);
+    let mut queued = false;
     let pins = Arc::new(PinnedKeys::new());
     let endpoint = Endpoint::bind("0.0.0.0:0".parse()?, &identity, pins.clone())?;
     let mut pairing = PairingListener::bind(
@@ -106,6 +108,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             _ = &mut deadline => break,
             _ = stop.tick() => {
                 if directory.join("done").exists() { break; }
+                if !queued && directory.join("receive-ready").exists() {
+                    if let Some(source) = &send_directory {
+                        let peer = active.lock().unwrap().last().map(|session| *session.connection().peer_key().fingerprint().as_bytes());
+                        if let Some(peer) = peer { engine.send(peer, source)?; queued = true; }
+                    }
+                }
                 let disable = directory.join("disable-files").exists();
                 if disable != files_disabled {
                     let sessions = active.lock().unwrap().clone();
@@ -127,8 +135,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 let rows = updates.borrow_and_update().clone();
                 let mut received = Vec::new();
                 for row in rows.iter().filter(|r| r.state == TransferState::Done) {
-                    let file = row.saved_as.as_ref().ok_or("missing final path")?;
-                    let hash = Sha256::digest(std::fs::read(file)?);
+                    let file = row.saved_as.as_ref().or(row.source.as_ref()).ok_or("missing file path")?;
+                    let mut digest = Sha256::new();
+                    std::io::copy(&mut std::fs::File::open(file)?, &mut digest)?;
+                    let hash = digest.finalize();
                     received.push(serde_json::json!({"name":row.path,"path":file,"sha256":format!("{hash:x}"),"size":row.size}));
                 }
                 let temporary = directory.join("received.tmp");

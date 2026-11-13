@@ -34,12 +34,14 @@ class ConnectionService : Service() {
             },
         )
         startForeground(ID, notification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
+        foregroundOwner = true
         scope.launch {
             try {
-                val opened = (application as WindApplication).connections.acquire()
-                core = opened
+                val opened = withContext(NonCancellable) { (application as WindApplication).connections.acquire().also { core = it } }
                 val peers = opened.pairedDevices()
                 if (peers.isEmpty() || !enabled(this@ConnectionService)) { stopSelf(); return@launch }
+                FileReceiving.addOwner(this@ConnectionService, opened, this@ConnectionService)
+                ReceiveFilesService.instance?.checkIdle()
                 peerName = peers.last().name.ifBlank { "Sparowany komputer" }
                 launch {
                     combine(opened.state, opened.filesAccepted) { state, files -> state to files }
@@ -130,15 +132,21 @@ class ConnectionService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
     override fun onDestroy() {
+        foregroundOwner = false
         scope.cancel()
         val opened = core
         core = null
-        if (opened != null) CoroutineScope(Dispatchers.IO).launch { (application as WindApplication).connections.release(opened) }
+        CoroutineScope(Dispatchers.Main.immediate).launch {
+            try { FileReceiving.removeOwner(this@ConnectionService, this@ConnectionService) }
+            finally { if (opened != null) (application as WindApplication).connections.release(opened) }
+            ReceiveFilesService.ensure(this@ConnectionService)
+        }
         stopForeground(STOP_FOREGROUND_REMOVE)
         super.onDestroy()
     }
 
     companion object {
+        internal var foregroundOwner = false; private set
         internal fun notificationState(state: ConnectionState, files: Boolean): List<Any?> = when (state) {
             is ConnectionState.Connected -> listOf("connected", state.peerName, state.route, files)
             ConnectionState.Connecting -> listOf("connecting")
