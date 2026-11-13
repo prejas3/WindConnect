@@ -368,6 +368,35 @@ class WindCore private constructor(
         val live = gate.withLock { connection }
         try { live?.setFindAccepted(value) } catch (error: Exception) { if (error is CancellationException) throw error }
     }
+    // WN-100: links from the PC open here ("Otwieraj linki z komputera", default on; off -> the PC gets "refused").
+    private val linkOpener = LinkOpener(appContext).also { client.setUrlOpener(it) }
+    private val mutableOpenLinks = MutableStateFlow(settings.getBoolean(OPEN_LINKS, true))
+    val openLinks: StateFlow<Boolean> = mutableOpenLinks.asStateFlow()
+    init { client.setOpenLinks(mutableOpenLinks.value) }
+    fun setOpenLinks(value: Boolean) {
+        settings.edit().putBoolean(OPEN_LINKS, value).apply()
+        mutableOpenLinks.value = value
+        client.setOpenLinks(value)
+    }
+
+    /**
+     * WN-100: asks the PC to run `id` ("lock", "open-url" with [url], or one of its own "x-…"): "done", "refused",
+     * "bad-argument", "failed", "busy", or "unavailable" (no session, or the PC takes no actions).
+     */
+    suspend fun runPcAction(id: String, url: String? = null): String = withContext(Dispatchers.IO) {
+        val live = gate.withLock { connection } ?: return@withContext "unavailable"
+        try { live.runAction(id, url) } catch (error: Exception) {
+            if (error is CancellationException) throw error
+            if (error is CoreException.InvalidInput) "bad-argument" else "unavailable"
+        }
+    }
+
+    /** WN-100: what the PC would run now (built-ins it allows and its own actions), empty without a session. */
+    suspend fun pcActions(): List<io.github.prejas3.windconnect.bindings.RemoteAction> = withContext(Dispatchers.IO) {
+        val live = gate.withLock { connection } ?: return@withContext emptyList()
+        try { live.listActions() } catch (error: Exception) { if (error is CancellationException) throw error; emptyList() }
+    }
+
     // WN-55: SMS read on the PC. Own consent (setting off by default) and READ_SMS, asked only when the person turns it
     // on; contacts (READ_CONTACTS) are optional. Decision D2: only this (GitHub/F-Droid) build declares the permissions.
     private val phoneSms = PhoneSms(appContext).also { sms ->
@@ -988,6 +1017,7 @@ class WindCore private constructor(
         private const val RELAY_URL = "relay_url"
         private const val FIND_ALLOWED = "find_allowed"
         private const val SMS_ALLOWED = "sms_allowed"
+        private const val OPEN_LINKS = "open_links"
         private const val CALLS_ALLOWED = "calls_allowed"
         private const val SMS_SEND_ALLOWED = "sms_send_allowed"
 

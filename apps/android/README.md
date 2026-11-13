@@ -415,7 +415,7 @@ pamięć odkrywania po zmianie sieci. Pytanie i odpowiedź unicast sprawdza test
 hosta, a filtrowanie broadcast przez prawdziwy układ Wi-Fi bez locka wymaga
 telefonu.
 
-Wersja aplikacji to 0.57.0, a Android `versionCode` to 66. Numery wydań rosną
+Wersja aplikacji to 0.58.0, a Android `versionCode` to 67. Numery wydań rosną
 niezależnie od kolejności kart, aby aktualizacja APK i MSI nie cofała wersji.
 
 ## Pierwsze uruchomienie (WC-34)
@@ -820,3 +820,18 @@ nie może użyć `silenceRinger`) i przywraca go po połączeniu; obie działaj�
 tylko na dzwoniące połączenie, które nazywają. Bez ustawienia komputer dostaje
 sam stan jak w WN-48. Numery nie trafiają do logów.
 Test: `apps/windows/scripts/check-calls-android.cjs`.
+
+## Akcje zdalne (WN-100)
+
+Telefon -> PC: „Zablokuj PC” i „Otwórz na PC” na ekranie głównym oraz akcje
+własne komputera („x-…”, z `list_actions`) w karcie „Akcje na komputerze”;
+każdy status ma komunikat (wykonano, odrzucono, zły adres, zajęte, nie
+udało się, brak połączenia). „Otwórz na PC” bierze link ze schowka, a bez
+niego prosi o adres; udostępniony tekst z linkiem trafia tam przez „Otwórz na
+PC” w arkuszu udostępniania (`OpenOnPcActivity`, tylko istniejące
+połączenie). PC -> telefon: rdzeń hostuje `actions/1` z `ActionHost`
+(wyłącznie `open-url`, sprawdzony `check_url`), `LinkOpener` otwiera link
+od razu, gdy aplikacja jest na ekranie, a w tle pokazuje powiadomienie
+„Otwórz link z komputera”. Ustawienie „Otwieraj linki z komputera”
+(domyślnie włączone); wyłączone -> komputer dostaje „odrzucono”.
+Test: `apps/windows/scripts/check-actions-android.cjs`, `PcActionTextTest`.
