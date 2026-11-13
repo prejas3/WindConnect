@@ -39,7 +39,7 @@ function inset(svg, unit, scale) {
 (async()=>{
   const master=await fs.readFile(path.join(root,'assets/brand/orbita.svg'),'utf8');
   const small=await fs.readFile(path.join(root,'assets/brand/orbita-small.svg'),'utf8');
-  assert.equal(paths(master).length,4); assert.equal(paths(small).length,4);
+  assert.equal(paths(master).length,2); assert.equal(paths(small).length,2);
   await emit('apps/windows/frontend/assets/orbita-small.svg',small);
   let browser;
   try {
@@ -57,7 +57,10 @@ function inset(svg, unit, scale) {
     for(const theme of ['light','dark']) for(const state of ['connected','searching','unavailable']) {
       const color=({light:{connected:'#0d7f74',searching:'#805015',unavailable:'#52686e'},dark:{connected:'#43c9b8',searching:'#efbc7c',unavailable:'#a1b2b6'}})[theme][state];
       let mark=small;
-      if(state!=='connected') mark=mark.replace(/  <path stroke-width="1.5" d="m9.5[^\n]+\n/,'');
+      if(state!=='connected') {
+        mark=mark.replace(/<path stroke-width="1.5" d="m9.5[^"]+"\/>/,'');
+        assert.equal(paths(mark).length,1,'searching/unavailable must not keep connected arrows');
+      }
       if(state==='searching') mark=mark.replace('stroke-width="1.5"','stroke-dasharray="1.7 1.8" stroke-width="1.5"');
       if(state==='unavailable') mark=mark.replace('</svg>','  <path stroke-width="1.5" d="M4 12 12 4"/>\n</svg>');
       for(const size of [16,20,24,32]) {const r=await raster(wrap(mark,color),size);await emit(`${windows}/tray/${state}-${theme}-${size}.png`,Buffer.from(r.png,'base64'));await emit(`${windows}/tray/${state}-${theme}-${size}.rgba`,Buffer.from(r.rgba));}
@@ -69,7 +72,7 @@ function inset(svg, unit, scale) {
     for(const name of ['ic_launcher','ic_launcher_round']) await emit(`${android}/mipmap-anydpi-v26/${name}.xml`,'<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">\n    <background android:drawable="@color/icon_background" />\n    <foreground android:drawable="@drawable/ic_launcher_foreground" />\n    <monochrome android:drawable="@drawable/ic_launcher_monochrome" />\n</adaptive-icon>\n');
     for(const [density,size] of [['mdpi',48],['hdpi',72],['xhdpi',96],['xxhdpi',144],['xxxhdpi',192]]) for(const name of ['ic_launcher','ic_launcher_round']) {const r=await raster(wrap(inset(master,64,2/3),'#ffffff','#0d7f74',name.endsWith('round')),size);await emit(`${android}/mipmap-${density}/${name}.png`,Buffer.from(r.png,'base64'));}
     // CCS/1 RULE:manifest excludes itself; hashes prove every committed output was regenerated from this source/toolchain.
-    await emit('assets/brand/generated.json',JSON.stringify({renderer:`Chromium ${browser.version()}`,source:'Orbita / WN-93 direction C',outputs},null,2)+'\n');
+    await emit('assets/brand/generated.json',JSON.stringify({renderer:`Chromium ${browser.version()}`,source:'Orbita / WN-131 variant C / empty centre',outputs},null,2)+'\n');
     console.log(`${check?'Verified':'Generated'} ${outputs.length} assets directly from SVG.`);
   } finally {if(browser)await browser.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;});

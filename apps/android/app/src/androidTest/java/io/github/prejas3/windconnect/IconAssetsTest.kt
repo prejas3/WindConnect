@@ -40,6 +40,11 @@ class IconAssetsTest {
             }
         }
         assertTrue(visible > 350)
+        // CCS/1 RULE:central 12dp of the 48dp mark stays transparent after removing the devices (alpha threshold16).
+        for (y in 48..59) for (x in 48..59) {
+            assertTrue("foreground centre has old device ink", Color.alpha(foreground.getPixel(x, y)) <= 16)
+            assertTrue("monochrome centre has old device ink", Color.alpha(mono.getPixel(x, y)) <= 16)
+        }
         val notification = bitmap(R.drawable.ic_connection, 96)
         assertEquals(0, Color.alpha(notification.getPixel(0, 0)))
         var antialiased = false
@@ -50,6 +55,7 @@ class IconAssetsTest {
             if (Color.alpha(pixel) in 1..254) antialiased = true
         }
         assertTrue(antialiased)
+        for (y in 36..59) for (x in 36..59) assertTrue("notification/QS centre has device ink", Color.alpha(notification.getPixel(x, y)) <= 16)
         val sheet = Bitmap.createBitmap(900, 420, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(sheet)
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 22f; color = Color.rgb(21,40,47) }
@@ -73,7 +79,8 @@ class IconAssetsTest {
         val canvas = Canvas(sheet)
         canvas.drawColor(Color.rgb(232,239,239))
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 22f; color = Color.rgb(21,40,47) }
-        canvas.drawText("WN-115 / packaged foreground / native Canvas masks", 28f, 35f, paint)
+        canvas.drawText("WN-131 / before SVG raster vs packaged C / equal 48dp scale", 28f, 35f, paint)
+        val beforeBitmap = android.graphics.BitmapFactory.decodeStream(InstrumentationRegistry.getInstrumentation().context.assets.open("wn131-before-foreground.png"))
         for (row in 0..1) for (before in listOf(true, false)) {
             val size = 220f
             val x = if (before) 70f else 560f
@@ -92,16 +99,15 @@ class IconAssetsTest {
             val saved = canvas.save()
             canvas.clipPath(path)
             canvas.drawColor(Color.rgb(13,127,116))
-            // CCS/1 CHECK:adaptive layers occupy 150% of mask bounds; 4/3 reconstructs old64dp from new48dp without old assets.
-            if (before) canvas.scale(4f/3, 4f/3, x + size/2, y + size/2)
-            val foreground = context.getDrawable(R.drawable.ic_launcher_foreground)!!
-            foreground.setBounds((x-size/4).toInt(), (y-size/4).toInt(), (x+size*1.25f).toInt(), (y+size*1.25f).toInt())
-            foreground.draw(canvas)
+            // CCS/1 CHECK:both layers occupy150% of mask bounds; no scale change after removing centre.
+            val bounds = android.graphics.Rect((x-size/4).toInt(), (y-size/4).toInt(), (x+size*1.25f).toInt(), (y+size*1.25f).toInt())
+            if (before) canvas.drawBitmap(beforeBitmap, null, bounds, Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG))
+            else context.getDrawable(R.drawable.ic_launcher_foreground)!!.apply { setBounds(bounds); draw(canvas) }
             canvas.restoreToCount(saved)
-            canvas.drawText("${if (row == 0) "Circle" else "Squircle"} / ${if (before) "before 64dp" else "after 48dp"}", x, y + size + 32, paint)
+            canvas.drawText("${if (row == 0) "Circle" else "Squircle"} / ${if (before) "before WN-115" else "C, same scale"}", x, y + size + 32, paint)
         }
-        File(context.cacheDir, "wn115-masks.png").outputStream().use { sheet.compress(Bitmap.CompressFormat.PNG, 100, it) }
-        sheet.recycle()
+        File(context.cacheDir, "wn131-masks.png").outputStream().use { sheet.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        beforeBitmap.recycle(); sheet.recycle()
     }
     @Test fun persistentNotificationUsesThePackagedWhiteOrbita() {
         org.junit.Assume.assumeTrue("requires explicitly verified disposable emulator", InstrumentationRegistry.getArguments().getString("iconFixture") == "true")

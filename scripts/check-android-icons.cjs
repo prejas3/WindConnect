@@ -20,6 +20,6 @@ try{
   const log=run('shell','am','instrument','-w','-r','-e','iconFixture','true','-e','class',pkg+'.IconAssetsTest',pkg+'.test/androidx.test.runner.AndroidJUnitRunner');
   fs.writeFileSync(path.join(out,'instrumentation.log'),log);
   assert(log.includes('OK (2 tests)'),log);
-  for(const name of ['wn93-icons.png','wn93-notification.png','wn115-masks.png']){const r=spawnSync(adb,['-s',serial,'exec-out','run-as',pkg,'cat','cache/'+name],{windowsHide:true,timeout:10000});assert.equal(r.status,0);fs.writeFileSync(path.join(out,name),r.stdout);}
+  for(const name of ['wn93-icons.png','wn93-notification.png','wn131-masks.png']){const r=spawnSync(adb,['-s',serial,'exec-out','run-as',pkg,'cat','cache/'+name],{windowsHide:true,timeout:10000});assert.equal(r.status,0);fs.writeFileSync(path.join(out,name),r.stdout);}
   console.log(JSON.stringify({serial,packagedDrawables:true,safeZone:true,monochrome:true,notification:true,artifacts:out}));
 }finally{run('shell','am','force-stop',pkg);}
