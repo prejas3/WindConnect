@@ -1586,7 +1586,7 @@ Od strony z powiadomieniami:
 
 | typ | nazwa | pola `body` |
 |---|---|---|
-| 0 | `Posted` | `0 id` 16 B; `1 app` tekst ≤ 64 B (nazwa aplikacji); `2 package` tekst ≤ 128 B (identyfikator aplikacji, dla pamięci ikon i filtrów WN-45); `3 title`? tekst ≤ 256 B; `4 text`? tekst ≤ 1024 B; `5 time` uint (ms od epoki Uniksa, chwila opublikowania); `6 icon`? 8 B, klucz `Icon`; `7 reply`? tekst ≤ 64 B: etykieta akcji odpowiedzi, jest tylko wtedy, gdy na powiadomienie można odpowiedzieć (§9.8, WN-44) |
+| 0 | `Posted` | `0 id` 16 B; `1 app` tekst ≤ 64 B (nazwa aplikacji); `2 package` tekst ≤ 128 B (identyfikator aplikacji, dla pamięci ikon i filtrów WN-45); `3 title`? tekst ≤ 256 B; `4 text`? tekst ≤ 1024 B; `5 time` uint (ms od epoki Uniksa, chwila opublikowania); `6 icon`? 8 B, klucz `Icon`; `7 reply`? tekst ≤ 64 B: etykieta akcji odpowiedzi, jest tylko wtedy, gdy na powiadomienie można odpowiedzieć (§9.8, WN-44); `8 quiet`? bool, tylko `true`: u nadawcy nie przerywa (tryb „Nie przeszkadzać”), odbiorca pokazuje je bez wyskakiwania i dźwięku (WN-45) |
 | 1 | `Icon` | `0 key` 8 B (pierwsze 8 B SHA-256 obrazu); `1 png` PNG ≤ 16 KiB (nadawca: 64 px na bok) |
 | 2 | `Removed` | `0 id` 16 B: powiadomienie zniknęło u nadawcy (odrzucone albo anulowane) |
 | 3 | `Replied` | `0 id` 16 B; `1 ok` bool: czy odpowiedź z `Reply` (§9.8) poszła do aplikacji (WN-44) |
@@ -1632,6 +1632,14 @@ Zasady:
     Nadawca ustawia `reply` tylko dla akcji, która przyjmuje dowolny tekst
     (na Androidzie: `RemoteInput` z `getAllowFreeFormInput()`, nie
     kontekstowa; najpierw `SEMANTIC_ACTION_REPLY`, potem pierwsza taka).
+11. **Filtr aplikacji (WN-45).** Nadawca może pomijać wybrane aplikacje;
+    pominięta aplikacja nie wysyła nic (ani `Posted`, ani `Icon`). Gdy
+    aplikacja zostaje pominięta w trakcie sesji, nadawca wysyła `Removed`
+    dla jej powiadomień wysłanych w tej sesji. `8 quiet` to dodatek zgodny
+    (zasada 10): nadawca ustawia go, gdy powiadomienie nie przechodzi przez
+    jego tryb „Nie przeszkadzać” (Android: `Ranking.matchesInterruptionFilter()`
+    = false). Odbiorca może też sam wyciszać (ciche godziny, tryb skupienia),
+    ale nie ukrywa powiadomień i nie odrzuca ich u nadawcy.
 
 Przykład (z nagłówkiem długości ramki): nagłówek strumienia `01 02`;
 `Removed` z `id` = 16 × `07`, 22 B:

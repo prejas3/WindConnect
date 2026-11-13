@@ -94,4 +94,10 @@ body.onboarding-active #actions, body.onboarding-active [data-clipboard-controls
 .history-action svg { width: 15px; height: 15px; }
 .history-action:hover { background: var(--surface); color: var(--text); }
 .history-action[aria-pressed="true"] { color: var(--accent-ink); }
-.history-action[aria-pressed="true"] svg { fill: currentColor; }
+.history-action[aria-pressed="true"] svg { fill: currentColor; }/* WN-45: quiet hours: two time steppers (15-minute steps; arrows, PageUp/PageDown by an hour). */
+.quiet-times { justify-content: flex-start; flex-wrap: wrap; gap: 8px 12px; }
+.quiet-times[hidden] { display: none; }
+.time-stepper { display: inline-flex; align-items: center; gap: 2px; background: var(--tile); border-radius: var(--radius-control); padding: 2px; }
+.time-stepper [role="spinbutton"] { min-width: 52px; text-align: center; font-variant-numeric: tabular-nums; font-weight: 650; padding: 4px 2px; border-radius: 6px; }
+.time-stepper [role="spinbutton"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.time-stepper .button { min-width: 30px; }

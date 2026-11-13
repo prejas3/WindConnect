@@ -50,6 +50,52 @@ object NotifyProof {
         }
     }
 
+    /**
+     * WN-45: like [hold], and runs the script's filter commands from cache/wn45-cmd ("block <pkg>", "allow <pkg>", "mode all|only"),
+     * answering in cache/wn45-ack with "<n> <sends>": the command's number and every NotifySend so far as "package:outcome"
+     * (no content). "done" ends it.
+     */
+    fun holdFilter(core: WindCore) = runBlocking {
+        val context = instrumentation.targetContext
+        assertTrue("the script grants NotifyListenerService's access", NotifyListenerService.granted(context))
+        val command = java.io.File(context.cacheDir, "wn45-cmd").apply { delete() }
+        val ack = java.io.File(context.cacheDir, "wn45-ack").apply { delete() }
+        val sends = Collections.synchronizedList(mutableListOf<NotifySend>())
+        val collector = launch(Dispatchers.IO) { core.notifySends.collect { sends.add(it) } }
+        try {
+            core.setNotifyAllowed(true)
+            withTimeout(10_000) { while (!core.notifyAccess.value) { core.refreshNotify(); delay(100) } }
+            delay(1_500)
+            instrumentation.sendStatus(0, Bundle().apply { putString("notifyFilterReady", "true") })
+            var n = 0
+            withTimeout(300_000) {
+                while (true) {
+                    if (!command.exists()) { delay(100); continue }
+                    val line = command.readText().trim()
+                    command.delete()
+                    val parts = line.split(' ')
+                    when (parts[0]) {
+                        "block" -> core.setNotifyApp(parts[1], false)
+                        "allow" -> core.setNotifyApp(parts[1], true)
+                        "mode" -> core.setNotifyAppMode(if (parts[1] == "only") io.github.prejas3.windconnect.core.NotifyAppMode.OnlyChosen
+                            else io.github.prejas3.windconnect.core.NotifyAppMode.AllExcept)
+                        "done" -> break
+                    }
+                    delay(300)
+                    n++
+                    val list = synchronized(sends) { sends.joinToString(",") { "${it.packageName}:${it.outcome}" } }
+                    java.io.File(context.cacheDir, "wn45-ack.tmp").apply { writeText("$n $list") }.renameTo(ack)
+                }
+            }
+        } finally {
+            collector.cancel()
+            command.delete()
+            core.setNotifyAppMode(io.github.prejas3.windconnect.core.NotifyAppMode.AllExcept)
+            core.setNotifyApp("com.android.shell", true)
+            core.setNotifyAllowed(false)
+        }
+    }
+
     fun run(core: WindCore, tag: String, measure: String?) = runBlocking {
         assertTrue("the script grants NotifyListenerService's access", NotifyListenerService.granted(instrumentation.targetContext))
         val sends = Collections.synchronizedList(mutableListOf<NotifySend>())

@@ -92,6 +92,8 @@ pub struct ToastView {
     pub icon: Option<String>,
     /// The reply action's label, when it can be replied to (WN-44).
     pub reply: Option<String>,
+    /// No sound (WN-45): it doesn't pop up (an update, a burst, quiet on the phone, quiet hours, Focus).
+    pub silent: bool,
 }
 
 impl ToastView {
@@ -116,6 +118,7 @@ impl ToastView {
                 .as_deref()
                 .map(|r| clean(r, 64))
                 .filter(|r| !r.is_empty()),
+            silent: false,
             app,
         }
     }
@@ -154,6 +157,9 @@ pub fn toast_xml(view: &ToastView, icon: Option<&Path>) -> String {
         x.push_str(&format!(
             r#"<actions><input id="{REPLY_INPUT}" type="text" placeHolderContent="Odpowiedz…"/><action content="Wyślij" arguments="{REPLY_ARGUMENT}" hint-inputId="{REPLY_INPUT}" activationType="background"/></actions>"#
         ));
+    }
+    if view.silent {
+        x.push_str(r#"<audio silent="true"/>"#);
     }
     let header = if view.package.is_empty() {
         &view.app
@@ -291,6 +297,110 @@ pub struct PanelItem {
 /// The panel keeps the newest this many.
 pub const PANEL_ITEMS: usize = 20;
 
+/// WN-45: "Ciche godziny", in minutes after local midnight (a time of day, not a timestamp: a DST change can't shift it).
+/// Through midnight when `from` > `to`; `from` == `to` is none.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct QuietHours {
+    pub on: bool,
+    pub from: u16,
+    pub to: u16,
+}
+
+impl Default for QuietHours {
+    fn default() -> Self {
+        Self {
+            on: false,
+            from: 22 * 60,
+            to: 7 * 60,
+        }
+    }
+}
+
+impl QuietHours {
+    /// Times of day on a 15-minute step.
+    pub fn valid(&self) -> bool {
+        self.from < 1440
+            && self.to < 1440
+            && self.from.is_multiple_of(15)
+            && self.to.is_multiple_of(15)
+    }
+
+    /// Whether `minute` (0..1440, local) is within the quiet hours.
+    pub fn contains(&self, minute: u16) -> bool {
+        if !self.on || self.from == self.to {
+            false
+        } else if self.from < self.to {
+            minute >= self.from && minute < self.to
+        } else {
+            minute >= self.from || minute < self.to
+        }
+    }
+}
+
+/// `notify.json`: "Powiadomienia z telefonu" and the quiet hours (WN-45). WN-43 wrote a bare `true`/`false`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct NotifySettings {
+    pub enabled: bool,
+    #[serde(default)]
+    pub quiet: QuietHours,
+}
+
+impl Default for NotifySettings {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            quiet: QuietHours::default(),
+        }
+    }
+}
+
+impl NotifySettings {
+    /// The file's bytes: this format, WN-43's bare bool, or anything else (missing, damaged) -> the defaults.
+    pub fn parse(bytes: Option<&[u8]>) -> Self {
+        let Some(bytes) = bytes else {
+            return Self::default();
+        };
+        if let Ok(mut s) = serde_json::from_slice::<Self>(bytes) {
+            if !s.quiet.valid() {
+                s.quiet = QuietHours::default();
+            }
+            return s;
+        }
+        match serde_json::from_slice::<bool>(bytes) {
+            Ok(enabled) => Self {
+                enabled,
+                ..Self::default()
+            },
+            Err(_) => Self::default(),
+        }
+    }
+
+    pub fn load(path: &Path) -> Self {
+        Self::parse(std::fs::read(path).ok().as_deref())
+    }
+
+    /// Written whole: a temporary file next to it, then renamed over it (never half a file).
+    pub fn save(&self, path: &Path) -> std::io::Result<()> {
+        let temp = path.with_extension("json.tmp");
+        std::fs::write(
+            &temp,
+            serde_json::to_vec(self).map_err(std::io::Error::other)?,
+        )?;
+        std::fs::rename(&temp, path)
+    }
+}
+
+/// `SHQueryUserNotificationState`: busy (fullscreen), a Direct3D fullscreen app, presentation mode and the quiet time after
+/// setup want no popups. Windows' own Do not disturb / Focus already holds our toasts back by itself.
+pub fn state_silences(state: i32) -> bool {
+    matches!(state, 2..=4 | 6)
+}
+
+/// WN-45: the PC wants quiet now: Windows is busy (see [`state_silences`]) or it is within the quiet hours.
+pub fn silenced_now(quiet: &QuietHours) -> bool {
+    platform::busy() || quiet.contains(platform::local_minute())
+}
+
 /// Popups allowed: at most [`BURST`] in any [`BURST_WINDOW`].
 #[derive(Default)]
 pub struct Burst {
@@ -396,6 +506,8 @@ pub struct Notifications {
     burst: Burst,
     /// Newest first, at most [`PANEL_ITEMS`].
     items: VecDeque<PanelItem>,
+    /// WN-45: the PC wants quiet now (quiet hours, Focus/fullscreen); asked per notification, never polled.
+    silence: Box<dyn Fn() -> bool + Send>,
 }
 
 fn wall_ms() -> u64 {
@@ -413,7 +525,14 @@ impl Notifications {
             shown: HashSet::new(),
             burst: Burst::default(),
             items: VecDeque::new(),
+            silence: Box::new(|| false),
         }
+    }
+
+    /// WN-45: what says the PC wants quiet now.
+    pub fn silenced_by(mut self, silence: impl Fn() -> bool + Send + 'static) -> Self {
+        self.silence = Box::new(silence);
+        self
     }
 
     /// The panel's list, newest first.
@@ -462,9 +581,11 @@ impl Notifications {
             Message::Icon { key, png } => Job::Icon { key, png },
             Message::Posted(n) => {
                 let update = !self.shown.insert(n.id);
-                // An update replaces its toast quietly; a burst beyond the limit goes to Action Center only.
-                let popup = !update && self.burst.admit(received);
-                let view = ToastView::new(&n, &self.phone);
+                // An update replaces its toast quietly; a burst beyond the limit goes to Action Center only. WN-45: quiet on
+                // the phone (Do not disturb) or wanted quiet here goes there too, without using up the burst.
+                let popup = !update && !n.quiet && !(self.silence)() && self.burst.admit(received);
+                let mut view = ToastView::new(&n, &self.phone);
+                view.silent = !popup;
                 let status = self.item(&view.tag).and_then(|i| i.status);
                 self.items.retain(|i| i.tag != view.tag);
                 self.items.push_front(PanelItem {
@@ -568,6 +689,23 @@ pub fn worker(
 #[cfg(windows)]
 mod platform {
     use super::*;
+
+    /// Windows wants no popups now (fullscreen, presentation, quiet time); see [`state_silences`].
+    pub(super) fn busy() -> bool {
+        let mut state = 0;
+        // SAFETY: an out parameter of the documented call.
+        let ok =
+            unsafe { windows_sys::Win32::UI::Shell::SHQueryUserNotificationState(&mut state) } >= 0;
+        ok && state_silences(state)
+    }
+
+    /// Minutes after local midnight.
+    pub(super) fn local_minute() -> u16 {
+        // SAFETY: fills the struct.
+        let mut t: windows_sys::Win32::Foundation::SYSTEMTIME = unsafe { std::mem::zeroed() };
+        unsafe { windows_sys::Win32::System::SystemInformation::GetLocalTime(&mut t) };
+        t.wHour * 60 + t.wMinute
+    }
     use windows::core::HSTRING;
     use windows::Data::Xml::Dom::XmlDocument;
     use windows::Foundation::{DateTime, PropertyValue, TypedEventHandler};
@@ -800,6 +938,12 @@ mod platform {
 #[cfg(not(windows))]
 mod platform {
     use super::*;
+    pub(super) fn busy() -> bool {
+        false
+    }
+    pub(super) fn local_minute() -> u16 {
+        0
+    }
     pub(super) fn run(_: tauri::AppHandle, _: IconCache, jobs: mpsc::Receiver<Job>) {
         for _ in jobs {}
     }
@@ -823,6 +967,7 @@ mod tests {
             time_ms: 0,
             icon: Some([1; 8]),
             reply: None,
+            quiet: false,
         }
     }
 
@@ -1116,5 +1261,135 @@ mod tests {
         assert!(rx
             .try_iter()
             .any(|j| matches!(j, Job::Remove { tag } if tag == other)));
+    }
+
+    #[test]
+    fn quiet_hours_by_time_of_day() {
+        let q = |from: u16, to: u16| QuietHours { on: true, from, to };
+        let night = q(22 * 60, 7 * 60);
+        for (minute, inside) in [
+            (21 * 60 + 59, false),
+            (22 * 60, true),
+            (23 * 60 + 59, true),
+            (0, true),
+            (6 * 60 + 59, true),
+            (7 * 60, false),
+            (12 * 60, false),
+        ] {
+            assert_eq!(
+                night.contains(minute),
+                inside,
+                "through midnight at {minute}"
+            );
+        }
+        let day = q(9 * 60, 17 * 60);
+        assert!(
+            !day.contains(8 * 60 + 59)
+                && day.contains(9 * 60)
+                && day.contains(16 * 60 + 59)
+                && !day.contains(17 * 60)
+        );
+        assert!(!q(600, 600).contains(600), "from == to is none");
+        assert!(!QuietHours { on: false, ..night }.contains(23 * 60), "off");
+        // A time of day: the same minute is quiet on a DST day as on any other (no timestamps involved).
+        assert!(night.contains(2 * 60 + 30));
+        assert!(night.valid() && !q(1440, 0).valid() && !q(22 * 60 + 7, 0).valid());
+    }
+
+    #[test]
+    fn notify_json_migrates_and_survives_damage() {
+        assert_eq!(NotifySettings::parse(None), NotifySettings::default());
+        assert!(NotifySettings::default().enabled && !NotifySettings::default().quiet.on);
+        // WN-43's bare bool.
+        assert_eq!(
+            NotifySettings::parse(Some(b"false")),
+            NotifySettings {
+                enabled: false,
+                ..Default::default()
+            }
+        );
+        assert_eq!(
+            NotifySettings::parse(Some(b"true")),
+            NotifySettings::default()
+        );
+        // Damaged -> defaults (notifications on, quiet hours off).
+        for bad in [&b"{\"enab"[..], b"", b"42", b"\xff\xfe"] {
+            assert_eq!(NotifySettings::parse(Some(bad)), NotifySettings::default());
+        }
+        // Invalid hours -> default hours, the rest kept.
+        let odd = br#"{"enabled":false,"quiet":{"on":true,"from":5000,"to":3}}"#;
+        assert_eq!(
+            NotifySettings::parse(Some(odd)),
+            NotifySettings {
+                enabled: false,
+                quiet: QuietHours::default()
+            }
+        );
+        // Saved whole and read back; no temporary file left.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("notify.json");
+        std::fs::write(&path, b"true").unwrap();
+        let s = NotifySettings {
+            enabled: true,
+            quiet: QuietHours {
+                on: true,
+                from: 23 * 60,
+                to: 6 * 60 + 30,
+            },
+        };
+        s.save(&path).unwrap();
+        assert_eq!(NotifySettings::load(&path), s);
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn windows_busy_states_silence() {
+        // QUNS_: 1 not present, 2 busy, 3 D3D fullscreen, 4 presentation, 5 accepts, 6 quiet time, 7 app.
+        let silences: Vec<i32> = (0..9).filter(|s| state_silences(*s)).collect();
+        assert_eq!(silences, [2, 3, 4, 6]);
+    }
+
+    #[test]
+    fn quiet_ones_go_silently_and_keep_the_burst() {
+        let (tx, rx) = mpsc::channel();
+        let quiet_here = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let flag = quiet_here.clone();
+        let mut n = Notifications::new(tx, "Pixel 9")
+            .silenced_by(move || flag.load(std::sync::atomic::Ordering::SeqCst));
+        let with = |i: u8, quiet: bool| Posted {
+            id: [i; 16],
+            quiet,
+            ..posted()
+        };
+        // Quiet on the phone (Do not disturb): no popup, no sound.
+        n.apply(Message::Posted(with(1, true)));
+        // Quiet here (quiet hours / Focus).
+        quiet_here.store(true, std::sync::atomic::Ordering::SeqCst);
+        n.apply(Message::Posted(with(2, false)));
+        quiet_here.store(false, std::sync::atomic::Ordering::SeqCst);
+        // Neither used up the burst: five popups still follow.
+        for i in 3..9 {
+            n.apply(Message::Posted(with(i, false)));
+        }
+        let shows: Vec<(bool, bool, String)> = rx
+            .try_iter()
+            .filter_map(|j| match j {
+                Job::Show { view, popup, .. } => Some((popup, view.silent, toast_xml(&view, None))),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            shows.iter().map(|s| s.0).collect::<Vec<_>>(),
+            [false, false, true, true, true, true, true, false]
+        );
+        for (popup, silent, xml) in &shows {
+            assert_eq!(*silent, !popup);
+            assert_eq!(xml.contains(r#"<audio silent="true"/>"#), !popup, "{xml}");
+        }
+        // Still in the panel; a silent toast's close is never the person's own (only UserCanceled syncs, WN-44).
+        assert_eq!(n.items().len(), 8);
+        for reason in [1, 2] {
+            assert!(!dismissal_syncs(reason));
+        }
     }
 }
