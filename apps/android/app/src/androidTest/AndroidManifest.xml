@@ -1,6 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application android:debuggable="true">
         <activity android:name="io.github.prejas3.windconnect.FileShareSourceActivity" android:exported="true" />
+        <activity android:name="io.github.prejas3.windconnect.ReceivedFileViewerFixture" android:exported="true" />
         <provider android:name="io.github.prejas3.windconnect.FileShareFixtureProvider"
             android:authorities="io.github.prejas3.windconnect.test.files_fixture"
             android:exported="false" android:grantUriPermissions="true" />
