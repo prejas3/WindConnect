@@ -33,4 +33,35 @@ class WidgetModelTest {
         assertNotEquals(data, widgetData(ConnectionState.Ready, true, 0, false))
         assertNotEquals(data, widgetData(ConnectionState.Ready, true, null, true))
     }
+
+    // WN-119: the widget reads the battery as the PC's status does (BatteryReading, WN-49).
+    private fun widget(level: Int, scale: Int, plugged: Int, status: Int) =
+        widgetBattery(io.github.prejas3.windconnect.core.BatteryReading.from(level, scale, plugged, status))
+
+    @Test fun batteryFollowsTheSharedModel() {
+        val charging = android.os.BatteryManager.BATTERY_STATUS_CHARGING
+        val full = android.os.BatteryManager.BATTERY_STATUS_FULL
+        val notCharging = android.os.BatteryManager.BATTERY_STATUS_NOT_CHARGING
+        val discharging = android.os.BatteryManager.BATTERY_STATUS_DISCHARGING
+        val ac = android.os.BatteryManager.BATTERY_PLUGGED_AC
+        assertEquals(80 to true, widget(80, 100, 0, charging))
+        assertEquals(100 to true, widget(100, 100, 0, full))
+        // Plugged in but paused (battery protection): charging, as the PC shows it.
+        assertEquals(80 to true, widget(80, 100, ac, notCharging))
+        assertEquals(41 to false, widget(41, 100, 0, discharging))
+        // Unknown stays unknown: no percent and not charging, even if the status says charging.
+        assertEquals(null to false, widget(-1, 100, ac, charging))
+        assertEquals(null to false, widget(50, 0, 0, charging))
+        assertEquals(null to false, widget(150, 100, 0, discharging))
+        assertEquals(null to false, widgetBattery(null))
+        assertEquals("Telefon: —", widgetData(ConnectionState.Ready, true, null, false).batteryText)
+    }
+
+    @Test fun unchangedPercentAndChargingMeanNoNewData() {
+        // Temperature and voltage aren't in the reading: the same percent/charging give equal data (no widget update).
+        val a = widget(1234, 2000, 0, android.os.BatteryManager.BATTERY_STATUS_DISCHARGING)
+        val b = widget(1239, 2000, 0, android.os.BatteryManager.BATTERY_STATUS_DISCHARGING)
+        assertEquals(61, a.first)
+        assertEquals(widgetData(ConnectionState.Ready, true, a.first, a.second), widgetData(ConnectionState.Ready, true, b.first, b.second))
+    }
 }
