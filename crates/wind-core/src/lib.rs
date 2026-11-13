@@ -3,6 +3,7 @@
 pub mod actions;
 pub mod battery;
 pub mod broadcast;
+pub mod call;
 pub mod clipboard;
 pub mod discovery;
 pub mod files;
@@ -17,5 +18,6 @@ pub mod protocol;
 pub mod relay;
 pub mod session;
 pub mod transport;
+pub mod volume;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

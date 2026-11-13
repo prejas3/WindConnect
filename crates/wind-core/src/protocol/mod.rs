@@ -54,6 +54,10 @@ pub enum Channel {
     MediaControl = 9,
     /// Dismiss or reply to the other side's notifications (§9.8, WN-44).
     NotifyAction = 10,
+    /// Each side's output volume, shown and set by the other (§9.9, WN-48).
+    Volume = 11,
+    /// The phone's call state, for pausing the PC's players (§9.10, WN-48).
+    Call = 12,
 }
 
 impl Channel {
@@ -77,6 +81,8 @@ impl Channel {
             8 => Self::Find,
             9 => Self::MediaControl,
             10 => Self::NotifyAction,
+            11 => Self::Volume,
+            12 => Self::Call,
             _ => return Err(FrameError::UnknownChannel(b)),
         })
     }
@@ -248,7 +254,7 @@ mod tests {
             decode_stream_header([0x00, 0xff]),
             Err(FrameError::UnsupportedVersion(0))
         );
-        for b in [0x0b, 0x3f, 0x40, 0xff] {
+        for b in [0x0d, 0x3f, 0x40, 0xff] {
             assert_eq!(
                 decode_stream_header([0x01, b]),
                 Err(FrameError::UnknownChannel(b))

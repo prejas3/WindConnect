@@ -213,8 +213,10 @@ class NotifyListenerService : NotificationListenerService() {
 
     override fun onNotificationPosted(sbn: StatusBarNotification) {
         val at = android.os.SystemClock.elapsedRealtime()
-        val deliver = sink ?: return
         if (!allowed(this)) return
+        // WN-48: a call notification (dialer or VoIP) is the second, permission-free call signal; its key only.
+        if (sbn.notification.category == Notification.CATEGORY_CALL) CallNotifications.posted(sbn.key)
+        val deliver = sink ?: return
         val content = NotificationRules.content(sbn.parts(), packageName) ?: return
         // WN-45: listed for the app filter (package name only), then filtered before anything is kept or sent.
         NotifyApps.saw(this, sbn.packageName)
@@ -239,6 +241,7 @@ class NotifyListenerService : NotificationListenerService() {
     }
 
     override fun onNotificationRemoved(sbn: StatusBarNotification) {
+        CallNotifications.removed(sbn.key)
         val deliver = sink ?: return
         if (!allowed(this)) return
         val id = NotificationRules.id(sbn.key, salt(this))

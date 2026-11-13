@@ -71,6 +71,8 @@ impl FileBridge {
 /// CCS/1 FLOW:session capability events -> watch; standby probes never attach the file engine.
 pub(crate) struct FileCapabilities {
     value: watch::Sender<bool>,
+    /// WN-48: everything the peer accepts, as it changes (call/1, volume/1 follow it).
+    caps: watch::Sender<Vec<wind_core::protocol::Capability>>,
     updates: tokio::sync::Mutex<watch::Receiver<bool>>,
     task: tokio::task::JoinHandle<()>,
 }
@@ -85,9 +87,12 @@ impl FileCapabilities {
             .any(|c| c.name() == "files" && c.version() == 1);
         let (value, updates) = watch::channel(accepted);
         let sender = value.clone();
+        let (caps_tx, _) = watch::channel(session.peer_capabilities());
+        let all = caps_tx.clone();
         let task = tokio::spawn(async move {
             while let Some(event) = events.recv().await {
                 if let SessionEvent::Capabilities(caps) = event {
+                    all.send_replace(caps.clone());
                     sender.send_if_modified(|old| {
                         let new = caps.iter().any(|c| c.name() == "files" && c.version() == 1);
                         if *old == new {
@@ -100,12 +105,20 @@ impl FileCapabilities {
                 }
             }
             sender.send_replace(false);
+            all.send_replace(Vec::new());
         });
         Self {
             value,
+            caps: caps_tx,
             updates: tokio::sync::Mutex::new(updates),
             task,
         }
+    }
+}
+impl FileCapabilities {
+    /// What the peer accepts, now and as it changes (empty once the session ended).
+    pub fn peer_caps(&self) -> watch::Receiver<Vec<wind_core::protocol::Capability>> {
+        self.caps.subscribe()
     }
 }
 impl Drop for FileCapabilities {

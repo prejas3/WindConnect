@@ -14,7 +14,9 @@ use zeroize::{Zeroize, Zeroizing};
 
 uniffi::setup_scaffolding!();
 mod file_transfer;
+mod phone_extras;
 pub use file_transfer::FileTransfer;
+pub use phone_extras::VolumeSink;
 
 /// With the relay on, the address gets this long first (a LAN answers in
 /// milliseconds; the relay is the fallback).
@@ -426,6 +428,9 @@ pub struct CoreClient {
     /// WN-44: the PC's dismissals and replies, and whether the phone takes them (notifications on, access granted).
     notify_actions: std::sync::Mutex<Option<Arc<dyn NotifyActionSink>>>,
     notify_actions_enabled: std::sync::atomic::AtomicBool,
+    /// WN-48: the PC's volume and its requests for the phone's; whether the phone takes them ("Głośność z komputera").
+    volume: std::sync::Mutex<Option<Arc<dyn VolumeSink>>>,
+    volume_enabled: std::sync::atomic::AtomicBool,
 }
 
 #[derive(uniffi::Record, Clone, Debug)]
@@ -489,6 +494,8 @@ pub async fn open_client(
         pc_media_enabled: std::sync::atomic::AtomicBool::new(true),
         notify_actions: std::sync::Mutex::new(None),
         notify_actions_enabled: std::sync::atomic::AtomicBool::new(false),
+        volume: std::sync::Mutex::new(None),
+        volume_enabled: std::sync::atomic::AtomicBool::new(false),
         identity: IdentityInfo {
             public_key: identity.public_key().as_bytes().to_vec(),
             fingerprint: identity.fingerprint().to_hex(),
@@ -533,6 +540,15 @@ impl CoreClient {
     /// one changes with [`CoreConnection::set_media_control_accepted`].
     pub fn set_media_enabled(&self, enabled: bool) {
         self.media_enabled
+            .store(enabled, std::sync::atomic::Ordering::SeqCst);
+    }
+    /// WN-48: where the PC's volume and its requests go.
+    pub fn set_volume_sink(&self, sink: Box<dyn VolumeSink>) {
+        *self.volume.lock().unwrap() = Some(Arc::from(sink));
+    }
+    /// Whether new sessions announce `volume/1`; a live one changes with [`CoreConnection::set_volume_accepted`].
+    pub fn set_volume_enabled(&self, enabled: bool) {
+        self.volume_enabled
             .store(enabled, std::sync::atomic::Ordering::SeqCst);
     }
     /// WN-44: where the PC's dismissals and replies go.
@@ -950,6 +966,7 @@ impl CoreClient {
         let media = self.route_media(&mut router);
         let pc_media = self.route_pc_media(&mut router);
         let notify_actions = self.route_notify_actions(&mut router);
+        let volume = self.route_volume(&mut router);
         let (session, events) = tokio::time::timeout(
             Duration::from_secs(10),
             Session::dial(
@@ -969,8 +986,11 @@ impl CoreClient {
         self.serve_find(find);
         self.serve_notify_actions(notify_actions);
         let media_allowed = self.serve_media(media);
+        let file_caps = file_transfer::FileCapabilities::new(&session, events);
+        let extras = self.start_extras(&session, &file_caps, volume);
         Ok(Arc::new(CoreConnection {
-            file_caps: file_transfer::FileCapabilities::new(&session, events),
+            file_caps,
+            extras,
             files_active: std::sync::atomic::AtomicBool::new(false),
             files: self.files.clone(),
             clipboard: std::sync::Mutex::new(None),
@@ -1065,6 +1085,32 @@ impl CoreClient {
         }
         Some((sink, queue))
     }
+    /// WN-48: routes `volume` when there is a sink; withdrawn at the start unless "Głośność z komputera" is on.
+    fn route_volume(&self, router: &mut Router) -> Option<phone_extras::VolumeRoute> {
+        let sink = self.volume.lock().unwrap().clone()?;
+        let queue = wind_core::volume::route(router);
+        if !self
+            .volume_enabled
+            .load(std::sync::atomic::Ordering::SeqCst)
+        {
+            router.start_disabled(wind_core::protocol::Channel::Volume);
+        }
+        Some((sink, queue))
+    }
+    fn start_extras(
+        &self,
+        session: &Session,
+        caps: &file_transfer::FileCapabilities,
+        volume: Option<phone_extras::VolumeRoute>,
+    ) -> phone_extras::PhoneExtras {
+        phone_extras::PhoneExtras::start(
+            session.clone(),
+            caps.peer_caps(),
+            volume,
+            self.volume_enabled
+                .load(std::sync::atomic::Ordering::SeqCst),
+        )
+    }
     fn serve_notify_actions(&self, route: Option<NotifyActionRoute>) {
         if let Some((sink, queue)) = route {
             tokio::spawn(serve_notify_actions(sink, queue));
@@ -1096,13 +1142,14 @@ impl CoreClient {
             reason: "peer address must be an IP address and port".into(),
         })?;
         let mut changes = self.network.subscribe();
-        let ((session, events),(clipboard_input, find, media, pc_media, notify_actions)) = loop {
+        let ((session, events),(clipboard_input, find, media, pc_media, notify_actions, volume)) = loop {
             let mut router=Router::new();
             let clipboard_input=wind_core::clipboard::Clipboard::route(&mut router);
             let find = self.route_find(&mut router);
             let media = self.route_media(&mut router);
             let pc_media = self.route_pc_media(&mut router);
             let notify_actions = self.route_notify_actions(&mut router);
+            let volume = self.route_volume(&mut router);
             let attempt = tokio::time::timeout(
             wait,
             Session::dial(
@@ -1114,7 +1161,7 @@ impl CoreClient {
             ),
         );
             tokio::select! {
-                result = attempt => break result.map(|r|r.map(|s|(s,(clipboard_input, find, media, pc_media, notify_actions)))),
+                result = attempt => break result.map(|r|r.map(|s|(s,(clipboard_input, find, media, pc_media, notify_actions, volume)))),
                 changed = changes.changed() => {
                     if changed.is_err() { return Err(CoreError::Transport { reason: "network observer stopped".into() }); }
                 }
@@ -1128,8 +1175,11 @@ impl CoreClient {
         self.serve_find(find);
         self.serve_notify_actions(notify_actions);
         let media_allowed = self.serve_media(media);
+        let file_caps = file_transfer::FileCapabilities::new(&session, events);
+        let extras = self.start_extras(&session, &file_caps, volume);
         Ok(Arc::new(CoreConnection {
-            file_caps: file_transfer::FileCapabilities::new(&session, events),
+            file_caps,
+            extras,
             files_active: std::sync::atomic::AtomicBool::new(false),
             files: self.files.clone(),
             clipboard: std::sync::Mutex::new(None),
@@ -1344,6 +1394,8 @@ fn action_error(error: wind_core::actions::RequestError) -> CoreError {
 pub struct CoreConnection {
     files: Arc<file_transfer::FileBridge>,
     file_caps: file_transfer::FileCapabilities,
+    /// WN-48: the call state and both volumes.
+    extras: phone_extras::PhoneExtras,
     files_active: std::sync::atomic::AtomicBool,
     clipboard: std::sync::Mutex<Option<Arc<wind_core::clipboard::Connection>>>,
     clipboard_shared: Arc<wind_core::clipboard::Clipboard>,
@@ -1483,6 +1535,28 @@ impl CoreConnection {
             .posted(posted, icon, notification.progress)
             .await
             .map(|o| o.name().into())
+            .map_err(session_error)
+    }
+    /// WN-48: the phone's call state: 0 idle, 1 ringing, 2 offhook (goes to the PC while it takes `call/1`).
+    pub fn set_call_state(&self, state: u8) {
+        if let Some(s) = wind_core::call::CallState::from_code(state.into()) {
+            self.extras.set_call(s);
+        }
+    }
+    /// WN-48: STREAM_MUSIC as 0..=100 and muted (goes to the PC while both take `volume/1`).
+    pub fn set_volume_level(&self, level: u8, muted: bool) {
+        self.extras.set_level(level, muted);
+    }
+    /// WN-48: the person changes the PC's volume (only what is given); the latest wins.
+    pub fn send_volume_set(&self, level: Option<u8>, muted: Option<bool>) {
+        self.extras.request(level, muted);
+    }
+    /// WN-48: announce or withdraw `volume/1` on this session ("Głośność z komputera").
+    pub async fn set_volume_accepted(&self, accept: bool) -> Result<bool, CoreError> {
+        self.extras.set_enabled(accept);
+        self.session
+            .set_accepted(wind_core::protocol::Channel::Volume, accept)
+            .await
             .map_err(session_error)
     }
     /// WN-44: how a reply the PC asked for went (`Replied`).

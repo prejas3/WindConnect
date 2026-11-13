@@ -51,5 +51,10 @@ fun MediaControls() {
         WindSwitch("Pokaż odtwarzacz komputera", pcAllowed, connections::setPcMediaAllowed, Modifier.testTag("pcMediaAllowed"))
         Text("Co gra na komputerze, w aplikacji i w sterowaniu multimediami Androida. Tytuły widać też na ekranie blokady, jak przy innych odtwarzaczach.",
             style = MaterialTheme.typography.bodySmall)
+        // WN-48: volume both ways.
+        val volumeAllowed by connections.volumeAllowed.collectAsStateWithLifecycle()
+        WindSwitch("Głośność z komputera", volumeAllowed, connections::setVolumeAllowed, Modifier.testTag("volumeAllowed"))
+        Text("Komputer pokazuje i zmienia głośność multimediów telefonu, a aplikacja pokazuje i zmienia głośność komputera.",
+            style = MaterialTheme.typography.bodySmall)
     }
 }
