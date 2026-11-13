@@ -181,6 +181,53 @@ class WindCore private constructor(
     private val gate = Mutex()
     private val mutableState = MutableStateFlow<ConnectionState>(ConnectionState.Ready)
     val state: StateFlow<ConnectionState> = mutableState.asStateFlow()
+    private val mutableFilesAccepted = MutableStateFlow(false)
+    val filesAccepted = mutableFilesAccepted.asStateFlow()
+    private val mutableFiles = MutableStateFlow<List<io.github.prejas3.windconnect.bindings.FileTransfer>>(emptyList())
+    val files = mutableFiles.asStateFlow()
+    val outbox get() = java.io.File(appContext.noBackupFilesDir, "file-outbox")
+    private var filesCapabilityJob: Job? = null
+    private var filesReady = false
+
+    /** CCS/1 RULE:optional file storage failures must not prevent clipboard/connection startup. */
+    suspend fun prepareFiles() = withContext(Dispatchers.IO) {
+        gate.withLock {
+            if (!filesReady) withContext(NonCancellable) {
+                val root = java.io.File(appContext.noBackupFilesDir, "file-engine")
+                client.configureFiles(java.io.File(root, "inbox").absolutePath, java.io.File(root, "partials").absolutePath, outbox.absolutePath)
+                filesReady = true
+                scope.launch {
+                    try { while (true) mutableFiles.value = client.nextFileTransfers() }
+                    catch (failure: Exception) { if (failure is CancellationException) throw failure }
+                }
+                connection?.activateFiles()
+            }
+        }
+    }
+
+    suspend fun queueStagedFile(file: java.io.File, target: String): String = withContext(Dispatchers.IO) {
+        gate.withLock {
+            val active = connection ?: error("Brak połączenia z komputerem")
+            check(active.peer().fingerprint == target) { "Zmieniono komputer docelowy. Rozpocznij wysyłkę ponownie." }
+            check(active.filesAccepted()) { "Komputer nie przyjmuje plików" }
+            active.queueFiles(listOf(file.absolutePath)).single()
+        }
+    }
+    fun cancelFile(id: String) = client.cancelFile(id)
+
+    private suspend fun startFiles(active: CoreConnection) {
+        filesCapabilityJob?.cancel()
+        if (filesReady) active.activateFiles()
+        mutableFilesAccepted.value = active.filesAccepted()
+        filesCapabilityJob = scope.launch {
+            try { while (true) mutableFilesAccepted.value = active.nextFilesAccepted() }
+            catch (error: Exception) { if (error is CancellationException) throw error }
+        }
+    }
+    private fun stopFiles() {
+        filesCapabilityJob?.cancel(); filesCapabilityJob = null
+        mutableFilesAccepted.value = false
+    }
     private var connection: CoreConnection? = null
     private var watcher: Job? = null
     // WN-49: the battery goes to the PC only while a session is live.
@@ -444,6 +491,7 @@ class WindCore private constructor(
         val peer = opened.peer()
         opened.activateClipboard()
         systemClipboard.sessionStarted()
+        startFiles(opened)
         connection = opened
         mutableState.value = ConnectionState.Connected(peer.name, peer.fingerprint, rtt, opened.route())
         startBattery(opened)
@@ -455,6 +503,7 @@ class WindCore private constructor(
             gate.withLock {
                 if (connection === opened) {
                     connection = null
+                    stopFiles()
                     stopBattery()
                     stopMedia()
                     stopNotify()
@@ -658,6 +707,7 @@ class WindCore private constructor(
     }
 
     private suspend fun releaseConnection() {
+        stopFiles()
         stopBattery()
         stopMedia()
         stopNotify()

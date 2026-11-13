@@ -40,6 +40,7 @@ data class PairingUi(
     val code: String = "",
 
     val clipboard: ClipboardUi = ClipboardUi(),
+    val filesAccepted: Boolean = false,
     /** Paired computers and those still owed an unpair notice (WC-28). */
     val devices: List<PairedEntry> = emptyList(),
 )
@@ -70,6 +71,7 @@ class PairingViewModel(application: Application) : AndroidViewModel(application)
             try {
                 val opened = (application as WindApplication).connections.acquire()
                 core = opened
+                viewModelScope.launch { opened.filesAccepted.collect { value -> mutableUi.update { it.copy(filesAccepted = value) } } }
                 viewModelScope.launch { opened.clipboardUi.collect { value -> mutableUi.update { it.copy(clipboard = value) } } }
                 val paired = opened.pairedDevices()
                 mutableUi.update { it.copy(ready = true, initialized = true, skippedRecords = opened.skippedPairingRecords, hasPairedDevice = paired.isNotEmpty(), computerName = paired.lastOrNull()?.name) }

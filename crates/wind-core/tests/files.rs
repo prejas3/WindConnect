@@ -137,6 +137,62 @@ fn no_partials(inbox: &Path) -> bool {
         .all(|p| !p.extension().is_some_and(|e| e == "part"))
 }
 
+#[tokio::test(flavor = "multi_thread")]
+async fn received_batch_uses_type_folders_without_overwriting_existing_files() {
+    let temp = tempfile::tempdir().unwrap();
+    let sources = temp.path().join("sources");
+    std::fs::create_dir_all(&sources).unwrap();
+    let inbox = temp.path().join("Downloads/WindConnect");
+    let sender = engine(&temp.path().join("sender"));
+    let mut config = FilesConfig::new(&inbox, partials_of(&inbox));
+    config.type_folders = true;
+    let receiver = FileEngine::new(config).unwrap();
+    std::fs::create_dir_all(inbox.join("Obrazy")).unwrap();
+    let existing = inbox.join("Obrazy/photo0.JPG");
+    std::fs::write(&existing, b"keep me").unwrap();
+    let net = Net::new();
+    let (_a, _b) = net.attach(&sender, &receiver).await;
+    let mut expected = std::collections::HashMap::new();
+    for i in 0..20 {
+        let name = format!("photo{i}.JPG");
+        let file = random_file(&sources, &name, 80_000 + i, i as u8);
+        expected.insert(name, ("Obrazy", sha(&file)));
+        sender.send(net.b_fp, &file).unwrap();
+    }
+    for (i, name, folder) in [
+        (21, "video.mp4", "Wideo"),
+        (22, "paper.pdf", "Dokumenty"),
+        (23, "photo.jpg.exe", "Inne"),
+        (24, "noextension", "Inne"),
+    ] {
+        let file = random_file(&sources, name, 20_000, i);
+        expected.insert(name.into(), (folder, sha(&file)));
+        sender.send(net.b_fp, &file).unwrap();
+    }
+    let mut updates = receiver.subscribe();
+    let received = until(&mut updates, "all categorized files", |rows| {
+        all_done(rows, 24)
+    })
+    .await;
+    for row in received {
+        let (folder, hash) = expected.get(&row.path).unwrap();
+        let saved = row.saved_as.unwrap();
+        assert_eq!(
+            saved.parent().unwrap().canonicalize().unwrap(),
+            inbox.join(folder).canonicalize().unwrap()
+        );
+        assert_eq!(&sha(&saved), hash);
+        #[cfg(windows)]
+        assert!(
+            std::fs::read_to_string(format!("{}:Zone.Identifier", saved.display()))
+                .unwrap()
+                .contains("ZoneId=3")
+        );
+    }
+    assert_eq!(std::fs::read(existing).unwrap(), b"keep me");
+    assert!(inbox.join("Obrazy/photo0 (1).JPG").is_file());
+}
+
 fn walkdir(dir: &Path) -> Vec<PathBuf> {
     let mut out = Vec::new();
     if let Ok(entries) = std::fs::read_dir(dir) {

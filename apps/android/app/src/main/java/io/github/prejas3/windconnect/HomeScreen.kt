@@ -28,7 +28,7 @@ internal fun computerLabel(value: String?): String = value.orEmpty().filterNot {
 }.trim().take(64).ifEmpty { "Komputer" }
 
 @Composable
-fun HomeScreen(state: PairingUi, onScan: () -> Unit, onDiagnostics: () -> Unit, onNearby: (() -> Unit)? = null, onClipboard: (() -> Unit)? = null, onClipboardEnabled: ((Boolean) -> Unit)? = null) {
+fun HomeScreen(state: PairingUi, onScan: () -> Unit, onDiagnostics: () -> Unit, onNearby: (() -> Unit)? = null, onClipboard: (() -> Unit)? = null, onClipboardEnabled: ((Boolean) -> Unit)? = null, onSendFile: (() -> Unit)? = null) {
     val connected = state.connection as? ConnectionState.Connected
     val known = state.hasPairedDevice || connected != null
     val name = if (known) computerLabel(state.computerName) else "Twój komputer"
@@ -65,14 +65,14 @@ fun HomeScreen(state: PairingUi, onScan: () -> Unit, onDiagnostics: () -> Unit, 
         }
         // CCS/1 RULE:actions are disabled until their real channel integrations exist; no simulated send/lock/link result.
         Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            WindAction("Wyślij plik", "lub udostępnij z galerii", "send", null, Modifier.weight(1f).fillMaxHeight().testTag("homeSend"))
+            WindAction("Wyślij plik", "lub udostępnij z galerii", "send", onSendFile?.takeIf { connected != null && state.filesAccepted }, Modifier.weight(1f).fillMaxHeight().testTag("homeSend"))
             WindAction("Touchpad", "i klawiatura", "touch", null, Modifier.weight(1f).fillMaxHeight().testTag("homeTouchpad"))
         }
         Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             WindAction("Zablokuj PC", "Win+L zdalnie", "lock", null, Modifier.weight(1f).fillMaxHeight().testTag("homeLock"))
             WindAction("Otwórz na PC", "ostatni link", "external", null, Modifier.weight(1f).fillMaxHeight().testTag("homeLink"))
         }
-        Text("Szybkie akcje są jeszcze niedostępne.", color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+        Text("Akcje oznaczone jako niedostępne nie są jeszcze gotowe lub komputer ich teraz nie przyjmuje.", color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
     }
     if (onClipboard != null && onClipboardEnabled != null) ClipboardControls(state, onClipboard, onClipboardEnabled)
     PcMediaCard() // WN-47: the PC's player; shown only when the PC has one.

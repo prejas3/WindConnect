@@ -1,4 +1,5 @@
 <resources>
+    <string name="share_files">Wyślij na komputer · WindConnect</string>
     <string name="app_name">WindConnect</string>
     <string name="widget_name">WindConnect — stan PC</string>
     <string name="widget_description">Stan połączenia z komputerem, bateria telefonu i szybkie akcje.</string>
