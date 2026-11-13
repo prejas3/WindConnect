@@ -161,6 +161,9 @@ class WidgetHostTest {
             shell("dumpsys battery set level 78")
             waitFor("battery percentage event redraws") { textExists(view, "Telefon: 78%") }
             // CCS/1 CHECK:observe absence of RemoteViews events for125s, as required by review; not an arbitrary startup sleep.
+            // WN-119: while charging (the shared reading counts AC as charging) Glance draws the 78% change twice; let that one
+            // change settle (no event for 2 s) before the idle window, so the window measures unchanged data only.
+            while (view.events.poll(2, TimeUnit.SECONDS) != null) {}
             view.events.clear()
             val hostBefore = view.count.get()
             val publishBefore = WidgetUpdates.debugPublishes.get()

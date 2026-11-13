@@ -1,5 +1,6 @@
 package io.github.prejas3.windconnect
 
+import io.github.prejas3.windconnect.core.BatteryReading
 import io.github.prejas3.windconnect.core.ConnectionState
 
 internal data class WidgetData(
@@ -13,6 +14,9 @@ internal data class WidgetData(
 ) {
     val batteryText: String get() = "Telefon: ${battery?.let { "$it%" } ?: "—"}${if (charging) " · ładowanie" else ""}"
 }
+
+/** WN-119: the widget's percent and charging from the shared reading; none -> unknown (no percent, not charging). */
+internal fun widgetBattery(reading: BatteryReading?): Pair<Int?, Boolean> = reading?.let { it.level to it.charging } ?: (null to false)
 
 internal data class WidgetSnapshot(val data: WidgetData = WidgetData(), val updatedAt: Long = 0)
 

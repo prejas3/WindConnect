@@ -2,9 +2,9 @@ package io.github.prejas3.windconnect
 
 import android.appwidget.AppWidgetManager
 import android.content.*
-import android.os.BatteryManager
 import android.os.Build
 import androidx.glance.appwidget.updateAll
+import io.github.prejas3.windconnect.core.BatteryReading
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -80,14 +80,11 @@ internal object WidgetUpdates {
     }
 
     private fun read(application: WindApplication): WidgetData {
-        val battery = application.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
-        val level = battery?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
-        val scale = battery?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
-        val percent = if (level >= 0 && scale > 0) (level * 100 / scale) else null
-        val status = battery?.getIntExtra(BatteryManager.EXTRA_STATUS, -1)
+        // WN-119: the same normalisation as the PC's battery (BatteryReading, WN-49): FULL or plugged counts as charging,
+        // an unknown level is no reading at all (no percent, not charging). The sticky intent: no new receiver or timer.
+        val (percent, charging) = widgetBattery(BatteryReading.from(application.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))))
         val appearance = application.getSharedPreferences("appearance", Context.MODE_PRIVATE)
-        return widgetData(application.connections.state.value, ConnectionService.enabled(application), percent,
-            status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL,
+        return widgetData(application.connections.state.value, ConnectionService.enabled(application), percent, charging,
             appearance.getString("theme", "System") ?: "System", appearance.getBoolean("dynamic", true),
             application.getSharedPreferences("widget_presentation", Context.MODE_PRIVATE).getString("peer_name", null))
     }
