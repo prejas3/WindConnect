@@ -328,58 +328,76 @@ async fn original(app: &tauri::AppHandle, id: u64) -> Result<PathBuf, String> {
 }
 
 async fn download(app: tauri::AppHandle, session: Session, id: u64) -> Result<PathBuf, String> {
-    use tokio::io::AsyncWriteExt;
     let message = |e: AskError| match e {
         AskError::Status(Status::NotFound) => "Tego zdjęcia nie ma już na telefonie.".to_string(),
         AskError::Status(Status::Denied) => "Telefon nie udostępnia teraz zdjęć.".to_string(),
         _ => "Nie udało się pobrać zdjęcia z telefonu.".to_string(),
     };
-    let mut d = gallery::original(&session, id).await.map_err(message)?;
-    let dir = folder().join(id.to_string());
-    let path = dir.join(&d.info.name);
-    let part = dir.join(format!("{}.part", d.info.name));
+    let d = gallery::original(&session, id).await.map_err(message)?;
     let size = d.info.size;
+    let peer = *session.peer().key.fingerprint().as_bytes();
+    let progress = |received| {
+        let _ = app.emit_to(PANEL, "gallery-fetch", Fetching { id, received, size });
+    };
+    let saved = save(&folder().join(id.to_string()), &peer, id, d, &progress).await;
+    progress(if saved.is_ok() { size } else { 0 });
+    saved
+}
+
+/// Writes an original into `dir` and hands back its path, only as a picture the PC itself named and checked: the
+/// name from [`gallery::saved_name`] (never the phone's own extension unless it is an image one), the first bytes
+/// matching that type, and Mark-of-the-Web (Internet zone, as received files, WN-38) before anyone can open or drag
+/// it. Anything else is refused and nothing is left on disk. `progress` gets the bytes so far, at most every 100 ms.
+async fn save(
+    dir: &std::path::Path,
+    peer: &[u8; 32],
+    id: u64,
+    mut d: gallery::Download,
+    progress: &(dyn Fn(u64) + Sync),
+) -> Result<PathBuf, String> {
+    use tokio::io::AsyncWriteExt;
+    const FAILED: &str = "Nie udało się pobrać zdjęcia z telefonu.";
+    const NOT_A_PICTURE: &str = "Telefon wysłał plik, który nie jest zdjęciem.";
+    // Dropping `d` here stops the phone's stream.
+    let name = gallery::saved_name(id, &d.info).ok_or(NOT_A_PICTURE)?;
+    let path = dir.join(&name);
+    let part = dir.join(format!("{name}.part"));
     let write = async {
-        tokio::fs::create_dir_all(&dir).await.ok()?;
-        let mut file = tokio::fs::File::create(&part).await.ok()?;
+        tokio::fs::create_dir_all(dir).await.map_err(|_| FAILED)?;
+        let mut file = tokio::fs::File::create(&part).await.map_err(|_| FAILED)?;
+        let mut head = Vec::with_capacity(16);
+        let mut checked = false;
         let mut last = std::time::Instant::now();
-        while let Some(bytes) = d.next().await.ok()? {
-            file.write_all(&bytes).await.ok()?;
+        while let Some(bytes) = d.next().await.map_err(|_| FAILED)? {
+            if !checked {
+                head.extend(bytes.iter().take(16 - head.len()));
+                if head.len() == 16 || d.received() == d.info.size {
+                    if !gallery::bytes_match(&name, &head) {
+                        return Err(NOT_A_PICTURE);
+                    }
+                    checked = true;
+                }
+            }
+            file.write_all(&bytes).await.map_err(|_| FAILED)?;
             if last.elapsed() >= std::time::Duration::from_millis(100) {
                 last = std::time::Instant::now();
-                let _ = app.emit_to(
-                    PANEL,
-                    "gallery-fetch",
-                    Fetching {
-                        id,
-                        received: d.received(),
-                        size,
-                    },
-                );
+                progress(d.received());
             }
         }
-        file.flush().await.ok()?;
-        drop(file);
-        tokio::fs::rename(&part, &path).await.ok()?;
-        Some(())
-    };
-    let done = write.await;
-    let _ = app.emit_to(
-        PANEL,
-        "gallery-fetch",
-        Fetching {
-            id,
-            received: if done.is_some() { size } else { 0 },
-            size,
-        },
-    );
-    match done {
-        Some(()) => Ok(path),
-        None => {
-            let _ = tokio::fs::remove_file(&part).await;
-            Err("Nie udało się pobrać zdjęcia z telefonu.".into())
+        if !checked {
+            return Err(NOT_A_PICTURE);
         }
+        file.flush().await.map_err(|_| FAILED)?;
+        drop(file);
+        wind_core::files::store::mark_of_the_web(&part, peer).map_err(|_| FAILED)?;
+        tokio::fs::rename(&part, &path).await.map_err(|_| FAILED)?;
+        Ok(path)
+    };
+    let result = write.await;
+    if result.is_err() {
+        let _ = tokio::fs::remove_file(&part).await;
     }
+    result.map_err(String::from)
 }
 
 #[tauri::command]

@@ -98,6 +98,55 @@ pub fn is_jpeg(b: &[u8]) -> bool {
     b.starts_with(&[0xff, 0xd8, 0xff])
 }
 
+/// Image types the PC saves and opens: (extension, MIME). Nothing else from the phone is ever written under its own
+/// extension, so a click or a drop can only hand Windows a picture (WN-58 review: the name comes from the phone).
+pub const IMAGE_TYPES: [(&str, &str); 9] = [
+    ("jpg", "image/jpeg"),
+    ("jpeg", "image/jpeg"),
+    ("png", "image/png"),
+    ("webp", "image/webp"),
+    ("heic", "image/heic"),
+    ("heif", "image/heif"),
+    ("gif", "image/gif"),
+    ("avif", "image/avif"),
+    ("bmp", "image/bmp"),
+];
+
+fn image_ext(name: &str) -> Option<&'static str> {
+    let (_, ext) = name.rsplit_once('.')?;
+    IMAGE_TYPES
+        .iter()
+        .find(|(e, _)| e.eq_ignore_ascii_case(ext))
+        .map(|(e, _)| *e)
+}
+
+/// The name the PC saves an original under, decided on the PC whatever the phone sent: the phone's name when its
+/// last extension is an image one (`x.JPG`, not `x.jpg.exe`), else `IMG_<id>.<ext>` from an image MIME; `None`
+/// (refuse, save nothing) when neither is an image.
+pub fn saved_name(id: u64, info: &FileInfo) -> Option<String> {
+    if name_ok(&info.name) && image_ext(&info.name).is_some() {
+        return Some(info.name.clone());
+    }
+    let mime = info.mime.to_ascii_lowercase();
+    let (ext, _) = IMAGE_TYPES.iter().find(|(_, m)| *m == mime)?;
+    Some(format!("IMG_{id}.{ext}"))
+}
+
+/// The file's first bytes match the image type of `name`'s extension (checked before the PC opens or drags it).
+pub fn bytes_match(name: &str, head: &[u8]) -> bool {
+    let ftyp = head.len() >= 12 && &head[4..8] == b"ftyp";
+    match image_ext(name) {
+        Some("jpg" | "jpeg") => head.starts_with(&[0xff, 0xd8, 0xff]),
+        Some("png") => head.starts_with(b"\x89PNG\r\n\x1a\n"),
+        Some("gif") => head.starts_with(b"GIF87a") || head.starts_with(b"GIF89a"),
+        Some("webp") => head.len() >= 12 && head.starts_with(b"RIFF") && &head[8..12] == b"WEBP",
+        Some("bmp") => head.starts_with(b"BM"),
+        // HEIF family (heic, heif, avif): an ISO-BMFF `ftyp` box first; phones also save HEIC as .jpg-less names.
+        Some("heic" | "heif" | "avif") => ftyp,
+        _ => false,
+    }
+}
+
 /// A name the PC can create as it is (one part, no reserved or odd characters).
 pub fn name_ok(name: &str) -> bool {
     name.len() <= MAX_NAME && matches!(crate::files::path::check(name), Ok(p) if p.len() == 1)
@@ -826,6 +875,46 @@ mod tests {
             Reply::decode(&Reply::Chunk(vec![0; CHUNK + 1]).encode()),
             None
         );
+    }
+
+    #[test]
+    fn the_pc_saves_only_pictures_under_their_own_name() {
+        let info = |name: &str, mime: &str| FileInfo {
+            name: name.into(),
+            mime: mime.into(),
+            size: 1,
+        };
+        for (name, mime, want) in [
+            ("PXL_1.jpg", "image/jpeg", Some("PXL_1.jpg")),
+            ("x.JPG", "image/jpeg", Some("x.JPG")),
+            ("x.heic", "image/heic", Some("x.heic")),
+            // The phone's name lies or isn't a picture: the PC names it from the MIME.
+            ("zdjecie.exe", "image/jpeg", Some("IMG_7.jpg")),
+            ("x.jpg.exe", "image/png", Some("IMG_7.png")),
+            ("a.js", "IMAGE/WEBP", Some("IMG_7.webp")),
+            ("b.lnk", "image/jpeg", Some("IMG_7.jpg")),
+            ("c.hta", "image/gif", Some("IMG_7.gif")),
+            ("d.jpg.scr", "image/jpeg", Some("IMG_7.jpg")),
+            ("noext", "image/jpeg", Some("IMG_7.jpg")),
+            // Neither name nor type is a picture: refused.
+            ("evil.exe", "application/x-msdownload", None),
+            ("x.jpg.exe", "application/octet-stream", None),
+        ] {
+            assert_eq!(saved_name(7, &info(name, mime)).as_deref(), want, "{name} {mime}");
+        }
+    }
+
+    #[test]
+    fn first_bytes_must_match_the_picture_type() {
+        assert!(bytes_match("a.jpg", &[0xff, 0xd8, 0xff, 0xe0]));
+        assert!(bytes_match("a.PNG", b"\x89PNG\r\n\x1a\n...."));
+        assert!(bytes_match("a.webp", b"RIFF\0\0\0\0WEBPVP8 "));
+        assert!(bytes_match("a.heic", b"\0\0\0\x18ftypheic...."));
+        assert!(bytes_match("a.gif", b"GIF89a"));
+        assert!(!bytes_match("a.jpg", b"MZ\x90\0"));
+        assert!(!bytes_match("a.png", &[0xff, 0xd8, 0xff]));
+        assert!(!bytes_match("a.exe", b"MZ\x90\0"));
+        assert!(!bytes_match("a.heic", b"\0\0"));
     }
 
     #[test]
