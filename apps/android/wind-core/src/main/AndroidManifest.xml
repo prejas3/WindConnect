@@ -7,6 +7,15 @@
     <!-- WN-50: find my phone vibrates with its ring. -->
     <uses-permission android:name="android.permission.VIBRATE" />
     <application>
+        <!-- CCS/1 SEC:PHONE_STATE is a protected system broadcast; only IDLE restores our persisted mute, no caller data read.
+             RULE:READ_PHONE_STATE must be granted; exempt implicit receiver wakes after process death, not force-stop. -->
+        <receiver
+            android:name="io.github.prejas3.windconnect.core.RingMuteRestoreReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.PHONE_STATE" />
+            </intent-filter>
+        </receiver>
         <!-- WN-46: only so Android lets WindConnect read media sessions (PROTOCOL.md §9.6 rule 6); it reads no notifications.
              Bound only by the system (BIND_NOTIFICATION_LISTENER_SERVICE), after the person grants access in system settings. -->
         <service

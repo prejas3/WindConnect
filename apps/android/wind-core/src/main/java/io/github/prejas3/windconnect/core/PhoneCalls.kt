@@ -95,6 +95,15 @@ class RingMute internal constructor(private val access: RingMuteAccess) {
     }
 }
 
+/** CCS/1 PURPOSE:undo only our persisted ring mute after process death, without constructing PhoneCalls/WindCore. */
+class RingMuteRestoreReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+        if (intent.action != TelephonyManager.ACTION_PHONE_STATE_CHANGED ||
+            intent.getStringExtra(TelephonyManager.EXTRA_STATE) != TelephonyManager.EXTRA_STATE_IDLE) return
+        RingMute(context).restore()
+    }
+}
+
 class PhoneCalls(context: Context) : CallActionSink {
     private val app = context.applicationContext
     private val main = Handler(Looper.getMainLooper())

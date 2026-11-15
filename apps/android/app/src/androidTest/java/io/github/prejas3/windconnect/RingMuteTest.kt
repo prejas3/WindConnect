@@ -1,9 +1,12 @@
 package io.github.prejas3.windconnect
 
 import android.media.AudioManager
+import android.content.Intent
+import android.telephony.TelephonyManager
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import io.github.prejas3.windconnect.core.RingMute
+import io.github.prejas3.windconnect.core.RingMuteRestoreReceiver
 import org.junit.After
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -55,5 +58,30 @@ class RingMuteTest {
         mute.recover(ringingNow = false)
         mute.restore()
         assertTrue("the person's mute stays", muted())
+    }
+
+    @Test fun idleReceiverRestoresThePersistedMuteWithoutACore() {
+        assertTrue(RingMute(context).mute())
+        val receiver = RingMuteRestoreReceiver()
+        receiver.onReceive(context, Intent(TelephonyManager.ACTION_PHONE_STATE_CHANGED)
+            .putExtra(TelephonyManager.EXTRA_STATE, TelephonyManager.EXTRA_STATE_RINGING))
+        assertTrue("ringing is ignored", muted())
+        receiver.onReceive(context, Intent("unrelated")
+            .putExtra(TelephonyManager.EXTRA_STATE, TelephonyManager.EXTRA_STATE_IDLE))
+        assertTrue("other actions are ignored", muted())
+        receiver.onReceive(context, Intent(TelephonyManager.ACTION_PHONE_STATE_CHANGED))
+        assertTrue("missing state is ignored", muted())
+        receiver.onReceive(context, Intent(TelephonyManager.ACTION_PHONE_STATE_CHANGED)
+            .putExtra(TelephonyManager.EXTRA_STATE, TelephonyManager.EXTRA_STATE_IDLE))
+        assertFalse(muted())
+        assertFalse(RingMute(context).active)
+    }
+
+    @Test fun idleReceiverLeavesThePersonsMuteAlone() {
+        audio.adjustStreamVolume(AudioManager.STREAM_RING, AudioManager.ADJUST_MUTE, 0)
+        RingMuteRestoreReceiver().onReceive(context, Intent(TelephonyManager.ACTION_PHONE_STATE_CHANGED)
+            .putExtra(TelephonyManager.EXTRA_STATE, TelephonyManager.EXTRA_STATE_IDLE))
+        assertTrue(muted())
+        assertFalse(RingMute(context).active)
     }
 }
