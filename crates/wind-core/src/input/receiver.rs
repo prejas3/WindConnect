@@ -8,18 +8,37 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::protocol::{Button, ErrorCode, InputMessage, InputSession, Motion, PointerButton};
+use crate::protocol::{
+    Button, ErrorCode, Gesture, InputGesture, InputMessage, InputSession, Motion, PointerButton,
+};
 
 /// What reaches the system.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InputEvent {
     /// Move the pointer by (`dx`, `dy`), in 1/100 dp of the sender's screen.
     /// `t` is the sender's timestamp of the state (µs, its own clock).
-    Pointer { dx: i64, dy: i64, t: Option<u64> },
+    Pointer {
+        dx: i64,
+        dy: i64,
+        t: Option<u64>,
+    },
     /// Scroll by (`dx`, `dy`); `dy` positive is down.
-    Scroll { dx: i64, dy: i64, t: Option<u64> },
+    Scroll {
+        dx: i64,
+        dy: i64,
+        t: Option<u64>,
+    },
     /// Press or release a known button.
-    Button { button: Button, down: bool },
+    Button {
+        button: Button,
+        down: bool,
+    },
+    Gesture(Gesture),
+    /// CCS/1 input/2 only:let a platform owner cancel smoothing and release state even without a mouse button down.
+    Begin(u32),
+    End(u32),
+    /// CCS/1 RULE:local withdrawal fence, after every older queued event, even without a live session.
+    Withdrawn,
 }
 
 /// The two classes of continuous state (§8.3).
@@ -53,6 +72,7 @@ fn park(slots: &mut Slots, class: Class, m: Motion) {
 /// The receiver's state for one sender (§8.6).
 #[derive(Debug)]
 pub struct InputReceiver {
+    version: u64,
     /// Whether this side announces `input/1`.
     accepting: bool,
     /// Number of the announcement that last enabled `input/1` (§8.2).
@@ -73,7 +93,11 @@ impl InputReceiver {
     /// A receiver that announces `input/1` from its `Hello` / `HelloAck`
     /// (`accepting`), or not.
     pub fn new(accepting: bool) -> Self {
+        Self::with_version(accepting, 1)
+    }
+    pub fn with_version(accepting: bool, version: u64) -> Self {
         InputReceiver {
+            version,
             accepting,
             g_min: 0,
             cur: None,
@@ -163,6 +187,7 @@ impl InputReceiver {
         match msg {
             InputMessage::InputSession(_) => Err(ErrorCode::ProtocolViolation),
             InputMessage::PointerButton(b) => self.button(*b, out),
+            InputMessage::Gesture(g) => self.gesture(*g, out),
             InputMessage::PointerMotion(m) => {
                 self.apply(Class::Pointer, m.seq, m.x, m.y, m.t, out);
                 Ok(())
@@ -197,6 +222,9 @@ impl InputReceiver {
             return Err(ErrorCode::Cancelled);
         }
         self.live = true;
+        if self.version >= 2 {
+            out.push(InputEvent::Begin(session.s));
+        }
         if let Some(slots) = self.pending_future.remove(&session.s) {
             self.pending_live = slots;
         }
@@ -226,6 +254,20 @@ impl InputReceiver {
             }
         }
         self.epoch = b.b;
+        self.review(out);
+        Ok(())
+    }
+
+    fn gesture(&mut self, g: InputGesture, out: &mut Vec<InputEvent>) -> Result<(), ErrorCode> {
+        if self.version < 2 || g.b != self.epoch.wrapping_add(1) {
+            return Err(ErrorCode::ProtocolViolation);
+        }
+        self.apply(Class::Pointer, g.seq, g.x, g.y, None, out);
+        self.apply(Class::Scroll, g.seq, g.sx, g.sy, None, out);
+        if !matches!(g.gesture, Gesture::Other(_)) {
+            out.push(InputEvent::Gesture(g.gesture));
+        }
+        self.epoch = g.b;
         self.review(out);
         Ok(())
     }
@@ -281,10 +323,16 @@ impl InputReceiver {
     }
 
     fn close(&mut self, out: &mut Vec<InputEvent>) {
+        let was_live = self.live;
         if self.live {
             self.live = false;
         }
         self.release_all(out);
+        if was_live && self.version >= 2 {
+            if let Some(s) = self.cur {
+                out.push(InputEvent::End(s));
+            }
+        }
         self.pending_live = [None; 2];
         if let Some(cur) = self.cur {
             self.pending_future.retain(|&s, _| s > cur);
@@ -303,6 +351,9 @@ impl InputReceiver {
     /// This side withdrew `input/1`.
     pub fn withdraw(&mut self, out: &mut Vec<InputEvent>) {
         self.close(out);
+        if self.version >= 2 {
+            out.push(InputEvent::Withdrawn);
+        }
         self.accepting = false;
         self.pending_future.clear();
     }

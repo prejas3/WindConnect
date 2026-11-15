@@ -40,6 +40,8 @@ class ConnectionOwner(private val application: Application) {
     private val mutableState = MutableStateFlow<ConnectionState>(ConnectionState.Stopped)
     // CCS/1 RULE:QS observes existing leases only; opening the panel never starts a connection.
     val state = mutableState.asStateFlow()
+    private val mutableTouchpadAccepted = MutableStateFlow(false)
+    val touchpadAccepted = mutableTouchpadAccepted.asStateFlow()
     // WN-50: the ring and its setting, for the Activity's stop bar and Settings (no lease of their own).
     private val mutableRinging = MutableStateFlow(false)
     val ringing = mutableRinging.asStateFlow()
@@ -131,6 +133,7 @@ class ConnectionOwner(private val application: Application) {
                 launch { opened.mediaAccess.collect { mutableMediaAccess.value = it } }
                 launch { opened.pcMedia.collect { mutablePcMedia.value = it } }
                 launch { opened.pcMediaAllowed.collect { mutablePcMediaAllowed.value = it } }
+                launch { opened.touchpadAccepted.collect { mutableTouchpadAccepted.value = it } }
                 launch { opened.notifyAllowed.collect { mutableNotifyAllowed.value = it } }
                 launch { opened.notifyAccess.collect { mutableNotifyAccess.value = it } }
                 launch { opened.notifyApps.collect { mutableNotifyApps.value = it } }

@@ -101,6 +101,7 @@ pub struct Router {
     /// Routed but not announced at the start (WN-50): `Session::set_accepted` turns them on.
     pub(super) disabled: BTreeSet<u8>,
     pub(super) input: Option<mpsc::Sender<InputEvent>>,
+    pub(super) input_version: u64,
 }
 
 impl Router {
@@ -181,8 +182,18 @@ impl Router {
     /// gets what should reach the system, late and stale state already
     /// dropped.
     pub fn route_input(&mut self, queue: usize) -> mpsc::Receiver<InputEvent> {
+        self.route_input_version(1, queue)
+    }
+    /// CCS/1 COMPAT:version1 keeps existing behavior; version2 adds gesture barriers and explicit session lifetime events.
+    pub fn route_input_version(
+        &mut self,
+        version: u64,
+        queue: usize,
+    ) -> mpsc::Receiver<InputEvent> {
+        assert!((1..=2).contains(&version));
         let (tx, rx) = mpsc::channel(queue.max(1));
         self.input = Some(tx);
+        self.input_version = version;
         rx
     }
 
@@ -198,7 +209,11 @@ impl Router {
             .chain(self.find.as_ref().map(|_| (Channel::Find, 1)))
             .chain(self.sms.as_ref().map(|_| (Channel::Sms, 1)))
             .chain(self.gallery.as_ref().map(|_| (Channel::Gallery, 1)))
-            .chain(self.input.as_ref().map(|_| (Channel::Input, 1)))
+            .chain(
+                self.input
+                    .as_ref()
+                    .map(|_| (Channel::Input, self.input_version)),
+            )
             .filter(|(ch, _)| !self.disabled.contains(&ch.byte()))
             .flat_map(|(ch, v)| (1..=v).map(move |v| (ch, v)))
             .filter_map(|(ch, v)| Capability::new(capability_name(ch)?, v))

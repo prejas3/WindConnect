@@ -9,8 +9,8 @@ use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
 
 use crate::protocol::{
-    encode_datagram, encode_frame, stream_header, Button, Channel, InputMessage, InputSession,
-    Message, Motion, PointerButton,
+    encode_datagram, encode_frame, stream_header, Button, Channel, Gesture, InputGesture,
+    InputMessage, InputSession, Message, Motion, PointerButton,
 };
 use crate::session::{send_priority, SessionError};
 
@@ -99,6 +99,18 @@ impl SenderCore {
             sy: self.scroll.1,
         })
     }
+    pub fn gesture(&mut self, gesture: Gesture) -> InputMessage {
+        self.epoch += 1;
+        InputMessage::Gesture(InputGesture {
+            seq: self.next_seq(),
+            gesture,
+            x: self.pointer.0,
+            y: self.pointer.1,
+            b: self.epoch,
+            sx: self.scroll.0,
+            sy: self.scroll.1,
+        })
+    }
 }
 
 struct State {
@@ -132,6 +144,7 @@ pub struct InputSender {
     g: Arc<dyn Fn() -> Option<InputAnnouncement> + Send + Sync>,
     state: Arc<Mutex<State>>,
     start: Instant,
+    gestures: Arc<dyn Fn() -> bool + Send + Sync>,
 }
 
 impl std::fmt::Debug for InputSender {
@@ -143,11 +156,16 @@ impl std::fmt::Debug for InputSender {
 }
 
 impl InputSender {
+    /// CCS/1 RULE:platform leases bind to the enabling announcement, so off/on invalidates an old gesture capture.
+    pub fn announcement(&self) -> Option<InputAnnouncement> {
+        (self.g)()
+    }
     /// `g` gives the peer's input announcements now, or `None` while it
     /// doesn't accept input.
     pub(crate) fn new(
         conn: quinn::Connection,
         g: Arc<dyn Fn() -> Option<InputAnnouncement> + Send + Sync>,
+        gestures: Arc<dyn Fn() -> bool + Send + Sync>,
     ) -> Self {
         // §8.7: the path for continuous events is fixed per connection.
         let datagrams = conn.max_datagram_size().is_some();
@@ -155,6 +173,7 @@ impl InputSender {
             conn,
             datagrams,
             g,
+            gestures,
             state: Arc::new(Mutex::new(State {
                 core: SenderCore::new(0),
                 stream: None,
@@ -169,6 +188,22 @@ impl InputSender {
     /// Whether continuous events go as datagrams (else on the stream).
     pub fn uses_datagrams(&self) -> bool {
         self.datagrams
+    }
+    pub fn supports_gestures(&self) -> bool {
+        (self.gestures)()
+    }
+    pub async fn gesture(&self, gesture: Gesture) -> Result<(), SessionError> {
+        if !(self.gestures)() || matches!(gesture, Gesture::Other(_)) {
+            return Err(SessionError::CapabilityMissing(Channel::Input));
+        }
+        let mut state = self.state.lock().await;
+        self.ensure_stream(&mut state).await?;
+        // CCS/1 COMPAT:check again after opening; capability withdrawal never queues a v2 barrier for a v1 peer.
+        if !(self.gestures)() {
+            return Err(SessionError::CapabilityMissing(Channel::Input));
+        }
+        let msg = state.core.gesture(gesture);
+        self.write_stream(&mut state, &msg).await
     }
 
     fn now_us(&self) -> u64 {

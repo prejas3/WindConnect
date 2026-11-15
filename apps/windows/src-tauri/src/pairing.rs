@@ -54,6 +54,7 @@ fn wipe_colors(colors: &mut [qrcode::Color]) {
 }
 #[derive(Clone, PartialEq, serde::Serialize)]
 pub struct Snapshot {
+    pub touchpad: crate::touchpad::View,
     pub phase: String,
     pub phone: Option<String>,
     pub qr: Option<QrBits>,
@@ -98,6 +99,10 @@ pub struct Snapshot {
 impl Default for Snapshot {
     fn default() -> Self {
         Self {
+            touchpad: crate::touchpad::View {
+                allowed: true,
+                ..Default::default()
+            },
             phase: "loading".into(),
             phone: None,
             qr: None,
@@ -163,6 +168,7 @@ pub fn find_outcome(end: Option<wind_core::find::State>) -> &'static str {
 }
 
 enum Action {
+    Touchpad(bool),
     /// WN-47: share the PC's player with the phone, or stop.
     ShareMedia(bool),
     /// WN-43: show the phone's notifications, or stop (and remove those shown).
@@ -443,6 +449,7 @@ type Incoming = (
     // WN-48: call/1 and volume/1 from the phone.
     mpsc::Receiver<wind_core::session::ChannelMessage>,
     mpsc::Receiver<wind_core::session::ChannelMessage>,
+    mpsc::Receiver<wind_core::input::InputEvent>,
 );
 
 async fn run(
@@ -564,12 +571,29 @@ async fn run(
     let loop_notices = notice_sender.clone();
     let accepting = endpoint.clone();
     let files_enabled = crate::files::receiving_enabled(&app);
+    let touchpad_path = app
+        .path()
+        .app_data_dir()
+        .ok()
+        .map(|p| p.join("touchpad-enabled"));
+    let touchpad_allowed = Arc::new(std::sync::atomic::AtomicBool::new(
+        touchpad_path
+            .as_ref()
+            .and_then(|p| std::fs::read_to_string(p).ok())
+            .as_deref()
+            != Some("false"),
+    ));
+    let accept_touchpad = touchpad_allowed.clone();
     let accept_unpairing = unpairing.clone();
     let _accept_task = AcceptTask(tokio::spawn(async move {
         while let Some(incoming) = accepting.accept().await {
             if let Ok(connection) = incoming {
                 // CCS/1 SEC:actions/1 accepted from pinned phones only; each request re-checks the pin (WN-54).
                 let mut router = Router::new();
+                let touchpad_input = router.route_input_version(2, 128);
+                if !accept_touchpad.load(std::sync::atomic::Ordering::SeqCst) {
+                    router.start_disabled(wind_core::protocol::Channel::Input);
+                }
                 let clipboard_input = wind_core::clipboard::Clipboard::route(&mut router);
                 let action_streams = router.route_actions(8);
                 // CCS/1 IO:battery/1 from the phone (§9.4, WN-49): status only, never acted on beyond display and alerts.
@@ -620,6 +644,7 @@ async fn run(
                                 notify_input,
                                 call_input,
                                 volume_input,
+                                touchpad_input,
                             ))
                             .await
                             .is_err()
@@ -665,6 +690,7 @@ async fn run(
     // The phone disconnected from the panel, and when (BUSY for DISMISSED_FOR).
     let mut dismissed: Option<(PublicKey, Instant)> = None;
     let mut active: Option<(Session, ())> = None;
+    let mut touchpad: Option<crate::touchpad::Control> = None;
     // The active session's capability changes (e.g. "Pozwól komputerowi dzwonić", WN-50) wake the loop.
     let (caps_changed, mut caps_changes) = mpsc::unbounded_channel::<()>();
     // WN-48: pausing for calls (lives across sessions), the PC's volume (Core Audio) and the per-session volume tasks' ends.
@@ -731,6 +757,9 @@ async fn run(
         let active_key = active.as_ref().map(|(s, _): &(Session, _)| s.peer().key);
         snapshot.connected = active_key.is_some();
         if active.is_none() {
+            if let Some(control) = touchpad.take() {
+                control.stop().await;
+            }
             battery_input = None;
             snapshot.battery = None;
             media_input = None;
@@ -744,6 +773,13 @@ async fn run(
             phone_sets = None;
             snapshot.phone_volume = None;
         }
+        snapshot.touchpad = touchpad
+            .as_ref()
+            .map(|c| c.view())
+            .unwrap_or(crate::touchpad::View {
+                allowed: touchpad_allowed.load(std::sync::atomic::Ordering::SeqCst),
+                ..Default::default()
+            });
         snapshot.share_media = share_media.load(std::sync::atomic::Ordering::SeqCst);
         snapshot.phone_notifications =
             phone_notifications.load(std::sync::atomic::Ordering::SeqCst);
@@ -789,6 +825,11 @@ async fn run(
                 snapshot.phase = "offline".into(); snapshot.message = "Telefon sparowany, ale brak połączenia. Sprawdź wspólną sieć Wi-Fi.".into();
             },
             command = commands.recv() => match command {
+                Some(Action::Touchpad(on)) => {
+                    touchpad_allowed.store(on,std::sync::atomic::Ordering::SeqCst);
+                    if let Some(path)=&touchpad_path { let _=std::fs::write(path,if on {"true"} else {"false"}); }
+                    if let Some(c)=&touchpad {c.set(on).await;}
+                }
                 Some(Action::ShareMedia(on)) => {
                     share_media.store(on, std::sync::atomic::Ordering::SeqCst);
                     if let Some(path) = &share_path { let _ = std::fs::write(path, if on { b"true" as &[u8] } else { b"false" }); }
@@ -957,7 +998,7 @@ async fn run(
                 _ => {},
             },
             incoming = sessions.recv() => {
-                let Some((session, mut events, clipboard_input, action_streams, session_battery, session_media, files_input, session_commands, session_notify, session_call, session_volume)) = incoming else { break };
+                let Some((session, mut events, clipboard_input, action_streams, session_battery, session_media, files_input, session_commands, session_notify, session_call, session_volume, session_touchpad)) = incoming else { break };
                 // CCS/1 RULE:one session; another phone gets BUSY unless just paired here (the person's choice) (WC-28).
                 let fresh = preferred.is_some_and(|(k, at)| k == session.peer().key && at.elapsed() < PAIRED_TAKES_OVER);
                 let sent_away = dismissed.is_some_and(|(k, at)| k == session.peer().key && at.elapsed() < DISMISSED_FOR);
@@ -976,6 +1017,7 @@ async fn run(
                 }
                 if dismissed.is_some_and(|(k, _)| k != session.peer().key) { dismissed = None; }
                 let generation = indicator.searching();
+                if let Some(control)=touchpad.take() {control.stop().await;}
                 if let Some((previous, _)) = active.take() { previous.connection().close(ErrorCode::GoingAway, b"replaced"); }
                 crate::files::attach(&app, session.clone(), files_input);
                 crate::actions::serve(&app, trust.clone(), session.clone(), action_streams);
@@ -983,6 +1025,7 @@ async fn run(
                 crate::sms::attach(&app, session.clone());
                 crate::gallery::attach(&app, session.clone());
                 snapshot.phone = shown_name(&store, &session);
+                touchpad=Some(crate::touchpad::Control::start(session.clone(),session_touchpad,snapshot.phone.clone().unwrap_or_else(||"Telefon".into()),touchpad_allowed.load(std::sync::atomic::Ordering::SeqCst),caps_changed.clone()));
                 // Pairing another phone stays on screen while a known one reconnects.
                 let adding = (snapshot.phase == "waiting" || snapshot.phase.starts_with("sas-")) && !fresh;
                 if !adding {
@@ -1132,6 +1175,9 @@ async fn run(
         }
     }
     listener.close_window();
+    if let Some(control) = touchpad.take() {
+        control.stop().await;
+    }
     // The last published QR would stay in the watch until the app exits.
     state.send_modify(|s| s.qr = None);
     discovery.shutdown().await;
@@ -1161,6 +1207,8 @@ pub fn pairing_action(
         "sas-reject" => Action::Decide(false),
         "ring" => Action::Ring,
         "ring-stop" => Action::StopRing,
+        "touchpad-on" => Action::Touchpad(true),
+        "touchpad-off" => Action::Touchpad(false),
         _ => return Err("unsupported pairing action".into()),
     };
     state

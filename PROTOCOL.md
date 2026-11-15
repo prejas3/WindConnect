@@ -428,6 +428,7 @@ Możliwości v1.0:
 | `media/1` | strona pokazuje odtwarzacz drugiej strony: przyjmuje `Now`, `Art`, `Gone` na kanale `media` (§9.6, WN-46) |
 | `media-control/1` | odtwarzaczem strony można sterować: przyjmuje `Command` na kanale `media-control` (§9.6, WN-46) |
 | `input/1` | strona przyjmuje zdarzenia wejścia (kanał `input`, sekcja 8) |
+| `input/2` | jak input/1 oraz niezawodne bariery gestów Windows (sekcja 8.9); odbiorca ogłasza również input/1 |
 | `files/1` | strona obsługuje kanał `files` |
 | `actions/1` | strona przyjmuje prośby o akcje (kanał `actions`, §9.2) |
 | `battery/1` | strona przyjmuje stan baterii drugiej strony (kanał `battery`, §9.4, WN-49) |
@@ -946,6 +947,7 @@ Droga zdarzeń ciągłych jest ustalona **raz na połączenie**:
 | `1` | `Scroll` | datagram albo strumień (sekcja 8.7) |
 | `2` | `PointerButton` | strumień |
 | `3` | `InputSession` | strumień, pierwsza ramka |
+| `4` | `Gesture` | strumień; tylko gdy odbiorca ogłasza input/2 |
 
 #### `PointerMotion` (0)
 
@@ -1026,6 +1028,28 @@ i `InputSession` z `s` 0, `g` 0 (`input/1` z `HelloAck`), razem 10 B:
 ```text
 01 04 07 82 03 a2 00 00 01 00
 ```
+
+### 8.9 Gesty Windows (`input/2`, WN-51)
+
+CCS/1 COMPAT:input/2 rozszerza input/1 na tym samym kanale 04; format datagramów pozostaje identyczny. Samo input/1 pozwala na ruch, przewijanie i przyciski. Nadawca MUSI sprawdzić bieżące input/2 przed wysłaniem Gesture; wycofanie input wycofuje obie wersje i kończy sesję, zwalniając przyciski.
+
+`Gesture` (type 4) ma wymagane pola CBOR:
+
+| klucz | nazwa | typ |
+|---|---|---|
+| 0 | seq | u64 |
+| 1 | gesture | u64: 0 TaskView (Win+Tab), 1 ShowDesktop (Win+D), 2 PreviousApp (Alt+Shift+Tab), 3 NextApp (Alt+Tab) |
+| 2 | x | i64, skumulowany pointer |
+| 3 | y | i64, skumulowany pointer |
+| 4 | b | u64, epoka po geście |
+| 5 | sx | i64, skumulowany scroll |
+| 6 | sy | i64, skumulowany scroll |
+
+CCS/1 RULE:Gesture jest barierą jak PointerButton (§8.4): następna epoka dokładnie b+1, najpierw pełny stan pointer/scroll, potem pojedynczy gest, potem odłożone datagramy nowej epoki. Nieznany kod gesture aktualizuje stan i epokę bez działania systemowego. Znany type 4 bez obsługi input/2 lub błędna epoka powoduje PROTOCOL_VIOLATION. Starszy program, który nie zna type 4, pomija nieznaną ramkę zgodnie z §4.4; nie potrafi jednak zaktualizować epoki, dlatego nadawca NIE MOŻE wysyłać gestu do input/1. Gesty nie są dozwolone w datagramach ani w actions/1.
+
+CCS/1 EXT:WN-52 może dodać klawisze/tekst przez osobną capability (np. keys/1) lub input/3 na kanale 04, z tymi samymi regułami seq/epoch i niezawodnych barier; ta zmiana nie rezerwuje nowego numeru kanału. Tekst/klawisze nie należą do input/2.
+
+CCS/1 IO:odbiorca PC łączy ruch przez najwyżej jedną klatkę (8,333 ms), bez przewidywania ruchu; bariera opróżnia wcześniejszy ruch. Koniec sesji usuwa oczekujący ruch i zwalnia przyciski. SendInput ogranicza ruch do ±4096 px i koło do ±1200 jednostek/klatkę; gest jest jedną tablicą wszystkich key-down/key-up. Częściowa odmowa zwalnia klawisze, wycofuje input i wymaga ponownego lokalnego włączenia. Secure desktop/UIPI nie są omijane.
 
 ## 9. Kanały funkcji i zmiany specyfikacji
 

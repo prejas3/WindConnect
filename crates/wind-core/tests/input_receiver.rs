@@ -86,6 +86,71 @@ fn fr(r: &mut InputReceiver, m: InputMessage) -> Result<Vec<InputEvent>, ErrorCo
 }
 
 #[test]
+fn gesture_barrier_orders_lost_motion_future_datagrams_and_release() {
+    use wind_core::protocol::Gesture;
+    let mut sender = SenderCore::new(0);
+    let mut receiver = InputReceiver::with_version(true, 2);
+    receiver.stream_started();
+    assert_eq!(
+        fr(&mut receiver, sender.input_session(0)).unwrap(),
+        [InputEvent::Begin(0)]
+    );
+    sender.pointer(100, 200, None); // lost datagram recovered by the reliable barrier
+    let barrier = sender.gesture(Gesture::TaskView);
+    let future = sender.pointer(30, 40, None);
+    assert!(dg(&mut receiver, future.clone()).is_empty());
+    assert_eq!(
+        fr(&mut receiver, barrier).unwrap(),
+        [
+            ptr(100, 200),
+            InputEvent::Gesture(Gesture::TaskView),
+            ptr(30, 40)
+        ]
+    );
+    assert!(dg(&mut receiver, future).is_empty());
+    assert_eq!(
+        fr(&mut receiver, sender.button(Button::Left, true)).unwrap(),
+        [btn(Button::Left, true)]
+    );
+    let mut out = Vec::new();
+    receiver.withdraw(&mut out);
+    assert_eq!(
+        out,
+        [
+            btn(Button::Left, false),
+            InputEvent::End(0),
+            InputEvent::Withdrawn
+        ]
+    );
+    out.clear();
+    receiver.connection_ended(&mut out);
+    assert!(out.is_empty());
+}
+
+#[test]
+fn v1_rejects_gesture_and_unknown_v2_gesture_preserves_epoch() {
+    use wind_core::protocol::Gesture;
+    let mut sender = SenderCore::new(0);
+    assert_eq!(
+        fr(&mut live(), sender.gesture(Gesture::TaskView)),
+        Err(ErrorCode::ProtocolViolation)
+    );
+    let mut sender = SenderCore::new(0);
+    let mut receiver = InputReceiver::with_version(true, 2);
+    receiver.stream_started();
+    fr(&mut receiver, sender.input_session(0)).unwrap();
+    sender.scroll(0, 500, None);
+    assert_eq!(
+        fr(&mut receiver, sender.gesture(Gesture::Other(99))).unwrap(),
+        [scr(0, 500)]
+    );
+    assert_eq!(
+        fr(&mut receiver, sender.gesture(Gesture::NextApp)).unwrap(),
+        [InputEvent::Gesture(Gesture::NextApp)]
+    );
+}
+
+#[test]
 fn spec_8_3_loss_and_reordering() {
     let mut r = live();
     // Earlier state to start from: pointer at x=0 is the session's zero.
@@ -350,6 +415,12 @@ fn any_loss_or_reordering_ends_in_the_senders_state() {
                     InputEvent::Pointer { dx, dy, .. } => at = (at.0 + dx, at.1 + dy),
                     InputEvent::Scroll { dx, dy, .. } => sc = (sc.0 + dx, sc.1 + dy),
                     InputEvent::Button { button, down } => got.push((button, down, at)),
+                    InputEvent::Gesture(_)
+                    | InputEvent::Begin(_)
+                    | InputEvent::End(_)
+                    | InputEvent::Withdrawn => {
+                        panic!("input/1 emitted a v2 event")
+                    }
                 }
             }
         }

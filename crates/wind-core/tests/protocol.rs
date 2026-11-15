@@ -3,6 +3,36 @@
 
 use wind_core::protocol::*;
 
+#[test]
+fn gesture_v2_roundtrip_and_datagram_rejection() {
+    for gesture in [
+        Gesture::TaskView,
+        Gesture::ShowDesktop,
+        Gesture::PreviousApp,
+        Gesture::NextApp,
+        Gesture::Other(99),
+    ] {
+        let message = InputMessage::Gesture(InputGesture {
+            seq: 5,
+            gesture,
+            x: -100,
+            y: 200,
+            b: 2,
+            sx: 50,
+            sy: -60,
+        });
+        let bytes = encode_payload(&Message::Input(message.clone())).unwrap();
+        assert_eq!(
+            decode_payload(Channel::Input, &bytes).unwrap(),
+            Message::Input(message.clone())
+        );
+        assert!(encode_datagram(&message).is_err());
+        let mut datagram = vec![1, 4];
+        datagram.extend(bytes);
+        assert!(decode_datagram(&datagram, MAX_DATAGRAM).is_err());
+    }
+}
+
 fn hex(s: &str) -> Vec<u8> {
     s.split_whitespace()
         .map(|b| u8::from_str_radix(b, 16).unwrap())

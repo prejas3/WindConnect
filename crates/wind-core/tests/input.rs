@@ -69,6 +69,44 @@ async fn next(rx: &mut mpsc::Receiver<InputEvent>) -> InputEvent {
     tokio::time::timeout(T, rx.recv()).await.unwrap().unwrap()
 }
 
+/// CCS/1 RULE:WN-51 integration keeps gallery/1 alongside input/1 and input/2 in both router and session negotiation.
+#[tokio::test]
+async fn gallery_and_touchpad_are_negotiated_together() {
+    use wind_core::protocol::{ErrorCode, Gesture};
+    let mut router = Router::new();
+    let mut input_events = router.route_input_version(2, 8);
+    let mut gallery_streams = router.route_gallery(4);
+    let names = |caps: Vec<wind_core::protocol::Capability>| {
+        caps.into_iter().map(|c| c.to_string()).collect::<Vec<_>>()
+    };
+    for name in ["gallery/1", "input/1", "input/2"] {
+        assert!(names(router.capabilities()).iter().any(|c| c == name));
+    }
+    let (phone, pc) = pair(router, true).await;
+    for caps in [phone.peer_capabilities(), pc.accepted_capabilities()] {
+        for name in ["gallery/1", "input/1", "input/2"] {
+            assert!(names(caps.clone()).iter().any(|c| c == name));
+        }
+    }
+    let input = phone.input().unwrap();
+    assert!(input.supports_gestures());
+    input.gesture(Gesture::TaskView).await.unwrap();
+    assert_eq!(next(&mut input_events).await, InputEvent::Begin(0));
+    assert_eq!(
+        next(&mut input_events).await,
+        InputEvent::Gesture(Gesture::TaskView)
+    );
+    let gallery = phone.open_gallery().await.unwrap();
+    let received = tokio::time::timeout(T, gallery_streams.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    drop((gallery, received));
+    phone
+        .connection()
+        .close(ErrorCode::GoingAway, b"integration test complete");
+}
+
 /// Folds events into (pointer, scroll, buttons), until `done` holds.
 async fn collect(
     rx: &mut mpsc::Receiver<InputEvent>,
@@ -80,6 +118,12 @@ async fn collect(
             InputEvent::Pointer { dx, dy, .. } => p = (p.0 + dx, p.1 + dy),
             InputEvent::Scroll { dx, dy, .. } => s = (s.0 + dx, s.1 + dy),
             InputEvent::Button { button, down } => b.push((button, down, p)),
+            InputEvent::Gesture(_)
+            | InputEvent::Begin(_)
+            | InputEvent::End(_)
+            | InputEvent::Withdrawn => {
+                panic!("input/1 emitted a v2 event")
+            }
         }
     }
     (p, s, b)
@@ -171,4 +215,160 @@ async fn no_input_without_the_capability() {
         phone.input(),
         Err(SessionError::CapabilityMissing(_))
     ));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn v2_gestures_with_datagrams_and_stream_fallback() {
+    use wind_core::protocol::Gesture;
+    for datagrams in [true, false] {
+        let mut router = Router::new();
+        let mut rx = router.route_input_version(2, 64);
+        let (phone, pc) = pair(router, datagrams).await;
+        let input = phone.input().unwrap();
+        assert!(input.supports_gestures());
+        input.pointer(123, 456).await.unwrap();
+        input.gesture(Gesture::ShowDesktop).await.unwrap();
+        let mut pointer = (0, 0);
+        assert_eq!(next(&mut rx).await, InputEvent::Begin(0));
+        loop {
+            match next(&mut rx).await {
+                InputEvent::Pointer { dx, dy, .. } => {
+                    pointer.0 += dx;
+                    pointer.1 += dy;
+                }
+                InputEvent::Gesture(Gesture::ShowDesktop) => break,
+                event => panic!("unexpected {event:?}"),
+            }
+        }
+        assert_eq!(pointer, (123, 456));
+        pc.set_accepted(wind_core::protocol::Channel::Input, false)
+            .await
+            .unwrap();
+        assert_eq!(next(&mut rx).await, InputEvent::End(0));
+        assert_eq!(next(&mut rx).await, InputEvent::Withdrawn);
+        tokio::time::timeout(T, async {
+            while input.supports_gestures() {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+        assert!(input.gesture(Gesture::TaskView).await.is_err());
+    }
+}
+
+/// CCS/1 PERF:explicit software proof; real authenticated QUIC, common PC interpolator, one monotonic clock. No OS input injection.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "writes latency CSV to WIND_TOUCHPAD_SAMPLES; run explicitly on an idle machine"]
+async fn touchpad_latency_with_interpolation_idle_and_bulk() {
+    use std::collections::VecDeque;
+    use std::sync::{
+        atomic::{AtomicBool, Ordering},
+        Mutex,
+    };
+    use std::time::Instant;
+    use wind_core::protocol::cbor::Value;
+    use wind_core::{
+        input::Interpolator,
+        protocol::{Channel, RawMessage},
+        session::write_raw,
+    };
+    let root = std::env::var_os("WIND_TOUCHPAD_SAMPLES")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(std::env::temp_dir);
+    std::fs::create_dir_all(&root).unwrap();
+    for bulk in [false, true] {
+        const COUNT: usize = 360;
+        let mut router = Router::new();
+        let mut rx = router.route_input_version(2, 128);
+        let mut files = router.route_files(1, 4);
+        let (phone, pc) = pair(router, true).await;
+        let running = Arc::new(AtomicBool::new(true));
+        let producer = if bulk {
+            let phone = phone.clone();
+            let running = running.clone();
+            Some(tokio::spawn(async move {
+                let mut stream = phone.open_files().await.unwrap();
+                let message = RawMessage::new(
+                    0,
+                    Value::Map(vec![(Value::Int(0), Value::Bytes(vec![0x5a; 64 * 1024]))]),
+                );
+                let mut bytes = 0;
+                while running.load(Ordering::SeqCst) {
+                    write_raw(&mut stream.send, Channel::Files, &message)
+                        .await
+                        .unwrap();
+                    bytes += 64 * 1024;
+                }
+                stream.send.finish().unwrap();
+                bytes
+            }))
+        } else {
+            None
+        };
+        let consumer = if bulk {
+            Some(tokio::spawn(async move {
+                let mut stream = files.recv().await.unwrap();
+                while stream.recv.next_raw().await.unwrap().is_some() {}
+            }))
+        } else {
+            None
+        };
+        let sent = Arc::new(Mutex::new(VecDeque::<Instant>::new()));
+        let stamps = sent.clone();
+        let receiving = tokio::spawn(async move {
+            let mut smooth = Interpolator::default();
+            let mut deadline = None;
+            let mut samples = Vec::new();
+            while samples.len() < COUNT {
+                let events = tokio::select! {
+                    event=rx.recv()=>{let event=event.unwrap();let events=smooth.push(event);if smooth.pending()&&deadline.is_none(){deadline=Some(tokio::time::Instant::now()+Duration::from_micros(8_333));}events}
+                    _=async{match deadline{Some(at)=>tokio::time::sleep_until(at).await,None=>std::future::pending().await}}=>{deadline=None;smooth.flush()}
+                };
+                for event in events {
+                    if let InputEvent::Pointer { dx, .. } = event {
+                        let now = Instant::now();
+                        for _ in 0..dx {
+                            samples.push(
+                                now.duration_since(stamps.lock().unwrap().pop_front().unwrap())
+                                    .as_micros() as u64,
+                            );
+                        }
+                    }
+                }
+            }
+            samples
+        });
+        let input = phone.input().unwrap();
+        let mut clock = tokio::time::interval(Duration::from_nanos(1_000_000_000 / 120));
+        clock.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        for _ in 0..COUNT {
+            clock.tick().await;
+            sent.lock().unwrap().push_back(Instant::now());
+            input.pointer(1, 0).await.unwrap();
+        }
+        let samples = tokio::time::timeout(T, receiving).await.unwrap().unwrap();
+        input.end_session().await;
+        running.store(false, Ordering::SeqCst);
+        let bytes = if let Some(task) = producer {
+            task.await.unwrap()
+        } else {
+            0
+        };
+        if let Some(task) = consumer {
+            task.await.unwrap();
+        }
+        let mode = if bulk { "bulk" } else { "idle" };
+        let mut csv = String::from("sample,latency_us\n");
+        for (i, t) in samples.iter().enumerate() {
+            csv.push_str(&format!("{i},{t}\n"));
+        }
+        std::fs::write(root.join(format!("wn51-{mode}.csv")), csv).unwrap();
+        let mut sorted = samples;
+        sorted.sort_unstable();
+        let p95 = sorted[(COUNT * 95).div_ceil(100) - 1];
+        println!("WN51 {mode} interpolation=ON samples={COUNT} p95_us={p95} max_us={} bulk_bytes={bytes}",sorted[COUNT-1]);
+        assert!(p95 < 20_000, "software p95 must fit 20 ms");
+        drop(pc);
+    }
 }
