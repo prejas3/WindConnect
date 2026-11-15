@@ -94,7 +94,7 @@ fun PairingScreen(model: PairingViewModel, diagnostic: @Composable () -> Unit) {
                     Text("Odcisk klucza komputera", style = MaterialTheme.typography.labelMedium)
                     Text(state.fingerprint, style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("pairingFingerprint"))
                 }
-                Text("Nazwa pochodzi z kodu QR. Potwierdź tylko kod wyświetlony na Twoim komputerze. Samo otwarcie linku nie nadaje urządzeniu zaufania.")
+                Text("Sparuj tylko, jeśli ten kod QR wyświetlił Twój komputer. Nazwa pochodzi z kodu QR. Samo otwarcie linku nie nadaje urządzeniu zaufania.")
                 WindButton(if (state.screen == "pairing") "Parowanie…" else "Sparuj urządzenia", model::confirm, Modifier.fillMaxWidth().testTag("confirmPairing"), enabled = state.ready && state.screen == "confirm")
                 if (state.screen == "confirm") WindButton("Anuluj", model::cancel, Modifier.testTag("cancelPairing"), kind = ButtonKind.Secondary)
                 else Text("Weryfikowanie jednorazowego kodu. To może potrwać do 30 sekund.", modifier = Modifier.testTag("pairingProgress"))
