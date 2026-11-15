@@ -66,32 +66,6 @@ mod platform {
         .map_err(io::Error::other)?;
         Ok(text == command(&std::env::current_exe()?)?)
     }
-    #[cfg(test)]
-    #[test]
-    fn registry_roundtrip_uses_a_private_test_key_not_the_login_key() {
-        struct Cleanup(String);
-        impl Drop for Cleanup {
-            fn drop(&mut self) {
-                unsafe {
-                    RegDeleteKeyW(HKEY_CURRENT_USER, wide(&self.0).as_ptr());
-                }
-            }
-        }
-        let path = format!(
-            r"Software\WindConnect\Tests\autostart-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        );
-        let cleanup = Cleanup(path);
-        assert!(!enabled_at(&cleanup.0).unwrap());
-        set_at(&cleanup.0, true).unwrap();
-        assert!(enabled_at(&cleanup.0).unwrap());
-        set_at(&cleanup.0, false).unwrap();
-        assert!(!enabled_at(&cleanup.0).unwrap());
-    }
     pub fn set(enabled: bool) -> io::Result<()> {
         set_at(KEY, enabled)
     }
@@ -141,6 +115,198 @@ mod platform {
             Ok(())
         } else {
             Err(io::Error::from_raw_os_error(result as i32))
+        }
+    }
+    #[cfg(test)]
+    mod registry_tests {
+        use super::*;
+        use windows_sys::Win32::UI::Shell::SHDeleteEmptyKeyW;
+
+        struct TestKeys {
+            path: String,
+            created: Vec<String>,
+        }
+        impl TestKeys {
+            fn new(path: String) -> io::Result<Self> {
+                let mut keys = Self {
+                    path,
+                    created: Vec::new(),
+                };
+                let mut prefix = String::new();
+                // CCS/1 RULE:one component per create, so disposition identifies ownership of every ancestor.
+                for part in keys.path.split('\\') {
+                    if !prefix.is_empty() {
+                        prefix.push('\\');
+                    }
+                    prefix.push_str(part);
+                    let mut handle = std::ptr::null_mut();
+                    let mut disposition = 0;
+                    let result = unsafe {
+                        RegCreateKeyExW(
+                            HKEY_CURRENT_USER,
+                            wide(&prefix).as_ptr(),
+                            0,
+                            std::ptr::null(),
+                            REG_OPTION_NON_VOLATILE,
+                            KEY_READ | KEY_WRITE,
+                            std::ptr::null(),
+                            &mut handle,
+                            &mut disposition,
+                        )
+                    };
+                    if result != ERROR_SUCCESS {
+                        return Err(io::Error::from_raw_os_error(result as i32));
+                    }
+                    unsafe {
+                        RegCloseKey(handle);
+                    }
+                    if disposition == REG_CREATED_NEW_KEY {
+                        keys.created.push(prefix.clone());
+                    }
+                }
+                // Never adopt an existing leaf or overwrite another test's/user's autostart value.
+                if !keys.created.contains(&keys.path) {
+                    return Err(io::ErrorKind::AlreadyExists.into());
+                }
+                Ok(keys)
+            }
+            fn cleanup(&mut self) {
+                if self.created.contains(&self.path) {
+                    // Only our named leaf value, including on panic before the normal set(false).
+                    let _ = set_at(&self.path, false);
+                }
+                let mut remaining = Vec::new();
+                for path in std::mem::take(&mut self.created).into_iter().rev() {
+                    // CCS/1 SEC:nonrecursive, refuses values AND subkeys; never remove borrowed ancestors.
+                    let result =
+                        unsafe { SHDeleteEmptyKeyW(HKEY_CURRENT_USER, wide(&path).as_ptr()) };
+                    if result != ERROR_SUCCESS && result != ERROR_FILE_NOT_FOUND {
+                        remaining.push(path);
+                    }
+                }
+                remaining.reverse();
+                self.created = remaining;
+            }
+        }
+        impl Drop for TestKeys {
+            fn drop(&mut self) {
+                self.cleanup();
+            }
+        }
+        fn unique_path() -> String {
+            format!(
+                r"Software\WindConnect\Tests\autostart-{}-{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos()
+            )
+        }
+        fn exists(path: &str) -> bool {
+            let mut handle = std::ptr::null_mut();
+            let result = unsafe {
+                RegOpenKeyExW(
+                    HKEY_CURRENT_USER,
+                    wide(path).as_ptr(),
+                    0,
+                    KEY_READ,
+                    &mut handle,
+                )
+            };
+            if result == ERROR_SUCCESS {
+                unsafe {
+                    RegCloseKey(handle);
+                }
+                true
+            } else {
+                assert_eq!(result, ERROR_FILE_NOT_FOUND);
+                false
+            }
+        }
+
+        #[test]
+        fn registry_roundtrip_uses_a_private_test_key_not_the_login_key() {
+            let mut keys = TestKeys::new(unique_path()).unwrap();
+            assert!(!enabled_at(&keys.path).unwrap());
+            set_at(&keys.path, true).unwrap();
+            assert!(enabled_at(&keys.path).unwrap());
+            set_at(&keys.path, false).unwrap();
+            assert!(!enabled_at(&keys.path).unwrap());
+            keys.cleanup();
+            assert!(!exists(&keys.path));
+        }
+
+        #[test]
+        fn removes_own_empty_parents_but_preserves_preexisting_keys_and_values() {
+            let fixture = TestKeys::new(unique_path()).unwrap();
+            set_at(&fixture.path, true).unwrap();
+            assert_eq!(
+                TestKeys::new(fixture.path.clone()).err().unwrap().kind(),
+                io::ErrorKind::AlreadyExists
+            );
+            let existing = TestKeys::new(format!(r"{}\existing", fixture.path)).unwrap();
+            let mut keys = TestKeys::new(format!(r"{}\ours\leaf", existing.path)).unwrap();
+            let parent = format!(r"{}\ours", existing.path);
+            keys.cleanup();
+            assert!(!exists(&parent));
+            assert!(exists(&existing.path), "preexisting empty key stays");
+            assert!(
+                enabled_at(&fixture.path).unwrap(),
+                "preexisting value stays"
+            );
+        }
+
+        #[test]
+        fn preserves_a_parallel_tests_subkey_until_it_is_gone() {
+            let fixture = TestKeys::new(unique_path()).unwrap();
+            let parent = format!(r"{}\shared", fixture.path);
+            let mut first = TestKeys::new(format!(r"{parent}\first")).unwrap();
+            let second = TestKeys::new(format!(r"{parent}\second")).unwrap();
+            set_at(&second.path, true).unwrap();
+            first.cleanup();
+            assert!(exists(&parent));
+            assert!(enabled_at(&second.path).unwrap());
+            drop(second);
+            first.cleanup();
+            assert!(!exists(&parent));
+        }
+
+        #[test]
+        fn preserves_an_owned_parent_that_gains_a_value() {
+            struct Value(String);
+            impl Drop for Value {
+                fn drop(&mut self) {
+                    let _ = set_at(&self.0, false);
+                }
+            }
+            let fixture = TestKeys::new(unique_path()).unwrap();
+            let parent = format!(r"{}\with-value", fixture.path);
+            let mut keys = TestKeys::new(format!(r"{parent}\leaf")).unwrap();
+            let value = Value(parent.clone());
+            set_at(&value.0, true).unwrap();
+            keys.cleanup();
+            assert!(
+                enabled_at(&parent).unwrap(),
+                "even an owned parent with data stays"
+            );
+            drop(value);
+            keys.cleanup();
+            assert!(!exists(&parent));
+        }
+
+        #[test]
+        fn drop_cleans_its_leaf_value_and_empty_parents_after_panic() {
+            let fixture = TestKeys::new(unique_path()).unwrap();
+            let parent = format!(r"{}\panic", fixture.path);
+            let leaf = format!(r"{parent}\leaf");
+            assert!(std::panic::catch_unwind(|| {
+                let keys = TestKeys::new(leaf).unwrap();
+                set_at(&keys.path, true).unwrap();
+                panic!("exercise cleanup on unwind");
+            })
+            .is_err());
+            assert!(!exists(&parent));
         }
     }
 }
