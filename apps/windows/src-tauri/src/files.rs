@@ -328,6 +328,40 @@ fn parse_id(id: Option<&str>) -> Result<wind_core::files::TransferId, String> {
     Ok(out)
 }
 
+#[cfg(windows)]
+fn redirects_path(tag: u32) -> bool {
+    use windows_sys::Win32::System::SystemServices::{
+        IO_REPARSE_TAG_MOUNT_POINT, IO_REPARSE_TAG_SYMLINK,
+    };
+    matches!(tag, IO_REPARSE_TAG_SYMLINK | IO_REPARSE_TAG_MOUNT_POINT)
+}
+
+#[cfg(windows)]
+fn reparse_tag(path: &Path) -> std::io::Result<u32> {
+    use std::os::windows::{fs::OpenOptionsExt, io::AsRawHandle};
+    use windows_sys::Win32::Storage::FileSystem::*;
+    // CCS/1 RULE:metadata access only, open the reparse point itself (including directories), never hydrate/read file content.
+    let file = std::fs::OpenOptions::new()
+        .access_mode(FILE_READ_ATTRIBUTES)
+        .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE)
+        .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS)
+        .open(path)?;
+    let mut info = FILE_ATTRIBUTE_TAG_INFO::default();
+    // SAFETY: live owned file handle; correctly sized writable output, held until the call returns.
+    if unsafe {
+        GetFileInformationByHandleEx(
+            file.as_raw_handle(),
+            FileAttributeTagInfo,
+            (&mut info as *mut FILE_ATTRIBUTE_TAG_INFO).cast(),
+            std::mem::size_of::<FILE_ATTRIBUTE_TAG_INFO>() as u32,
+        )
+    } == 0
+    {
+        return Err(std::io::Error::last_os_error());
+    }
+    Ok(info.ReparseTag)
+}
+
 pub fn checked_open_path(row: &TransferInfo, inbox: &Path) -> Result<PathBuf, String> {
     let missing = "Plik został przeniesiony lub usunięty";
     let source = match row.direction {
@@ -336,16 +370,21 @@ pub fn checked_open_path(row: &TransferInfo, inbox: &Path) -> Result<PathBuf, St
         _ => None,
     }
     .ok_or(missing)?;
-    for ancestor in source.ancestors() {
-        let meta = std::fs::symlink_metadata(ancestor).map_err(|_| missing)?;
-        if meta.file_type().is_symlink() {
-            return Err("Nie można otworzyć dowiązania".into());
-        }
-        #[cfg(windows)]
-        {
-            use std::os::windows::fs::MetadataExt;
-            if meta.file_attributes() & 0x400 != 0 {
-                return Err("Nie można otworzyć punktu ponownej analizy".into());
+    // CCS/1 SEC:outgoing only selects in Explorer, never executes; inbound also refuses path-redirection reparse points.
+    if row.direction == Direction::Incoming {
+        for ancestor in source.ancestors() {
+            let meta = std::fs::symlink_metadata(ancestor).map_err(|_| missing)?;
+            if meta.file_type().is_symlink() {
+                return Err("Nie można otworzyć dowiązania".into());
+            }
+            #[cfg(windows)]
+            {
+                use std::os::windows::fs::MetadataExt;
+                if meta.file_attributes() & 0x400 != 0
+                    && redirects_path(reparse_tag(ancestor).map_err(|_| missing)?)
+                {
+                    return Err("Nie można otworzyć punktu ponownej analizy".into());
+                }
             }
         }
     }
@@ -513,6 +552,97 @@ mod tests {
             "Plik został przeniesiony lub usunięty"
         );
         assert!(parse_id(Some("ąąąąąąąąąąąąąąąą")).is_err());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn folder_selection_allows_cloud_tags_but_not_links() {
+        use windows_sys::Win32::System::SystemServices::*;
+        assert!(redirects_path(IO_REPARSE_TAG_SYMLINK));
+        assert!(redirects_path(IO_REPARSE_TAG_MOUNT_POINT));
+        for tag in [
+            0,
+            IO_REPARSE_TAG_CLOUD,
+            IO_REPARSE_TAG_CLOUD_1,
+            IO_REPARSE_TAG_CLOUD_2,
+            IO_REPARSE_TAG_CLOUD_3,
+            IO_REPARSE_TAG_CLOUD_4,
+            IO_REPARSE_TAG_CLOUD_5,
+            IO_REPARSE_TAG_CLOUD_6,
+            IO_REPARSE_TAG_CLOUD_7,
+            IO_REPARSE_TAG_CLOUD_8,
+            IO_REPARSE_TAG_CLOUD_9,
+            IO_REPARSE_TAG_CLOUD_A,
+            IO_REPARSE_TAG_CLOUD_B,
+            IO_REPARSE_TAG_CLOUD_C,
+            IO_REPARSE_TAG_CLOUD_D,
+            IO_REPARSE_TAG_CLOUD_E,
+            IO_REPARSE_TAG_CLOUD_F,
+            IO_REPARSE_TAG_ONEDRIVE,
+        ] {
+            assert!(
+                !redirects_path(tag),
+                "cloud metadata tag {tag:#x} does not redirect the path"
+            );
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn folder_selection_refuses_inbox_junction_but_allows_outgoing() {
+        let temp = tempfile::tempdir().unwrap();
+        let inbox = temp.path().join("inbox");
+        let target = inbox.join("real");
+        std::fs::create_dir_all(&target).unwrap();
+        std::fs::write(target.join("safe.txt"), "safe").unwrap();
+        let junction = inbox.join("junction");
+        let made = std::process::Command::new("cmd.exe")
+            .args(["/d", "/c", "mklink", "/J"])
+            .arg(&junction)
+            .arg(&target)
+            .output()
+            .unwrap();
+        assert!(
+            made.status.success(),
+            "{}",
+            String::from_utf8_lossy(&made.stderr)
+        );
+        assert!(redirects_path(reparse_tag(&junction).unwrap()));
+        let source = junction.join("safe.txt");
+        assert!(checked_open_path(&incoming(source.clone()), &inbox).is_err());
+        let mut row = incoming(source);
+        row.direction = Direction::Outgoing;
+        row.source = row.saved_as.take();
+        assert_eq!(
+            checked_open_path(&row, &inbox).unwrap(),
+            target.join("safe.txt").canonicalize().unwrap()
+        );
+        std::fs::remove_dir(junction).unwrap();
+    }
+
+    #[cfg(windows)]
+    #[test]
+    #[ignore = "requires Windows Developer Mode or SeCreateSymbolicLinkPrivilege"]
+    fn folder_selection_refuses_inbox_symlink_but_allows_outgoing() {
+        let temp = tempfile::tempdir().unwrap();
+        let target = temp.path().join("safe.txt");
+        std::fs::write(&target, "safe").unwrap();
+        let link = temp.path().join("linked.txt");
+        std::os::windows::fs::symlink_file(&target, &link).unwrap();
+        assert!(redirects_path(reparse_tag(&link).unwrap()));
+        assert!(checked_open_path(&incoming(link.clone()), temp.path()).is_err());
+        let mut row = incoming(link);
+        row.direction = Direction::Outgoing;
+        row.source = row.saved_as.take();
+        assert_eq!(
+            checked_open_path(&row, temp.path()).unwrap(),
+            target.canonicalize().unwrap()
+        );
+        row.source = Some(temp.path().to_path_buf());
+        assert!(
+            checked_open_path(&row, temp.path()).is_err(),
+            "outgoing still requires a file"
+        );
     }
     #[test]
     fn incoming_rows_are_not_hidden_or_offered_outgoing_retry() {
