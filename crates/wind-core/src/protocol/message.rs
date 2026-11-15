@@ -195,6 +195,7 @@ pub enum InputMessage {
     PointerButton(PointerButton),
     InputSession(InputSession),
     Gesture(InputGesture),
+    Keyboard(InputKeyboard),
 }
 
 impl InputMessage {
@@ -205,6 +206,10 @@ impl InputMessage {
             Self::PointerButton(_) => 2,
             Self::InputSession(_) => 3,
             Self::Gesture(_) => 4,
+            Self::Keyboard(k) => match k.action {
+                KeyboardAction::Text(_) => 5,
+                KeyboardAction::Key { .. } => 6,
+            },
         }
     }
 }
@@ -271,6 +276,39 @@ impl Gesture {
 pub struct InputGesture {
     pub seq: u64,
     pub gesture: Gesture,
+    pub x: i64,
+    pub y: i64,
+    pub b: u64,
+    pub sx: i64,
+    pub sy: i64,
+}
+
+pub const MAX_INPUT_TEXT: usize = 4096;
+
+/// CCS/1 input/3:complete text submission or atomic key chord; modifiers Ctrl=1, Alt=2, Shift=4, never Win.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum KeyboardAction {
+    Text(String),
+    Key { code: u64, modifiers: u8 },
+}
+impl KeyboardAction {
+    pub fn valid(&self) -> bool {
+        match self {
+            Self::Text(text) => {
+                !text.is_empty() && text.len() <= MAX_INPUT_TEXT && !text.contains('\0')
+            }
+            Self::Key { modifiers, .. } => *modifiers <= 7,
+        }
+    }
+    pub fn known_key(code: u64) -> bool {
+        matches!(code, 8 | 9 | 13 | 27 | 32..=40 | 46 | 48..=57 | 65..=90 | 112..=123)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InputKeyboard {
+    pub seq: u64,
+    pub action: KeyboardAction,
     pub x: i64,
     pub y: i64,
     pub b: u64,
@@ -382,6 +420,29 @@ pub(super) fn decode(channel: Channel, payload: Value) -> Result<Message> {
                 sx: body.i64(5)?,
                 sy: body.i64(6)?,
             }),
+            5 | 6 => {
+                let action = if ty == 5 {
+                    KeyboardAction::Text(body.text(1, 1, MAX_INPUT_TEXT)?)
+                } else {
+                    KeyboardAction::Key {
+                        code: body.u64(1)?,
+                        modifiers: u8::try_from(body.u64(7)?)
+                            .map_err(|_| FrameError::Malformed("invalid modifiers"))?,
+                    }
+                };
+                if !action.valid() {
+                    return Err(FrameError::Malformed("invalid keyboard action"));
+                }
+                InputMessage::Keyboard(InputKeyboard {
+                    seq: body.u64(0)?,
+                    action,
+                    x: body.i64(2)?,
+                    y: body.i64(3)?,
+                    b: body.u64(4)?,
+                    sx: body.i64(5)?,
+                    sy: body.i64(6)?,
+                })
+            }
             _ => return Err(unknown),
         })),
         // Feature channels have no message types in v1.0 (§9).
@@ -598,6 +659,26 @@ pub(super) fn encode(msg: &Message) -> Result<Value> {
                 b.put(4, uint(g.b));
                 b.put(5, int(g.sx));
                 b.put(6, int(g.sy));
+            }
+            InputMessage::Keyboard(k) => {
+                if !k.action.valid() {
+                    return Err(FrameError::Malformed("invalid keyboard action"));
+                }
+                b.put(0, uint(k.seq));
+                match &k.action {
+                    KeyboardAction::Text(text) => b.text(1, text, 1, MAX_INPUT_TEXT)?,
+                    KeyboardAction::Key { code, .. } => {
+                        b.put(1, uint(*code));
+                    }
+                }
+                b.put(2, int(k.x));
+                b.put(3, int(k.y));
+                b.put(4, uint(k.b));
+                b.put(5, int(k.sx));
+                b.put(6, int(k.sy));
+                if let KeyboardAction::Key { modifiers, .. } = &k.action {
+                    b.put(7, uint((*modifiers).into()));
+                }
             }
         },
     }

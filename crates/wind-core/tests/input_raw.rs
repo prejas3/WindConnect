@@ -180,7 +180,7 @@ async fn release_at_connection_end_comes_last_under_backpressure() {
     let mut got = Vec::new();
     loop {
         let e = next(&mut rx).await;
-        got.push(e);
+        got.push(e.clone());
         if e == btn(false) {
             break;
         }

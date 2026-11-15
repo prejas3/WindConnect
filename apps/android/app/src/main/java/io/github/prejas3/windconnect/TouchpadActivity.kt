@@ -18,6 +18,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.input.pointer.pointerInteropFilter
 import androidx.compose.ui.ExperimentalComposeUiApi
@@ -41,6 +42,9 @@ class TouchpadActivity : ComponentActivity() {
     private var status by mutableStateOf("Przygotowywanie touchpada…")
     private var active by mutableStateOf(false)
     private var gestures by mutableStateOf(false)
+    private var keyboardSupported by mutableStateOf(false)
+    private var typing by mutableStateOf(false)
+    private var draft by mutableStateOf(TextFieldValue())
     private var sensitivity by mutableFloatStateOf(1.5f)
     private var natural by mutableStateOf(true)
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -68,12 +72,19 @@ class TouchpadActivity : ComponentActivity() {
         }
         setContent {
             WindApp(forceContent=true) {
-                Column(Modifier.fillMaxSize().padding(20.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
+                Column(Modifier.fillMaxSize().imePadding().padding(20.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
                     Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
                         Text("Touchpad",style=MaterialTheme.typography.headlineSmall)
                         WindButton("Zamknij",{finish()},kind=ButtonKind.Quiet)
                     }
+                    TextButton(onClick={typing=!typing},enabled=active && keyboardSupported,modifier=Modifier.testTag("remoteKeyboardToggle")){Text(if(typing)"Touchpad" else "Klawiatura")}
                     Text(status,Modifier.testTag("touchpadStatus"),style=MaterialTheme.typography.bodyMedium)
+                    if(active && !keyboardSupported)Text("Klawiatura wymaga nowszej wersji WindConnect na komputerze.",style=MaterialTheme.typography.bodySmall)
+                    if(typing) {
+                        Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+                            RemoteKeyboard(draft,{draft=it},active && keyboardSupported){capture?.keyboard(it)==true}
+                        }
+                    } else {
                     AndroidView(factory={PadView(it,{capture}, {active})},modifier=Modifier.fillMaxWidth().weight(1f).background(MaterialTheme.colorScheme.surfaceContainer).testTag("touchpadSurface"))
                     Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(12.dp)) {
                         for(left in listOf(true,false)) Button(onClick={capture?.button(left,true);capture?.button(left,false)},enabled=active,
@@ -88,6 +99,7 @@ class TouchpadActivity : ComponentActivity() {
                     WindSwitch("Naturalne przewijanie",natural,{natural=it;capture?.engine?.natural=it;settings.edit().putBoolean("natural",it).apply()})
                     Text("1 palec: kursor, stuknięcie: klik. Przytrzymaj: przeciąganie. 2 palce: przewijanie i prawy klik.",style=MaterialTheme.typography.bodySmall)
                     Text(if(gestures) "3 palce: ↑ widok zadań, ↓ pulpit, ← poprzednia aplikacja, → następna aplikacja." else "Gesty 3 palców wymagają nowszej wersji WindConnect na PC.",style=MaterialTheme.typography.bodySmall)
+                    }
                     }
                 }
             }
@@ -105,6 +117,7 @@ class TouchpadActivity : ComponentActivity() {
                 ensureActive()
                 if(!resumed || !hasWindowFocus())return@launch
                 gestures=handle.gestures()
+                keyboardSupported=handle.keyboard()
                 capture=PadCapture(handle,{message -> stop();status=message}).also { it.engine.sensitivity=sensitivity;it.engine.natural=natural }
                 handle=null;active=true;status="Sterujesz: ${computerLabel(state.peerName)}"
             } catch(e:CancellationException) {throw e}
@@ -117,7 +130,7 @@ class TouchpadActivity : ComponentActivity() {
             }
         }
     }
-    private fun stop() {opening?.cancel();capture?.close();capture=null;active=false}
+    private fun stop() {opening?.cancel();capture?.close();capture=null;active=false;keyboardSupported=false;draft=TextFieldValue()}
     override fun onResume(){super.onResume();resumed=true;maybeStart()}
     override fun onPause(){resumed=false;stop();super.onPause()}
     override fun onWindowFocusChanged(focus:Boolean){super.onWindowFocusChanged(focus);if(focus)maybeStart() else stop()}
@@ -163,6 +176,14 @@ private class PadCapture(private val handle:TouchpadSession,private val failed:(
         buttons.hold(left,down)?.let(::queue)
         engine.cancel()
         flush()
+    }
+    fun keyboard(command:TouchpadCommand):Boolean {
+        if(closed)return false
+        if(!handle.keyboard()){close();failed("Komputer nie przyjmuje klawiatury. Otwórz touchpad ponownie.");return false}
+        flush()
+        if(closed)return false
+        if(batches.trySend(listOf(command)).isFailure){close();failed("Połączenie zbyt wolne. Sterowanie zatrzymane.");return false}
+        return true
     }
     private fun emit(command:PadCommand){
         buttons.gesture(command)?.let(::queue)

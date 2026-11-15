@@ -11,6 +11,7 @@ pub const MAX_HELLO_FRAME: usize = 4096;
 pub const MAX_CONTROL_FRAME: usize = 16 * 1024;
 /// Largest frame length on every other stream.
 pub const MAX_STREAM_FRAME: usize = 1024 * 1024;
+pub const MAX_KEYBOARD_FRAME: usize = 8192;
 /// Largest datagram, before the peer's `max_datagram_frame_size`.
 pub const MAX_DATAGRAM: usize = 1200;
 
@@ -41,6 +42,7 @@ fn message_limit(msg: &Message) -> usize {
     match msg {
         Message::Control(ControlMessage::Hello(_) | ControlMessage::HelloAck(_)) => MAX_HELLO_FRAME,
         Message::Control(_) => MAX_CONTROL_FRAME,
+        Message::Input(InputMessage::Keyboard(_)) => MAX_KEYBOARD_FRAME,
         Message::Input(_) => MAX_STREAM_FRAME,
     }
 }
@@ -152,6 +154,15 @@ pub fn encode_raw_frame(channel: Channel, msg: &RawMessage) -> Result<Vec<u8>> {
 /// Reads one frame's payload as a message of `channel`.
 pub fn decode_payload(channel: Channel, payload: &[u8]) -> Result<Message> {
     let value = cbor::decode(payload).map_err(FrameError::Malformed)?;
+    if channel == Channel::Input
+        && payload.len() > MAX_KEYBOARD_FRAME
+        && matches!(&value,cbor::Value::Array(items) if matches!(items.first(),Some(cbor::Value::Int(5 | 6))))
+    {
+        return Err(FrameError::FrameTooLarge {
+            len: payload.len() as u64,
+            max: MAX_KEYBOARD_FRAME,
+        });
+    }
     message::decode(channel, value)
 }
 

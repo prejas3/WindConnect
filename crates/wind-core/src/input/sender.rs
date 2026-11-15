@@ -10,7 +10,7 @@ use tokio::sync::Mutex;
 
 use crate::protocol::{
     encode_datagram, encode_frame, stream_header, Button, Channel, Gesture, InputGesture,
-    InputMessage, InputSession, Message, Motion, PointerButton,
+    InputKeyboard, InputMessage, InputSession, KeyboardAction, Message, Motion, PointerButton,
 };
 use crate::session::{send_priority, SessionError};
 
@@ -111,6 +111,18 @@ impl SenderCore {
             sy: self.scroll.1,
         })
     }
+    pub fn keyboard(&mut self, action: KeyboardAction) -> InputMessage {
+        self.epoch += 1;
+        InputMessage::Keyboard(InputKeyboard {
+            seq: self.next_seq(),
+            action,
+            x: self.pointer.0,
+            y: self.pointer.1,
+            b: self.epoch,
+            sx: self.scroll.0,
+            sy: self.scroll.1,
+        })
+    }
 }
 
 struct State {
@@ -145,6 +157,7 @@ pub struct InputSender {
     state: Arc<Mutex<State>>,
     start: Instant,
     gestures: Arc<dyn Fn() -> bool + Send + Sync>,
+    keyboard: Arc<dyn Fn() -> bool + Send + Sync>,
 }
 
 impl std::fmt::Debug for InputSender {
@@ -166,6 +179,7 @@ impl InputSender {
         conn: quinn::Connection,
         g: Arc<dyn Fn() -> Option<InputAnnouncement> + Send + Sync>,
         gestures: Arc<dyn Fn() -> bool + Send + Sync>,
+        keyboard: Arc<dyn Fn() -> bool + Send + Sync>,
     ) -> Self {
         // §8.7: the path for continuous events is fixed per connection.
         let datagrams = conn.max_datagram_size().is_some();
@@ -174,6 +188,7 @@ impl InputSender {
             datagrams,
             g,
             gestures,
+            keyboard,
             state: Arc::new(Mutex::new(State {
                 core: SenderCore::new(0),
                 stream: None,
@@ -191,6 +206,21 @@ impl InputSender {
     }
     pub fn supports_gestures(&self) -> bool {
         (self.gestures)()
+    }
+    pub fn supports_keyboard(&self) -> bool {
+        (self.keyboard)()
+    }
+    pub async fn keyboard(&self, action: KeyboardAction) -> Result<(), SessionError> {
+        if !action.valid() || !(self.keyboard)() {
+            return Err(SessionError::CapabilityMissing(Channel::Input));
+        }
+        let mut state = self.state.lock().await;
+        self.ensure_stream(&mut state).await?;
+        if !(self.keyboard)() {
+            return Err(SessionError::CapabilityMissing(Channel::Input));
+        }
+        let msg = state.core.keyboard(action);
+        self.write_stream(&mut state, &msg).await
     }
     pub async fn gesture(&self, gesture: Gesture) -> Result<(), SessionError> {
         if !(self.gestures)() || matches!(gesture, Gesture::Other(_)) {

@@ -1,4 +1,4 @@
-//! CCS/1 M:touchpad | IO:admitted input/2 -> one-frame coalescing -> SendInput.
+//! CCS/1 M:touchpad/keyboard | IO:admitted input/3 -> one-frame coalescing + reliable barriers -> SendInput.
 use std::sync::{Arc, Mutex};
 use tokio::sync::{mpsc, watch};
 use wind_core::{
@@ -136,7 +136,7 @@ impl Control {
                 }
                 let mut v = state.lock().unwrap();
                 if v.active {
-                    v.message = format!("Telefon steruje kursorem · {name}");
+                    v.message = format!("Telefon steruje kursorem i klawiaturą · {name}");
                 }
                 if *v != published {
                     published = v.clone();
@@ -243,6 +243,13 @@ impl Native {
                 .into_iter()
                 .map(|(key, up)| keyboard(key, up))
                 .collect(),
+            InputEvent::Keyboard(ref action) => {
+                let events = keyboard_action(action)?;
+                if !keyboard_idle(&events, |key| unsafe { GetAsyncKeyState(key as i32) < 0 }) {
+                    return Err(());
+                }
+                events
+            }
             _ => Vec::new(),
         };
         if send(&events).is_err() {
@@ -319,12 +326,92 @@ fn keyboard(key: u16, up: bool) -> windows_sys::Win32::UI::Input::KeyboardAndMou
             ki: KEYBDINPUT {
                 wVk: key,
                 wScan: 0,
-                dwFlags: if up { KEYEVENTF_KEYUP } else { 0 },
+                dwFlags: (if up { KEYEVENTF_KEYUP } else { 0 })
+                    | if matches!(key, 33..=40 | 46) {
+                        KEYEVENTF_EXTENDEDKEY
+                    } else {
+                        0
+                    },
                 time: 0,
                 dwExtraInfo: 0,
             },
         },
     }
+}
+
+fn keyboard_action(
+    action: &wind_core::protocol::KeyboardAction,
+) -> Result<Vec<windows_sys::Win32::UI::Input::KeyboardAndMouse::INPUT>, ()> {
+    use wind_core::protocol::KeyboardAction;
+    use windows_sys::Win32::UI::Input::KeyboardAndMouse::*;
+    if !action.valid() {
+        return Err(());
+    }
+    Ok(match action {
+        KeyboardAction::Text(text) => text
+            .encode_utf16()
+            .flat_map(|unit| {
+                [false, true].map(|up| {
+                    let mut input = keyboard(0, up);
+                    unsafe {
+                        input.Anonymous.ki.wScan = unit;
+                        input.Anonymous.ki.dwFlags |= KEYEVENTF_UNICODE;
+                    }
+                    input
+                })
+            })
+            .collect(),
+        KeyboardAction::Key { code, modifiers } => {
+            if !KeyboardAction::known_key(*code) {
+                return Err(());
+            }
+            let mut keys = Vec::new();
+            if modifiers & 1 != 0 {
+                keys.push(VK_CONTROL);
+            }
+            if modifiers & 2 != 0 {
+                keys.push(VK_MENU);
+            }
+            if modifiers & 4 != 0 {
+                keys.push(VK_SHIFT);
+            }
+            keys.push(*code as u16);
+            keys.iter()
+                .map(|k| keyboard(*k, false))
+                .chain(keys.iter().rev().map(|k| keyboard(*k, true)))
+                .collect()
+        }
+    })
+}
+
+fn keyboard_idle(
+    events: &[windows_sys::Win32::UI::Input::KeyboardAndMouse::INPUT],
+    mut down: impl FnMut(u16) -> bool,
+) -> bool {
+    use windows_sys::Win32::UI::Input::KeyboardAndMouse::*;
+    let mut keys = vec![
+        VK_SHIFT,
+        VK_LSHIFT,
+        VK_RSHIFT,
+        VK_CONTROL,
+        VK_LCONTROL,
+        VK_RCONTROL,
+        VK_MENU,
+        VK_LMENU,
+        VK_RMENU,
+        VK_LWIN,
+        VK_RWIN,
+    ];
+    for event in events {
+        if event.r#type == INPUT_KEYBOARD {
+            // SAFETY:input type selects keyboard data.
+            let key = unsafe { event.Anonymous.ki };
+            if key.wVk != 0 && !keys.contains(&key.wVk) {
+                keys.push(key.wVk);
+            }
+        }
+    }
+    !keys.into_iter().any(&mut down)
 }
 fn send(events: &[windows_sys::Win32::UI::Input::KeyboardAndMouse::INPUT]) -> Result<(), ()> {
     inject(events, |events| unsafe {
@@ -354,25 +441,46 @@ fn inject(
                 // SAFETY:the input type selects the keyboard union member.
                 let key = unsafe { input.Anonymous.ki };
                 if key.dwFlags & KEYEVENTF_KEYUP != 0 {
-                    held.retain(|k| *k != key.wVk);
-                } else if !held.contains(&key.wVk) {
-                    held.push(key.wVk);
+                    held.retain(|k: &KEYBDINPUT| {
+                        !(k.wVk == key.wVk
+                            && k.wScan == key.wScan
+                            && k.dwFlags == (key.dwFlags & !KEYEVENTF_KEYUP))
+                    });
+                } else if !held
+                    .iter()
+                    .any(|k| k.wVk == key.wVk && k.wScan == key.wScan && k.dwFlags == key.dwFlags)
+                {
+                    held.push(key);
                 }
             }
         }
         let mut releases = Vec::new();
         for key in held.into_iter().rev() {
-            if key == VK_LWIN || key == VK_RWIN {
+            if key.wVk == VK_LWIN || key.wVk == VK_RWIN {
                 // CCS/1 WHY:reserved VK 0xFF down/up prevents a lone Win release from opening Start.
                 releases.push(keyboard(0xff, false));
                 releases.push(keyboard(0xff, true));
             }
-            releases.push(keyboard(key, true));
+            let mut release = keyboard(key.wVk, true);
+            key_to_release(&mut release, key);
+            releases.push(release);
         }
         if !releases.is_empty() {
             write(&releases);
         }
         Err(())
+    }
+}
+
+fn key_to_release(
+    input: &mut windows_sys::Win32::UI::Input::KeyboardAndMouse::INPUT,
+    key: windows_sys::Win32::UI::Input::KeyboardAndMouse::KEYBDINPUT,
+) {
+    // SAFETY:caller supplies a keyboard INPUT; retain Unicode scan identity, never release an artificial VK0.
+    unsafe {
+        input.Anonymous.ki = key;
+        input.Anonymous.ki.dwFlags |=
+            windows_sys::Win32::UI::Input::KeyboardAndMouse::KEYEVENTF_KEYUP;
     }
 }
 fn ordinary_desktop() -> bool {
@@ -400,6 +508,167 @@ fn ordinary_desktop() -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn keyboard_unicode_prefix_cleanup_and_physical_shortcut_guard() {
+        use wind_core::protocol::KeyboardAction;
+        use windows_sys::Win32::UI::Input::KeyboardAndMouse::*;
+        let text = "ą😀ą😀";
+        let units: Vec<_> = text.encode_utf16().collect();
+        let events = keyboard_action(&KeyboardAction::Text(text.into())).unwrap();
+        assert_eq!(events.len(), units.len() * 2);
+        for (i, event) in events.iter().enumerate() {
+            let key = unsafe { event.Anonymous.ki };
+            assert_eq!(
+                (key.wVk, key.wScan, key.dwFlags),
+                (
+                    0,
+                    units[i / 2],
+                    KEYEVENTF_UNICODE | if i % 2 == 1 { KEYEVENTF_KEYUP } else { 0 }
+                )
+            );
+        }
+        for partial in 0..events.len() {
+            let mut calls = vec![];
+            assert!(inject(&events, |batch| {
+                calls.push(batch.to_vec());
+                if calls.len() == 1 {
+                    partial
+                } else {
+                    batch.len()
+                }
+            })
+            .is_err());
+            assert_eq!(calls.len(), if partial % 2 == 0 { 1 } else { 2 });
+            if partial % 2 == 1 {
+                assert_eq!(calls[1].len(), 1);
+                let release = unsafe { calls[1][0].Anonymous.ki };
+                assert_eq!(
+                    (release.wVk, release.wScan, release.dwFlags),
+                    (0, units[partial / 2], KEYEVENTF_UNICODE | KEYEVENTF_KEYUP)
+                );
+            }
+        }
+        for (code, modifiers, expected) in
+            [(67, 1, vec![VK_CONTROL, 67]), (9, 2, vec![VK_MENU, VK_TAB])]
+        {
+            let chord = keyboard_action(&KeyboardAction::Key { code, modifiers }).unwrap();
+            let keys: Vec<_> = chord
+                .iter()
+                .map(|e| unsafe { e.Anonymous.ki.wVk })
+                .collect();
+            assert_eq!(
+                keys,
+                expected
+                    .iter()
+                    .chain(expected.iter().rev())
+                    .copied()
+                    .collect::<Vec<_>>()
+            );
+            assert!(keyboard_idle(&chord, |_| false));
+            for key in expected {
+                assert!(!keyboard_idle(&chord, |k| k == key));
+            }
+            assert!(!keyboard_idle(&chord, |k| k == VK_RWIN));
+        }
+        assert!(keyboard_action(&KeyboardAction::Key {
+            code: 67,
+            modifiers: 8
+        })
+        .is_err());
+        assert!(keyboard_action(&KeyboardAction::Key {
+            code: VK_LWIN.into(),
+            modifiers: 0
+        })
+        .is_err());
+    }
+
+    #[test]
+    #[ignore = "interactive: briefly focuses an owned Windows edit control"]
+    fn keyboard_unicode_reaches_a_real_windows_edit_control() {
+        use std::os::windows::ffi::OsStrExt;
+        use windows_sys::Win32::{
+            System::Threading::{AttachThreadInput, GetCurrentThreadId},
+            UI::{Input::KeyboardAndMouse::SetFocus, WindowsAndMessaging::*},
+        };
+        let class: Vec<u16> = std::ffi::OsStr::new("EDIT")
+            .encode_wide()
+            .chain(Some(0))
+            .collect();
+        let empty = [0u16];
+        let window = unsafe {
+            CreateWindowExW(
+                0,
+                class.as_ptr(),
+                empty.as_ptr(),
+                WS_OVERLAPPEDWINDOW | WS_VISIBLE | ES_MULTILINE as u32,
+                100,
+                100,
+                600,
+                200,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null(),
+            )
+        };
+        assert!(!window.is_null());
+        let previous = unsafe { GetForegroundWindow() };
+        struct OwnedWindow(
+            windows_sys::Win32::Foundation::HWND,
+            windows_sys::Win32::Foundation::HWND,
+        );
+        impl Drop for OwnedWindow {
+            fn drop(&mut self) {
+                unsafe {
+                    SetForegroundWindow(self.1);
+                    DestroyWindow(self.0);
+                }
+            }
+        }
+        let _owned = OwnedWindow(window, previous);
+        // CCS/1 PURPOSE:interactive fixture alone borrows the foreground queue to focus its owned control, then detaches before input.
+        unsafe {
+            let foreground = GetWindowThreadProcessId(previous, std::ptr::null_mut());
+            let current = GetCurrentThreadId();
+            let attached = AttachThreadInput(current, foreground, 1);
+            SetForegroundWindow(window);
+            SetFocus(window);
+            if attached != 0 {
+                AttachThreadInput(current, foreground, 0);
+            }
+        }
+        assert_eq!(
+            unsafe { GetForegroundWindow() },
+            window,
+            "test must own foreground before any input"
+        );
+        let expected = "Zażółć gęślą jaźń 😀 ąą";
+        Native::default()
+            .apply(InputEvent::Keyboard(
+                wind_core::protocol::KeyboardAction::Text(expected.into()),
+            ))
+            .unwrap();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
+        let actual = loop {
+            let mut msg = MSG::default();
+            unsafe {
+                while PeekMessageW(&mut msg, std::ptr::null_mut(), 0, 0, PM_REMOVE) != 0 {
+                    TranslateMessage(&msg);
+                    DispatchMessageW(&msg);
+                }
+            }
+            let mut text = [0u16; 256];
+            let len = unsafe { GetWindowTextW(window, text.as_mut_ptr(), text.len() as i32) };
+            let actual = String::from_utf16(&text[..len as usize]).unwrap();
+            if actual == expected || std::time::Instant::now() > deadline {
+                break actual;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        };
+        assert_eq!(actual, expected);
+        println!("EDIT_OUTPUT={actual}");
+    }
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn local_off_on_and_injection_refusal_release_without_replay() {
         use wind_core::{
@@ -411,7 +680,7 @@ mod tests {
         struct Recording(Arc<Mutex<Vec<Option<InputEvent>>>>);
         impl Injector for Recording {
             fn apply(&mut self, event: InputEvent) -> Result<(), ()> {
-                self.0.lock().unwrap().push(Some(event));
+                self.0.lock().unwrap().push(Some(event.clone()));
                 if matches!(event, InputEvent::Gesture(_)) {
                     Err(())
                 } else {

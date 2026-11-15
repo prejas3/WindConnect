@@ -416,6 +416,7 @@ fn any_loss_or_reordering_ends_in_the_senders_state() {
                     InputEvent::Scroll { dx, dy, .. } => sc = (sc.0 + dx, sc.1 + dy),
                     InputEvent::Button { button, down } => got.push((button, down, at)),
                     InputEvent::Gesture(_)
+                    | InputEvent::Keyboard(_)
                     | InputEvent::Begin(_)
                     | InputEvent::End(_)
                     | InputEvent::Withdrawn => {

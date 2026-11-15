@@ -429,6 +429,7 @@ Możliwości v1.0:
 | `media-control/1` | odtwarzaczem strony można sterować: przyjmuje `Command` na kanale `media-control` (§9.6, WN-46) |
 | `input/1` | strona przyjmuje zdarzenia wejścia (kanał `input`, sekcja 8) |
 | `input/2` | jak input/1 oraz niezawodne bariery gestów Windows (sekcja 8.9); odbiorca ogłasza również input/1 |
+| `input/3` | jak input/2 oraz tekst Unicode i kompletne skróty klawiatury (sekcja 8.10); odbiorca ogłasza input/1 i input/2 |
 | `files/1` | strona obsługuje kanał `files` |
 | `actions/1` | strona przyjmuje prośby o akcje (kanał `actions`, §9.2) |
 | `battery/1` | strona przyjmuje stan baterii drugiej strony (kanał `battery`, §9.4, WN-49) |
@@ -1047,11 +1048,36 @@ CCS/1 COMPAT:input/2 rozszerza input/1 na tym samym kanale 04; format datagramó
 
 CCS/1 RULE:Gesture jest barierą jak PointerButton (§8.4): następna epoka dokładnie b+1, najpierw pełny stan pointer/scroll, potem pojedynczy gest, potem odłożone datagramy nowej epoki. Nieznany kod gesture aktualizuje stan i epokę bez działania systemowego. Znany type 4 bez obsługi input/2 lub błędna epoka powoduje PROTOCOL_VIOLATION. Starszy program, który nie zna type 4, pomija nieznaną ramkę zgodnie z §4.4; nie potrafi jednak zaktualizować epoki, dlatego nadawca NIE MOŻE wysyłać gestu do input/1. Gesty nie są dozwolone w datagramach ani w actions/1.
 
-CCS/1 EXT:WN-52 może dodać klawisze/tekst przez osobną capability (np. keys/1) lub input/3 na kanale 04, z tymi samymi regułami seq/epoch i niezawodnych barier; ta zmiana nie rezerwuje nowego numeru kanału. Tekst/klawisze nie należą do input/2.
+CCS/1 EXT:WN-52 dodaje klawisze/tekst przez input/3 na kanale 04 (§8.10), z tymi samymi regułami seq/epoch i niezawodnych barier. Tekst/klawisze nie należą do input/2.
 
 CCS/1 IO:odbiorca PC łączy ruch przez najwyżej jedną klatkę (8,333 ms), bez przewidywania ruchu; bariera opróżnia wcześniejszy ruch. Koniec sesji usuwa oczekujący ruch i zwalnia przyciski. SendInput ogranicza ruch do ±4096 px i koło do ±1200 jednostek/klatkę; gest jest jedną tablicą wszystkich key-down/key-up. Po częściowym wysłaniu jedna próba odzyskania zwalnia w odwrotnej kolejności tylko klawisze nadal wciśnięte przez przyjęty prefiks; przed Win-up dodaje neutralne VK 0xFF down/up, aby nie otworzyć Start. Następnie wycofuje input i wymaga ponownego lokalnego włączenia.
 
 CCS/1 SEC:sprawdzenie pulpitu odrzuca pulpit inny niż Default (np. blokada/UAC); nie sprawdza integralności okna na pulpicie Default. UIPI nie jest omijane. LIMIT:SendInput podaje liczbę wstawionych zdarzeń, ale wynik i GetLastError nie identyfikują UIPI jako przyczyny odmowy; brak błędu nie jest potwierdzeniem wykonania akcji przez docelową aplikację. Program nie gwarantuje wykrycia blokady UIPI ani komunikatu/wycofania dla każdej takiej sytuacji. DEP:[Microsoft SendInput](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-sendinput).
+
+### 8.10 Klawiatura (`input/3`, WN-52)
+
+CCS/1 COMPAT:input/3 rozszerza input/1 i input/2 na kanale 04; odbiorca ogłasza wszystkie trzy wersje. Nadawca sprawdza bieżące input/3 przed i po otwarciu strumienia. Text (type 5) i KeyStroke (type 6) są wyłącznie niezawodnymi barierami na aktualnym strumieniu input, nigdy datagramami. Do input/1 lub input/2 nie wolno ich wysyłać. Odbiorca starszej wersji odrzuca rozpoznaną ramkę klawiatury jako PROTOCOL_VIOLATION.
+
+| klucz | Text (5) | KeyStroke (6) |
+|---|---|---|
+| 0 | seq, u64 | seq, u64 |
+| 1 | tekst UTF-8, 1–4096 bajtów, bez NUL | kod klawisza, u64 |
+| 2, 3 | skumulowane x, y, i64 | skumulowane x, y, i64 |
+| 4 | epoka po barierze, u64 | epoka po barierze, u64 |
+| 5, 6 | skumulowane sx, sy, i64 | skumulowane sx, sy, i64 |
+| 7 | brak | modyfikatory, u64: Ctrl=1, Alt=2, Shift=4 |
+
+CCS/1 RULE:epoka to dokładnie poprzednia+1; najpierw pełny stan pointer/scroll, potem tekst albo pojedynczy kompletny skrót, potem odłożone datagramy. Nieznany kod klawisza przechodzi przez barierę bez działania. Inne bity modyfikatorów są błędem; dowolna kombinacja bitów 0–2 jest dozwolona. Nie ma zdalnego przytrzymywania klawiszy ani Win/system-key. Kody mają wartości Windows VK: Backspace=8, Tab=9, Enter=13, Escape=27, Space=32, PageUp=33, PageDown=34, End=35, Home=36, strzałki Left/Up/Right/Down=37/38/39/40, Delete=46, cyfry 48–57, litery A–Z=65–90, F1–F12=112–123. Zestaw jest zamknięty; nie wolno przekazywać nieznanego VK do systemu.
+
+CCS/1 LIMIT:payload ramki Text/KeyStroke, także z polami rozszerzeń, najwyżej 8192 bajty (ogólny bufor strumienia pozostaje ograniczony §4.2). Typowy Text z maksymalnym tekstem ma mniej niż 4224 bajty. Android kolejkuje najwyżej 8 paczek; klawiatura wysyła jedną komendę na paczkę, najwyżej 4096 bajtów tekstu. FFI przyjmuje najwyżej 64 komendy i łącznie 4096 bajtów tekstu na paczkę; całość sprawdza przed wysłaniem pierwszej komendy. Przepełnienie zatrzymuje sesję zamiast odkładać wejście na później.
+
+CCS/1 IO:pole Android jest lokalnym szkicem, bez zapisu/odtwarzania i logowania. Wyślij działa dopiero po zakończeniu kompozycji IME; zbyt długi tekst pozostaje lokalnie, bez obcięcia. Jedno kliknięcie zużywa szkic raz. Pause, utrata fokusu, wycofanie wejścia i zmiana połączenia usuwają szkic i kolejkę. Ponowne włączenie nie odtwarza starego tekstu. Starszy PC zachowuje touchpad z informacją o wymaganej aktualizacji klawiatury.
+
+CCS/1 SEC:PC używa KEYEVENTF_UNICODE (UTF-16, wVk=0, pary down/up dla każdej jednostki, także par surogatów) dla tekstu; skrót ma down modyfikatorów, down/up klawisza, up modyfikatorów w odwrotnej kolejności. Guard odmawia, jeśli fizycznie wciśnięto dowolny modyfikator albo dowolny VK dotykany przez skrót. Częściowe SendInput zwalnia tylko wciąż wciśnięte zdarzenia przyjętego prefiksu, zachowując wVk+wScan+flagi Unicode/extended; nie tworzy zwolnienia VK0 zamiast jednostki Unicode. Potem wycofuje input bez ponawiania. Ograniczenia pulpitu Default/UIPI i brak gwarancji odbioru przez aplikację z §8.9 pozostają; nie każda aplikacja akceptuje Unicode VK_PACKET. Źródło: [Microsoft KEYBDINPUT](https://learn.microsoft.com/en-us/windows/win32/api/winuser/ns-winuser-keybdinput).
+
+CCS/1 IO:wektory payload CBOR, seq=1, epoka=1, pointer/scroll=0:
+- Text `ą`: `82 05 a7 00 01 01 62 c4 85 02 00 03 00 04 01 05 00 06 00`.
+- Ctrl+C: `82 06 a8 00 01 01 18 43 02 00 03 00 04 01 05 00 06 00 07 01`.
 
 ## 9. Kanały funkcji i zmiany specyfikacji
 

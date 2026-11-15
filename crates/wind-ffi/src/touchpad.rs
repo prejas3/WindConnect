@@ -4,7 +4,7 @@ use std::sync::Arc;
 use tokio::sync::{watch, Mutex};
 use wind_core::{
     input::InputSender,
-    protocol::{Button, Capability, Gesture},
+    protocol::{Button, Capability, Gesture, KeyboardAction, MAX_INPUT_TEXT},
 };
 
 #[derive(uniffi::Object)]
@@ -13,7 +13,7 @@ pub struct TouchpadCapabilities {
 }
 fn accepted(caps: &[Capability]) -> bool {
     caps.iter()
-        .any(|c| c.name() == "input" && (1..=2).contains(&c.version()))
+        .any(|c| c.name() == "input" && (1..=3).contains(&c.version()))
 }
 #[uniffi::export(async_runtime = "tokio")]
 impl TouchpadCapabilities {
@@ -37,6 +37,8 @@ pub enum TouchpadCommand {
     ShowDesktop,
     PreviousApp,
     NextApp,
+    Text { text: String },
+    Key { code: u64, modifiers: u8 },
 }
 #[derive(uniffi::Object)]
 pub struct TouchpadSession {
@@ -51,6 +53,9 @@ impl TouchpadSession {
     pub fn gestures(&self) -> bool {
         self.input.supports_gestures()
     }
+    pub fn keyboard(&self) -> bool {
+        self.input.supports_keyboard()
+    }
     pub async fn send(&self, commands: Vec<TouchpadCommand>) -> Result<(), CoreError> {
         let owner = self.owner.lock().await;
         if *owner != self.generation
@@ -64,6 +69,25 @@ impl TouchpadSession {
         }
         if commands.len() > 64 {
             return Err(error("touchpad batch too large"));
+        }
+        // CCS/1 RULE:bound complete keyboard work before emitting any part of a batch.
+        let text_bytes: usize = commands
+            .iter()
+            .map(|c| match c {
+                TouchpadCommand::Text { text } => text.len(),
+                _ => 0,
+            })
+            .sum();
+        if text_bytes > MAX_INPUT_TEXT
+            || commands.iter().any(|c| match c {
+                TouchpadCommand::Text { text } => !KeyboardAction::Text(text.clone()).valid(),
+                TouchpadCommand::Key { code, modifiers } => {
+                    *modifiers > 7 || !KeyboardAction::known_key(*code)
+                }
+                _ => false,
+            })
+        {
+            return Err(error("invalid keyboard batch"));
         }
         for command in commands {
             let result = match command {
@@ -83,6 +107,14 @@ impl TouchpadSession {
                 TouchpadCommand::ShowDesktop => self.input.gesture(Gesture::ShowDesktop).await,
                 TouchpadCommand::PreviousApp => self.input.gesture(Gesture::PreviousApp).await,
                 TouchpadCommand::NextApp => self.input.gesture(Gesture::NextApp).await,
+                TouchpadCommand::Text { text } => {
+                    self.input.keyboard(KeyboardAction::Text(text)).await
+                }
+                TouchpadCommand::Key { code, modifiers } => {
+                    self.input
+                        .keyboard(KeyboardAction::Key { code, modifiers })
+                        .await
+                }
             };
             if let Err(e) = result {
                 self.closed.store(true, std::sync::atomic::Ordering::SeqCst);

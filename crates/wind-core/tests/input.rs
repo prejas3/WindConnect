@@ -16,6 +16,58 @@ use wind_core::transport::{Endpoint, EndpointOptions, PinnedKeys};
 const LOCALHOST: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0);
 const T: Duration = Duration::from_secs(10);
 
+#[tokio::test]
+async fn keyboard_v3_real_session_and_old_peer_refusal() {
+    use wind_core::protocol::{Channel, KeyboardAction};
+    for version in [1, 2, 3] {
+        let mut router = Router::new();
+        let mut rx = router.route_input_version(version, 8);
+        let (phone, pc) = pair(router, true).await;
+        let input = phone.input().unwrap();
+        let action = KeyboardAction::Text("Zażółć gęślą jaźń 😀".into());
+        assert_eq!(input.supports_keyboard(), version == 3);
+        if version < 3 {
+            assert!(input.keyboard(action).await.is_err());
+            assert!(rx.try_recv().is_err());
+            continue;
+        }
+        input.pointer(123, 0).await.unwrap();
+        input.keyboard(action.clone()).await.unwrap();
+        assert_eq!(next(&mut rx).await, InputEvent::Begin(0));
+        assert!(matches!(
+            next(&mut rx).await,
+            InputEvent::Pointer { dx: 123, .. }
+        ));
+        assert_eq!(next(&mut rx).await, InputEvent::Keyboard(action));
+        input
+            .keyboard(KeyboardAction::Key {
+                code: 67,
+                modifiers: 1,
+            })
+            .await
+            .unwrap();
+        assert_eq!(
+            next(&mut rx).await,
+            InputEvent::Keyboard(KeyboardAction::Key {
+                code: 67,
+                modifiers: 1
+            })
+        );
+        pc.set_accepted(Channel::Input, false).await.unwrap();
+        tokio::time::timeout(T, async {
+            while input.supports_keyboard() {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+        assert!(input
+            .keyboard(KeyboardAction::Text("never replay".into()))
+            .await
+            .is_err());
+    }
+}
+
 fn info(name: &str) -> LocalInfo {
     LocalInfo {
         name: name.into(),
@@ -119,6 +171,7 @@ async fn collect(
             InputEvent::Scroll { dx, dy, .. } => s = (s.0 + dx, s.1 + dy),
             InputEvent::Button { button, down } => b.push((button, down, p)),
             InputEvent::Gesture(_)
+            | InputEvent::Keyboard(_)
             | InputEvent::Begin(_)
             | InputEvent::End(_)
             | InputEvent::Withdrawn => {

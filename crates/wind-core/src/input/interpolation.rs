@@ -84,7 +84,7 @@ mod tests {
                     down: false,
                 }
             };
-            let events = smooth.push(barrier);
+            let events = smooth.push(barrier.clone());
             assert_eq!(events.last(), Some(&barrier));
             for e in events {
                 if let InputEvent::Pointer { dx, dy, .. } = e {

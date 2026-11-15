@@ -23,12 +23,14 @@ class TouchpadScreenTest {
                 ActivityScenario.launch(TouchpadActivity::class.java).use { activity ->
                     compose.onNodeWithText("Lewy · przytrzymaj").assertIsNotEnabled()
                     compose.onNodeWithText("Prawy").assertIsNotEnabled()
+                    compose.onNodeWithTag("remoteKeyboardToggle").assertIsNotEnabled()
                     compose.onNodeWithTag("touchpadSurface").assertIsDisplayed().assertHeightIsAtLeast(100.dp)
                     compose.onNodeWithText("Czułość").assertIsDisplayed()
                     val image=compose.onRoot().captureToImage().asAndroidBitmap()
                     java.io.File(context.cacheDir,"wn51-$theme-150.png").outputStream().use{image.compress(android.graphics.Bitmap.CompressFormat.PNG,100,it)}
                     activity.moveToState(Lifecycle.State.CREATED);activity.moveToState(Lifecycle.State.RESUMED);activity.recreate()
                     compose.onNodeWithText("Lewy · przytrzymaj").assertIsNotEnabled()
+                    compose.onNodeWithTag("remoteKeyboardToggle").assertIsNotEnabled()
                     compose.onNodeWithText("Zamknij").assertIsDisplayed()
                 }
             }

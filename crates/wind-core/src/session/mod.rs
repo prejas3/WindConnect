@@ -691,6 +691,7 @@ impl Session {
             .get_or_init(|| {
                 let inner = Arc::downgrade(&self.inner);
                 let gesture_peer = Arc::downgrade(&self.inner);
+                let keyboard_peer = Arc::downgrade(&self.inner);
                 InputSender::new(
                     self.inner.conn.quinn().clone(),
                     Arc::new(move || {
@@ -709,6 +710,16 @@ impl Session {
                                 .unwrap_or_else(|e| e.into_inner())
                                 .iter()
                                 .any(|c| c.name() == "input" && c.version() == 2)
+                        })
+                    }),
+                    Arc::new(move || {
+                        keyboard_peer.upgrade().is_some_and(|inner| {
+                            inner
+                                .peer_caps
+                                .read()
+                                .unwrap_or_else(|e| e.into_inner())
+                                .iter()
+                                .any(|c| c.name() == "input" && c.version() == 3)
                         })
                     }),
                 )
@@ -1641,7 +1652,7 @@ async fn bidi_loop(
 
 fn has_input(caps: &[Capability]) -> bool {
     caps.iter()
-        .any(|c| c.name() == "input" && (1..=2).contains(&c.version()))
+        .any(|c| c.name() == "input" && (1..=3).contains(&c.version()))
 }
 
 /// Commands queued to a session's input actor, in arrival order.

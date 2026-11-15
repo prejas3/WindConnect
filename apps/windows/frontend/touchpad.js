@@ -2,7 +2,7 @@
 const invoke = window.__TAURI__?.core.invoke;
 const box = document.createElement('section');
 box.className = 'card';
-box.setAttribute('aria-label', 'Touchpad z telefonu');
+box.setAttribute('aria-label', 'Touchpad i klawiatura z telefonu');
 const status = document.createElement('p'); status.setAttribute('role', 'status');
 status.id = 'touchpad-status';
 const button = document.createElement('button'); button.className = 'button secondary';
@@ -10,7 +10,7 @@ let allowed = true;
 button.addEventListener('click', async () => {
   button.disabled = true;
   try { await invoke?.('pairing_action', {action: allowed ? 'touchpad-off' : 'touchpad-on'}); }
-  catch { status.textContent = 'Nie udało się zmienić ustawienia touchpada.'; }
+  catch { status.textContent = 'Nie udało się zmienić ustawienia sterowania.'; }
   finally { button.disabled = false; }
 });
 document.querySelector('#touchpad-toggle')?.addEventListener('click', () => button.click());
@@ -18,8 +18,8 @@ box.append(status, button);
 (document.querySelector('main') || document.body).prepend(box);
 function render(state) {
   allowed = state.touchpad?.allowed ?? true;
-  status.textContent = state.touchpad?.message || (allowed ? 'Touchpad z telefonu jest dozwolony' : 'Touchpad z telefonu jest wyłączony');
-  button.textContent = allowed ? 'Wyłącz touchpad' : 'Włącz touchpad';
+  status.textContent = state.touchpad?.message || (allowed ? 'Touchpad i klawiatura z telefonu są dozwolone' : 'Touchpad i klawiatura z telefonu są wyłączone');
+  button.textContent = allowed ? 'Wyłącz sterowanie' : 'Włącz sterowanie';
   document.querySelector('#touchpad-toggle')?.setAttribute('aria-pressed', String(allowed));
 }
 if (invoke) {

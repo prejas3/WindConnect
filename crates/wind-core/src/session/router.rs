@@ -184,13 +184,13 @@ impl Router {
     pub fn route_input(&mut self, queue: usize) -> mpsc::Receiver<InputEvent> {
         self.route_input_version(1, queue)
     }
-    /// CCS/1 COMPAT:version1 keeps existing behavior; version2 adds gesture barriers and explicit session lifetime events.
+    /// CCS/1 COMPAT:v1 pointer/buttons; v2 gesture barriers/lifetime; v3 Unicode text and atomic key chords.
     pub fn route_input_version(
         &mut self,
         version: u64,
         queue: usize,
     ) -> mpsc::Receiver<InputEvent> {
-        assert!((1..=2).contains(&version));
+        assert!((1..=3).contains(&version));
         let (tx, rx) = mpsc::channel(queue.max(1));
         self.input = Some(tx);
         self.input_version = version;

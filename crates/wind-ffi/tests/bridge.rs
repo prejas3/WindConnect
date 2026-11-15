@@ -36,7 +36,7 @@ async fn touchpad_handles_release_on_replacement_and_cannot_replay_after_off_on(
     let server = tokio::spawn(async move {
         let connection = accepting.accept().await.unwrap().unwrap();
         let mut router = Router::new();
-        let input = router.route_input_version(2, 64);
+        let input = router.route_input_version(3, 64);
         let (session, _) = Session::accept(
             connection,
             LocalInfo {
@@ -62,6 +62,7 @@ async fn touchpad_handles_release_on_replacement_and_cannot_replay_after_off_on(
     assert!(caps.current().await);
     let first = connection.open_touchpad().await.unwrap();
     assert!(first.gestures());
+    assert!(first.keyboard());
     first
         .send(vec![TouchpadCommand::Left { down: true }])
         .await
@@ -85,6 +86,12 @@ async fn touchpad_handles_release_on_replacement_and_cannot_replay_after_off_on(
     assert_eq!(rx.recv().await, Some(InputEvent::End(0)));
     assert!(first
         .send(vec![TouchpadCommand::Left { down: true }])
+        .await
+        .is_err());
+    assert!(first
+        .send(vec![TouchpadCommand::Text {
+            text: "stale draft".into()
+        }])
         .await
         .is_err());
     first.finish_input().await;
@@ -117,12 +124,71 @@ async fn touchpad_handles_release_on_replacement_and_cannot_replay_after_off_on(
         .send(vec![TouchpadCommand::Pointer { dx: 1, dy: 0 }])
         .await
         .is_err());
+    assert!(second
+        .send(vec![TouchpadCommand::Text {
+            text: "never replay".into()
+        }])
+        .await
+        .is_err());
     let third = connection.open_touchpad().await.unwrap();
     third.send(vec![TouchpadCommand::TaskView]).await.unwrap();
     assert_eq!(rx.recv().await, Some(InputEvent::Begin(2)));
     assert_eq!(
         rx.recv().await,
         Some(InputEvent::Gesture(wind_core::protocol::Gesture::TaskView))
+    );
+    assert!(third
+        .send(vec![
+            TouchpadCommand::Text {
+                text: "x".repeat(2049)
+            },
+            TouchpadCommand::Text {
+                text: "x".repeat(2049)
+            }
+        ])
+        .await
+        .is_err());
+    assert!(rx.try_recv().is_err());
+    assert!(third
+        .send(vec![TouchpadCommand::Key {
+            code: 67,
+            modifiers: 8
+        }])
+        .await
+        .is_err());
+    assert!(third
+        .send(vec![TouchpadCommand::Key {
+            code: 0x5b,
+            modifiers: 0
+        }])
+        .await
+        .is_err());
+    third
+        .send(vec![
+            TouchpadCommand::Text {
+                text: "Zażółć gęślą jaźń 😀".into(),
+            },
+            TouchpadCommand::Key {
+                code: 67,
+                modifiers: 1,
+            },
+        ])
+        .await
+        .unwrap();
+    assert_eq!(
+        rx.recv().await,
+        Some(InputEvent::Keyboard(
+            wind_core::protocol::KeyboardAction::Text("Zażółć gęślą jaźń 😀".into())
+        ))
+    );
+    assert_eq!(
+        rx.recv().await,
+        Some(InputEvent::Keyboard(
+            wind_core::protocol::KeyboardAction::Key {
+                code: 67,
+                modifiers: 1
+            }
+        ))
     );
     third.finish_input().await;
     assert_eq!(rx.recv().await, Some(InputEvent::End(2)));

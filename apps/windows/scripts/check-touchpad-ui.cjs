@@ -42,11 +42,11 @@ const server = http.createServer(async (req, res) => {
       assert.equal(await page.locator('#touchpad-status img').count(),0);
       await page.addStyleTag({content:'html {font-size:150%}'});
       await page.screenshot({path:path.join(out,`${theme}-150.png`),fullPage:true});
-      await page.getByRole('button',{name:'Wyłącz touchpad',exact:true}).click();
-      await page.getByRole('button',{name:'Włącz touchpad',exact:true}).waitFor();
-      assert.equal(await page.locator('#touchpad-status').textContent(),'Touchpad z telefonu jest wyłączony');
+      await page.getByRole('button',{name:'Wyłącz sterowanie',exact:true}).click();
+      await page.getByRole('button',{name:'Włącz sterowanie',exact:true}).waitFor();
+      assert.equal(await page.locator('#touchpad-status').textContent(),'Touchpad i klawiatura z telefonu są wyłączone');
       await page.locator('#touchpad-toggle').click();
-      await page.getByRole('button',{name:'Wyłącz touchpad',exact:true}).waitFor();
+      await page.getByRole('button',{name:'Wyłącz sterowanie',exact:true}).waitFor();
       const calls=await page.evaluate(()=>window.__calls.filter(([c])=>c==='pairing_action'));
       assert.deepEqual(calls.map(([,a])=>a.action),['touchpad-off','touchpad-on']);assert.deepEqual(errors,[]);
       assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);

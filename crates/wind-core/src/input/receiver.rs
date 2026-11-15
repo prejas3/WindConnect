@@ -9,11 +9,12 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::protocol::{
-    Button, ErrorCode, Gesture, InputGesture, InputMessage, InputSession, Motion, PointerButton,
+    Button, ErrorCode, Gesture, InputGesture, InputKeyboard, InputMessage, InputSession,
+    KeyboardAction, Motion, PointerButton,
 };
 
 /// What reaches the system.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InputEvent {
     /// Move the pointer by (`dx`, `dy`), in 1/100 dp of the sender's screen.
     /// `t` is the sender's timestamp of the state (µs, its own clock).
@@ -34,6 +35,7 @@ pub enum InputEvent {
         down: bool,
     },
     Gesture(Gesture),
+    Keyboard(KeyboardAction),
     /// CCS/1 input/2 only:let a platform owner cancel smoothing and release state even without a mouse button down.
     Begin(u32),
     End(u32),
@@ -188,6 +190,7 @@ impl InputReceiver {
             InputMessage::InputSession(_) => Err(ErrorCode::ProtocolViolation),
             InputMessage::PointerButton(b) => self.button(*b, out),
             InputMessage::Gesture(g) => self.gesture(*g, out),
+            InputMessage::Keyboard(k) => self.keyboard(k, out),
             InputMessage::PointerMotion(m) => {
                 self.apply(Class::Pointer, m.seq, m.x, m.y, m.t, out);
                 Ok(())
@@ -268,6 +271,21 @@ impl InputReceiver {
             out.push(InputEvent::Gesture(g.gesture));
         }
         self.epoch = g.b;
+        self.review(out);
+        Ok(())
+    }
+
+    fn keyboard(&mut self, k: &InputKeyboard, out: &mut Vec<InputEvent>) -> Result<(), ErrorCode> {
+        if self.version < 3 || k.b != self.epoch.wrapping_add(1) || !k.action.valid() {
+            return Err(ErrorCode::ProtocolViolation);
+        }
+        self.apply(Class::Pointer, k.seq, k.x, k.y, None, out);
+        self.apply(Class::Scroll, k.seq, k.sx, k.sy, None, out);
+        if !matches!(&k.action, KeyboardAction::Key {code,..} if !KeyboardAction::known_key(*code))
+        {
+            out.push(InputEvent::Keyboard(k.action.clone()));
+        }
+        self.epoch = k.b;
         self.review(out);
         Ok(())
     }
