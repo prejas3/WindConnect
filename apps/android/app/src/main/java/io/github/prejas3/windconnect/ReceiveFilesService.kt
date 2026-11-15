@@ -6,6 +6,7 @@ import android.content.pm.ServiceInfo
 import android.os.IBinder
 import androidx.core.content.edit
 import io.github.prejas3.windconnect.bindings.FileTransfer
+import io.github.prejas3.windconnect.bindings.FileAdmission
 import io.github.prejas3.windconnect.core.ReceivedFile
 import io.github.prejas3.windconnect.core.WindCore
 import kotlinx.coroutines.*
@@ -15,13 +16,73 @@ import kotlinx.coroutines.sync.withLock
 
 internal data class ReceiveUi(val enabled: Boolean = true, val ready: Boolean = false, val error: String = "", val transfers: List<FileTransfer> = emptyList(), val receipts: List<ReceivedFile> = emptyList())
 
-/** CCS/1 RULE:capability is enabled only while an actual foreground-service owner holds a connection lease. */
+/** CCS/1 RULE:visible UI may offer files; native admission requires an actual FGS lease before partial writes. */
 internal object FileReceiving {
     const val ID = 120
     private const val CHANNEL = "file-receiving"
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val gate = Mutex()
     private val owners = mutableSetOf<Any>()
+    private val uiOwner = Any()
+    private val uiGate = Mutex()
+    private var uiCore: WindCore? = null
+    private var application: WindApplication? = null
+    internal val persistentOwner: Boolean get() = owners.any { it === ConnectionService.instance } && ConnectionService.foregroundOwner
+    private fun foregroundOwner() = persistentOwner || owners.any {
+        it === ReceiveFilesService.instance && ReceiveFilesService.instance?.ownsConnection == true
+    }
+    private val admissions = ReceiveAdmission(
+        enabled = { application?.let { enabled(it) } == true },
+        visible = { (application?.visibleActivities ?: 0) > 0 },
+        owner = ::foregroundOwner,
+        start = { ReceiveFilesService.startForAdmission(requireNotNull(application)) },
+        changed = { ReceiveFilesService.instance?.checkIdle() },
+    )
+    internal val hasAdmissions: Boolean get() = admissions.active
+    internal val hasWaitingAdmissions: Boolean get() = admissions.waiting
+    internal fun ownerChanged() {
+        admissions.ownerChanged()
+        ReceiveFilesService.instance?.checkIdle()
+        val app = application
+        // CCS/1 RULE:a new attempt arriving during an old service's destruction gets a fresh owner, never the old acknowledgement.
+        if (app != null && admissions.waiting && !foregroundOwner() && ReceiveFilesService.instance == null && app.visibleActivities > 0 && enabled(app)) {
+            try { ReceiveFilesService.startForAdmission(app) } catch (_: RuntimeException) { admissions.startupFailed() }
+        }
+    }
+    internal fun startupFailed() { admissions.startupFailed() }
+
+    fun visibilityChanged(context: Context) {
+        val app = context.applicationContext as WindApplication
+        application = app
+        admissions.ownerChanged()
+        scope.launch { uiGate.withLock {
+            if (app.visibleActivities > 0 && enabled(app)) {
+                if (uiCore == null) {
+                    var opened: WindCore? = null
+                    var kept = false
+                    try {
+                        withContext(NonCancellable) { opened = app.connections.acquire() }
+                        val acquired = requireNotNull(opened)
+                        if (app.visibleActivities > 0 && enabled(app)) {
+                            addOwner(app, acquired, uiOwner)
+                            uiCore = acquired; kept = true
+                        }
+                    } catch (error: Exception) {
+                        if (error is CancellationException) throw error
+                        failure("Nie można przygotować odbioru plików")
+                    } finally { if (!kept && opened != null) {
+                        withContext(NonCancellable) { try { removeOwner(app, uiOwner) } finally { app.connections.release(requireNotNull(opened)) } }
+                    } }
+                }
+            } else {
+                uiCore?.let { opened ->
+                    uiCore = null
+                    try { removeOwner(app, uiOwner) } finally { app.connections.release(opened) }
+                }
+            }
+            ownerChanged()
+        } }
+    }
     private var core: WindCore? = null
     private var observation: Job? = null
     private var lastNotice = 0L
@@ -33,9 +94,18 @@ internal object FileReceiving {
     fun enabled(context: Context) = context.getSharedPreferences("file-receiving", Context.MODE_PRIVATE).getBoolean("enabled", true)
     fun failure(message: String) { mutable.update { it.copy(ready = false, error = message) } }
     suspend fun addOwner(context: Context, opened: WindCore, owner: Any) = gate.withLock {
+        application = context.applicationContext as WindApplication
         owners.add(owner)
         if (core !== opened) {
             observation?.cancel(); core = opened
+            // CCS/1 SEC:do not accept an old client's offer using a replacement client's FGS lease, or create a JNI reference cycle.
+            val expected = java.lang.ref.WeakReference(opened)
+            opened.setFileAdmission(object : FileAdmission {
+                override fun begin(attempt: ULong, peer: String, id: String): Boolean = runBlocking {
+                    withContext(Dispatchers.Main.immediate) { admissions.begin(attempt) { expected.get()?.let { it === core } == true } }
+                }
+                override fun end(attempt: ULong) { scope.launch { admissions.end(attempt) } }
+            })
             observation = scope.launch {
                 launch { opened.files.collect { rows ->
                     val incoming = rows.filter { it.incoming }.take(16)
@@ -50,9 +120,11 @@ internal object FileReceiving {
             }
         }
         refreshLocked(context)
+        admissions.ownerChanged()
     }
     suspend fun removeOwner(context: Context, owner: Any) = gate.withLock {
         owners.remove(owner)
+        admissions.ownerChanged()
         if (owners.isEmpty()) {
             try { core?.disableFileReceiving() } finally {
                 observation?.cancel(); observation = null; core = null
@@ -75,7 +147,7 @@ internal object FileReceiving {
         context.getSharedPreferences("file-receiving", Context.MODE_PRIVATE).edit { putBoolean("enabled", value) }
         mutable.update { it.copy(enabled = value) }
         scope.launch { gate.withLock { refreshLocked(context) }; ReceiveFilesService.instance?.checkIdle() }
-        if (value) ReceiveFilesService.ensure(context)
+        visibilityChanged(context)
     }
     fun cancelAll() { val opened = core ?: return; scope.launch { opened.files.value.filter { it.incoming && it.state !in terminal }.forEach { try { opened.cancelIncoming(it.peer, it.id) } catch (_: Exception) { } } } }
     suspend fun active(): Boolean = withContext(Dispatchers.IO) { core?.incomingActive() ?: false }
@@ -112,7 +184,7 @@ internal object FileReceiving {
         val manager = context.getSystemService(NotificationManager::class.java)
         manager.createNotificationChannel(NotificationChannel("file-receiver-owner", "Gotowość odbioru", NotificationManager.IMPORTANCE_LOW).apply { setShowBadge(false) })
         return Notification.Builder(context, "file-receiver-owner").setSmallIcon(R.drawable.ic_connection)
-            .setContentTitle("WindConnect · odbiór plików").setContentText("Pobrane/WindConnect · podczas otwartej aplikacji lub aktywnego transferu")
+            .setContentTitle("WindConnect · odbiór plików").setContentText("Aktywny odbiór · Pobrane/WindConnect")
             .setOnlyAlertOnce(true).setOngoing(true).setVisibility(Notification.VISIBILITY_PRIVATE).build()
     }
 }
@@ -121,28 +193,42 @@ class ReceiveFilesCancelReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) { FileReceiving.cancelAll() }
 }
 
-/** Started from visible UI only; the persistent ConnectionService is already a legal owner in background. */
+/** CCS/1 RULE:started only for admission from visible UI; ConnectionService may already own background receiving. */
 class ReceiveFilesService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-    private var core: WindCore? = null
+    internal var ownsConnection = false; private set
     override fun onCreate() {
         super.onCreate()
         try { startForeground(121, FileReceiving.foregroundNotice(this), ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE) }
-        catch (_: RuntimeException) { FileReceiving.failure("Nie można uruchomić widocznego odbioru"); stopSelf(); return }
+        catch (_: RuntimeException) { FileReceiving.failure("Nie można uruchomić widocznego odbioru"); FileReceiving.startupFailed(); stopSelf(); return }
         instance = this
         scope.launch {
+            var opened: WindCore? = null
             try {
-                val opened = withContext(NonCancellable) { (application as WindApplication).connections.acquire().also { core = it } }
-                if (opened.pairedDevices().isEmpty()) { stopSelf(); return@launch }
-                FileReceiving.addOwner(this@ReceiveFilesService, opened, this@ReceiveFilesService)
+                withContext(NonCancellable) { opened = (application as WindApplication).connections.acquire() }
+                if (!isActive || !FileReceiving.hasWaitingAdmissions || !FileReceiving.enabled(this@ReceiveFilesService)) { stopSelf(); return@launch }
+                ownsConnection = true
+                FileReceiving.addOwner(this@ReceiveFilesService, requireNotNull(opened), this@ReceiveFilesService)
+                FileReceiving.ownerChanged()
                 checkIdle()
-            } catch (failure: Exception) { if (failure is CancellationException) throw failure; FileReceiving.failure("Nie można przygotować odbioru plików"); stopSelf() }
+                awaitCancellation()
+            } catch (failure: Exception) {
+                if (failure is CancellationException) throw failure
+                FileReceiving.failure("Nie można przygotować odbioru plików"); FileReceiving.startupFailed(); stopSelf()
+            } finally { withContext(NonCancellable) {
+                ownsConnection = false
+                try { FileReceiving.removeOwner(this@ReceiveFilesService, this@ReceiveFilesService) }
+                finally { opened?.let { (application as WindApplication).connections.release(it) } }
+                FileReceiving.ownerChanged()
+            } }
         }
     }
     internal fun checkIdle() {
         scope.launch {
-            if ((application as WindApplication).visibleActivities == 0 || !FileReceiving.enabled(this@ReceiveFilesService) || ConnectionService.foregroundOwner) {
-                if (!FileReceiving.active()) stopSelf()
+            val idle = if (FileReceiving.hasAdmissions) false else !FileReceiving.active()
+            if (FileReceiving.persistentOwner || (idle && !FileReceiving.hasAdmissions)) {
+                ownsConnection = false
+                stopSelf()
             }
         }
     }
@@ -150,20 +236,17 @@ class ReceiveFilesService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
     override fun onDestroy() {
         if (instance === this) instance = null
-        scope.cancel(); val opened = core; core = null
-        CoroutineScope(Dispatchers.Main.immediate).launch {
-            try { FileReceiving.removeOwner(this@ReceiveFilesService, this@ReceiveFilesService) }
-            finally { if (opened != null) (application as WindApplication).connections.release(opened) }
-        }
+        ownsConnection = false
+        scope.cancel()
+        FileReceiving.ownerChanged()
         stopForeground(STOP_FOREGROUND_REMOVE); super.onDestroy()
     }
     companion object {
         internal var instance: ReceiveFilesService? = null; private set
-        fun ensure(context: Context) {
+        fun startForAdmission(context: Context) {
             val app = context.applicationContext as WindApplication
-            if (!FileReceiving.enabled(context) || instance != null || ConnectionService.foregroundOwner || app.visibleActivities == 0) return
-            try { context.startForegroundService(Intent(context, ReceiveFilesService::class.java)) }
-            catch (_: RuntimeException) { FileReceiving.failure("Odbiór nie został uruchomiony. Otwórz WindConnect ponownie.") }
+            check(FileReceiving.enabled(context) && FileReceiving.hasAdmissions && app.visibleActivities > 0)
+            if (instance == null) context.startForegroundService(Intent(context, ReceiveFilesService::class.java))
         }
     }
 }

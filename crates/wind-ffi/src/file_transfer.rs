@@ -3,15 +3,15 @@ use crate::{public_key, session_error, CoreClient, CoreConnection, CoreError};
 use std::{
     path::{Path, PathBuf},
     sync::{
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
         Arc, Mutex, Weak,
     },
 };
 use tokio::sync::watch;
 use wind_core::{
     files::{
-        id_hex, Direction, FileEngine, FilesConfig, IncomingCommit, TransferInfo, TransferState,
-        VerifiedIncoming,
+        id_hex, Direction, FileEngine, FilesConfig, IncomingAdmission, IncomingCommit,
+        IncomingPermit, TransferInfo, TransferState, VerifiedIncoming,
     },
     session::{Session, SessionEvent},
     transport::PeerTrust,
@@ -45,6 +45,57 @@ pub(crate) struct FileBridge {
     runtime: Mutex<Option<Runtime>>,
     updates: tokio::sync::Mutex<Option<watch::Receiver<Vec<TransferInfo>>>>,
     destination: Mutex<Option<Arc<dyn FileDestination>>>,
+    admission: Mutex<Option<Arc<dyn FileAdmission>>>,
+}
+
+#[uniffi::export(callback_interface)]
+pub trait FileAdmission: Send + Sync {
+    fn begin(&self, attempt: u64, peer: String, id: String) -> bool;
+    /// Must enqueue cleanup without blocking or querying the native engine synchronously.
+    fn end(&self, attempt: u64);
+}
+struct AdmissionBridge(Weak<FileBridge>);
+impl std::fmt::Debug for AdmissionBridge {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("AndroidIncomingAdmission")
+    }
+}
+struct AdmissionPermit(Option<(Arc<dyn FileAdmission>, u64)>);
+impl IncomingPermit for AdmissionPermit {}
+impl Drop for AdmissionPermit {
+    fn drop(&mut self) {
+        if let Some((sink, attempt)) = self.0.take() {
+            sink.end(attempt);
+        }
+    }
+}
+impl IncomingAdmission for AdmissionBridge {
+    fn admit(
+        &self,
+        peer: [u8; 32],
+        id: wind_core::files::TransferId,
+    ) -> std::io::Result<Box<dyn IncomingPermit>> {
+        static NEXT: AtomicU64 = AtomicU64::new(1);
+        let bridge = self
+            .0
+            .upgrade()
+            .ok_or_else(|| std::io::Error::other("file client closed"))?;
+        let sink = bridge.admission.lock().unwrap().clone();
+        let Some(sink) = sink else {
+            return Ok(Box::new(AdmissionPermit(None)));
+        };
+        let attempt = NEXT.fetch_add(1, Ordering::Relaxed);
+        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            sink.begin(attempt, hex_peer(&peer), id_hex(&id))
+        })) {
+            Ok(true) => Ok(Box::new(AdmissionPermit(Some((sink, attempt))))),
+            Ok(false) => Err(std::io::Error::other("incoming ownership refused")),
+            Err(_) => {
+                sink.end(attempt);
+                Err(std::io::Error::other("incoming ownership callback failed"))
+            }
+        }
+    }
 }
 
 #[derive(Clone, Debug, uniffi::Record)]
@@ -276,6 +327,7 @@ impl CoreClient {
         std::fs::create_dir_all(&outbox).map_err(invalid)?;
         let root = std::fs::canonicalize(outbox).map_err(invalid)?;
         let mut config = FilesConfig::new(&inbox, partials);
+        config.incoming_admission = Some(Arc::new(AdmissionBridge(Arc::downgrade(&self.files))));
         config.incoming_commit = Some(Arc::new(CommitBridge(Arc::downgrade(&self.files))));
         config.max_incoming_file = 2 * 1024 * 1024 * 1024;
         config.max_incoming_active = 4 * 1024 * 1024 * 1024;
@@ -307,6 +359,9 @@ impl CoreClient {
     }
     pub fn set_file_destination(&self, destination: Box<dyn FileDestination>) {
         *self.files.destination.lock().unwrap() = Some(Arc::from(destination));
+    }
+    pub fn set_file_admission(&self, admission: Box<dyn FileAdmission>) {
+        *self.files.admission.lock().unwrap() = Some(Arc::from(admission));
     }
     pub fn cancel_incoming_file(&self, peer: String, id: String) -> Result<(), CoreError> {
         self.files

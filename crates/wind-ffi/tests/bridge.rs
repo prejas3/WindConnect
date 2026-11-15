@@ -167,6 +167,24 @@ impl wind_ffi::ClipboardSink for TestClipboard {
 struct Progress(Arc<Mutex<bool>>);
 
 struct FileDestination(Arc<Mutex<Vec<wind_ffi::IncomingFile>>>);
+#[derive(Default)]
+struct AdmissionLog {
+    allow: std::sync::atomic::AtomicBool,
+    begins: Mutex<Vec<u64>>,
+    ends: Mutex<Vec<u64>>,
+}
+struct FileAdmission(Arc<AdmissionLog>);
+impl wind_ffi::FileAdmission for FileAdmission {
+    fn begin(&self, attempt: u64, peer: String, id: String) -> bool {
+        assert_eq!(peer.len(), 64);
+        assert_eq!(id.len(), 32);
+        self.0.begins.lock().unwrap().push(attempt);
+        self.0.allow.load(std::sync::atomic::Ordering::SeqCst)
+    }
+    fn end(&self, attempt: u64) {
+        self.0.ends.lock().unwrap().push(attempt);
+    }
+}
 impl wind_ffi::FileDestination for FileDestination {
     fn commit(
         &self,
@@ -316,6 +334,8 @@ async fn ffi_files_require_adoption_and_outbox_and_track_capability_withdrawal()
     assert_eq!(std::fs::read(saved).unwrap(), b"verified file bytes");
     let committed = Arc::new(Mutex::new(Vec::new()));
     client.set_file_destination(Box::new(FileDestination(committed.clone())));
+    let admissions = Arc::new(AdmissionLog::default());
+    client.set_file_admission(Box::new(FileAdmission(admissions.clone())));
     connection.set_file_receiving(true).await.unwrap();
     tokio::time::timeout(Duration::from_secs(3), async {
         while session.open_files().await.is_err() {
@@ -324,6 +344,34 @@ async fn ffi_files_require_adoption_and_outbox_and_track_capability_withdrawal()
     })
     .await
     .unwrap();
+    let mut denied = session.open_files().await.unwrap();
+    wind_core::session::write_raw(
+        &mut denied.send,
+        wind_core::protocol::Channel::Files,
+        &wind_core::files::wire::ToReceiver::Offer(wind_core::files::wire::Offer {
+            id: [0x55; 16],
+            path: "denied.txt".into(),
+            size: 1,
+            chunk: 256 * 1024,
+            streams: 1,
+            modified: None,
+        })
+        .encode(),
+    )
+    .await
+    .unwrap();
+    assert!(matches!(
+        tokio::time::timeout(Duration::from_secs(5), denied.recv.next_raw())
+            .await
+            .unwrap(),
+        Err(wind_core::session::RecvError::Read(_))
+    ));
+    assert!(committed.lock().unwrap().is_empty());
+    let parts = directory.join("parts");
+    assert!(!parts.exists() || std::fs::read_dir(&parts).unwrap().next().is_none());
+    admissions
+        .allow
+        .store(true, std::sync::atomic::Ordering::SeqCst);
     let incoming_id = engine
         .send(*key.fingerprint().as_bytes(), &outside)
         .unwrap()[0];
@@ -339,6 +387,17 @@ async fn ffi_files_require_adoption_and_outbox_and_track_capability_withdrawal()
     })
     .await
     .unwrap();
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while admissions.ends.lock().unwrap().is_empty() {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    let begins = admissions.begins.lock().unwrap().clone();
+    assert_eq!(begins.len(), 2);
+    assert_ne!(begins[0], begins[1]);
+    assert_eq!(*admissions.ends.lock().unwrap(), vec![begins[1]]);
     let file = committed.lock().unwrap()[0].clone();
     assert_eq!(file.peer, pc.fingerprint().to_hex());
     assert_eq!(file.name, "outside.JPG");

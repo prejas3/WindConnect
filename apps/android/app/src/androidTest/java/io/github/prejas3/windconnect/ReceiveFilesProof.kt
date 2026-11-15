@@ -20,7 +20,9 @@ object ReceiveFilesProof {
         val core = app.connections.acquire()
         try {
             withTimeout(15_000) { FileReceiving.ui.first { it.ready } }
-            assertTrue(ReceiveFilesService.instance != null || ConnectionService.foregroundOwner)
+            assertNull("opening visible UI does not start the receiving FGS", ReceiveFilesService.instance)
+            assertFalse("idle UI has no ongoing receiving notice", app.getSystemService(android.app.NotificationManager::class.java)
+                .activeNotifications.any { it.id == 121 })
             if (InstrumentationRegistry.getArguments().getString("receiveLifecycleOnly") == "true") {
                 withContext(Dispatchers.Main) { FileReceiving.setEnabled(app, false) }
                 withTimeout(10_000) { FileReceiving.ui.first { !it.ready && !it.enabled } }
@@ -31,7 +33,7 @@ object ReceiveFilesProof {
                 compose.activityRule.scenario.moveToState(androidx.lifecycle.Lifecycle.State.RESUMED)
                 withTimeout(15_000) { FileReceiving.ui.first { it.ready } }
                 withContext(Dispatchers.Main) { assertTrue(ConnectionService.start(app, enable = true)) }
-                withTimeout(15_000) { while (!ConnectionService.foregroundOwner || ReceiveFilesService.instance != null) delay(50) }
+                withTimeout(15_000) { while (!withContext(Dispatchers.Main) { FileReceiving.persistentOwner } || ReceiveFilesService.instance != null) delay(50) }
                 compose.activityRule.scenario.moveToState(androidx.lifecycle.Lifecycle.State.CREATED)
                 assertTrue("existing foreground owner maintains background receiving", FileReceiving.ui.value.ready)
                 assertTrue(ConnectionService.foregroundOwner)
@@ -59,6 +61,8 @@ object ReceiveFilesProof {
             assertTrue(receipts.any { it.size == 1024L * 1024 * 1024 })
             File(app.cacheDir, "wn120-received.json").writeText(report.toString(2))
             withTimeout(10_000) { while (core.incomingActive()) delay(50) }
+            withTimeout(10_000) { while (ReceiveFilesService.instance != null) delay(50) }
+            assertTrue("Activity can remain ready without an idle receiving FGS", FileReceiving.ui.value.ready)
             assertTrue("private verified copies released after public commit", File(app.noBackupFilesDir, "file-engine/inbox").walkTopDown().none { it.isFile })
             instrumentation.sendStatus(0, Bundle().apply { putString("receiveFilesProof", "true") })
         } finally { app.connections.release(core) }

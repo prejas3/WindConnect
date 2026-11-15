@@ -18,8 +18,8 @@ class WindApplication : Application() {
         LauncherShortcuts.publish(this)
         WidgetUpdates.start(this)
         registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
-            override fun onActivityStarted(activity: android.app.Activity) { visibleActivities++; ReceiveFilesService.ensure(activity) }
-            override fun onActivityStopped(activity: android.app.Activity) { visibleActivities = (visibleActivities - 1).coerceAtLeast(0); ReceiveFilesService.instance?.checkIdle() }
+            override fun onActivityStarted(activity: android.app.Activity) { visibleActivities++; FileReceiving.visibilityChanged(activity) }
+            override fun onActivityStopped(activity: android.app.Activity) { visibleActivities = (visibleActivities - 1).coerceAtLeast(0); FileReceiving.visibilityChanged(activity) }
             override fun onActivityCreated(activity: android.app.Activity, state: android.os.Bundle?) = Unit
             override fun onActivityResumed(activity: android.app.Activity) = Unit
             override fun onActivityPaused(activity: android.app.Activity) = Unit
@@ -152,7 +152,7 @@ class ConnectionOwner(private val application: Application) {
                 launch { opened.callsReject.collect { mutableCallsReject.value = it } }
                 opened.state.collect {
                     mutableState.value = it
-                    if (it is ConnectionState.Connected) ReceiveFilesService.ensure(application)
+                    if (it is ConnectionState.Connected) FileReceiving.visibilityChanged(application)
                 }
             }
         }

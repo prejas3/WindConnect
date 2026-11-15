@@ -34,6 +34,7 @@ class ConnectionService : Service() {
             },
         )
         startForeground(ID, notification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
+        instance = this
         foregroundOwner = true
         scope.launch {
             try {
@@ -132,20 +133,21 @@ class ConnectionService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
     override fun onDestroy() {
-        foregroundOwner = false
+        if (instance === this) { instance = null; foregroundOwner = false }
         scope.cancel()
         val opened = core
         core = null
         CoroutineScope(Dispatchers.Main.immediate).launch {
             try { FileReceiving.removeOwner(this@ConnectionService, this@ConnectionService) }
             finally { if (opened != null) (application as WindApplication).connections.release(opened) }
-            ReceiveFilesService.ensure(this@ConnectionService)
+            FileReceiving.visibilityChanged(this@ConnectionService)
         }
         stopForeground(STOP_FOREGROUND_REMOVE)
         super.onDestroy()
     }
 
     companion object {
+        internal var instance: ConnectionService? = null; private set
         internal var foregroundOwner = false; private set
         internal fun notificationState(state: ConnectionState, files: Boolean): List<Any?> = when (state) {
             is ConnectionState.Connected -> listOf("connected", state.peerName, state.route, files)

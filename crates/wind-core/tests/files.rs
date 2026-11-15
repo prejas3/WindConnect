@@ -20,10 +20,272 @@ const LOCALHOST: SocketAddr = SocketAddr::new(std::net::IpAddr::V4(Ipv4Addr::LOC
 const T: Duration = Duration::from_secs(60);
 
 #[derive(Debug)]
+struct AdmissionProbe {
+    allow: std::sync::atomic::AtomicBool,
+    active: Arc<std::sync::atomic::AtomicUsize>,
+    ended: Arc<std::sync::atomic::AtomicUsize>,
+}
+struct TestPermit(
+    Arc<std::sync::atomic::AtomicUsize>,
+    Arc<std::sync::atomic::AtomicUsize>,
+);
+impl wind_core::files::IncomingPermit for TestPermit {}
+impl Drop for TestPermit {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+        self.1.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+impl wind_core::files::IncomingAdmission for AdmissionProbe {
+    fn admit(
+        &self,
+        _: [u8; 32],
+        _: wind_core::files::TransferId,
+    ) -> std::io::Result<Box<dyn wind_core::files::IncomingPermit>> {
+        if !self.allow.load(std::sync::atomic::Ordering::SeqCst) {
+            return Err(std::io::ErrorKind::PermissionDenied.into());
+        }
+        self.active
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Ok(Box::new(TestPermit(
+            self.active.clone(),
+            self.ended.clone(),
+        )))
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn admission_precedes_partial_writes_and_lasts_through_publication_or_cancel() {
+    use std::sync::atomic::Ordering::SeqCst;
+    for mode in 0..3 {
+        let dir = tempfile::tempdir().unwrap();
+        let inbox = dir.path().join("receiver");
+        let parts = partials_of(&inbox);
+        let admission = Arc::new(AdmissionProbe {
+            allow: false.into(),
+            active: Arc::new(0.into()),
+            ended: Arc::new(0.into()),
+        });
+        let commit = Arc::new(CommitGate {
+            entered: false.into(),
+            release: false.into(),
+            fail: mode == 2,
+        });
+        struct Release(Arc<CommitGate>);
+        impl Drop for Release {
+            fn drop(&mut self) {
+                self.0.release.store(true, SeqCst);
+            }
+        }
+        let _release = Release(commit.clone());
+        let mut config = FilesConfig::new(&inbox, &parts);
+        config.incoming_admission = Some(admission.clone());
+        config.incoming_commit = Some(commit.clone());
+        config.max_incoming_file = 1;
+        config.max_incoming_active = 1;
+        let receiver = FileEngine::new(config).unwrap();
+        std::fs::create_dir_all(&parts).unwrap();
+        let sentinel = parts.join("existing-partial");
+        std::fs::write(&sentinel, b"keep existing data").unwrap();
+        let sender = engine(&dir.path().join("sender"));
+        let net = Net::new();
+        let (session, _remote) = net.attach(&sender, &receiver).await;
+        for n in 1..=4 {
+            assert_eq!(
+                raw_offer(
+                    &session,
+                    ToReceiver::Offer(Offer {
+                        id: [n; 16],
+                        path: "denied.txt".into(),
+                        size: 1,
+                        chunk: 256 * 1024,
+                        streams: 1,
+                        modified: None,
+                    })
+                )
+                .await,
+                ErrorCode::Busy.code(),
+                "denied admission must also release its reservation"
+            );
+            assert_eq!(walkdir(&parts), vec![sentinel.clone()]);
+            assert_eq!(std::fs::read(&sentinel).unwrap(), b"keep existing data");
+        }
+        admission.allow.store(true, SeqCst);
+        let file = random_file(dir.path(), "admitted.txt", 1, 1);
+        sender.send(net.b_fp, &file).unwrap();
+        tokio::time::timeout(T, async {
+            while !commit.entered.load(SeqCst) {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+        assert_eq!(
+            admission.active.load(SeqCst),
+            1,
+            "permit covers destination publication, not only the Offer stream"
+        );
+        if mode == 1 {
+            let id = receiver.transfers()[0].id;
+            receiver.cancel_incoming(&net.a_fp, &id).unwrap();
+        }
+        commit.release.store(true, SeqCst);
+        let mut updates = sender.subscribe();
+        let rows = until(&mut updates, "admitted transfer ends", |rows| {
+            rows[0].state.is_finished()
+        })
+        .await;
+        assert_eq!(
+            rows[0].state,
+            match mode {
+                0 => TransferState::Done,
+                1 => TransferState::Cancelled { by_peer: true },
+                _ => TransferState::Failed(FailReason::NoSpace),
+            }
+        );
+        tokio::time::timeout(T, async {
+            while admission.active.load(SeqCst) != 0 {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+        assert_eq!(admission.ended.load(SeqCst), 1);
+    }
+}
+
+#[derive(Debug)]
 struct CommitGate {
     entered: std::sync::atomic::AtomicBool,
     release: std::sync::atomic::AtomicBool,
     fail: bool,
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn admission_timeout_discards_late_permit_without_touching_a_new_attempt() {
+    use std::sync::{
+        atomic::{AtomicUsize, Ordering::SeqCst},
+        Condvar, Mutex,
+    };
+    #[derive(Debug)]
+    struct Late {
+        calls: AtomicUsize,
+        release: (Mutex<bool>, Condvar),
+        active: Arc<AtomicUsize>,
+        ended: Arc<AtomicUsize>,
+    }
+    impl wind_core::files::IncomingAdmission for Late {
+        fn admit(
+            &self,
+            _: [u8; 32],
+            _: wind_core::files::TransferId,
+        ) -> std::io::Result<Box<dyn wind_core::files::IncomingPermit>> {
+            if self.calls.fetch_add(1, SeqCst) == 0 {
+                let (_ready, timeout) = self
+                    .release
+                    .1
+                    .wait_timeout_while(
+                        self.release.0.lock().unwrap(),
+                        Duration::from_secs(15),
+                        |ready| !*ready,
+                    )
+                    .unwrap();
+                if timeout.timed_out() {
+                    return Err(std::io::ErrorKind::TimedOut.into());
+                }
+            }
+            self.active.fetch_add(1, SeqCst);
+            Ok(Box::new(TestPermit(
+                self.active.clone(),
+                self.ended.clone(),
+            )))
+        }
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let inbox = dir.path().join("receiver");
+    let parts = partials_of(&inbox);
+    let admission = Arc::new(Late {
+        calls: 0.into(),
+        release: (Mutex::new(false), Condvar::new()),
+        active: Arc::new(0.into()),
+        ended: Arc::new(0.into()),
+    });
+    let commit = Arc::new(CommitGate {
+        entered: false.into(),
+        release: false.into(),
+        fail: false,
+    });
+    struct Release(Arc<Late>, Arc<CommitGate>);
+    impl Drop for Release {
+        fn drop(&mut self) {
+            *self.0.release.0.lock().unwrap() = true;
+            self.0.release.1.notify_all();
+            self.1.release.store(true, SeqCst);
+        }
+    }
+    let _release = Release(admission.clone(), commit.clone());
+    let mut config = FilesConfig::new(&inbox, &parts);
+    config.incoming_admission = Some(admission.clone());
+    config.incoming_commit = Some(commit.clone());
+    config.max_incoming_active = 1;
+    let receiver = FileEngine::new(config).unwrap();
+    let sender = engine(&dir.path().join("sender"));
+    let net = Net::new();
+    let (session, _remote) = net.attach(&sender, &receiver).await;
+    assert_eq!(
+        raw_offer(
+            &session,
+            ToReceiver::Offer(Offer {
+                id: [9; 16],
+                path: "late.txt".into(),
+                size: 1,
+                chunk: 256 * 1024,
+                streams: 1,
+                modified: None,
+            })
+        )
+        .await,
+        ErrorCode::Busy.code()
+    );
+    assert!(walkdir(&parts).is_empty());
+    let file = random_file(dir.path(), "new-attempt.txt", 1, 1);
+    sender.send(net.b_fp, &file).unwrap();
+    tokio::time::timeout(T, async {
+        while !commit.entered.load(SeqCst) {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(admission.active.load(SeqCst), 1);
+    *admission.release.0.lock().unwrap() = true;
+    admission.release.1.notify_all();
+    tokio::time::timeout(T, async {
+        while admission.ended.load(SeqCst) == 0 {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(
+        admission.active.load(SeqCst),
+        1,
+        "late discarded permit must not release the newer transfer"
+    );
+    commit.release.store(true, SeqCst);
+    let mut updates = sender.subscribe();
+    until(&mut updates, "new attempt completes", |rows| {
+        rows[0].state == TransferState::Done
+    })
+    .await;
+    tokio::time::timeout(T, async {
+        while admission.active.load(SeqCst) != 0 {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(admission.ended.load(SeqCst), 2);
 }
 impl wind_core::files::IncomingCommit for CommitGate {
     fn commit(

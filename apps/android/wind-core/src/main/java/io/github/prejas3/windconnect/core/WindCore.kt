@@ -206,7 +206,9 @@ class WindCore private constructor(
     private val mutableReceiveError = MutableStateFlow("")
     val receiveError = mutableReceiveError.asStateFlow()
 
-    /** Called only after the app's receiving foreground service owns a lease. */
+    fun setFileAdmission(admission: io.github.prejas3.windconnect.bindings.FileAdmission) = client.setFileAdmission(admission)
+
+    /** Visible-UI or foreground-service lease; the admission callback requires actual FGS ownership before any write. */
     suspend fun enableFileReceiving() = withContext(Dispatchers.IO) {
         prepareFiles()
         gate.withLock {

@@ -20,8 +20,8 @@ mod phone_extras;
 mod sms_bridge;
 mod touchpad;
 pub use file_transfer::{
-    FileCommitResult, FileCommitStatus, FileDestination, FileTransfer, IncomingControl,
-    IncomingFile,
+    FileAdmission, FileCommitResult, FileCommitStatus, FileDestination, FileTransfer,
+    IncomingControl, IncomingFile,
 };
 pub use gallery_bridge::{GalleryItem, GalleryItems, GalleryOriginal, GallerySource, GalleryThumb};
 pub use phone_actions::UrlOpener;

@@ -62,6 +62,11 @@ pub const PUBLISH_EVERY: Duration = Duration::from_millis(100);
 pub trait IncomingCommit: Send + Sync + std::fmt::Debug {
     fn commit(&self, file: &VerifiedIncoming, cancelled: Arc<AtomicBool>) -> io::Result<()>;
 }
+/// CCS/1 SEC:platform ownership before any incoming partial write; held through transfer/publication.
+pub trait IncomingPermit: Send + Sync {}
+pub trait IncomingAdmission: Send + Sync + std::fmt::Debug {
+    fn admit(&self, peer: [u8; 32], id: TransferId) -> io::Result<Box<dyn IncomingPermit>>;
+}
 #[derive(Debug, Clone)]
 pub struct VerifiedIncoming {
     pub peer: [u8; 32],
@@ -74,6 +79,7 @@ pub struct VerifiedIncoming {
 /// Engine settings.
 #[derive(Debug, Clone)]
 pub struct FilesConfig {
+    pub incoming_admission: Option<Arc<dyn IncomingAdmission>>,
     pub incoming_commit: Option<Arc<dyn IncomingCommit>>,
     pub max_incoming_file: u64,
     pub max_incoming_active: u64,
@@ -103,6 +109,7 @@ pub struct FilesConfig {
 impl FilesConfig {
     pub fn new(inbox: impl Into<PathBuf>, partials: impl Into<PathBuf>) -> Self {
         FilesConfig {
+            incoming_admission: None,
             incoming_commit: None,
             max_incoming_file: u64::MAX,
             max_incoming_active: u64::MAX,
@@ -1148,6 +1155,7 @@ async fn send_stream(inner: Arc<Inner>, shared: Arc<SendShared>, stream: FileStr
 
 /// An incoming transfer while its streams run.
 struct InRun {
+    admission: Mutex<Option<Box<dyn IncomingPermit>>>,
     publication_cancel: Arc<AtomicBool>,
     peer: [u8; 32],
     offer: Offer,
@@ -1166,6 +1174,10 @@ struct InRun {
 }
 
 impl InRun {
+    fn release_admission(&self) {
+        let permit = self.admission.lock().unwrap().take();
+        drop(permit);
+    }
     fn key(&self) -> ([u8; 32], TransferId) {
         (self.peer, self.offer.id)
     }
@@ -1331,6 +1343,33 @@ async fn receive_offer(inner: Arc<Inner>, peer: [u8; 32], offer: Offer, mut stre
         );
         return;
     };
+    // CCS/1 RULE:rollback reservations even if admission times out or its task is cancelled.
+    struct Reservation(Arc<Inner>, ([u8; 32], TransferId), bool);
+    impl Drop for Reservation {
+        fn drop(&mut self) {
+            if self.2 {
+                self.0.receive_reservations.lock().unwrap().remove(&self.1);
+            }
+        }
+    }
+    let mut reservation = Reservation(inner.clone(), key, true);
+    let admission = if let Some(admit) = inner.config.incoming_admission.clone() {
+        // No book/runtime lock is held across a platform callback. Late permits drop rather than revive admission.
+        match tokio::time::timeout(
+            Duration::from_secs(5),
+            blocking(move || admit.admit(peer, offer.id)),
+        )
+        .await
+        {
+            Ok(Ok(permit)) => Some(permit),
+            _ => {
+                abort(&mut stream, ErrorCode::Busy);
+                return;
+            }
+        }
+    } else {
+        None
+    };
     let opened = {
         let (root, offer) = (inner.config.partials.clone(), offer.clone());
         blocking(move || Partial::open(&root, &peer, &offer)).await
@@ -1387,6 +1426,7 @@ async fn receive_offer(inner: Arc<Inner>, peer: [u8; 32], offer: Offer, mut stre
         return;
     }
     let run = Arc::new(InRun {
+        admission: Mutex::new(admission),
         publication_cancel: Arc::new(AtomicBool::new(false)),
         peer,
         offer: offer.clone(),
@@ -1398,6 +1438,7 @@ async fn receive_offer(inner: Arc<Inner>, peer: [u8; 32], offer: Offer, mut stre
         unflushed: AtomicU64::new(0),
         streams: AtomicUsize::new(1),
     });
+    reservation.2 = false;
     record_in(
         &inner,
         &offer,
@@ -1633,6 +1674,9 @@ async fn receive_chunks(
         .and_then(|i| i.run.as_ref())
         .is_some_and(|r| !Arc::ptr_eq(r, &run));
     if superseded {
+        if !run.finishing.load(Ordering::SeqCst) {
+            run.release_admission();
+        }
         return;
     }
     let done = run.complete.borrow().clone();
@@ -1666,6 +1710,9 @@ async fn receive_chunks(
         i.run = None;
     });
     inner.publish(true);
+    if !run.finishing.load(Ordering::SeqCst) {
+        run.release_admission();
+    }
 }
 
 /// Every chunk is in: make it durable, move it to its name, tell the
@@ -1725,6 +1772,7 @@ async fn finish_file(inner: Arc<Inner>, run: Arc<InRun>, mut parts: Vec<String>)
         .unwrap()
         .remove(&run.key());
     inner.publish(true);
+    run.release_admission();
 }
 
 /// CCS/1 RULE:organisation only, not content validation; last extension, fixed local folders.
