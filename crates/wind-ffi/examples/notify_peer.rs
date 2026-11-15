@@ -3,6 +3,7 @@
 //! Test tool only: it prints the notifications' text, which the real PC never logs (§9.7 rule 3).
 use std::{sync::Arc, time::Duration};
 use wind_core::{
+    call,
     identity::{DeviceIdentity, PublicKey},
     notify::{self, Message},
     protocol::DeviceKind,
@@ -43,6 +44,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let connection = endpoint.accept().await.ok_or("endpoint closed")??;
         let mut router = Router::new();
         let mut shown = notify::route(&mut router);
+        let mut calls = call::route(&mut router);
         let (session, _) = Session::accept(
             connection,
             LocalInfo {
@@ -57,6 +59,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         loop {
             tokio::select! {
                 _ = session.closed() => break,
+                m = calls.recv() => {
+                    let Some(m) = m else { break };
+                    if let Some(call::Message::State(call)) = call::Message::decode(&m.message) {
+                        println!("CALL_STATE={:?}", call.state);
+                    }
+                }
                 m = shown.recv() => {
                     let Some(m) = m else { break };
                     match Message::decode(&m.message) {

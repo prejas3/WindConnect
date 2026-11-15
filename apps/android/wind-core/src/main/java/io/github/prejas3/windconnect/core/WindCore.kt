@@ -1028,9 +1028,12 @@ class WindCore private constructor(
     }
 
     suspend fun setNotifyAllowed(value: Boolean) {
-        settings.edit().putBoolean(NOTIFY_ALLOWED, value).apply()
-        mutableNotifyAllowed.value = value
-        NotifyListenerService.follow(appContext, value)
+        // CCS/1 RULE:consent changes and listener callbacks share main; a reconnect snapshot cannot race consent-off clearing.
+        withContext(Dispatchers.Main.immediate) {
+            settings.edit().putBoolean(NOTIFY_ALLOWED, value).apply()
+            mutableNotifyAllowed.value = value
+            NotifyListenerService.follow(appContext, value)
+        }
         refreshNotify()
     }
 

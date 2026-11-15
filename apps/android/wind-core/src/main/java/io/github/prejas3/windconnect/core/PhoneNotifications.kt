@@ -207,15 +207,29 @@ internal class AppIcons(context: Context) {
 class NotifyListenerService : NotificationListenerService() {
     override fun onListenerConnected() {
         current = WeakReference(this)
-        if (!allowed(this)) requestUnbind()
+        if (!allowed(this)) {
+            CallNotifications.clear()
+            requestUnbind()
+            return
+        }
+        // CCS/1 WHY:removals while unbound are missed; only currently active call keys remain authoritative.
+        val calls = try {
+            activeNotifications?.filter { it.notification.category == Notification.CATEGORY_CALL }
+                ?.map { it.key }?.toSet().orEmpty()
+        } catch (_: Exception) { emptySet() }
+        CallNotifications.reconcile(calls)
     }
-    override fun onListenerDisconnected() { current = null }
+    override fun onListenerDisconnected() {
+        current = null
+        CallNotifications.clear()
+    }
 
     override fun onNotificationPosted(sbn: StatusBarNotification) {
         val at = android.os.SystemClock.elapsedRealtime()
         if (!allowed(this)) return
-        // WN-48: a call notification (dialer or VoIP) is the second, permission-free call signal; its key only.
+        // CCS/1 IO:call notification (dialer/VoIP)->second call signal, key only; updates may change category.
         if (sbn.notification.category == Notification.CATEGORY_CALL) CallNotifications.posted(sbn.key)
+        else CallNotifications.removed(sbn.key)
         val deliver = sink ?: return
         val content = NotificationRules.content(sbn.parts(), packageName) ?: return
         // WN-45: listed for the app filter (package name only), then filtered before anything is kept or sent.
@@ -322,6 +336,7 @@ class NotifyListenerService : NotificationListenerService() {
 
         /** Follows the setting: unbind when off, ask for a rebind when on. */
         fun follow(context: Context, allowed: Boolean) {
+            if (!allowed) CallNotifications.clear()
             if (!granted(context)) return
             if (allowed) requestRebind(ComponentName(context, NotifyListenerService::class.java))
             else current?.get()?.requestUnbind()

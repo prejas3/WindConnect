@@ -10,6 +10,7 @@ import android.telephony.TelephonyManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 
 /** WN-48: the phone's call state as the PC gets it (PROTOCOL.md §9.10): 0 idle, 1 ringing, 2 offhook. */
 enum class CallState(val code: Int) { Idle(0), Ringing(1), Offhook(2) }
@@ -41,8 +42,10 @@ internal object CallStates {
 internal object CallNotifications {
     private val keys = MutableStateFlow<Set<String>>(emptySet())
     val active: StateFlow<Set<String>> = keys.asStateFlow()
-    fun posted(key: String) { keys.value = keys.value + key }
-    fun removed(key: String) { if (key in keys.value) keys.value = keys.value - key }
+    fun posted(key: String) { keys.update { it + key } }
+    fun removed(key: String) { keys.update { it - key } }
+    fun reconcile(activeKeys: Set<String>) { keys.value = activeKeys.toSet() }
+    fun clear() { keys.value = emptySet() }
 }
 
 /**
