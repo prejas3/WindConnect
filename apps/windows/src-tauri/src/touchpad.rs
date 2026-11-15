@@ -129,7 +129,7 @@ impl Control {
                                 }
                             }
                         }
-                        // CCS/1 SEC:do not retry after secure-desktop/UIPI refusal; only local explicit enable starts again.
+                        // CCS/1 SEC:do not retry after a desktop check or injection failure; UIPI is not diagnosed separately.
                         let _ = changed.send(());
                         break;
                     }
@@ -343,20 +343,32 @@ fn inject(
     if events.is_empty() {
         return Ok(());
     }
-    if write(events) == events.len() {
+    let inserted = write(events);
+    if inserted == events.len() {
         Ok(())
     } else {
-        // CCS/1 RULE:partial injection releases every requested key; one recovery attempt, no retry loop.
-        let releases: Vec<_> = events
-            .iter()
-            .filter_map(|input| unsafe {
-                if input.r#type == INPUT_KEYBOARD {
-                    Some(keyboard(input.Anonymous.ki.wVk, true))
-                } else {
-                    None
+        // CCS/1 RULE:only the inserted prefix owns keys; undo remaining downs in reverse order, once.
+        let mut held = Vec::new();
+        for input in events.iter().take(inserted) {
+            if input.r#type == INPUT_KEYBOARD {
+                // SAFETY:the input type selects the keyboard union member.
+                let key = unsafe { input.Anonymous.ki };
+                if key.dwFlags & KEYEVENTF_KEYUP != 0 {
+                    held.retain(|k| *k != key.wVk);
+                } else if !held.contains(&key.wVk) {
+                    held.push(key.wVk);
                 }
-            })
-            .collect();
+            }
+        }
+        let mut releases = Vec::new();
+        for key in held.into_iter().rev() {
+            if key == VK_LWIN || key == VK_RWIN {
+                // CCS/1 WHY:reserved VK 0xFF down/up prevents a lone Win release from opening Start.
+                releases.push(keyboard(0xff, false));
+                releases.push(keyboard(0xff, true));
+            }
+            releases.push(keyboard(key, true));
+        }
         if !releases.is_empty() {
             write(&releases);
         }
@@ -505,34 +517,72 @@ mod tests {
     #[test]
     fn partial_chord_releases_every_key_in_a_recording_injector() {
         use windows_sys::Win32::UI::Input::KeyboardAndMouse::*;
-        for gesture in [
-            Gesture::TaskView,
-            Gesture::ShowDesktop,
-            Gesture::PreviousApp,
-            Gesture::NextApp,
+        for (gesture, keys) in [
+            (Gesture::TaskView, vec![VK_LWIN, VK_TAB]),
+            (Gesture::ShowDesktop, vec![VK_LWIN, 0x44]),
+            (Gesture::PreviousApp, vec![VK_MENU, VK_SHIFT, VK_TAB]),
+            (Gesture::NextApp, vec![VK_MENU, VK_TAB]),
         ] {
             let inputs: Vec<_> = chord(gesture)
                 .into_iter()
                 .map(|(k, up)| keyboard(k, up))
                 .collect();
-            for partial in 0..inputs.len() {
-                let mut calls = 0;
-                assert!(inject(&inputs, |batch| {
-                    calls += 1;
-                    if calls == 1 {
+            for partial in 0..=inputs.len() {
+                let mut batches = Vec::new();
+                let result = inject(&inputs, |batch| {
+                    batches.push(
+                        batch
+                            .iter()
+                            .map(|i| unsafe {
+                                (
+                                    i.Anonymous.ki.wVk,
+                                    i.Anonymous.ki.dwFlags & KEYEVENTF_KEYUP != 0,
+                                )
+                            })
+                            .collect::<Vec<_>>(),
+                    );
+                    if batches.len() == 1 {
                         partial
                     } else {
-                        assert!(batch
-                            .iter()
-                            .all(|i| unsafe { i.Anonymous.ki.dwFlags == KEYEVENTF_KEYUP }));
-                        assert_eq!(batch.len(), inputs.len());
                         batch.len()
                     }
-                })
-                .is_err());
-                assert_eq!(calls, 2);
+                });
+                assert_eq!(result.is_ok(), partial == inputs.len());
+                // All downs precede reverse-order ups: only these initial keys remain held.
+                let held = partial.min(inputs.len() - partial);
+                let mut expected = Vec::new();
+                for key in keys.iter().take(held).rev() {
+                    if *key == VK_LWIN {
+                        expected.extend([(0xff, false), (0xff, true)]);
+                    }
+                    expected.push((*key, true));
+                }
+                if expected.is_empty() {
+                    assert_eq!(batches.len(), 1);
+                } else {
+                    assert_eq!(batches.len(), 2);
+                    assert_eq!(batches[1], expected, "{gesture:?}, inserted={partial}");
+                }
             }
         }
+    }
+
+    #[test]
+    fn refused_win_cleanup_is_attempted_only_once() {
+        use windows_sys::Win32::UI::Input::KeyboardAndMouse::*;
+        let inputs = [keyboard(VK_LWIN, false), keyboard(VK_TAB, false)];
+        let mut calls = 0;
+        assert!(inject(&inputs, |batch| {
+            calls += 1;
+            if calls == 1 {
+                1
+            } else {
+                assert_eq!(batch.len(), 3);
+                0
+            }
+        })
+        .is_err());
+        assert_eq!(calls, 2);
     }
     #[test]
     fn all_chords_are_balanced_and_win_never_alone() {

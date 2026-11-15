@@ -1049,7 +1049,9 @@ CCS/1 RULE:Gesture jest barierą jak PointerButton (§8.4): następna epoka dok�
 
 CCS/1 EXT:WN-52 może dodać klawisze/tekst przez osobną capability (np. keys/1) lub input/3 na kanale 04, z tymi samymi regułami seq/epoch i niezawodnych barier; ta zmiana nie rezerwuje nowego numeru kanału. Tekst/klawisze nie należą do input/2.
 
-CCS/1 IO:odbiorca PC łączy ruch przez najwyżej jedną klatkę (8,333 ms), bez przewidywania ruchu; bariera opróżnia wcześniejszy ruch. Koniec sesji usuwa oczekujący ruch i zwalnia przyciski. SendInput ogranicza ruch do ±4096 px i koło do ±1200 jednostek/klatkę; gest jest jedną tablicą wszystkich key-down/key-up. Częściowa odmowa zwalnia klawisze, wycofuje input i wymaga ponownego lokalnego włączenia. Secure desktop/UIPI nie są omijane.
+CCS/1 IO:odbiorca PC łączy ruch przez najwyżej jedną klatkę (8,333 ms), bez przewidywania ruchu; bariera opróżnia wcześniejszy ruch. Koniec sesji usuwa oczekujący ruch i zwalnia przyciski. SendInput ogranicza ruch do ±4096 px i koło do ±1200 jednostek/klatkę; gest jest jedną tablicą wszystkich key-down/key-up. Po częściowym wysłaniu jedna próba odzyskania zwalnia w odwrotnej kolejności tylko klawisze nadal wciśnięte przez przyjęty prefiks; przed Win-up dodaje neutralne VK 0xFF down/up, aby nie otworzyć Start. Następnie wycofuje input i wymaga ponownego lokalnego włączenia.
+
+CCS/1 SEC:sprawdzenie pulpitu odrzuca pulpit inny niż Default (np. blokada/UAC); nie sprawdza integralności okna na pulpicie Default. UIPI nie jest omijane. LIMIT:SendInput podaje liczbę wstawionych zdarzeń, ale wynik i GetLastError nie identyfikują UIPI jako przyczyny odmowy; brak błędu nie jest potwierdzeniem wykonania akcji przez docelową aplikację. Program nie gwarantuje wykrycia blokady UIPI ani komunikatu/wycofania dla każdej takiej sytuacji. DEP:[Microsoft SendInput](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-sendinput).
 
 ## 9. Kanały funkcji i zmiany specyfikacji
 
