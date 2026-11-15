@@ -36,41 +36,62 @@ import kotlinx.coroutines.flow.asStateFlow
  * stop being watched and at the next start while the phone isn't ringing. Only our own mute: a stream the person had muted
  * already is left alone and never recorded.
  */
-class RingMute(context: Context) {
-    private val audio = context.applicationContext.getSystemService(AudioManager::class.java)
-    private val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+internal interface RingMuteAccess {
+    val allowed: Boolean
+    val muted: Boolean
+    var active: Boolean
+    fun adjust(mute: Boolean)
+}
+
+private class AndroidRingMuteAccess(private val app: Context) : RingMuteAccess {
+    private val audio = app.getSystemService(AudioManager::class.java)
+    private val prefs = app.getSharedPreferences("wind_calls", Context.MODE_PRIVATE)
+    override val allowed: Boolean get() =
+        app.checkSelfPermission(Manifest.permission.MODIFY_AUDIO_SETTINGS) == PackageManager.PERMISSION_GRANTED && !audio.isVolumeFixed
+    override val muted: Boolean get() = audio.isStreamMute(AudioManager.STREAM_RING)
+    override var active: Boolean
+        get() = prefs.getBoolean("ring_muted_for_pc", false)
+        set(value) { prefs.edit().putBoolean("ring_muted_for_pc", value).commit() }
+    override fun adjust(mute: Boolean) {
+        audio.adjustStreamVolume(AudioManager.STREAM_RING, if (mute) AudioManager.ADJUST_MUTE else AudioManager.ADJUST_UNMUTE, 0)
+    }
+}
+
+class RingMute internal constructor(private val access: RingMuteAccess) {
+    constructor(context: Context) : this(AndroidRingMuteAccess(context.applicationContext))
+
+    fun canMute(): Boolean = access.allowed
 
     /** Ours is in effect (survives the process). */
-    val active: Boolean get() = prefs.getBoolean(KEY, false)
+    val active: Boolean get() = access.active
 
     /** Mutes the ring stream for this call; false when it was muted already (not ours) or Android refused. */
     fun mute(): Boolean {
-        if (audio.isStreamMute(AudioManager.STREAM_RING)) return false
-        prefs.edit().putBoolean(KEY, true).commit()
+        if (!canMute() || access.muted) return false
+        access.active = true
         return try {
-            audio.adjustStreamVolume(AudioManager.STREAM_RING, AudioManager.ADJUST_MUTE, 0)
+            access.adjust(true)
             true
         } catch (_: SecurityException) {
-            prefs.edit().remove(KEY).commit()
+            access.active = false
             false
         }
     }
 
     /** Undoes our mute, if there is one. */
     fun restore() {
-        if (!active) return
-        try { audio.adjustStreamVolume(AudioManager.STREAM_RING, AudioManager.ADJUST_UNMUTE, 0) } catch (_: SecurityException) {}
-        prefs.edit().remove(KEY).commit()
+        if (!active || !access.allowed) return
+        try {
+            access.adjust(false)
+            access.active = false
+        } catch (_: SecurityException) {
+            // CCS/1 SEC:Keep our ownership record so a later recovery can retry after Android permits it.
+        }
     }
 
     /** At start: a mute left from an earlier process goes, unless the phone is ringing right now. */
     fun recover(ringingNow: Boolean) {
         if (active && !ringingNow) restore()
-    }
-
-    companion object {
-        private const val PREFS = "wind_calls"
-        private const val KEY = "ring_muted_for_pc"
     }
 }
 
@@ -117,7 +138,7 @@ class PhoneCalls(context: Context) : CallActionSink {
         mutableCaller.value = CallerInfo(nextCall.toULong(), clean?.let { SmsRules.clean(it).take(64) }, clean?.let(::contactName), actions())
     }
 
-    private fun actions(): UByte = ((if (ringing && canReject()) 1 else 0) or (if (ringing) 2 else 0)).toUByte()
+    private fun actions(): UByte = ((if (ringing && canReject()) 1 else 0) or (if (ringing && ringMute.canMute()) 2 else 0)).toUByte()
 
     private fun refreshActions() {
         mutableCaller.value?.let { mutableCaller.value = it.copy(actions = actions()) }
@@ -194,12 +215,7 @@ class PhoneCalls(context: Context) : CallActionSink {
 
     override fun silence(call: ULong) {
         if (!current(call)) return
-        try {
-            app.getSystemService(TelecomManager::class.java)?.silenceRinger()
-            return
-        } catch (_: SecurityException) {
-            // Only the default dialer may: mute the ring stream for this call instead.
-        }
+        // CCS/1 SEC:No silenceRinger: requires MODIFY_PHONE_STATE or default-dialer role, neither is ours.
         ringMute.mute()
         refreshActions()
     }

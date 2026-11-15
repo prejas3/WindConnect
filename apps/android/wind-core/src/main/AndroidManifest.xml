@@ -2,6 +2,8 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+    <!-- CCS/1 SEC:WN-135 normal permission for ring-stream mute; no privileged MODIFY_PHONE_STATE. -->
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <!-- WN-50: find my phone vibrates with its ring. -->
     <uses-permission android:name="android.permission.VIBRATE" />
     <application>

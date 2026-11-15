@@ -838,6 +838,12 @@ rejestru połączeń (7 dni, najwyżej 20). Z komputera (§9.12): „Odrzuć” 
 nie może użyć `silenceRinger`) i przywraca go po połączeniu; obie działają
 tylko na dzwoniące połączenie, które nazywają. Bez ustawienia komputer dostaje
 sam stan jak w WN-48. Numery nie trafiają do logów.
+CCS/1 SEC:Wycisz wymaga zwykłego `MODIFY_AUDIO_SETTINGS`; brak uprawnienia
+lub stała głośność urządzenia usuwa tę akcję. Odmowa Androida (np. polityka
+Nie przeszkadzać) nie wywołuje uprzywilejowanego API i nie zapisuje własnego
+wyciszenia. Odmowa przywrócenia zachowuje zapis do późniejszej próby odzyskania.
+DEP:[TelecomManager.silenceRinger](https://developer.android.com/reference/android/telecom/TelecomManager#silenceRinger()),
+[AudioManager.adjustStreamVolume](https://developer.android.com/reference/android/media/AudioManager#adjustStreamVolume(int,int,int)).
 Test: `apps/windows/scripts/check-calls-android.cjs`.
 
 ## Akcje zdalne (WN-100)
