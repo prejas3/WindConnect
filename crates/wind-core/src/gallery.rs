@@ -900,7 +900,11 @@ mod tests {
             ("evil.exe", "application/x-msdownload", None),
             ("x.jpg.exe", "application/octet-stream", None),
         ] {
-            assert_eq!(saved_name(7, &info(name, mime)).as_deref(), want, "{name} {mime}");
+            assert_eq!(
+                saved_name(7, &info(name, mime)).as_deref(),
+                want,
+                "{name} {mime}"
+            );
         }
     }
 

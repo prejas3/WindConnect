@@ -3,7 +3,7 @@
 //! -> `gallery-state` to the panel; `Changed` -> `Recent` again, thumbnails only for new ids. A press on a photo starts
 //! fetching its original; a drag hands the file to Windows (OLE DoDragDrop, CF_HDROP through the shell), a click opens it.
 //! SEC:thumbnails only in memory; originals only under %TEMP%\WindConnect\gallery, removed when the session ends, another
-//! phone connects or the app starts. Names are checked by the core (one part, nothing Windows refuses) before use.
+//! phone connects or the app starts. SEC:PC chooses image-only names, checks signatures and writes MOTW before use.
 use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -556,6 +556,114 @@ mod platform {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // CCS/1 SEC:Exercise the production save path over QUIC, without opening untrusted files in the test runner.
+    #[tokio::test]
+    async fn untrusted_originals_are_images_with_motw_or_are_refused() {
+        use std::io::Cursor;
+        use wind_core::gallery::{FileInfo, Opened, Server, Source};
+        use wind_core::identity::DeviceIdentity;
+        use wind_core::protocol::DeviceKind;
+        use wind_core::session::{LocalInfo, Router};
+        use wind_core::transport::{Endpoint, PinnedKeys};
+
+        struct Untrusted;
+        impl Source for Untrusted {
+            fn recent(&self, _: u32) -> Result<Vec<Item>, Status> {
+                Ok(vec![])
+            }
+            fn thumb(&self, _: u64, _: u32) -> Result<Vec<u8>, Status> {
+                Err(Status::NotFound)
+            }
+            fn original(&self, id: u64) -> Result<Opened, Status> {
+                let (name, mime, bytes) = match id {
+                    1 => ("evil.exe", "image/jpeg", vec![0xff, 0xd8, 0xff, 0xe0]),
+                    2 => (
+                        "evil.exe",
+                        "application/x-msdownload",
+                        b"MZpayload".to_vec(),
+                    ),
+                    3 => ("evil.jpg", "image/jpeg", b"MZpayload".to_vec()),
+                    4 => ("evil.jpg.exe", "image/jpeg", vec![0xff, 0xd8, 0xff, 0xe0]),
+                    _ => return Err(Status::NotFound),
+                };
+                Ok(Opened {
+                    info: FileInfo {
+                        name: name.into(),
+                        mime: mime.into(),
+                        size: bytes.len() as u64,
+                    },
+                    bytes: Box::new(Cursor::new(bytes)),
+                })
+            }
+        }
+
+        let phone_id = DeviceIdentity::generate().unwrap();
+        let pc_id = DeviceIdentity::generate().unwrap();
+        let phone_pins = Arc::new(PinnedKeys::new());
+        let pc_pins = Arc::new(PinnedKeys::new());
+        phone_pins.pin(pc_id.public_key());
+        pc_pins.pin(phone_id.public_key());
+        let phone_endpoint =
+            Endpoint::bind("127.0.0.1:0".parse().unwrap(), &phone_id, phone_pins).unwrap();
+        let pc_endpoint = Endpoint::bind("127.0.0.1:0".parse().unwrap(), &pc_id, pc_pins).unwrap();
+        let accepting = pc_endpoint.clone();
+        let accept = tokio::spawn(async move { accepting.accept().await.unwrap().unwrap() });
+        let connection = phone_endpoint
+            .connect(pc_endpoint.local_addr().unwrap(), pc_id.public_key())
+            .await
+            .unwrap();
+        let local = || LocalInfo {
+            name: "gallery test".into(),
+            kind: DeviceKind::Phone,
+            app: None,
+        };
+        let pc_task = tokio::spawn(Session::accept(
+            accept.await.unwrap(),
+            local(),
+            Router::new(),
+        ));
+        let mut router = Router::new();
+        let streams = router.route_gallery(8);
+        let (_phone, _) = Session::connect(connection, local(), router).await.unwrap();
+        let (pc, _) = pc_task.await.unwrap().unwrap();
+        let server = tokio::spawn(Server::new(Arc::new(Untrusted)).serve(streams));
+        let root = tempfile::tempdir().unwrap();
+        let peer = *pc.peer().key.fingerprint().as_bytes();
+        for id in 1..=4 {
+            let dir = root.path().join(id.to_string());
+            let download = gallery::original(&pc, id).await.unwrap();
+            assert_eq!(
+                download.info.name,
+                if id == 3 {
+                    "evil.jpg"
+                } else if id == 4 {
+                    "evil.jpg.exe"
+                } else {
+                    "evil.exe"
+                }
+            );
+            let result = save(&dir, &peer, id, download, &|_| {}).await;
+            if id == 1 || id == 4 {
+                let path = result.unwrap();
+                assert_eq!(path.file_name().unwrap(), format!("IMG_{id}.jpg").as_str());
+                assert_eq!(std::fs::read(&path).unwrap(), [0xff, 0xd8, 0xff, 0xe0]);
+                #[cfg(windows)]
+                {
+                    let zone =
+                        std::fs::read_to_string(format!("{}:Zone.Identifier", path.display()))
+                            .unwrap();
+                    assert!(zone.contains("ZoneId=3"));
+                }
+                assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1);
+            } else {
+                assert!(result.is_err());
+                assert!(!dir.exists() || std::fs::read_dir(&dir).unwrap().next().is_none());
+            }
+        }
+        server.abort();
+        let _ = server.await;
+    }
 
     fn item(id: u64) -> Item {
         Item {

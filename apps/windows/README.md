@@ -540,8 +540,12 @@ przeciągnięcie (plik już czeka). Własne przeciągnięcie nie jest brane za
 pliki do wysłania na telefon ani nie chowa panelu.
 Miniatury są tylko w pamięci; oryginały w `%TEMP%\WindConnect\gallery`
 (najwyżej 8), usuwane z końcem sesji, przy połączeniu innego telefonu i przy
-starcie. Nazwy sprawdza rdzeń (jedna część ścieżki, nic, czego Windows nie
-utworzy).
+starcie. CCS/1 SEC:PC dopuszcza wyłącznie końcowe rozszerzenia jpg, jpeg,
+png, webp, heic, heif, gif, avif, bmp (bez rozróżniania wielkości liter).
+Inną nazwę zastępuje `IMG_<id>.<rozszerzenie z MIME>`; brak dozwolonego
+MIME oznacza odmowę. Przed otwarciem/przeciągnięciem sprawdza sygnaturę
+obrazu i zapisuje `Zone.Identifier` (`ZoneId=3`); błąd oznacza odmowę
+i usunięcie pliku częściowego. Nazwa pozostaje jedną częścią ścieżki.
 Pomiar: `scripts/check-gallery-android.cjs` (prawdziwa aplikacja + emulator:
 nowe zdjęcie od polecenia do narysowanej miniatury < 1 s, oryginał zgodny co
 do SHA-256, ustawienie telefonu wył./wł.). Samo przeciągnięcie myszą wymaga
