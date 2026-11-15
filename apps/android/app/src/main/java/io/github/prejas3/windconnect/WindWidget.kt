@@ -8,10 +8,10 @@ import android.os.Bundle
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.datastore.preferences.core.Preferences
 import androidx.glance.*
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.*
@@ -28,14 +28,17 @@ import java.util.Date
 import java.util.concurrent.atomic.AtomicInteger
 
 class WindWidget : GlanceAppWidget() {
-    override val stateDefinition = null
     override val sizeMode = SizeMode.Single
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         WidgetUpdates.start(context.applicationContext as WindApplication)
         val initial = WidgetUpdates.current(context.applicationContext as WindApplication)
         provideContent {
-            val observed by WidgetUpdates.snapshot.collectAsState()
-            val snapshot = if (observed.updatedAt == 0L || !WidgetUpdates.installed(context)) initial else observed
+            // CCS/1 FLOW:one Glance state revision per publication; do not also collect the model flow and redraw twice.
+            val revision = currentState<Preferences>()[WIDGET_RENDER_REVISION] ?: 0L
+            val snapshot = remember(revision) {
+                val latest = WidgetUpdates.snapshot.value
+                if (latest.updatedAt == 0L || !WidgetUpdates.installed(context)) initial else latest
+            }
             val data = snapshot.data
             val light = if (data.dynamic && Build.VERSION.SDK_INT >= 31) dynamicLightColorScheme(context) else BrandLight
             val dark = if (data.dynamic && Build.VERSION.SDK_INT >= 31) dynamicDarkColorScheme(context) else BrandDark

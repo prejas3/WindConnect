@@ -3,6 +3,9 @@ package io.github.prejas3.windconnect
 import android.appwidget.AppWidgetManager
 import android.content.*
 import android.os.Build
+import androidx.datastore.preferences.core.longPreferencesKey
+import androidx.glance.appwidget.GlanceAppWidgetManager
+import androidx.glance.appwidget.state.updateAppWidgetState
 import androidx.glance.appwidget.updateAll
 import io.github.prejas3.windconnect.core.BatteryReading
 import kotlinx.coroutines.*
@@ -12,6 +15,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import java.util.concurrent.atomic.AtomicInteger
+
+// CCS/1 SEC:only an invalidation counter persists, never connection status or the presentation snapshot.
+internal val WIDGET_RENDER_REVISION = longPreferencesKey("render_revision")
 
 /** CCS/1 FLOW:existing connection + battery/preferences events -> deduped snapshot -> one-shot Glance update. */
 internal object WidgetUpdates {
@@ -66,6 +72,11 @@ internal object WidgetUpdates {
                     mutable.value = WidgetSnapshot(data, System.currentTimeMillis())
                 try {
                     if (installed(application)) {
+                        for (id in GlanceAppWidgetManager(application).getGlanceIds(WindWidget::class.java)) {
+                            updateAppWidgetState(application, id) { state ->
+                                state[WIDGET_RENDER_REVISION] = (state[WIDGET_RENDER_REVISION] ?: 0L) + 1L
+                            }
+                        }
                         WindWidget().updateAll(application)
                         if (BuildConfig.DEBUG) debugPublishes.incrementAndGet()
                     }

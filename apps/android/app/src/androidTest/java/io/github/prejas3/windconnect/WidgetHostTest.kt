@@ -63,6 +63,7 @@ class WidgetHostTest {
         appearance.edit().putString("theme", "Light").putBoolean("dynamic", false).commit()
         shell("appwidget grantbind --package ${context.packageName} --user 0")
         shell("dumpsys battery set level 77")
+        shell("dumpsys battery set ac 1")
         shell("dumpsys battery set status 3")
         val configuration = Configuration(context.resources.configuration).apply { fontScale = 1.5f }
         val hostContext = context.createConfigurationContext(configuration)
@@ -158,22 +159,29 @@ class WidgetHostTest {
             }
             preferences.edit().putBoolean("enabled", true).commit()
             waitFor("background enabled becomes offline") { textExists(view, "Brak połączenia") }
+            assertTrue("fixture explicitly uses AC power", WidgetUpdates.snapshot.value.data.charging)
+            view.events.clear()
+            val batteryBefore = view.count.get()
             shell("dumpsys battery set level 78")
             waitFor("battery percentage event redraws") { textExists(view, "Telefon: 78%") }
+            assertNotNull("one RemoteViews for the changed percentage", view.events.poll(30, TimeUnit.SECONDS))
+            assertEquals("one change on AC must produce one RemoteViews", batteryBefore + 1, view.count.get())
             // CCS/1 CHECK:observe absence of RemoteViews events for125s, as required by review; not an arbitrary startup sleep.
-            // WN-119: while charging (the shared reading counts AC as charging) Glance draws the 78% change twice; let that one
-            // change settle (no event for 2 s) before the idle window, so the window measures unchanged data only.
-            while (view.events.poll(2, TimeUnit.SECONDS) != null) {}
-            view.events.clear()
+            // CCS/1 RULE:do not drain after the change; a second late redraw must fail the idle assertion too.
             val hostBefore = view.count.get()
             val publishBefore = WidgetUpdates.debugPublishes.get()
             val onUpdateBefore = WindWidgetReceiver.debugOnUpdateCalls.get()
+            instrumentation.sendStatus(0, Bundle().apply {
+                putString("phase", "single AC redraw passed; observing 125s idle")
+                putInt("acBatteryHostUpdates", view.count.get() - batteryBefore)
+            })
             shell("dumpsys battery set temp 333")
             assertNull("unchanged percent/charging or WorkManager loop caused a redraw", view.events.poll(125, TimeUnit.SECONDS))
             assertEquals(hostBefore, view.count.get())
             assertEquals(publishBefore, WidgetUpdates.debugPublishes.get())
             assertNull(WidgetUpdates.debugError)
             val results = Bundle().apply {
+                putInt("acBatteryHostUpdates", view.count.get() - batteryBefore)
                 putInt("idleHostUpdates", view.count.get() - hostBefore)
                 putInt("idlePublishes", WidgetUpdates.debugPublishes.get() - publishBefore)
                 putInt("idleOnUpdateCalls", WindWidgetReceiver.debugOnUpdateCalls.get() - onUpdateBefore)
