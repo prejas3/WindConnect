@@ -528,6 +528,12 @@ class WindCore private constructor(
     /** WN-36: the image limit, 5 / 16 / 50 MB. */
     fun setClipboardImageLimit(mb: Int) = systemClipboard.setImageLimit(mb)
     suspend fun sendCurrentClipboard(): String = systemClipboard.send(true)
+    /** WN-117: clipboard history (previews only) and its actions. */
+    val clipboardHistory = systemClipboard.historyUi
+    fun copyFromHistory(id: Long) = systemClipboard.historyCopy(id)
+    fun pinInHistory(id: Long, pinned: Boolean) = systemClipboard.historyPin(id, pinned)
+    fun removeFromHistory(id: Long) = systemClipboard.historyRemove(id)
+    fun clearHistory() = systemClipboard.historyClear()
 
     /**
      * Turns the E2E relay on (`wss://…`, PROTOCOL.md §13) or off (null) and remembers it. Off by

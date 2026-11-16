@@ -12,6 +12,7 @@ import io.github.prejas3.windconnect.bindings.inspectQrLink
 import io.github.prejas3.windconnect.core.WindCore
 import io.github.prejas3.windconnect.core.ConnectionState
 import io.github.prejas3.windconnect.core.ClipboardUi
+import io.github.prejas3.windconnect.core.ClipboardHistoryView
 import io.github.prejas3.windconnect.core.END_UNPAIRED_HERE
 import io.github.prejas3.windconnect.core.REFUSED
 import kotlinx.coroutines.CancellationException
@@ -40,6 +41,7 @@ data class PairingUi(
     val code: String = "",
 
     val clipboard: ClipboardUi = ClipboardUi(),
+    val clipboardHistory: List<ClipboardHistoryView> = emptyList(),
     val filesAccepted: Boolean = false,
     /** Paired computers and those still owed an unpair notice (WC-28). */
     val devices: List<PairedEntry> = emptyList(),
@@ -73,6 +75,7 @@ class PairingViewModel(application: Application) : AndroidViewModel(application)
                 core = opened
                 viewModelScope.launch { opened.filesAccepted.collect { value -> mutableUi.update { it.copy(filesAccepted = value) } } }
                 viewModelScope.launch { opened.clipboardUi.collect { value -> mutableUi.update { it.copy(clipboard = value) } } }
+                viewModelScope.launch { opened.clipboardHistory.collect { value -> mutableUi.update { it.copy(clipboardHistory = value) } } }
                 val paired = opened.pairedDevices()
                 mutableUi.update { it.copy(ready = true, initialized = true, skippedRecords = opened.skippedPairingRecords, hasPairedDevice = paired.isNotEmpty(), computerName = paired.lastOrNull()?.name) }
                 viewModelScope.launch {
@@ -201,6 +204,9 @@ class PairingViewModel(application: Application) : AndroidViewModel(application)
     fun setClipboardEnabled(value: Boolean) { core?.setClipboardEnabled(value) }
     fun setClipboardImageLimit(mb: Int) { core?.setClipboardImageLimit(mb) }
     fun sendClipboard() { viewModelScope.launch { core?.sendCurrentClipboard() } }
+    val clipboardHistoryActions = ClipboardHistoryActions(
+        copy = { core?.copyFromHistory(it) }, pin = { id, pinned -> core?.pinInHistory(id, pinned) },
+        remove = { core?.removeFromHistory(it) }, clear = { core?.clearHistory() })
 
     fun cameraError() { mutableUi.update { it.copy(screen = "error", message = "Nie udało się otworzyć aparatu. Zamknij inne aplikacje korzystające z aparatu i spróbuj ponownie.") } }
 

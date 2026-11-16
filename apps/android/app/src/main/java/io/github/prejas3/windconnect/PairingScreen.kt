@@ -52,7 +52,7 @@ fun PairingScreen(model: PairingViewModel, diagnostic: @Composable () -> Unit) {
                 // WC-34: the Welcome card explained the camera, so the system asks right after the tap.
                 val scan = { if (!hasCamera) permission.launch(Manifest.permission.CAMERA); model.scan() }
                 HomeScreen(state, scan, onDiagnostics = { diagnostics = true }, onNearby = model::nearby, onClipboard = model::sendClipboard, onClipboardEnabled = model::setClipboardEnabled,
-                    onSendFile = { context.startActivity(Intent(context, ShareFilesActivity::class.java).setAction(ShareFilesActivity.PICK)) })
+                    onSendFile = { context.startActivity(Intent(context, ShareFilesActivity::class.java).setAction(ShareFilesActivity.PICK)) }, history = model.clipboardHistoryActions)
                 if (state.devices.isNotEmpty()) WindButton("Sparowane komputery", model::devices, Modifier.fillMaxWidth().testTag("openDevices"), kind = ButtonKind.Secondary)
             }
             "devices" -> DevicesScreen(state, onBack = model::cancel, onConnect = model::connectDevice, onRename = model::renameDevice, onUnpair = model::unpairDevice)
@@ -71,6 +71,7 @@ fun PairingScreen(model: PairingViewModel, diagnostic: @Composable () -> Unit) {
                 CallControls()
                 LinkControls()
                 ClipboardControls(state, model::sendClipboard, model::setClipboardEnabled, model::setClipboardImageLimit)
+                ClipboardHistoryCard(state.clipboardHistory, state.clipboard.enabled, model.clipboardHistoryActions)
                 if (state.devices.isNotEmpty()) WindButton("Sparowane komputery", model::devices, Modifier.testTag("openDevices"), kind = ButtonKind.Secondary)
                 WindButton("Sparuj kolejny komputer", model::scan, Modifier.testTag("scanQr"), enabled = state.ready, kind = ButtonKind.Secondary)
                 WindButton("Paruj bez aparatu", model::nearby, Modifier.testTag("pairNearby"), enabled = state.ready, kind = ButtonKind.Secondary)

@@ -418,7 +418,7 @@ RULE:20 ostatnich + do 20 przypiętych (przypięte u góry, poza dwudziestką); 
 SEC:historia jest tylko w pamięci; na dysk trafiają wyłącznie przypięte, w `clipboard-pins.bin` obok clipboard.json, zaszyfrowane DPAPI bieżącego użytkownika z własnym celem (nagłówek `WCPN` 1). Plik innego użytkownika, uszkodzony albo nowszy: start bez przypiętych, plik zostaje.
 SEC:do panelu (IPC) idzie tylko podgląd tekstu (jedna linia, 120 znaków) albo miniatura; pełny tekst i PNG zostają w procesie, kopiowanie idzie po id. Podgląd wstawiany jako tekst, nigdy HTML; znaki sterujące, bidi (U+202A–202E, U+2066–2069) i zerowej szerokości (U+200B–200F, U+FEFF) zamieniane na spację. Miniatury jako `data:image/png`: CSP pozwala na `data:` tylko w `img-src`.
 SEC:hasła: schowek z ExcludeClipboardContentFromMonitorProcessing, „Clipboard Viewer Ignore” (KeePass, Password Safe i inne), CanIncludeInClipboardHistory = 0 albo CanUploadToCloudClipboard = 0 nie jest nawet kopiowany z OS, więc nie wychodzi z PC ani nie trafia do historii. Nie rozpoznajemy haseł po treści: liczą się tylko znaczniki, które ustawia menedżer.
-LIMIT:historia tylko na Windows (Android jej nie pokazuje); po restarcie zostają tylko przypięte; bez wyszukiwania.
+LIMIT:Android ma własną historię na tych samych zasadach (WN-117, `apps/android/README.md`); po restarcie zostają tylko przypięte; bez wyszukiwania.
 DATA:pliki schowka w katalogu danych aplikacji (obok tożsamości): clipboard.json (włączona synchronizacja), clipboard-images.json (limit obrazów), clipboard-pins.bin (przypięte, DPAPI). Odinstalowanie MSI nie usuwa katalogu danych (jak tożsamości); usunięcie wszystkich przypiętych usuwa clipboard-pins.bin.
 
 Test „hasło nie opuszcza urządzenia”: `clipboard_probe` (każdy z 4 znaczników

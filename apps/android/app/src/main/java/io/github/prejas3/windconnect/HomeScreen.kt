@@ -31,7 +31,7 @@ internal fun computerLabel(value: String?): String = value.orEmpty().filterNot {
 }.trim().take(64).ifEmpty { "Komputer" }
 
 @Composable
-fun HomeScreen(state: PairingUi, onScan: () -> Unit, onDiagnostics: () -> Unit, onNearby: (() -> Unit)? = null, onClipboard: (() -> Unit)? = null, onClipboardEnabled: ((Boolean) -> Unit)? = null, onSendFile: (() -> Unit)? = null) {
+fun HomeScreen(state: PairingUi, onScan: () -> Unit, onDiagnostics: () -> Unit, onNearby: (() -> Unit)? = null, onClipboard: (() -> Unit)? = null, onClipboardEnabled: ((Boolean) -> Unit)? = null, onSendFile: (() -> Unit)? = null, history: ClipboardHistoryActions? = null) {
     val pcActions = rememberPcActions()
     val context = LocalContext.current
     val touchpadAccepted by (context.applicationContext as WindApplication).connections.touchpadAccepted.collectAsStateWithLifecycle()
@@ -82,6 +82,7 @@ fun HomeScreen(state: PairingUi, onScan: () -> Unit, onDiagnostics: () -> Unit, 
         Text("Akcje oznaczone jako niedostępne nie są jeszcze gotowe lub komputer ich teraz nie przyjmuje.", color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
     }
     if (onClipboard != null && onClipboardEnabled != null) ClipboardControls(state, onClipboard, onClipboardEnabled)
+    if (history != null) ClipboardHistoryCard(state.clipboardHistory, state.clipboard.enabled, history)
     PcMediaCard() // WN-47: the PC's player; shown only when the PC has one.
     PcVolumeCard() // WN-48: the PC's volume; shown while the PC shares it.
     PcActionsCard(pcActions, connected != null) // WN-100: the outcome, the link box and the PC's own actions.

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- WN-117: a plain Activity gives the test window focus, which reading the clipboard needs. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <activity android:name="android.app.Activity" android:exported="false" />
+    </application>
+</manifest>

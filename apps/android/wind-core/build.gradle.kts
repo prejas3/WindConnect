@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "io.github.prejas3.windconnect"
-version = "0.63.0"
+version = "0.64.0"
 
 val repositoryRoot = rootProject.projectDir.resolve("../..").canonicalFile
 // WN-95: Rust builds share the repository's Cargo target folder, so the
@@ -27,6 +27,7 @@ android {
     ndkVersion = "27.0.12077973"
     defaultConfig {
         minSdk = 29
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk { abiFilters += windAbis }
         consumerProguardFiles("consumer-rules.pro")
     }
@@ -104,6 +105,10 @@ dependencies {
     api("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     implementation("net.java.dev.jna:jna:5.17.0@aar")
     testImplementation("junit:junit:4.13.2")
+    // WN-117: SystemClipboard is internal, so its instrumentation test lives here.
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("junit:junit:4.13.2")
 }
 
 afterEvaluate {

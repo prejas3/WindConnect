@@ -595,7 +595,7 @@ CCS/1
 FLOW:systemowy ClipboardManager -> UniFFI -> clipboard/1 na sparowanej sesji -> schowek PC; Applied wraca dopiero po udanym zapisie OS. Odbiór PC -> telefon działa także przy zamkniętej Activity, jeśli działa usługa połączenia.
 RULE:automat włączony domyślnie. Przełącznik „Synchronizacja automatyczna” na Home/Ustawieniach zapamiętuje decyzję; wyłącza automatyczny odczyt oraz odbiór, ale nie zatrzymuje połączenia. Ręczne „Wyślij schowek” pozostaje dodatkiem. Samo ponowne otwarcie/fokus nie wysyła już wysłanej/odebranej treści.
 LIMIT:Android 10+ czyta schowek tylko przy fokusie aplikacji. Wysyłanie telefonu działa automatycznie przy fokusie WindConnect i po powrocie do aplikacji, jeśli treść się zmieniła. W innych aplikacjach użyj „Wyślij schowek” w stałym powiadomieniu: otworzy krótko osobny ekran, poczeka na fokus/odblokowanie i po dostarczeniu wróci do poprzedniej aplikacji. Bez READ_LOGS, Accessibility ani zmiany klawiatury. Czas otwarcia ekranu i działania człowieka nie jest budżetem transportu <150 ms.
-SEC:tylko plain text/linki do256 KiB bez NUL; bez otwierania URL lub odczytu URI providerów. EXTRA_IS_SENSITIVE blokuje także wysłanie ręczne. Odebrany tekst zawsze ma sensitive=true (ukryty podgląd Androida13+ i brak echa). Status nie zawiera treści; brak historii/logowania/utrwalania payloadu.
+SEC:tylko plain text/linki do256 KiB bez NUL; bez otwierania URL lub odczytu URI providerów. EXTRA_IS_SENSITIVE blokuje także wysłanie ręczne. Odebrany tekst zawsze ma sensitive=true (ukryty podgląd Androida13+ i brak echa). Status nie zawiera treści; bez logowania payloadu; historia tylko w pamięci, przypięte zaszyfrowane (WN-117).
 DEC:chronologii zegarów urządzeń nie porównujemy. Licznik Lamporta+id16B rozstrzyga równoczesne zmiany, hash w pamięci zapobiega echo, reconnect nie odtwarza starej zawartości. Wire i limity w PROTOCOL.md §9.3.
 RULE:automat wysyła tylko schowek skopiowany po przyjęciu bieżącej sesji (ClipDescription.timestamp względem lokalnego System.currentTimeMillis). Stary tekst po restarcie procesu lub reconnect nie zastąpi schowka PC przy fokusie; ręczne wysłanie może go wysłać. Timestamp0/równy granicy jest pomijany. Po cofnięciu zegara użyj ręcznej akcji. Bez utrwalania payloadu.
 
@@ -628,7 +628,17 @@ Surowe próbki i zrzuty Light/Dark: `%TEMP%/windconnect-wn35-*`.
 
 CCS/1
 SEC:klip z `ClipDescription.EXTRA_IS_SENSITIVE` (`android.content.extra.IS_SENSITIVE`) nie jest wysyłany na PC, także ręcznie (test: `ClipboardProof`, „WN35-PRIVATE-ANDROID”). Telefon czyta schowek tylko z fokusem albo ręcznie, nigdy w tle. W drugą stronę hasła z menedżerów na PC nie dochodzą (test OS z 4 znacznikami Windows, `apps/windows/README.md`, WN-37).
-LIMIT:menedżery ustawiają IS_SENSITIVE na Androidzie 13+; starsze lub źle napisane go nie ustawiają, a hasło skopiowane z nich wygląda jak zwykły tekst. Nie rozpoznajemy haseł po treści. Historia schowka jest tylko na Windows (Android: osobna karta).
+LIMIT:menedżery ustawiają IS_SENSITIVE na Androidzie 13+; starsze lub źle napisane go nie ustawiają, a hasło skopiowane z nich wygląda jak zwykły tekst. Nie rozpoznajemy haseł po treści.
+
+## Historia schowka (WN-117)
+
+CCS/1
+FLOW:pozycja trafia do historii, gdy PC potwierdził wysłany schowek (Applied) albo gdy schowek z PC został zapisany na telefonie; odebrany obraz dopiero po dojściu całego PNG. Karta „Historia schowka” na Home i w Ustawieniach: najnowsze u góry, stuknięcie kopiuje z powrotem, „Przypnij”/„Odepnij”, „Usuń”, „Wyczyść” (nieprzypięte).
+RULE:zasady jak na PC (WN-37, `apps/windows/README.md`): 20 ostatnich + do 20 przypiętych (u góry, poza dwudziestką); ta sama treść (SHA-256) przesuwa się na górę. Obrazy nieprzypięte do 64 MB łącznie (najstarszy wypada), przypięte też do 64 MB. Wyłączona synchronizacja: nic nowego (także ręczne wysłanie), wyłączenie czyści nieprzypięte.
+RULE:kopiowanie zachowuje flagi: tekst z PC wraca z IS_SENSITIVE jak przy odbiorze (więc nie jest odsyłany), obraz przez własny `ClipImageProvider` (bez echa); tekst z telefonu jako zwykły klip, który automat wysyła na PC jak każdą nową kopię.
+SEC:klip z IS_SENSITIVE nigdy nie trafia do historii (nie jest czytany ani wysyłany). Historia tylko w pamięci; UI dostaje podgląd (jedna linia, 120 znaków, sterujące/bidi/zerowej szerokości → spacja, zwykły Text) albo miniaturę. Przypięte w `noBackupFilesDir/clipboard-pins.bin`: AES-256-GCM, klucz w Android Keystore, nagłówek `WCPN` 1. Plik uszkodzony/nowszy albo bez klucza: start bez przypiętych, plik zostaje; brak przypiętych usuwa plik.
+LIMIT:po restarcie procesu zostają tylko przypięte; bez wyszukiwania.
+CHECK:`ClipboardHistoryTest` (JVM: kolejność, limity, budżet obrazów, plik przypiętych, podgląd); `ClipboardHistoryInstrumentedTest` (`:wind-core:connectedDebugAndroidTest`: prawdziwy schowek i Keystore, IS_SENSITIVE poza historią, flagi przy kopiowaniu, przypięte po restarcie, wyłączona synchronizacja); `ClipboardHistoryUiTest` (`:app`, Light/Dark, zrzuty `cache/wn117-history-*.png`).
 ## Wspólny schowek: obrazy (WN-36)
 
 CCS/1

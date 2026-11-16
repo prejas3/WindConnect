@@ -12,6 +12,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.PersistableBundle
 import io.github.prejas3.windconnect.bindings.ClipboardImage
+import io.github.prejas3.windconnect.bindings.ClipboardImageInterface
 import io.github.prejas3.windconnect.bindings.ClipboardSink
 import java.io.ByteArrayOutputStream
 import kotlinx.coroutines.*
@@ -34,6 +35,7 @@ internal class SystemClipboard(
     private val connected: () -> Boolean,
     private val imageLimitChanged: (Long) -> Unit = {},
     private val publishImage: suspend (OutgoingImage, Boolean, () -> Unit) -> Pair<String, Long?> = { _, _, _ -> "unavailable" to null },
+    private val pinStore: ClipboardPinStore? = ClipboardPinStore(context),
     private val publish: suspend (String, Boolean, Boolean) -> String,
 ) : ClipboardSink {
     private val context = context.applicationContext
@@ -51,11 +53,25 @@ internal class SystemClipboard(
     private var dirty = false
     private val freshness = ClipboardFreshness()
     private val listener = ClipboardManager.OnPrimaryClipChangedListener { automatic() }
+    // WN-117: what went between the devices; guarded by itself, pins written one at a time.
+    private val history = ClipboardHistory()
+    private val historyViews = MutableStateFlow<List<ClipboardHistoryView>>(emptyList())
+    val historyUi = historyViews.asStateFlow()
+    @OptIn(ExperimentalCoroutinesApi::class) private val pinWriter = Dispatchers.IO.limitedParallelism(1)
+    init {
+        if (pinStore != null) scope.launch(pinWriter) {
+            val plain = pinStore.read() ?: return@launch
+            try { synchronized(history) { history.loadPins(plain) } } finally { plain.fill(0) }
+            publishHistory()
+        }
+    }
 
     fun setEnabled(value: Boolean) {
         enabledChanged(value)
         preferences.edit().putBoolean("clipboard_enabled", value).apply()
         mutable.update { it.copy(enabled = value, status = if (value) "Synchronizacja automatyczna" else "Synchronizacja wyłączona") }
+        // CCS/1 RULE:sync off keeps nothing new and drops the unpinned entries; pins stay.
+        if (!value) { synchronized(history) { history.clear() }; publishHistory() }
         main.post { updateListener() }
     }
     /** The image limit in MB (5, 16 or 50): sent and taken images are at most this big. */
@@ -110,7 +126,7 @@ internal class SystemClipboard(
         mutable.update { it.copy(busy = true) }
         try {
             val result = publish(text, false, manual)
-            if (result == "applied") mutable.update { it.copy(delivered = it.delivered + 1) }
+            if (result == "applied") { mutable.update { it.copy(delivered = it.delivered + 1) }; record(ClipboardHistoryItem.Text(text, fromPc = false)) }
             if (result != "unchanged" || manual) report(result)
             result
         } finally { mutable.update { it.copy(busy = false) } }
@@ -128,7 +144,10 @@ internal class SystemClipboard(
                 is ImageRead.TooLarge -> "too-large" to null
                 ImageRead.Unreadable -> "unreadable" to null
             }
-            if (result.first == "applied") mutable.update { it.copy(delivered = it.delivered + 1) }
+            if (result.first == "applied") {
+                mutable.update { it.copy(delivered = it.delivered + 1) }
+                (image as ImageRead.Ready).image.let { record(ClipboardHistoryItem.Image(it.png, it.thumbnail, it.width, it.height, fromPc = false)) }
+            }
             if (result.first != "unchanged" || manual) mutable.update { it.copy(status = imageStatusText(result.first, result.second, limit)) }
             return result.first
         } finally { mutable.update { it.copy(busy = false) } }
@@ -177,6 +196,7 @@ internal class SystemClipboard(
             clip.description.extras = PersistableBundle().apply { putBoolean(SENSITIVE, true) }
             manager.setPrimaryClip(clip)
             mutable.update { it.copy(status = "Schowek odebrany z komputera", received = it.received + 1) }
+            record(ClipboardHistoryItem.Text(text, fromPc = true))
             true
         } catch (_: Exception) { false }
     }
@@ -192,9 +212,80 @@ internal class SystemClipboard(
             val clip = ClipData(ClipDescription("Obraz z komputera", arrayOf(ClipImageProvider.PNG)), ClipData.Item(ClipImageProvider.uri(context, image)))
             manager.setPrimaryClip(clip)
             mutable.update { it.copy(status = "Obraz odebrany z komputera", received = it.received + 1) }
+            recordWhenComplete(image)
             true
         } catch (_: Exception) { ClipImageProvider.publish(null); false }
     }
+    /** WN-117: into the history while sync is on; never a clip marked sensitive (those are neither read nor sent). */
+    private fun record(item: ClipboardHistoryItem) {
+        if (closed || !mutable.value.enabled) return
+        synchronized(history) { history.record(item) }
+        publishHistory()
+    }
+    /** A received image goes into the history once its whole PNG is here; replaced or broken off, it doesn't. */
+    private fun recordWhenComplete(image: ClipboardImageInterface) {
+        val size = image.size().toLong()
+        if (size <= 0 || size > ClipboardHistory.IMAGE_BUDGET) return
+        val thumbnail = image.thumbnail()
+        scope.launch(Dispatchers.IO) {
+            val png = try {
+                val out = ByteArrayOutputStream(size.toInt())
+                while (out.size() < size) {
+                    val part = image.read(out.size().toULong(), 65_536u)
+                    if (part.isEmpty()) break
+                    out.write(part)
+                }
+                out.toByteArray().takeIf { it.size.toLong() == size }
+            } catch (_: Exception) { null } ?: return@launch
+            record(ClipboardHistoryItem.Image(png, thumbnail, image.width().toLong(), image.height().toLong(), fromPc = true))
+        }
+    }
+    private fun publishHistory() { historyViews.value = synchronized(history) { history.views() } }
+    private fun savePins() {
+        val store = pinStore ?: return
+        scope.launch(pinWriter) {
+            val plain = synchronized(history) { if (history.hasPins) history.encodePins() else null }
+            store.write(plain)
+        }
+    }
+    /**
+     * Copies an entry back with the flags it had: from the PC as at receipt (text IS_SENSITIVE; an image through our provider,
+     * so neither is sent back: no echo); from the phone as plain text, which sync sends to the PC like any new copy.
+     */
+    fun historyCopy(id: Long): Boolean {
+        val item = synchronized(history) { history.get(id) } ?: return false
+        return try {
+            when (item) {
+                is ClipboardHistoryItem.Text -> manager.setPrimaryClip(ClipData.newPlainText("WindConnect", item.text).apply {
+                    if (item.fromPc) description.extras = PersistableBundle().apply { putBoolean(SENSITIVE, true) }
+                })
+                is ClipboardHistoryItem.Image -> {
+                    val stored = StoredClipImage(item)
+                    ClipImageProvider.publish(stored)
+                    manager.setPrimaryClip(ClipData(ClipDescription("Obraz z historii", arrayOf(ClipImageProvider.PNG)), ClipData.Item(ClipImageProvider.uri(context, stored))))
+                }
+            }
+            mutable.update { it.copy(status = "Skopiowano z historii") }
+            true
+        } catch (_: Exception) { false }
+    }
+    fun historyPin(id: Long, pinned: Boolean): PinResult {
+        val result = synchronized(history) { history.pin(id, pinned) }
+        if (result == PinResult.Ok) { savePins(); publishHistory() }
+        else mutable.update { it.copy(status = when (result) {
+            PinResult.Full -> "Można przypiąć do ${ClipboardHistory.MAX_PINNED} pozycji"
+            PinResult.TooLarge -> "Przypięte obrazy mogą zająć do 64 MB"
+            else -> "Tej pozycji nie ma już w historii"
+        }) }
+        return result
+    }
+    fun historyRemove(id: Long) {
+        val wasPinned = synchronized(history) { history.remove(id) } ?: return
+        if (wasPinned) savePins()
+        publishHistory()
+    }
+    /** Removes the unpinned entries. */
+    fun historyClear() { synchronized(history) { history.clear() }; publishHistory() }
     private fun report(result: String) { mutable.update { it.copy(status = statusText(result)) } }
     fun close() { closed = true; main.post { sending?.cancel(); updateListener() } }
     companion object {
@@ -250,5 +341,20 @@ internal class SystemClipboard(
             "failed" -> "Nie udało się zapisać schowka na komputerze"
             else -> "Schowek niedostępny — sprawdź połączenie z komputerem"
         }
+    }
+}
+
+/** An image from the history for the provider: complete, served from memory. */
+internal class StoredClipImage(private val image: ClipboardHistoryItem.Image) : ClipboardImageInterface {
+    private val id = java.util.UUID.randomUUID().toString().replace("-", "")
+    override fun id() = id
+    override fun width() = image.width.toULong()
+    override fun height() = image.height.toULong()
+    override fun size() = image.png.size.toULong()
+    override fun isComplete() = true
+    override fun thumbnail() = image.thumbnail
+    override fun read(offset: ULong, max: UInt): ByteArray {
+        val start = minOf(offset, size()).toInt()
+        return image.png.copyOfRange(start, minOf(image.png.size.toLong(), start.toLong() + max.toLong()).toInt())
     }
 }
