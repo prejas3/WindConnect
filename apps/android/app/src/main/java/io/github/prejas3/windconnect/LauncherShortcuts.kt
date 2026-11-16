@@ -21,20 +21,31 @@ internal object LauncherShortcuts {
     fun intent(context: Context, action: LauncherAction) = Intent(context, LauncherShortcutActivity::class.java)
         .setAction(action.action).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
 
+    /** CCS/1 RULE:each shortcut opens its real feature screen directly, never Home; the screen itself reports offline/unsupported. */
+    fun target(context: Context, action: LauncherAction): Intent = when (action) {
+        // SendClipboardActivity has its own empty task affinity, so clearing it never touches the app's task.
+        LauncherAction.Clipboard -> Intent(context, SendClipboardActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+        LauncherAction.File -> Intent(context, ShareFilesActivity::class.java).setAction(ShareFilesActivity.PICK)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        LauncherAction.Touchpad -> Intent(context, TouchpadActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
+
     fun info(context: Context, action: LauncherAction, rank: Int) = ShortcutInfo.Builder(context, action.id)
         .setActivity(ComponentName(context, MainActivity::class.java))
         .setShortLabel(context.getString(action.label))
-        .setLongLabel(if (action == LauncherAction.Clipboard) action.title else "Niedostępne · ${action.title}")
+        .setLongLabel(action.title)
         .setIcon(Icon.createWithResource(context, R.mipmap.ic_launcher))
         .setIntent(intent(context, action)).setRank(rank).build()
 
     fun publish(context: Context) {
-        // CCS/1 RULE:clipboard is static/immutable; only future-feature shortcuts are dynamic. Stable IDs preserve pinned copies.
+        // CCS/1 RULE:clipboard is static/immutable; file/touchpad are dynamic. Stable IDs preserve pinned copies,
+        // and updateShortcuts refreshes pinned copies made while they were still labelled unavailable.
         val manager = context.getSystemService(ShortcutManager::class.java) ?: return
         try {
-            manager.setDynamicShortcuts(listOf(LauncherAction.File, LauncherAction.Touchpad)
-                .take((manager.maxShortcutCountPerActivity - 1).coerceAtLeast(0))
-                .mapIndexed { rank, action -> info(context, action, rank) })
+            val dynamic = listOf(LauncherAction.File, LauncherAction.Touchpad).mapIndexed { rank, action -> info(context, action, rank) }
+            manager.setDynamicShortcuts(dynamic.take((manager.maxShortcutCountPerActivity - 1).coerceAtLeast(0)))
+            manager.updateShortcuts(dynamic)
         } catch (_: RuntimeException) {
             // CCS/1 LIMIT:launcher/service restrictions must not prevent app or clipboard startup; retry on next process start.
         }

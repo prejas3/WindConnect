@@ -5,8 +5,8 @@
     <string name="widget_description">Stan połączenia z komputerem, bateria telefonu i szybkie akcje.</string>
     <string name="tile_clipboard">Wyślij schowek</string>
     <string name="shortcut_clipboard">Wyślij schowek</string>
-    <string name="shortcut_file">Niedostępne: plik</string>
-    <string name="shortcut_touchpad">Niedostępne: touchpad</string>
+    <string name="shortcut_file">Wyślij plik</string>
+    <string name="shortcut_touchpad">Touchpad</string>
     <string name="welcome_message">Windows ⇄ Android</string>
     <!-- WN-100: the share sheet's entry for links. -->
     <string name="open_on_pc">Otwórz na PC</string>

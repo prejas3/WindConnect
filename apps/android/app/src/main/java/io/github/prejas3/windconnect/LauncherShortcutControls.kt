@@ -14,10 +14,9 @@ fun LauncherShortcutControls() {
     var message by remember { mutableStateOf("") }
     WindCard {
         Text("Skróty na ekranie głównym", style = MaterialTheme.typography.titleMedium)
-        Text("Przytrzymaj ikonę WindConnect w launcherze albo przypnij skrót poniżej. Pliki i touchpad są jeszcze niedostępne.")
+        Text("Przytrzymaj ikonę WindConnect w launcherze albo przypnij skrót poniżej. Bez połączenia z komputerem skrót pokaże, czego brakuje.")
         LauncherAction.entries.forEach { action ->
-            val label = if (action == LauncherAction.Clipboard) action.title else "${action.title} (niedostępne)"
-            WindButton("Przypnij: $label", { message = LauncherShortcuts.pin(context, action) },
+            WindButton("Przypnij: ${action.title}", { message = LauncherShortcuts.pin(context, action) },
                 Modifier.testTag("pin_${action.id}"), kind = ButtonKind.Secondary)
         }
         if (message.isNotEmpty()) Text(message, Modifier.testTag("shortcutPinStatus"))

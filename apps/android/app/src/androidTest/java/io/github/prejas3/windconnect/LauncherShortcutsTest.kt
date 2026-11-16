@@ -16,7 +16,7 @@ class LauncherShortcutsTest {
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private val context = instrumentation.targetContext
 
-    @Test fun staticClipboardAndDynamicUnavailableActionsArePublishedWithoutDuplicates() {
+    @Test fun staticClipboardAndDynamicFeatureActionsArePublishedWithoutDuplicates() {
         val manager = context.getSystemService(ShortcutManager::class.java)
         val clipboard = manager.manifestShortcuts.single { it.id == LauncherAction.Clipboard.id }
         assertTrue(clipboard.isImmutable)
@@ -26,21 +26,36 @@ class LauncherShortcutsTest {
         LauncherShortcuts.publish(context)
         assertEquals(setOf("send_file", "touchpad"), manager.dynamicShortcuts.map { it.id }.toSet())
         manager.dynamicShortcuts.forEach {
-            assertTrue(it.shortLabel.toString().contains("niedostępne", ignoreCase = true))
+            assertFalse(it.shortLabel.toString().contains("niedostępne", ignoreCase = true))
+            assertEquals(LauncherAction.entries.single { a -> a.id == it.id }.title, it.longLabel.toString())
             assertEquals(ComponentName(context, LauncherShortcutActivity::class.java), it.intent?.component)
             assertEquals(ComponentName(context, MainActivity::class.java), it.activity)
         }
     }
 
-    @Test fun unavailableActionsOpenTheirOwnScreenAndCloseWithoutHome() {
-        for (action in listOf(LauncherAction.File, LauncherAction.Touchpad)) {
-            ActivityScenario.launch<LauncherShortcutActivity>(LauncherShortcuts.intent(context, action)).use {
-                compose.onNodeWithText(action.title).assertIsDisplayed()
-                compose.onNodeWithTag("shortcutUnavailable").assertIsDisplayed()
-                compose.onNodeWithTag("computerCard").assertDoesNotExist()
-                compose.onNodeWithText("Zamknij").performClick()
+    /** CCS/1 CHECK:WN-116 file/touchpad shortcuts start their real screens directly (blocked here, so no picker opens), never Home. */
+    @Test fun fileAndTouchpadRouteStraightToTheirFeatureScreens() {
+        val started = java.util.Collections.synchronizedList(mutableListOf<Intent>())
+        val monitor = object : android.app.Instrumentation.ActivityMonitor() {
+            private val blocked = setOf(ShareFilesActivity::class.java.name, TouchpadActivity::class.java.name, MainActivity::class.java.name)
+            override fun onStartActivity(intent: Intent): android.app.Instrumentation.ActivityResult? {
+                if ((intent.component?.className ?: return null) !in blocked) return null
+                started += intent
+                return android.app.Instrumentation.ActivityResult(0, null)
             }
         }
+        instrumentation.addMonitor(monitor)
+        try {
+            for (action in listOf(LauncherAction.File, LauncherAction.Touchpad)) {
+                ActivityScenario.launch<LauncherShortcutActivity>(LauncherShortcuts.intent(context, action)).use {
+                    assertEquals(androidx.lifecycle.Lifecycle.State.DESTROYED, it.state)
+                }
+            }
+        } finally { instrumentation.removeMonitor(monitor) }
+        val targets = started.toList()
+        assertEquals(listOf(ShareFilesActivity::class.java.name, TouchpadActivity::class.java.name), targets.map { it.component?.className })
+        assertEquals(ShareFilesActivity.PICK, targets[0].action)
+        assertTrue(targets.none { it.component?.className == MainActivity::class.java.name })
     }
 
     @Test fun clipboardRoutesToFocusedSenderAndReportsOfflineWithoutHome() {
