@@ -10,7 +10,8 @@ use tokio::sync::Mutex;
 
 use crate::protocol::{
     encode_datagram, encode_frame, stream_header, Button, Channel, Gesture, InputGesture,
-    InputKeyboard, InputMessage, InputSession, KeyboardAction, Message, Motion, PointerButton,
+    InputKeyboard, InputLaser, InputMessage, InputSession, KeyboardAction, Message, Motion,
+    PointerButton,
 };
 use crate::session::{send_priority, SessionError};
 
@@ -123,6 +124,18 @@ impl SenderCore {
             sy: self.scroll.1,
         })
     }
+    pub fn laser(&mut self, on: bool) -> InputMessage {
+        self.epoch += 1;
+        InputMessage::Laser(InputLaser {
+            seq: self.next_seq(),
+            on,
+            x: self.pointer.0,
+            y: self.pointer.1,
+            b: self.epoch,
+            sx: self.scroll.0,
+            sy: self.scroll.1,
+        })
+    }
 }
 
 struct State {
@@ -158,6 +171,7 @@ pub struct InputSender {
     start: Instant,
     gestures: Arc<dyn Fn() -> bool + Send + Sync>,
     keyboard: Arc<dyn Fn() -> bool + Send + Sync>,
+    laser: Arc<dyn Fn() -> bool + Send + Sync>,
 }
 
 impl std::fmt::Debug for InputSender {
@@ -180,6 +194,7 @@ impl InputSender {
         g: Arc<dyn Fn() -> Option<InputAnnouncement> + Send + Sync>,
         gestures: Arc<dyn Fn() -> bool + Send + Sync>,
         keyboard: Arc<dyn Fn() -> bool + Send + Sync>,
+        laser: Arc<dyn Fn() -> bool + Send + Sync>,
     ) -> Self {
         // §8.7: the path for continuous events is fixed per connection.
         let datagrams = conn.max_datagram_size().is_some();
@@ -189,6 +204,7 @@ impl InputSender {
             g,
             gestures,
             keyboard,
+            laser,
             state: Arc::new(Mutex::new(State {
                 core: SenderCore::new(0),
                 stream: None,
@@ -220,6 +236,22 @@ impl InputSender {
             return Err(SessionError::CapabilityMissing(Channel::Input));
         }
         let msg = state.core.keyboard(action);
+        self.write_stream(&mut state, &msg).await
+    }
+    pub fn supports_laser(&self) -> bool {
+        (self.laser)()
+    }
+    /// CCS/1 input/4:checked before and after opening the stream, like the keyboard.
+    pub async fn laser(&self, on: bool) -> Result<(), SessionError> {
+        if !(self.laser)() {
+            return Err(SessionError::CapabilityMissing(Channel::Input));
+        }
+        let mut state = self.state.lock().await;
+        self.ensure_stream(&mut state).await?;
+        if !(self.laser)() {
+            return Err(SessionError::CapabilityMissing(Channel::Input));
+        }
+        let msg = state.core.laser(on);
         self.write_stream(&mut state, &msg).await
     }
     pub async fn gesture(&self, gesture: Gesture) -> Result<(), SessionError> {

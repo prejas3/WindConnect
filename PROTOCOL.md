@@ -1079,6 +1079,26 @@ CCS/1 IO:wektory payload CBOR, seq=1, epoka=1, pointer/scroll=0:
 - Text `ą`: `82 05 a7 00 01 01 62 c4 85 02 00 03 00 04 01 05 00 06 00`.
 - Ctrl+C: `82 06 a8 00 01 01 18 43 02 00 03 00 04 01 05 00 06 00 07 01`.
 
+### 8.11 Tryb prezentacji (`input/4`, WN-53)
+
+CCS/1 COMPAT:input/4 rozszerza input/1–3 na kanale 04; odbiorca ogłasza wszystkie cztery wersje. Przełączanie slajdów nie wymaga input/4: to zwykłe KeyStroke (§8.10) Right=39 (następny) i Left=37 (poprzedni), które PowerPoint i pokazy w przeglądarce (Google Slides, reveal.js, PDF) obsługują bez konfiguracji. input/4 dodaje tylko wskaźnik laserowy. Nadawca sprawdza bieżące input/4 przed i po otwarciu strumienia; do starszego odbiorcy nie wolno wysyłać type 7, a odbiorca bez input/4 odrzuca rozpoznaną ramkę jako PROTOCOL_VIOLATION.
+
+`Laser` (type 7), wyłącznie niezawodna bariera na strumieniu input, nigdy datagram:
+
+| klucz | nazwa | typ |
+|---|---|---|
+| 0 | seq | u64 |
+| 1 | on | bool: `true` pokaż, `false` ukryj |
+| 2, 3 | x, y | i64, skumulowany pointer |
+| 4 | b | u64, epoka po barierze |
+| 5, 6 | sx, sy | i64, skumulowany scroll |
+
+CCS/1 RULE:epoka dokładnie poprzednia+1; najpierw pełny stan pointer/scroll, potem zmiana widoczności, potem odłożone datagramy. Ruch wskaźnika to zwykły PointerMotion (§8.3), więc kropka idzie za kursorem systemowym. Koniec sesji, wycofanie input i odmowa wstawiania ukrywają wskaźnik jak zwolnienie przycisków (§8.4 pkt 4).
+
+CCS/1 IO:telefon wysyła `on=true` przy przytrzymaniu przycisku, ruch z żyroskopu (oś X: pochylenie → y, oś Z: obrót → x, ok. 110 000 jednostek na radian, martwa strefa 0,02 rad/s), `on=false` przy puszczeniu. PC rysuje czerwoną kropkę w warstwowym oknie topmost, przezroczystym dla kliknięć i bez aktywacji (WS_EX_LAYERED | TRANSPARENT | NOACTIVATE | TOOLWINDOW), więc pokaz zachowuje fokus; okno śledzi kursor zegarem 8 ms tylko, gdy wskaźnik jest włączony. Na pulpicie innym niż Default wskaźnik się nie pokazuje. Przyciski głośności telefonu przełączają slajdy tylko w trybie prezentacji przy aktywnej sesji; ekran nie wygasa, a timer wystąpienia działa lokalnie na telefonie (start przy pierwszym slajdzie).
+
+CCS/1 IO:wektor payload CBOR `Laser` on, seq=1, epoka=1, pointer/scroll=0: `82 07 a7 00 01 01 f5 02 00 03 00 04 01 05 00 06 00`.
+
 ## 9. Kanały funkcji i zmiany specyfikacji
 
 Kanały `clipboard`, `notify`, `media` i `files` mają w v1.0 tylko numer,

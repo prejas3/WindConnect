@@ -196,6 +196,7 @@ pub enum InputMessage {
     InputSession(InputSession),
     Gesture(InputGesture),
     Keyboard(InputKeyboard),
+    Laser(InputLaser),
 }
 
 impl InputMessage {
@@ -210,6 +211,7 @@ impl InputMessage {
                 KeyboardAction::Text(_) => 5,
                 KeyboardAction::Key { .. } => 6,
             },
+            Self::Laser(_) => 7,
         }
     }
 }
@@ -309,6 +311,18 @@ impl KeyboardAction {
 pub struct InputKeyboard {
     pub seq: u64,
     pub action: KeyboardAction,
+    pub x: i64,
+    pub y: i64,
+    pub b: u64,
+    pub sx: i64,
+    pub sy: i64,
+}
+
+/// CCS/1 input/4:reliable barrier that shows (`on`) or hides the receiver's laser-pointer overlay; motion stays ordinary pointer state.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct InputLaser {
+    pub seq: u64,
+    pub on: bool,
     pub x: i64,
     pub y: i64,
     pub b: u64,
@@ -443,6 +457,15 @@ pub(super) fn decode(channel: Channel, payload: Value) -> Result<Message> {
                     sy: body.i64(6)?,
                 })
             }
+            7 => InputMessage::Laser(InputLaser {
+                seq: body.u64(0)?,
+                on: body.bool(1)?,
+                x: body.i64(2)?,
+                y: body.i64(3)?,
+                b: body.u64(4)?,
+                sx: body.i64(5)?,
+                sy: body.i64(6)?,
+            }),
             _ => return Err(unknown),
         })),
         // Feature channels have no message types in v1.0 (§9).
@@ -679,6 +702,15 @@ pub(super) fn encode(msg: &Message) -> Result<Value> {
                 if let KeyboardAction::Key { modifiers, .. } = &k.action {
                     b.put(7, uint((*modifiers).into()));
                 }
+            }
+            InputMessage::Laser(l) => {
+                b.put(0, uint(l.seq));
+                b.put(1, Value::Bool(l.on));
+                b.put(2, int(l.x));
+                b.put(3, int(l.y));
+                b.put(4, uint(l.b));
+                b.put(5, int(l.sx));
+                b.put(6, int(l.sy));
             }
         },
     }

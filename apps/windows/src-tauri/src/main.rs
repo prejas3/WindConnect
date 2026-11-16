@@ -17,6 +17,7 @@ mod gallery;
 mod hotkey;
 pub mod indicator;
 mod instance;
+mod laser;
 mod media;
 mod notify;
 mod pairing;

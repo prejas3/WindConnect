@@ -4,7 +4,11 @@
 
 Touchpad jest domyślnie dozwolony dla sparowanego telefonu. Otwórz „Touchpad” na ekranie głównym Androida: jeden palec porusza kursorem, stuknięcie klika, przytrzymanie przeciąga, dwa palce przewijają (z inercją), stuknięcie dwoma palcami daje prawy klik. Przyciski pod obszarem pozwalają też przytrzymać lewy/prawy przycisk. Czułość i naturalne przewijanie są ustawiane na telefonie.
 
-Trzy palce: w górę widok zadań, w dół pulpit, w lewo poprzednia aplikacja, w prawo następna. Wymaga PC z `input/2`; podstawowy ruch działa również z `input/1`. Klawiatura będzie osobną funkcją WN-52.
+Trzy palce: w górę widok zadań, w dół pulpit, w lewo poprzednia aplikacja, w prawo następna. Wymaga PC z `input/2`; podstawowy ruch działa również z `input/1`. Klawiatura to osobna funkcja WN-52.
+
+### Tryb prezentacji (WN-53)
+
+Na ekranie touchpada wybierz „Prezentacja”. Przycisk głośniej to następny slajd, ciszej poprzedni (strzałki →/←, więc działa w PowerPoint, Google Slides i innych pokazach w przeglądarce bez konfiguracji). Przytrzymaj „wskaźnik laserowy” i celuj telefonem: PC pokazuje czerwoną kropkę nad kursorem, przezroczystą dla kliknięć i nieodbierającą fokusu pokazowi. Timer wystąpienia startuje przy pierwszym slajdzie. Laser wymaga PC z `input/4` (PROTOCOL.md §8.11); starszy PC zachowuje przełączanie slajdów.
 
 Panel PC pokazuje „Telefon steruje kursorem · nazwa”. „Wyłącz touchpad” natychmiast wycofuje przyjmowanie wejścia i zwalnia przyciski. Ustawienie pozostaje po ponownym uruchomieniu. Zamknięcie ekranu telefonu, utrata fokusu, blokada i zmiana połączenia zatrzymują wysyłkę; nic nie jest odtwarzane po ponownym połączeniu. Wykryty pulpit inny niż Default (blokada/UAC) lub błąd wstawiania wejścia wyłącza touchpad z komunikatem i wymaga lokalnego ponownego włączenia, bez podnoszenia uprawnień.
 

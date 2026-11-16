@@ -68,6 +68,38 @@ async fn keyboard_v3_real_session_and_old_peer_refusal() {
     }
 }
 
+/// CCS/1 TEST:input/4 laser over a real session; only a v4 receiver is offered it.
+#[tokio::test]
+async fn laser_v4_real_session_and_old_peer_refusal() {
+    for version in [3, 4] {
+        let mut router = Router::new();
+        let mut rx = router.route_input_version(version, 8);
+        let (phone, _pc) = pair(router, true).await;
+        let input = phone.input().unwrap();
+        assert!(input.supports_keyboard());
+        assert_eq!(input.supports_laser(), version == 4);
+        if version < 4 {
+            assert!(input.laser(true).await.is_err());
+            assert!(rx.try_recv().is_err());
+            continue;
+        }
+        input.laser(true).await.unwrap();
+        assert_eq!(next(&mut rx).await, InputEvent::Begin(0));
+        assert_eq!(next(&mut rx).await, InputEvent::Laser(true));
+        input.pointer(250, -40).await.unwrap();
+        assert!(matches!(
+            next(&mut rx).await,
+            InputEvent::Pointer {
+                dx: 250,
+                dy: -40,
+                ..
+            }
+        ));
+        input.laser(false).await.unwrap();
+        assert_eq!(next(&mut rx).await, InputEvent::Laser(false));
+    }
+}
+
 fn info(name: &str) -> LocalInfo {
     LocalInfo {
         name: name.into(),
@@ -172,6 +204,7 @@ async fn collect(
             InputEvent::Button { button, down } => b.push((button, down, p)),
             InputEvent::Gesture(_)
             | InputEvent::Keyboard(_)
+            | InputEvent::Laser(_)
             | InputEvent::Begin(_)
             | InputEvent::End(_)
             | InputEvent::Withdrawn => {

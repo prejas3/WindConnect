@@ -2,7 +2,10 @@ package io.github.prejas3.windconnect
 
 import android.app.KeyguardManager
 import android.os.Bundle
+import android.hardware.SensorManager
 import android.os.SystemClock
+import android.view.KeyEvent
+import android.view.WindowManager
 import android.view.Choreographer
 import android.view.MotionEvent
 import android.view.View
@@ -30,7 +33,7 @@ import io.github.prejas3.windconnect.ui.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 
-/** CCS/1 M:TouchpadActivity | RULE:foreground focus + unlocked screen only; every pause closes the pinned native session. */
+/** CCS/1 M:TouchpadActivity | RULE:foreground focus + unlocked screen only; every pause closes the pinned native session. Presenter mode (WN-53) takes volume keys only while it is shown and live. */
 @OptIn(ExperimentalComposeUiApi::class)
 class TouchpadActivity : ComponentActivity() {
     private val owner get() = (application as WindApplication).connections
@@ -44,6 +47,11 @@ class TouchpadActivity : ComponentActivity() {
     private var gestures by mutableStateOf(false)
     private var keyboardSupported by mutableStateOf(false)
     private var typing by mutableStateOf(false)
+    private var presenting by mutableStateOf(false)
+    private var laserSupported by mutableStateOf(false)
+    private var timerTick by mutableIntStateOf(0)
+    private val timer = PresentationTimer()
+    private val gyro by lazy { GyroLaser(getSystemService(SENSOR_SERVICE) as SensorManager) { dx, dy -> capture?.pointer(dx, dy) } }
     private var draft by mutableStateOf(TextFieldValue())
     private var sensitivity by mutableFloatStateOf(1.5f)
     private var natural by mutableStateOf(true)
@@ -77,10 +85,20 @@ class TouchpadActivity : ComponentActivity() {
                         Text("Touchpad",style=MaterialTheme.typography.headlineSmall)
                         WindButton("Zamknij",{finish()},kind=ButtonKind.Quiet)
                     }
-                    TextButton(onClick={typing=!typing},enabled=active && keyboardSupported,modifier=Modifier.testTag("remoteKeyboardToggle")){Text(if(typing)"Touchpad" else "Klawiatura")}
+                    Row(horizontalArrangement=Arrangement.spacedBy(4.dp)) {
+                        TextButton(onClick={showPresenter(false);typing=!typing},enabled=active && keyboardSupported,modifier=Modifier.testTag("remoteKeyboardToggle")){Text(if(typing)"Touchpad" else "Klawiatura")}
+                        TextButton(onClick={typing=false;showPresenter(!presenting)},enabled=active && keyboardSupported,modifier=Modifier.testTag("presenterToggle")){Text(if(presenting)"Touchpad" else "Prezentacja")}
+                    }
                     Text(status,Modifier.testTag("touchpadStatus"),style=MaterialTheme.typography.bodyMedium)
                     if(active && !keyboardSupported)Text("Klawiatura wymaga nowszej wersji WindConnect na komputerze.",style=MaterialTheme.typography.bodySmall)
-                    if(typing) {
+                    if(presenting) {
+                        Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+                            PresenterPanel(active && keyboardSupported,laserSupported,gyro.available,timer,timerTick,{slide(it)}){on->
+                                if(on){ if(capture?.keyboard(TouchpadCommand.Laser(true))==true)gyro.start() }
+                                else { gyro.stop();capture?.keyboard(TouchpadCommand.Laser(false)) }
+                            }
+                        }
+                    } else if(typing) {
                         Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
                             RemoteKeyboard(draft,{draft=it},active && keyboardSupported){capture?.keyboard(it)==true}
                         }
@@ -118,6 +136,7 @@ class TouchpadActivity : ComponentActivity() {
                 if(!resumed || !hasWindowFocus())return@launch
                 gestures=handle.gestures()
                 keyboardSupported=handle.keyboard()
+                laserSupported=handle.laser()
                 capture=PadCapture(handle,{message -> stop();status=message}).also { it.engine.sensitivity=sensitivity;it.engine.natural=natural }
                 handle=null;active=true;status="Sterujesz: ${computerLabel(state.peerName)}"
             } catch(e:CancellationException) {throw e}
@@ -130,7 +149,20 @@ class TouchpadActivity : ComponentActivity() {
             }
         }
     }
-    private fun stop() {opening?.cancel();capture?.close();capture=null;active=false;keyboardSupported=false;draft=TextFieldValue()}
+    private fun showPresenter(on:Boolean){
+        presenting=on
+        if(on)window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) else {gyro.stop();window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)}
+    }
+    private fun slide(code:Long){if(capture?.keyboard(PresenterKeys.command(code))==true){timer.slideChanged();timerTick++}}
+    /** Volume keys become slide keys only in live presenter mode; repeats and key-ups are swallowed so the volume never changes. */
+    private fun presenterKey(keyCode:Int)=PresenterKeys.slide(keyCode)?.takeIf{presenting && active && keyboardSupported}
+    override fun onKeyDown(keyCode:Int,event:KeyEvent):Boolean {
+        val code=presenterKey(keyCode) ?: return super.onKeyDown(keyCode,event)
+        if(event.repeatCount==0)slide(code)
+        return true
+    }
+    override fun onKeyUp(keyCode:Int,event:KeyEvent):Boolean = presenterKey(keyCode)!=null || super.onKeyUp(keyCode,event)
+    private fun stop() {gyro.stop();laserSupported=false;opening?.cancel();capture?.close();capture=null;active=false;keyboardSupported=false;draft=TextFieldValue()}
     override fun onResume(){super.onResume();resumed=true;maybeStart()}
     override fun onPause(){resumed=false;stop();super.onPause()}
     override fun onWindowFocusChanged(focus:Boolean){super.onWindowFocusChanged(focus);if(focus)maybeStart() else stop()}
@@ -179,12 +211,13 @@ private class PadCapture(private val handle:TouchpadSession,private val failed:(
     }
     fun keyboard(command:TouchpadCommand):Boolean {
         if(closed)return false
-        if(!handle.keyboard()){close();failed("Komputer nie przyjmuje klawiatury. Otwórz touchpad ponownie.");return false}
+        if(!(if(command is TouchpadCommand.Laser)handle.laser() else handle.keyboard())){close();failed("Komputer nie przyjmuje klawiatury. Otwórz touchpad ponownie.");return false}
         flush()
         if(closed)return false
         if(batches.trySend(listOf(command)).isFailure){close();failed("Połączenie zbyt wolne. Sterowanie zatrzymane.");return false}
         return true
     }
+    fun pointer(dx:Long,dy:Long){if(!closed)queue(PadCommand.Pointer(dx,dy))}
     private fun emit(command:PadCommand){
         buttons.gesture(command)?.let(::queue)
     }

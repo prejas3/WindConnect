@@ -36,7 +36,7 @@ async fn touchpad_handles_release_on_replacement_and_cannot_replay_after_off_on(
     let server = tokio::spawn(async move {
         let connection = accepting.accept().await.unwrap().unwrap();
         let mut router = Router::new();
-        let input = router.route_input_version(3, 64);
+        let input = router.route_input_version(4, 64);
         let (session, _) = Session::accept(
             connection,
             LocalInfo {
@@ -63,6 +63,7 @@ async fn touchpad_handles_release_on_replacement_and_cannot_replay_after_off_on(
     let first = connection.open_touchpad().await.unwrap();
     assert!(first.gestures());
     assert!(first.keyboard());
+    assert!(first.laser());
     first
         .send(vec![TouchpadCommand::Left { down: true }])
         .await
@@ -190,6 +191,38 @@ async fn touchpad_handles_release_on_replacement_and_cannot_replay_after_off_on(
             }
         ))
     );
+    // CCS/1 TEST:WN-53 presenter: slide arrow key, laser on, pointer, laser off in one ordered batch.
+    third
+        .send(vec![
+            TouchpadCommand::Key {
+                code: 39,
+                modifiers: 0,
+            },
+            TouchpadCommand::Laser { on: true },
+            TouchpadCommand::Pointer { dx: 900, dy: -300 },
+            TouchpadCommand::Laser { on: false },
+        ])
+        .await
+        .unwrap();
+    assert_eq!(
+        rx.recv().await,
+        Some(InputEvent::Keyboard(
+            wind_core::protocol::KeyboardAction::Key {
+                code: 39,
+                modifiers: 0
+            }
+        ))
+    );
+    assert_eq!(rx.recv().await, Some(InputEvent::Laser(true)));
+    assert!(matches!(
+        rx.recv().await,
+        Some(InputEvent::Pointer {
+            dx: 900,
+            dy: -300,
+            ..
+        })
+    ));
+    assert_eq!(rx.recv().await, Some(InputEvent::Laser(false)));
     third.finish_input().await;
     assert_eq!(rx.recv().await, Some(InputEvent::End(2)));
     assert!(third

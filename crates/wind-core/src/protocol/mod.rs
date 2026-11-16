@@ -19,8 +19,8 @@ pub use frame::{
 };
 pub use message::{
     Button, Capability, ControlMessage, DeviceKind, ErrorMessage, Gesture, Goodbye, Hello,
-    InputGesture, InputKeyboard, InputMessage, InputSession, KeyboardAction, Message, Motion,
-    PointerButton, Version, MAX_CAPS, MAX_INPUT_TEXT, MAX_MESSAGE_TEXT,
+    InputGesture, InputKeyboard, InputLaser, InputMessage, InputSession, KeyboardAction, Message,
+    Motion, PointerButton, Version, MAX_CAPS, MAX_INPUT_TEXT, MAX_MESSAGE_TEXT,
 };
 
 /// Major protocol version: the `version` byte of stream headers and

@@ -1,4 +1,4 @@
-//! CCS/1 M:touchpad/keyboard | IO:admitted input/3 -> one-frame coalescing + reliable barriers -> SendInput.
+//! CCS/1 M:touchpad/keyboard/presenter | IO:admitted input/4 -> one-frame coalescing + reliable barriers -> SendInput; Laser -> crate::laser overlay.
 use std::sync::{Arc, Mutex};
 use tokio::sync::{mpsc, watch};
 use wind_core::{
@@ -188,6 +188,7 @@ struct Native {
 }
 impl Native {
     fn release(&mut self) {
+        crate::laser::set(false);
         for button in std::mem::take(&mut self.pressed) {
             let _ = send(&[mouse(button_flags(button, false), 0, 0, 0)]);
         }
@@ -210,6 +211,11 @@ impl Native {
             InputEvent::Begin(_) | InputEvent::End(_) | InputEvent::Withdrawn
         ) {
             self.release();
+            return Ok(());
+        }
+        if let InputEvent::Laser(on) = event {
+            // CCS/1 IO:visual only, no injection; hidden again by release() at End/withdrawal/refusal.
+            crate::laser::set(on && ordinary_desktop());
             return Ok(());
         }
         if !ordinary_desktop() {

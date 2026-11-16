@@ -171,3 +171,63 @@ fn keyboard_barriers_order_totals_unknown_keys_and_old_versions() {
         );
     }
 }
+
+/// CCS/1 TEST:input/4 Laser is a reliable barrier with a fixed vector; older receivers refuse it.
+#[test]
+fn laser_vector_barrier_and_old_versions() {
+    let mut sender = SenderCore::new(0);
+    let on = SenderCore::new(0).laser(true);
+    let vector = encode_payload(&Message::Input(on.clone())).unwrap();
+    assert_eq!(
+        vector,
+        vec![0x82, 7, 0xa7, 0, 1, 1, 0xf5, 2, 0, 3, 0, 4, 1, 5, 0, 6, 0]
+    );
+    assert_eq!(
+        decode_payload(Channel::Input, &vector).unwrap(),
+        Message::Input(on.clone())
+    );
+    assert!(encode_datagram(&on).is_err());
+    sender.pointer(70, 0, None);
+    let laser = sender.laser(true);
+    let future = sender.pointer(30, -10, None);
+    let off = sender.laser(false);
+    let mut out = vec![];
+    let mut receiver = InputReceiver::with_version(true, 4);
+    receiver.stream_started();
+    receiver
+        .stream_frame(&sender.input_session(0), &mut out)
+        .unwrap();
+    out.clear();
+    receiver.datagram(&future, &mut out);
+    assert!(out.is_empty());
+    receiver.stream_frame(&laser, &mut out).unwrap();
+    assert!(matches!(
+        out.as_slice(),
+        [
+            InputEvent::Pointer { dx: 70, .. },
+            InputEvent::Laser(true),
+            InputEvent::Pointer {
+                dx: 30,
+                dy: -10,
+                ..
+            }
+        ]
+    ));
+    out.clear();
+    receiver.stream_frame(&off, &mut out).unwrap();
+    assert_eq!(out, vec![InputEvent::Laser(false)]);
+    assert_eq!(
+        receiver.stream_frame(&laser, &mut out),
+        Err(ErrorCode::ProtocolViolation)
+    );
+    for version in [1, 2, 3] {
+        let mut old = InputReceiver::with_version(true, version);
+        old.stream_started();
+        old.stream_frame(&sender.input_session(0), &mut vec![])
+            .unwrap();
+        assert_eq!(
+            old.stream_frame(&laser, &mut vec![]),
+            Err(ErrorCode::ProtocolViolation)
+        );
+    }
+}

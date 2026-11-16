@@ -13,7 +13,7 @@ pub struct TouchpadCapabilities {
 }
 fn accepted(caps: &[Capability]) -> bool {
     caps.iter()
-        .any(|c| c.name() == "input" && (1..=3).contains(&c.version()))
+        .any(|c| c.name() == "input" && (1..=4).contains(&c.version()))
 }
 #[uniffi::export(async_runtime = "tokio")]
 impl TouchpadCapabilities {
@@ -29,16 +29,35 @@ impl TouchpadCapabilities {
 }
 #[derive(uniffi::Enum)]
 pub enum TouchpadCommand {
-    Pointer { dx: i64, dy: i64 },
-    Scroll { dx: i64, dy: i64 },
-    Left { down: bool },
-    Right { down: bool },
+    Pointer {
+        dx: i64,
+        dy: i64,
+    },
+    Scroll {
+        dx: i64,
+        dy: i64,
+    },
+    Left {
+        down: bool,
+    },
+    Right {
+        down: bool,
+    },
     TaskView,
     ShowDesktop,
     PreviousApp,
     NextApp,
-    Text { text: String },
-    Key { code: u64, modifiers: u8 },
+    Text {
+        text: String,
+    },
+    Key {
+        code: u64,
+        modifiers: u8,
+    },
+    /// CCS/1 input/4:presentation laser overlay on the PC.
+    Laser {
+        on: bool,
+    },
 }
 #[derive(uniffi::Object)]
 pub struct TouchpadSession {
@@ -55,6 +74,9 @@ impl TouchpadSession {
     }
     pub fn keyboard(&self) -> bool {
         self.input.supports_keyboard()
+    }
+    pub fn laser(&self) -> bool {
+        self.input.supports_laser()
     }
     pub async fn send(&self, commands: Vec<TouchpadCommand>) -> Result<(), CoreError> {
         let owner = self.owner.lock().await;
@@ -115,6 +137,7 @@ impl TouchpadSession {
                         .keyboard(KeyboardAction::Key { code, modifiers })
                         .await
                 }
+                TouchpadCommand::Laser { on } => self.input.laser(on).await,
             };
             if let Err(e) = result {
                 self.closed.store(true, std::sync::atomic::Ordering::SeqCst);

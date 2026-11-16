@@ -9,8 +9,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::protocol::{
-    Button, ErrorCode, Gesture, InputGesture, InputKeyboard, InputMessage, InputSession,
-    KeyboardAction, Motion, PointerButton,
+    Button, ErrorCode, Gesture, InputGesture, InputKeyboard, InputLaser, InputMessage,
+    InputSession, KeyboardAction, Motion, PointerButton,
 };
 
 /// What reaches the system.
@@ -36,6 +36,8 @@ pub enum InputEvent {
     },
     Gesture(Gesture),
     Keyboard(KeyboardAction),
+    /// CCS/1 input/4:laser-pointer overlay on/off; the platform hides it again at `End`.
+    Laser(bool),
     /// CCS/1 input/2 only:let a platform owner cancel smoothing and release state even without a mouse button down.
     Begin(u32),
     End(u32),
@@ -191,6 +193,7 @@ impl InputReceiver {
             InputMessage::PointerButton(b) => self.button(*b, out),
             InputMessage::Gesture(g) => self.gesture(*g, out),
             InputMessage::Keyboard(k) => self.keyboard(k, out),
+            InputMessage::Laser(l) => self.laser(*l, out),
             InputMessage::PointerMotion(m) => {
                 self.apply(Class::Pointer, m.seq, m.x, m.y, m.t, out);
                 Ok(())
@@ -286,6 +289,18 @@ impl InputReceiver {
             out.push(InputEvent::Keyboard(k.action.clone()));
         }
         self.epoch = k.b;
+        self.review(out);
+        Ok(())
+    }
+
+    fn laser(&mut self, l: InputLaser, out: &mut Vec<InputEvent>) -> Result<(), ErrorCode> {
+        if self.version < 4 || l.b != self.epoch.wrapping_add(1) {
+            return Err(ErrorCode::ProtocolViolation);
+        }
+        self.apply(Class::Pointer, l.seq, l.x, l.y, None, out);
+        self.apply(Class::Scroll, l.seq, l.sx, l.sy, None, out);
+        out.push(InputEvent::Laser(l.on));
+        self.epoch = l.b;
         self.review(out);
         Ok(())
     }

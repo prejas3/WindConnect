@@ -590,7 +590,7 @@ async fn run(
             if let Ok(connection) = incoming {
                 // CCS/1 SEC:actions/1 accepted from pinned phones only; each request re-checks the pin (WN-54).
                 let mut router = Router::new();
-                let touchpad_input = router.route_input_version(3, 128);
+                let touchpad_input = router.route_input_version(4, 128);
                 if !accept_touchpad.load(std::sync::atomic::Ordering::SeqCst) {
                     router.start_disabled(wind_core::protocol::Channel::Input);
                 }
