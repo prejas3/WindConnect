@@ -14,6 +14,14 @@ class PresenterTest {
         assertEquals(TouchpadCommand.Key(39uL, 0u), PresenterKeys.command(PresenterKeys.NEXT))
     }
 
+    @Test fun volumeKeysStayTheSystemsUnlessPresenterIsShownAndLive() {
+        val up = KeyEvent.KEYCODE_VOLUME_UP
+        assertEquals(39L, PresenterKeys.gate(up, presenting = true, live = true, keyboard = true))
+        for ((presenting, live, keyboard) in listOf(Triple(false, true, true), Triple(true, false, true), Triple(true, true, false)))
+            assertNull(PresenterKeys.gate(up, presenting, live, keyboard))
+        assertNull(PresenterKeys.gate(KeyEvent.KEYCODE_ENTER, presenting = true, live = true, keyboard = true))
+    }
+
     @Test fun gyroTurnsIntoPointerUnitsWithDeadZoneAndGapGuard() {
         // Turning left (positive yaw) moves left; tilting up (positive pitch) moves up.
         val (dx, dy) = LaserMotion.delta(pitchRate = 1f, yawRate = 1f, dtNanos = 10_000_000)

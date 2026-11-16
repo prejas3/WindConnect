@@ -155,7 +155,7 @@ class TouchpadActivity : ComponentActivity() {
     }
     private fun slide(code:Long){if(capture?.keyboard(PresenterKeys.command(code))==true){timer.slideChanged();timerTick++}}
     /** Volume keys become slide keys only in live presenter mode; repeats and key-ups are swallowed so the volume never changes. */
-    private fun presenterKey(keyCode:Int)=PresenterKeys.slide(keyCode)?.takeIf{presenting && active && keyboardSupported}
+    private fun presenterKey(keyCode:Int)=PresenterKeys.gate(keyCode,presenting,active,keyboardSupported)
     override fun onKeyDown(keyCode:Int,event:KeyEvent):Boolean {
         val code=presenterKey(keyCode) ?: return super.onKeyDown(keyCode,event)
         if(event.repeatCount==0)slide(code)

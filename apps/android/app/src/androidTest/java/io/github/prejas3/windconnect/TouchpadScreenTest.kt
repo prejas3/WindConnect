@@ -32,6 +32,14 @@ class TouchpadScreenTest {
                     compose.onNodeWithText("Lewy · przytrzymaj").assertIsNotEnabled()
                     compose.onNodeWithTag("remoteKeyboardToggle").assertIsNotEnabled()
                     compose.onNodeWithText("Zamknij").assertIsDisplayed()
+                    // CCS/1 CHECK:WN-53 disconnected: presenter is off and volume keys still reach the system.
+                    compose.onNodeWithTag("presenterToggle").assertIsNotEnabled()
+                    activity.onActivity { a ->
+                        for(code in listOf(android.view.KeyEvent.KEYCODE_VOLUME_UP,android.view.KeyEvent.KEYCODE_VOLUME_DOWN)) {
+                            org.junit.Assert.assertFalse(a.onKeyDown(code,android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN,code)))
+                            org.junit.Assert.assertFalse(a.onKeyUp(code,android.view.KeyEvent(android.view.KeyEvent.ACTION_UP,code)))
+                        }
+                    }
                 }
             }
         } finally {prefs.edit().putString("theme",previous).apply()}

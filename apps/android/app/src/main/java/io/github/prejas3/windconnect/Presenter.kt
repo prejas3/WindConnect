@@ -29,6 +29,9 @@ internal object PresenterKeys {
         KeyEvent.KEYCODE_VOLUME_DOWN -> PREVIOUS
         else -> null
     }
+    /** CCS/1 RULE:volume keys are taken only in shown, live presenter mode with input/3; otherwise they stay the system's. */
+    fun gate(keyCode: Int, presenting: Boolean, live: Boolean, keyboard: Boolean): Long? =
+        slide(keyCode)?.takeIf { presenting && live && keyboard }
     fun command(code: Long) = TouchpadCommand.Key(code.toULong(), 0u)
 }
 
