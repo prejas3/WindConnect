@@ -465,7 +465,7 @@ async fn run(
             .parent()
             .ok_or("identity directory missing")?,
     ));
-    let identity = DeviceIdentity::load_or_create(&key_store)?;
+    let identity = Arc::new(DeviceIdentity::load_or_create(&key_store)?);
     // WN-47: the setting, read once; the accept task announces media-control/1 by it.
     let share_path = key_store.path().parent().map(|d| d.join("pc-media.json"));
     let share_media = Arc::new(std::sync::atomic::AtomicBool::new(
@@ -553,6 +553,10 @@ async fn run(
     }
     let endpoint = Endpoint::bind("0.0.0.0:0".parse()?, &identity, trust.clone())?;
     *app.state::<Runtime>().main_address.lock().unwrap() = Some(endpoint.local_addr()?);
+    // WN-92: the relay setting (off by default) keeps this PC reachable away from home.
+    if let Some(dir) = key_store.path().parent() {
+        crate::relay::start(&app, dir, identity.clone(), endpoint.clone(), store.clone());
+    }
     let unpairing = Unpairing::new((*store).clone(), trust.clone(), endpoint.clone());
     let mut discovery =
         NetworkDiscovery::start(identity.public_key(), endpoint.clone(), changes.clone())?;

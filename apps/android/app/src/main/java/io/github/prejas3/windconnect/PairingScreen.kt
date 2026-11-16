@@ -70,6 +70,7 @@ fun PairingScreen(model: PairingViewModel, diagnostic: @Composable () -> Unit) {
                 GalleryControls()
                 CallControls()
                 LinkControls()
+                RelayControls()
                 ClipboardControls(state, model::sendClipboard, model::setClipboardEnabled, model::setClipboardImageLimit)
                 ClipboardHistoryCard(state.clipboardHistory, state.clipboard.enabled, model.clipboardHistoryActions)
                 if (state.devices.isNotEmpty()) WindButton("Sparowane komputery", model::devices, Modifier.testTag("openDevices"), kind = ButtonKind.Secondary)

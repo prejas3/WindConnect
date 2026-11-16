@@ -136,5 +136,6 @@ document.querySelector('#quit-app').addEventListener('click', () => invoke?.('tr
 import './clipboard.js';
 import './onboarding.js';
 import './pcmedia.js';
+import './relay.js';
 import './notify.js';
 import './callvolume.js';

@@ -2588,3 +2588,7 @@ operator może te metadane zobaczyć.
 - Po zmianie sieci w czasie sesji przez przekaźnik klient próbuje adresu
   w LAN (2 s). Jeśli odpowiada, nowa sesja w LAN zastępuje sesję przez
   przekaźnik.
+- Wyłączenie przekaźnika działa od razu (WN-92): telefon kończy sesję
+  przez przekaźnik (powód `relay-off`) i próbuje adresu w LAN; PC przerywa
+  wszystkie połączenia z przekaźnikiem. Przełącznik „Przekaźnik poza domem”
+  jest w ustawieniach obu aplikacji, domyślnie wyłączony, z opisem z §13.4.

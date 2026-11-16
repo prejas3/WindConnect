@@ -24,6 +24,7 @@ mod pairing;
 mod panel;
 mod pc_media;
 mod pc_volume;
+mod relay;
 mod send_pipe;
 mod shell_menu;
 mod sms;
@@ -232,6 +233,7 @@ fn main() {
     tauri::Builder::default()
         .manage(panel::Runtime::default())
         .manage(pairing::Runtime::default())
+        .manage(relay::Relay::default())
         .manage(actions::Runtime::default())
         .manage(files::Runtime::default())
         .manage(clipboard::Runtime::default())
@@ -354,6 +356,8 @@ fn main() {
             pairing::dev_pairing_address,
             pairing::media_action,
             pairing::share_media,
+            relay::relay_setting,
+            relay::set_relay,
             pairing::phone_notifications,
             pairing::notify_quiet_hours,
             pairing::call_volume_settings,

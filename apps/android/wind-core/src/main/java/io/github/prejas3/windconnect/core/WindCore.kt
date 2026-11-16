@@ -40,6 +40,8 @@ import kotlinx.coroutines.withContext
 
 /** [ConnectionState.Disconnected] reasons and the refusal message (WC-28). */
 const val END_UNPAIRED_HERE = "unpaired-here"
+/** The relay was turned off while the session ran over it (WN-92); a LAN connect follows. */
+const val RELAY_OFF = "relay-off"
 const val REFUSED = "Komputer odrzuca połączenie — sparuj ponownie"
 
 sealed interface ConnectionState {
@@ -537,7 +539,9 @@ class WindCore private constructor(
 
     /**
      * Turns the E2E relay on (`wss://…`, PROTOCOL.md §13) or off (null) and remembers it. Off by
-     * default. Takes effect from the next connection; the relay only ever sees encrypted QUIC.
+     * default. Turning it on takes effect from the next connection; turning it off (WN-92) also
+     * ends a session that runs over the relay at once and tries the peer's LAN address instead.
+     * The relay only ever sees encrypted QUIC.
      * @throws CoreException.InvalidInput for a URL the core refuses.
      */
     fun setRelay(url: String?) {
@@ -545,6 +549,26 @@ class WindCore private constructor(
         client.setRelay(value)
         settings.edit().apply { if (value == null) remove(RELAY_URL) else putString(RELAY_URL, value) }.apply()
         mutableRelay.value = value
+        if (value == null) leaveRelay()
+    }
+
+    // CCS/1 FLOW:relay off while on it -> session released now -> LAN connect to the same peer (WN-92)
+    private fun leaveRelay() {
+        val now = mutableState.value
+        if (now !is ConnectionState.Connected || now.route != "relay") return
+        scope.launch(Dispatchers.IO) {
+            gate.withLock {
+                val current = mutableState.value
+                if (stopped || current !is ConnectionState.Connected || current.route != "relay" || mutableRelay.value != null) return@withLock
+                lanReturn?.cancel()
+                releaseConnection()
+                mutableState.value = ConnectionState.Disconnected(RELAY_OFF)
+                val peer = desiredPeer ?: return@withLock
+                try { connectLocked(peer.first, peer.second) } catch (error: Exception) {
+                    if (error is CancellationException) throw error
+                }
+            }
+        }
     }
 
     /** A screen that needs discovery opens (SAS pairing, device list): multicast stays on until

@@ -587,3 +587,14 @@ wysyła adres http(s) do telefonu (PROTOCOL.md §9.2 `open-url`, sprawdzony
 powiadomienie, gdy jest w tle; wyłączone na telefonie -> „Telefon
 odrzucił…”. Telefon wykonuje tylko otwarcie linku, nic innego.
 Pomiar: `scripts/check-actions-android.cjs`.
+
+## Przekaźnik poza domem (WN-92)
+
+Ustawienia w oknie głównym: przełącznik „Przekaźnik poza domem” i adres
+(`wss://windconnect-relay.<subdomena>.workers.dev`, relay/README.md). Domyślnie
+wyłączony (D3). Adres jest w pliku `relay-url` obok klucza tożsamości i
+wraca po restarcie; adres odrzucony przez `check_url` pokazuje błąd przy
+polu. Włączony: `relay.rs` trzyma jedno `RelayLink` na każdy sparowany
+telefon (jak `windctl serve --relay`, ponowienia 1–60 s, nowe parowania w
+ciągu 30 s). Wyłączony: wszystkie połączenia z przekaźnikiem są przerywane
+od razu. Opis tego, co widzi operator: PROTOCOL.md §13.4.

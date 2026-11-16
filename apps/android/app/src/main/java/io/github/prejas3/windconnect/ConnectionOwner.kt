@@ -110,6 +110,10 @@ class ConnectionOwner(private val application: Application) {
     private val mutableOpenLinks = MutableStateFlow(true)
     val openLinks = mutableOpenLinks.asStateFlow()
     fun setOpenLinks(value: Boolean) { core?.setOpenLinks(value) }
+    // WN-92: the relay (WN-60 D3, off by default); a refused URL throws to the settings field.
+    private val mutableRelayUrl = MutableStateFlow<String?>(null)
+    val relayUrl = mutableRelayUrl.asStateFlow()
+    fun setRelay(url: String?) { (core ?: error("WindConnect jeszcze się uruchamia")).setRelay(url) }
     suspend fun runPcAction(id: String, url: String? = null): String = core?.runPcAction(id, url) ?: "unavailable"
     suspend fun pcActions(): List<io.github.prejas3.windconnect.bindings.RemoteAction> = core?.pcActions() ?: emptyList()
     // WN-57: calls on the PC (own setting, default off; phone and call-log permissions asked when turned on).
@@ -148,6 +152,7 @@ class ConnectionOwner(private val application: Application) {
                 launch { opened.galleryAccess.collect { mutableGalleryAccess.value = it } }
                 launch { opened.callsAllowed.collect { mutableCallsAllowed.value = it } }
                 launch { opened.openLinks.collect { mutableOpenLinks.value = it } }
+                launch { opened.relayUrl.collect { mutableRelayUrl.value = it } }
                 launch { opened.callsAccess.collect { mutableCallsAccess.value = it } }
                 launch { opened.callsReject.collect { mutableCallsReject.value = it } }
                 opened.state.collect {

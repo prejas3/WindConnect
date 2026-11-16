@@ -102,7 +102,7 @@ class ConnectionService : Service() {
     private fun notification(): Notification {
         val connected = current is ConnectionState.Connected
         val text = when (current) {
-            is ConnectionState.Connected -> "Połączono · " + if ((current as ConnectionState.Connected).route == "relay") "przekaźnik E2E" else "Wi-Fi"
+            is ConnectionState.Connected -> "Połączono · " + if ((current as ConnectionState.Connected).route == "relay") "przez przekaźnik (E2E)" else "Wi-Fi"
             ConnectionState.Connecting -> "Łączenie…"
             else -> "Brak połączenia · ponawianie w tle"
         }

@@ -508,7 +508,10 @@ testem sprzętowym.
 `wss://…`, a `setRelay(null)` go wyłącza. `relayUrl: StateFlow<String?>`
 pokazuje stan. Ustawienie jest zapisane w SharedPreferences
 (`windconnect.core`) i wraca po restarcie. Domyślnie przekaźnik jest
-wyłączony (D3); przełącznik w ustawieniach to karta WN-92. Z włączonym
+wyłączony (D3). Przełącznik „Przekaźnik poza domem” w ustawieniach
+(`RelayControls.kt`, WN-92) zapisuje adres, pokazuje błąd złego adresu przy
+polu, a wyłączenie od razu kończy sesję przez przekaźnik (`relay-off`) i
+próbuje LAN. Ekran główny pokazuje „Połączono przez przekaźnik”. Z włączonym
 przekaźnikiem `connect` próbuje adresu PC przez 2 s, potem łączy przez
 przekaźnik. `ConnectionState.Connected.route` to `"lan"` albo `"relay"`. Po
 zmianie sieci w czasie sesji przez przekaźnik rdzeń próbuje adresu w LAN, a
@@ -527,6 +530,10 @@ adb shell am instrument -w -r -e class io.github.prejas3.windconnect.RelayRouteT
 połączenie po 2057 ms (w tym 2 s próby LAN), ping 6 ms. Prawdziwa sieć
 komórkowa wymaga wdrożonego przekaźnika (relay/README.md) i telefonu.
 
+Wyłączenie w trakcie sesji (WN-92): `RelaySettingsTest#turningTheRelayOffEndsARelaySessionAtOnce`
+z tymi samymi argumentami (`awayAddress 192.0.2.1:47820`). Wynik z 2026-11-16,
+emulator API 35, lokalny `wrangler dev`: sesja `route=relay`, koniec po 86 ms,
+potem próba LAN bez powrotu na przekaźnik.
 ## Bateria (WC-30)
 
 Budżet planu: < 1% baterii na dobę. Pomiary składowe:

@@ -41,7 +41,7 @@ fun HomeScreen(state: PairingUi, onScan: () -> Unit, onDiagnostics: () -> Unit, 
     val status = when {
         !state.initialized -> "Przygotowywanie połączenia…"
         !state.ready -> "Nie udało się uruchomić połączenia"
-        connected != null -> "Połączono"
+        connected != null -> if (connected.route == "relay") "Połączono przez przekaźnik" else "Połączono"
         state.connection is ConnectionState.Connecting -> "Łączenie…"
         known -> "Komputer poza zasięgiem"
         else -> "Brak sparowanego komputera"
@@ -65,7 +65,7 @@ fun HomeScreen(state: PairingUi, onScan: () -> Unit, onDiagnostics: () -> Unit, 
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
             Box(Modifier.size(6.dp).clip(RoundedCornerShape(3.dp)).background(if (connected != null) colors.primary else colors.onSurfaceVariant))
             val latency = connected?.let { String.format(Locale.getDefault(), "%.1f ms", it.roundTripMicros / 1000.0) }
-            Text(if (connected != null) "$latency · ${if (connected.route == "relay") "przekaźnik E2E" else "sieć lokalna"}" else status,
+            Text(if (connected != null) "$latency · ${if (connected.route == "relay") "przez przekaźnik (E2E)" else "sieć lokalna"}" else status,
                 style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant,
                 modifier = Modifier.testTag("computerLatency").semantics { contentDescription = if (latency != null) "Ostatni pomiar opóźnienia: $latency" else status })
         }
