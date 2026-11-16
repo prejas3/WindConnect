@@ -14,7 +14,11 @@ import io.github.prejas3.windconnect.core.RELAY_OFF
 import io.github.prejas3.windconnect.core.WindCore
 import io.github.prejas3.windconnect.ui.ThemeMode
 import io.github.prejas3.windconnect.ui.WindConnectTheme
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.*
@@ -114,5 +118,36 @@ class RelaySettingsTest {
             assertFalse("no relay session after off: $after", after is ConnectionState.Connected)
             instrumentation.sendStatus(0, android.os.Bundle().apply { putString("offMs", tookMs.toString()); putString("after", after.toString()) })
         } finally { core.setRelay(null); core.shutdown() }
+    }
+
+    /** WN-139: off during the 2 s LAN wait of a connect that already read the relay; the session it lands on leaves the relay. */
+    @Test fun turningTheRelayOffDuringAConnectLeavesNoRelaySession() = runBlocking {
+        val args = InstrumentationRegistry.getArguments()
+        val key = args.getString("pcKey"); val relay = args.getString("relayUrl"); val away = args.getString("awayAddress")
+        assumeTrue("requires pcKey, relayUrl and awayAddress", key != null && relay != null && away != null)
+        val core = WindCore.open(instrumentation.targetContext, "Android")
+        val seen = java.util.Collections.synchronizedList(mutableListOf<ConnectionState>())
+        val record = launch(Dispatchers.Default) { core.state.collect { seen += it } }
+        try {
+            core.setRelay(relay)
+            val connect = launch(Dispatchers.IO) {
+                try { core.connect(away!!, key!!.chunked(2).map { it.toInt(16).toByte() }.toByteArray()) }
+                catch (error: Exception) { if (error is CancellationException) throw error }
+            }
+            withTimeout(5_000) { core.state.first { it is ConnectionState.Connecting } }
+            delay(800) // Connecting comes just before wind-ffi reads the relay; 0.8 s is well inside its 2 s LAN try
+            core.setRelay(null) // wind-ffi has read the relay: this connect still ends on it
+            withTimeout(30_000) { connect.join() }
+            delay(3_000) // leaveRelay runs once adopt releases the gate
+            val now = core.state.value
+            assertFalse("still on the relay: $now / $seen", now is ConnectionState.Connected && now.route == "relay")
+            // StateFlow conflates: Disconnected(relay-off) is often replaced by the LAN Connecting before it is seen.
+            val history = synchronized(seen) { seen.toList() }
+            val onRelay = history.indexOfFirst { it is ConnectionState.Connected && it.route == "relay" }
+            val landed = onRelay >= 0
+            assertTrue("the connect must reach the relay for this race (timing): $history", landed)
+            assertTrue("the relay session was left: $history", history.drop(onRelay + 1).isNotEmpty())
+            instrumentation.sendStatus(0, android.os.Bundle().apply { putString("landedOnRelay", landed.toString()); putString("after", now.toString()) })
+        } finally { record.cancel(); core.setRelay(null); core.shutdown() }
     }
 }

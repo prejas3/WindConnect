@@ -25,7 +25,11 @@ internal object RelaySetting {
     fun apply(set: (String?) -> Unit, url: String?): String? = try {
         if (url != null && url.isBlank()) "Podaj adres przekaźnika" else { set(url); null }
     } catch (error: Exception) {
-        "Nieprawidłowy adres: " + (error.message?.takeIf { it.isNotBlank() } ?: "użyj wss:// (ws:// tylko w sieci lokalnej)")
+        val message = error.message?.takeIf { it.isNotBlank() }
+        // CCS/1 RULE:only a refused URL is "Nieprawidłowy adres"; a core still starting says just that (WN-139).
+        if (error is io.github.prejas3.windconnect.bindings.CoreException.InvalidInput || error is IllegalArgumentException)
+            "Nieprawidłowy adres: " + (message ?: "użyj wss:// (ws:// tylko w sieci lokalnej)")
+        else message ?: "Nie udało się zmienić ustawienia przekaźnika"
     }
 }
 

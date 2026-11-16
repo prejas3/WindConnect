@@ -61,7 +61,7 @@ internal class SystemClipboard(
     init {
         if (pinStore != null) scope.launch(pinWriter) {
             val plain = pinStore.read() ?: return@launch
-            try { synchronized(history) { history.loadPins(plain) } } finally { plain.fill(0) }
+            try { if (!synchronized(history) { history.loadPins(plain) }) pinStore.hold() } finally { plain.fill(0) }
             publishHistory()
         }
     }
@@ -244,6 +244,15 @@ internal class SystemClipboard(
     private fun savePins() {
         val store = pinStore ?: return
         scope.launch(pinWriter) {
+            if (store.held) {
+                // A file not loaded at start: try again and merge, or leave it as it is (WN-139).
+                val saved = store.read()
+                if (saved != null) {
+                    try { if (!synchronized(history) { history.loadPins(saved) }) store.hold() } finally { saved.fill(0) }
+                    publishHistory()
+                }
+                if (store.held) return@launch
+            }
             val plain = synchronized(history) { if (history.hasPins) history.encodePins() else null }
             store.write(plain)
         }

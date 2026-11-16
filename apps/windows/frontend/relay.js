@@ -19,7 +19,12 @@ function fail(message) {
 async function apply(url) {
   toggle.disabled = true;
   try { show(await invoke('set_relay', { url })); fail(''); }
-  catch (e) { fail('Nieprawidłowy adres: ' + e); show(await invoke('relay_setting')); }
+  catch (e) {
+    // Only a refused URL is "Nieprawidłowy adres"; still starting or a failed save say what they are (WN-139).
+    const text = String(e);
+    fail(/^(WindConnect jeszcze|nie udało się zapisać)/.test(text) ? text : 'Nieprawidłowy adres: ' + text);
+    show(await invoke('relay_setting').catch(() => null));
+  }
 }
 
 toggle?.addEventListener('click', () => {
@@ -35,6 +40,9 @@ field?.addEventListener('change', () => {
 async function start() {
   if (!invoke || !section) return;
   section.hidden = false;
-  show(await invoke('relay_setting'));
+  // WN-139: until the core has read the saved setting, relay_setting fails; the switch stays disabled meanwhile.
+  for (;;) {
+    try { show(await invoke('relay_setting')); return; } catch { await new Promise(r => setTimeout(r, 300)); }
+  }
 }
 start().catch(console.error);

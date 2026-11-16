@@ -947,6 +947,7 @@ async fn run(
                             // The phone's toasts and icons go with its pairing, and so does what was read of its SMS.
                             crate::sms::forget(&app, &key);
                             crate::gallery::forget(&app, &key);
+                            crate::relay::rescan(&app); // its relay keeper ends now (WN-139)
                             let _ = toasts.send(crate::notify::Job::Clear);
                             if session.is_some() { crate::clipboard::detach(&app); crate::sms::detach(&app); crate::gallery::detach(&app); active = None; indicator.unavailable(); snapshot.phase = "offline".into(); }
                             snapshot.message = format!("Usunięto parowanie z: {gone}.");
@@ -1072,6 +1073,8 @@ async fn run(
                         }
                     }
                 });
+                crate::relay::track(&app, session.connection().clone());
+                if fresh { crate::relay::rescan(&app); } // a newly paired phone gets its relay keeper now (WN-139)
                 active = Some((session, ()));
             },
             // CCS/1 FLOW:Ring -> starting -> phone State 0 (sound playing) -> ringing -> final state or broken stream -> idle + last (WN-50).

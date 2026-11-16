@@ -11,6 +11,8 @@ class RelaySettingTest {
         assertEquals("Nieprawidłowy adres: must start with wss://", RelaySetting.apply(set, "http://x"))
         assertEquals("Podaj adres przekaźnika", RelaySetting.apply(set, " "))
         assertNull(RelaySetting.apply(set, null))
+        assertEquals("WindConnect jeszcze się uruchamia",
+            RelaySetting.apply({ error("WindConnect jeszcze się uruchamia") }, "wss://windconnect-relay.example.workers.dev"))
         assertEquals(listOf("wss://windconnect-relay.example.workers.dev", "http://x", null), calls)
     }
 }

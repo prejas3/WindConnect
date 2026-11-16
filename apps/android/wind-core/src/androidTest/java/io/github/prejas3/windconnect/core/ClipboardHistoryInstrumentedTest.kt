@@ -111,6 +111,27 @@ class ClipboardHistoryInstrumentedTest {
         restarted.close()
     }
 
+    /** CCS/1 CHECK:WN-139 a pin file that exists but does not load is never overwritten or deleted until a read succeeds. */
+    @Test fun unreadablePinFileIsKeptUntilItLoads() {
+        val store = ClipboardPinStore(context, pins)
+        assertTrue(store.write("first".toByteArray()))
+        val good = pins.readBytes()
+        val newer = good.copyOf().also { it[4] = 2 } // a format this version can't read (stands in for a Keystore hiccup)
+        pins.writeBytes(newer)
+        assertNull(store.read())
+        assertTrue(store.held)
+        assertFalse(store.write("only the new pin".toByteArray()))
+        assertFalse(store.write(null))
+        assertArrayEquals("file left as it was", newer, pins.readBytes())
+        pins.writeBytes(good) // the error passes
+        assertEquals("first", String(store.read()!!))
+        assertFalse(store.held)
+        assertTrue(store.write("second".toByteArray()))
+        assertEquals("second", String(store.read()!!))
+        assertTrue(store.write(null))
+        assertFalse(pins.exists())
+    }
+
     private suspend fun awaitFile() = withTimeout(5_000) { while (!pins.exists()) delay(20) }
     private fun assertClip(text: String, sensitive: Boolean) = InstrumentationRegistry.getInstrumentation().runOnMainSync {
         val clip = manager.primaryClip!!

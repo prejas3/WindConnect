@@ -16,7 +16,17 @@ import javax.crypto.spec.GCMParameterSpec
  * RULE:a damaged, newer or undecryptable file (a lost key) starts without pins and stays as it is; no pins removes it.
  */
 internal class ClipboardPinStore(context: Context, private val file: File = File(context.noBackupFilesDir, FILE)) {
-    fun read(): ByteArray? = try {
+    /** CCS/1 RULE:the file exists but was not loaded (Keystore hiccup, damage, a newer format): writes and deletes
+     * leave it alone until a read succeeds, so a transient error never replaces the pins with fewer (WN-139). */
+    @Volatile var held = false
+        private set
+
+    fun read(): ByteArray? = decrypt().also { held = it == null && file.exists() }
+
+    /** The decrypted payload did not load: keep the file as it is. */
+    fun hold() { held = file.exists() }
+
+    private fun decrypt(): ByteArray? = try {
         if (!file.exists()) null else {
             val bytes = file.readBytes()
             if (bytes.size < HEADER.size + 1 + IV || !bytes.copyOfRange(0, HEADER.size).contentEquals(HEADER) || bytes[HEADER.size] != FORMAT) null
@@ -33,7 +43,8 @@ internal class ClipboardPinStore(context: Context, private val file: File = File
 
     /** Writes the pins (atomically: a temporary file, then renamed); empty or null deletes the file. */
     fun write(plain: ByteArray?): Boolean = try {
-        if (plain == null) { file.delete(); true } else {
+        if (held) false
+        else if (plain == null) { file.delete(); true } else {
             val cipher = Cipher.getInstance(TRANSFORM)
             cipher.init(Cipher.ENCRYPT_MODE, key())
             cipher.updateAAD(HEADER + FORMAT)

@@ -10,6 +10,8 @@ Trzy palce: w górę widok zadań, w dół pulpit, w lewo poprzednia aplikacja, 
 
 Na ekranie touchpada wybierz „Prezentacja”. Przycisk głośniej to następny slajd, ciszej poprzedni (strzałki →/←, więc działa w PowerPoint, Google Slides i innych pokazach w przeglądarce bez konfiguracji). Przytrzymaj „wskaźnik laserowy” i celuj telefonem: PC pokazuje czerwoną kropkę nad kursorem, przezroczystą dla kliknięć i nieodbierającą fokusu pokazowi. Timer wystąpienia startuje przy pierwszym slajdzie. Laser wymaga PC z `input/4` (PROTOCOL.md §8.11); starszy PC zachowuje przełączanie slajdów.
 
+Test prawdziwej nakładki (kursor na żywo, okno na wierzchu) jest pominięty w `cargo test`, bo zależy od pulpitu (WN-139). Uruchom go osobno, nie ruszając myszą: `cargo test -p windconnect-windows laser::tests::real_overlay -- --ignored`.
+
 Panel PC pokazuje „Telefon steruje kursorem · nazwa”. „Wyłącz touchpad” natychmiast wycofuje przyjmowanie wejścia i zwalnia przyciski. Ustawienie pozostaje po ponownym uruchomieniu. Zamknięcie ekranu telefonu, utrata fokusu, blokada i zmiana połączenia zatrzymują wysyłkę; nic nie jest odtwarzane po ponownym połączeniu. Wykryty pulpit inny niż Default (blokada/UAC) lub błąd wstawiania wejścia wyłącza touchpad z komunikatem i wymaga lokalnego ponownego włączenia, bez podnoszenia uprawnień.
 
 CCS/1 SEC:częściowy skrót zwalnia tylko nadal wciśnięte klawisze przyjętego prefiksu, w odwrotnej kolejności; przed Win-up wysyła neutralne VK 0xFF down/up, aby nie otworzyć Start. Odzyskanie jest pojedynczą próbą, bez ponawiania gestu. LIMIT:na zwykłym pulpicie UIPI może blokować sterowanie aplikacją administratora. Nie sprawdzamy integralności aktywnego okna; wynik SendInput/GetLastError nie rozpoznaje przyczyny UIPI. Nie gwarantujemy wykrycia tej blokady ani automatycznego wyłączenia/komunikatu w każdym przypadku. DEP:[Microsoft SendInput](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-sendinput).
@@ -595,6 +597,18 @@ Ustawienia w oknie głównym: przełącznik „Przekaźnik poza domem” i adres
 wyłączony (D3). Adres jest w pliku `relay-url` obok klucza tożsamości i
 wraca po restarcie; adres odrzucony przez `check_url` pokazuje błąd przy
 polu. Włączony: `relay.rs` trzyma jedno `RelayLink` na każdy sparowany
-telefon (jak `windctl serve --relay`, ponowienia 1–60 s, nowe parowania w
-ciągu 30 s). Wyłączony: wszystkie połączenia z przekaźnikiem są przerywane
-od razu. Opis tego, co widzi operator: PROTOCOL.md §13.4.
+telefon (jak `windctl serve --relay`, ponowienia 1–60 s; parowanie i
+usunięcie parowania zmieniają listę od razu, WN-139). Wyłączony: wszystkie
+połączenia z przekaźnikiem są przerywane od razu, a sesja, która przez nie
+biegnie, jest zamykana (GoingAway `relay-off`), więc telefon wraca do LAN
+zamiast czekać na limit bezczynności QUIC (WN-139). Okno pyta o ustawienie,
+aż rdzeń wczyta plik (wcześniej zapisane „włączone” pokazywało się jako
+wyłączone tuż po starcie). Opis tego, co widzi operator: PROTOCOL.md §13.4.
+
+Testy: `cargo test -p windconnect-windows relay::` oraz, przy `npm run dev` w
+`relay/`, `RELAY_URL=ws://127.0.0.1:8787 cargo test -p windconnect-windows
+relay::tests::off_closes -- --ignored` (sesja przez dwa `RelayLink`,
+wyłączenie zamyka ją; 2026-11-16: telefon widzi koniec po 2,5 ms).
+Prawdziwa aplikacja: `node apps/windows/scripts/check-relay-native.cjs`
+(widoczna sekcja, domyślnie wyłączona, błąd złego adresu, plik `relay-url`
+zapisany i usunięty, stan po restarcie; zrzuty w `RELAY_ARTIFACTS`).

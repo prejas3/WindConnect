@@ -534,6 +534,13 @@ Wyłączenie w trakcie sesji (WN-92): `RelaySettingsTest#turningTheRelayOffEndsA
 z tymi samymi argumentami (`awayAddress 192.0.2.1:47820`). Wynik z 2026-11-16,
 emulator API 35, lokalny `wrangler dev`: sesja `route=relay`, koniec po 86 ms,
 potem próba LAN bez powrotu na przekaźnik.
+
+Wyłączenie w trakcie łączenia (WN-139): wind-ffi czyta przekaźnik raz, na
+początku `connect`, więc połączenie w toku może i tak skończyć się na
+przekaźniku. `adopt` sprawdza to po przyjęciu sesji i od razu ją zwalnia
+(jak `leaveRelay`). Test: `RelaySettingsTest#turningTheRelayOffDuringAConnectLeavesNoRelaySession`
+z tymi samymi argumentami; 2026-11-16: 4/4 bez sesji przez przekaźnik, a bez
+poprawki 2/2 zostaje `route=relay`.
 ## Bateria (WC-30)
 
 Budżet planu: < 1% baterii na dobę. Pomiary składowe:

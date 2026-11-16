@@ -204,6 +204,8 @@ mod tests {
 
     /// CCS/1 TEST:real overlay shows click-through and non-activating at the cursor, then hides; foreground is untouched.
     #[test]
+    // WN-139: reads the live cursor and shows a real topmost window, so a busy desktop or a moving mouse fails it.
+    #[ignore = "real desktop: run alone with the mouse still (README, Tryb prezentacji)"]
     fn real_overlay_follows_cursor_without_focus_and_hides() {
         use super::*;
         let wait = |want: bool| {

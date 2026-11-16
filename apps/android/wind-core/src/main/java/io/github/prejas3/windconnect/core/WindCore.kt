@@ -748,6 +748,10 @@ class WindCore private constructor(
             }
             if (end == "unpaired") refreshPaired()
         }
+        // CCS/1 RULE:a connect in flight when the relay was switched off may still land on it (wind-ffi reads the
+        // relay at connect start); state is written before relayUrl is read, setRelay the other way round, so one
+        // of the two always sees the other and the session leaves the relay (WN-139).
+        if (mutableState.value.let { it is ConnectionState.Connected && it.route == "relay" } && mutableRelay.value == null) leaveRelay()
     }
 
     /** On the relay after a network change: the peer's address, if it answers, replaces the relay. */
