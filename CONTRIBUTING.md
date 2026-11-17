@@ -21,6 +21,32 @@ Aktualizuj `Cargo.lock` przy zmianach zależności i dołącz go do commita.
 Instrukcje klienta Windows: [apps/windows/README.md](apps/windows/README.md).
 Instrukcje klienta Android: [apps/android/README.md](apps/android/README.md).
 
+## Wersje i tagi (WN-114)
+
+Jedna wersja `X.Y.Z` dla całego repozytorium. Tag zawsze nazywa wersję,
+nigdy kartę: numer karty jest w treści commita, nie w tagu.
+
+- Karta z nową funkcją lub zmianą zachowania kończy się jednym commitem
+  na `master` o tytule `WN-N (vX.Y.Z): opis`. Ten commit podnosi wersję
+  (zwykle `Y`; poprawka bez nowej funkcji może podnieść `Z`) i dostaje
+  lokalny tag `vX.Y.Z` (bez wypychania, dopóki zdalne repozytorium nie jest
+  publiczne).
+- Commity bez zmiany wersji (testy, porządki, poprawki wewnątrz karty)
+  nie dostają tagu i nie mają wersji w tytule.
+- Karta nie wskazuje numeru wersji ani tagu z góry: wersję wybiera ten,
+  kto robi commit, jako kolejną po bieżącej na `master`. Prośba w karcie
+  o konkretny tag jest nieaktualna, jeśli wersja już go przekroczyła.
+- Wersję zmieniaj naraz we wszystkich miejscach: `Cargo.toml`
+  (`workspace.package`) i `Cargo.lock`, `apps/android/app/build.gradle.kts`
+  (`versionName` oraz `versionCode` + 1), `apps/android/wind-core/build.gradle.kts`,
+  oba `tauri.conf.json` w `apps/windows/src-tauri`, `relay/package.json`
+  i `relay/package-lock.json`.
+- Przed commitem i przed tagiem uruchom `node scripts/check-version.cjs`
+  (wydanie: `--tag vX.Y.Z`). Sprawdza zgodność wszystkich miejsc, tag na
+  `HEAD` i wzrost `versionCode`; uruchamia go też Core CI.
+- Istniejących tagów nie przepisuje się i wersji się nie obniża. Wyjątek
+  sprzed tej zasady: `v0.32.0` wskazuje commit z wersją 0.40.0 (WN-32).
+
 ## Praca agentów: miejsce na dysku (WN-95)
 
 Każdy slot i każda kopia recenzji buduje od zera, więc foldery robocze

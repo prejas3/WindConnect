@@ -24,6 +24,9 @@ jobs:
         uses: actions/checkout@v6
         with:
           persist-credentials: false
+      # WN-114: one version in every manifest, and a v* tag on HEAD matches it.
+      - name: Check versions and tags
+        run: node scripts/check-version.cjs
       - name: Install stable Rust
         run: rustup toolchain install stable --profile minimal --component rustfmt --component clippy
       - name: Check formatting
