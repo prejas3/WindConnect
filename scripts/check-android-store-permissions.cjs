@@ -14,13 +14,16 @@ const PLAY_FORBIDDEN = [
   'android.permission.RECEIVE_MMS', 'android.permission.RECEIVE_WAP_PUSH',
   'android.permission.READ_CALL_LOG', 'android.permission.WRITE_CALL_LOG',
   'android.permission.READ_CONTACTS', 'android.permission.ANSWER_PHONE_CALLS',
+  // WN-146: dangerous ("Phone" on Play) and asked only by the SMS sending and calls settings, absent in Play.
+  'android.permission.READ_PHONE_STATE',
 ];
 const GITHUB_REQUIRED = [
   'android.permission.READ_SMS', 'android.permission.SEND_SMS',
   'android.permission.READ_CALL_LOG', 'android.permission.READ_CONTACTS',
+  'android.permission.READ_PHONE_STATE',
 ];
 // What both builds keep (the rest of the app).
-const BOTH_REQUIRED = ['android.permission.INTERNET', 'android.permission.READ_PHONE_STATE'];
+const BOTH_REQUIRED = ['android.permission.INTERNET', 'android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE'];
 
 function aapt() {
   const home = process.env.ANDROID_HOME || process.env.ANDROID_SDK_ROOT;

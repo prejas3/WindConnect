@@ -150,6 +150,8 @@ function main(argv) {
     ? ', uncommitted version change (HEAD tags not checked)'
     : headTags.length ? `, HEAD tagged ${headTags.join(', ')}` : '';
   console.log(`Version ${version} in ${found.length} places, versionCode ${code}${tagNote}${prev ? `, previous tag ${prev}` : ''}.`);
+  // WN-146: a clone without tags (CI's shallow checkout while tags stay local) checks only that the files agree.
+  if (!prev) console.log('No previous v* tag here: versionCode growth not checked' + (headTags.length || dirty ? '.' : ', and no tag on HEAD to check.'));
   return 0;
 }
 

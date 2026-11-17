@@ -43,7 +43,10 @@ nigdy kartę: numer karty jest w treści commita, nie w tagu.
   i `relay/package-lock.json`.
 - Przed commitem i przed tagiem uruchom `node scripts/check-version.cjs`
   (wydanie: `--tag vX.Y.Z`). Sprawdza zgodność wszystkich miejsc, tag na
-  `HEAD` i wzrost `versionCode`; uruchamia go też Core CI.
+  `HEAD` i wzrost `versionCode`; uruchamia go też Core CI. Dopóki tagi są
+  tylko lokalne, CI (płytki checkout bez tagów) sprawdza jedynie zgodność
+  plików i pisze to wprost („No previous v* tag here…”); tag i `versionCode`
+  sprawdza lokalne uruchomienie przed commitem.
 - Istniejących tagów nie przepisuje się i wersji się nie obniża. Wyjątek
   sprzed tej zasady: `v0.32.0` wskazuje commit z wersją 0.40.0 (WN-32).
 

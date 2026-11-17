@@ -933,7 +933,9 @@ Jeden kod, dwa buildy wybierane właściwością Gradle `windStore`:
   ogranicza grupy uprawnień SMS i rejestru połączeń, więc
   `app/src/play/AndroidManifest.xml` usuwa (`tools:node="remove"`, także z
   bibliotek) READ_SMS, SEND_SMS, RECEIVE_SMS/MMS/WAP_PUSH, READ_CALL_LOG,
-  WRITE_CALL_LOG, READ_CONTACTS i ANSWER_PHONE_CALLS. Build w
+  WRITE_CALL_LOG, READ_CONTACTS, ANSWER_PHONE_CALLS i READ_PHONE_STATE (prosi o nie
+  tylko wysyłanie SMS i połączenia; stan rozmowy innych funkcji pochodzi z trybu
+  audio bez uprawnień, WN-146). Build w
   `app/build-play`, APK `app-play-<typ>.apk`, więc nie nadpisuje pełnego.
 
 RULE:funkcje wynikają z tego, co APK deklaruje (`declaresPermission`, wind-core),

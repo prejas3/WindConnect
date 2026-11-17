@@ -63,6 +63,33 @@ mod registry {
             e => Err(io::Error::from_raw_os_error(e as i32)),
         }
     }
+    /// `HKCU\key` value `name` (None: the default value) as a string; None when it isn't there.
+    #[cfg_attr(debug_assertions, allow(dead_code))]
+    pub fn get(key: &str, name: Option<&str>) -> Option<String> {
+        use windows_sys::Win32::System::Registry::{RegGetValueW, RRF_RT_REG_SZ};
+        let key = wide(key);
+        let name = name.map(wide);
+        let name_ptr = name.as_ref().map_or(std::ptr::null(), |n| n.as_ptr());
+        let mut buffer = vec![0u16; 2048];
+        let mut size = (buffer.len() * 2) as u32;
+        // SAFETY: NUL-terminated key and name; the buffer and its byte size are ours.
+        let result = unsafe {
+            RegGetValueW(
+                HKEY_CURRENT_USER,
+                key.as_ptr(),
+                name_ptr,
+                RRF_RT_REG_SZ,
+                std::ptr::null_mut(),
+                buffer.as_mut_ptr().cast(),
+                &mut size,
+            )
+        };
+        if result != 0 {
+            return None;
+        }
+        let len = buffer.iter().position(|&c| c == 0).unwrap_or(buffer.len());
+        Some(String::from_utf16_lossy(&buffer[..len]))
+    }
     /// Removes `HKCU\key` with its subkeys; a missing key is fine.
     pub fn delete(key: &str) -> io::Result<()> {
         let key = wide(key);
@@ -85,9 +112,68 @@ pub fn open_command(exe: &std::path::Path) -> String {
     format!("\"{}\" \"%1\"", exe.display())
 }
 
+/// The exe a registered scheme command runs (`"path" "%1"` or `path "%1"`).
+#[cfg_attr(debug_assertions, allow(dead_code))]
+pub fn command_exe(command: &str) -> Option<std::path::PathBuf> {
+    let command = command.trim();
+    let path = match command.strip_prefix('"') {
+        Some(rest) => rest.split('"').next()?,
+        None => command.split_whitespace().next()?,
+    };
+    (!path.is_empty()).then(|| std::path::PathBuf::from(path))
+}
+
+/// Whether `path` lies under `dir` (case-insensitive, as Windows paths are).
+#[cfg_attr(debug_assertions, allow(dead_code))]
+pub fn is_under(path: &std::path::Path, dir: &std::path::Path) -> bool {
+    let (path, dir) = (
+        path.to_string_lossy().to_lowercase(),
+        dir.to_string_lossy().to_lowercase(),
+    );
+    let dir = dir.trim_end_matches('\\');
+    path.starts_with(dir) && path[dir.len()..].starts_with('\\')
+}
+
+/// WN-146: whether this exe should point [`PANEL_URI`] at itself. Yes when nothing is registered, the registered exe
+/// is gone, it already is this exe, or this is the installed app (under Program Files). So a portable release EXE
+/// (test builds) never takes over an installed app's scheme that works; it takes a missing or dead one, which the next
+/// start of the installed app takes back. (Uninstalling the MSI removes the scheme whoever wrote it; a portable EXE
+/// registers it again on its next toast.)
+#[cfg_attr(debug_assertions, allow(dead_code))]
+pub fn takes_scheme(
+    registered: Option<&str>,
+    this: &std::path::Path,
+    exists: impl Fn(&std::path::Path) -> bool,
+    installed: bool,
+) -> bool {
+    let Some(owner) = registered.and_then(command_exe) else {
+        return true;
+    };
+    installed
+        || !exists(&owner)
+        || owner
+            .to_string_lossy()
+            .eq_ignore_ascii_case(&this.to_string_lossy())
+}
+
 /// Registers `id` as this user's toast sender ("WindConnect" with the app icon) and [`PANEL_URI`] for this exe.
 #[cfg(all(windows, not(debug_assertions)))]
 fn register(id: &str) -> std::io::Result<String> {
+    let key = app_id_key(id);
+    // The one write toasts need; the icon and the click scheme are best effort (WN-146): a failure there costs the
+    // icon or a click after a restart, never every toast (battery and the phone's notifications).
+    registry::set(&key, Some("DisplayName"), "WindConnect")?;
+    if let Err(error) = register_icon(&key) {
+        eprintln!("toast icon: {error}");
+    }
+    if let Err(error) = register_scheme() {
+        eprintln!("toast click scheme: {error}");
+    }
+    Ok(id.to_string())
+}
+
+#[cfg(all(windows, not(debug_assertions)))]
+fn register_icon(key: &str) -> std::io::Result<()> {
     let dir = crate::pairing::data_dir()?;
     std::fs::create_dir_all(&dir)?;
     let icon = dir.join(ICON_FILE);
@@ -95,18 +181,23 @@ fn register(id: &str) -> std::io::Result<String> {
     if std::fs::read(&icon).ok().as_deref() != Some(png) {
         std::fs::write(&icon, png)?;
     }
-    let key = app_id_key(id);
-    registry::set(&key, Some("DisplayName"), "WindConnect")?;
-    registry::set(&key, Some("IconUri"), &icon.to_string_lossy())?;
+    registry::set(key, Some("IconUri"), &icon.to_string_lossy())
+}
+
+/// Points [`PANEL_URI`] at this exe, unless another working copy owns it ([`takes_scheme`]).
+#[cfg(all(windows, not(debug_assertions)))]
+fn register_scheme() -> std::io::Result<()> {
+    let exe = std::env::current_exe()?;
+    let command_key = format!(r"{SCHEME_KEY}\shell\open\command");
+    let registered = registry::get(&command_key, None);
+    let installed = std::env::var_os("ProgramFiles")
+        .is_some_and(|dir| is_under(&exe, std::path::Path::new(&dir)));
+    if !takes_scheme(registered.as_deref(), &exe, |p| p.is_file(), installed) {
+        return Ok(());
+    }
     registry::set(SCHEME_KEY, None, "URL:WindConnect")?;
     registry::set(SCHEME_KEY, Some("URL Protocol"), "")?;
-    let exe = std::env::current_exe()?;
-    registry::set(
-        &format!(r"{SCHEME_KEY}\shell\open\command"),
-        None,
-        &open_command(&exe),
-    )?;
-    Ok(id.to_string())
+    registry::set(&command_key, None, &open_command(&exe))
 }
 
 /// Uninstall: the HKCU entries and icon [`register`] wrote (best effort, like the other per-user cleanups).
@@ -144,6 +235,78 @@ mod tests {
             "--send",
             r"C:\windconnect-panel:"
         ])));
+    }
+
+    #[test]
+    fn the_registered_command_names_its_exe() {
+        let exe = std::path::Path::new(r"C:\Program Files\WindConnect\windconnect-windows.exe");
+        assert_eq!(command_exe(&open_command(exe)).as_deref(), Some(exe));
+        assert_eq!(
+            command_exe(r#"C:\Tools\wc.exe "%1""#).as_deref(),
+            Some(std::path::Path::new(r"C:\Tools\wc.exe"))
+        );
+        assert_eq!(command_exe("  "), None);
+        assert_eq!(command_exe(r#""" "%1""#), None);
+    }
+
+    #[test]
+    fn under_a_folder_ignores_case_and_needs_a_separator() {
+        let dir = std::path::Path::new(r"C:\Program Files");
+        assert!(is_under(
+            std::path::Path::new(r"c:\program files\WindConnect\a.exe"),
+            dir
+        ));
+        assert!(is_under(
+            std::path::Path::new(r"C:\Program Files\a.exe"),
+            std::path::Path::new(r"C:\Program Files\")
+        ));
+        assert!(!is_under(
+            std::path::Path::new(r"C:\Program Files (x86)\a.exe"),
+            dir
+        ));
+        assert!(!is_under(std::path::Path::new(r"D:\Temp\a.exe"), dir));
+    }
+
+    #[test]
+    fn a_portable_copy_never_takes_a_working_installed_scheme() {
+        let installed =
+            std::path::Path::new(r"C:\Program Files\WindConnect\windconnect-windows.exe");
+        let portable =
+            std::path::Path::new(r"C:\Users\a\AppData\Local\Temp\WindConnect-0.70.0.exe");
+        let owned_by = |exe: &std::path::Path| open_command(exe);
+        let alive = |_: &std::path::Path| true;
+        let dead = |_: &std::path::Path| false;
+        // Nothing registered: anyone takes it.
+        assert!(takes_scheme(None, portable, alive, false));
+        // The installed app owns a working one: a portable copy leaves it.
+        assert!(!takes_scheme(
+            Some(&owned_by(installed)),
+            portable,
+            alive,
+            false
+        ));
+        // ...but takes it once that exe is gone.
+        assert!(takes_scheme(
+            Some(&owned_by(installed)),
+            portable,
+            dead,
+            false
+        ));
+        // The installed app always takes it back, also from a working portable copy.
+        assert!(takes_scheme(
+            Some(&owned_by(portable)),
+            installed,
+            alive,
+            true
+        ));
+        // Already this exe (any case): rewritten, harmless.
+        let upper = std::path::PathBuf::from(portable.to_string_lossy().to_uppercase());
+        assert!(takes_scheme(
+            Some(&owned_by(&upper)),
+            portable,
+            alive,
+            false
+        ));
     }
 
     #[test]
