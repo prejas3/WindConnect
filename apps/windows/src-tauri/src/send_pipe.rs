@@ -1,9 +1,12 @@
 //! CCS/1 FLOW:Explorer --send <item> -> second process -> named pipe -> running app -> files::queue (WN-39)
 //! SEC:local pipe of this logon session, remote clients refused, default DACL (owner, SYSTEM, admins write);
-//!     it carries only paths to queue for the paired phone, checked again on receipt.
+//!     it carries only paths to queue for the paired phone, checked again on receipt, or "show the panel" (a toast
+//!     click that started a second process, WN-118).
 use std::{io, path::PathBuf, time::Duration};
 
 const MAGIC: &[u8] = b"WCS1\n";
+/// The whole message asking the running app to show its panel (WN-118).
+const PANEL: &[u8] = b"WCP1\n";
 /// Largest message, and most paths in one.
 pub const MAX_MESSAGE: usize = 4 * 1024 * 1024;
 pub const MAX_PATHS: usize = 4096;
@@ -64,12 +67,20 @@ pub fn decode(bytes: &[u8]) -> Option<Vec<PathBuf>> {
 /// Hands `paths` to the running app. `Err` when no app answered in time.
 #[cfg(windows)]
 pub fn forward(paths: &[PathBuf]) -> io::Result<()> {
+    write_message(&encode(paths)?)
+}
+/// Asks the running app to show its panel. `Err` when no app answered in time.
+#[cfg(windows)]
+pub fn forward_panel() -> io::Result<()> {
+    write_message(PANEL)
+}
+#[cfg(windows)]
+fn write_message(message: &[u8]) -> io::Result<()> {
     use std::io::Write;
-    let message = encode(paths)?;
     let deadline = std::time::Instant::now() + CONNECT_PATIENCE;
     loop {
         match std::fs::OpenOptions::new().write(true).open(name()) {
-            Ok(mut pipe) => return pipe.write_all(&message),
+            Ok(mut pipe) => return pipe.write_all(message),
             Err(e) if std::time::Instant::now() < deadline => {
                 let _ = e;
                 std::thread::sleep(Duration::from_millis(100));
@@ -82,14 +93,22 @@ pub fn forward(paths: &[PathBuf]) -> io::Result<()> {
 pub fn forward(_: &[PathBuf]) -> io::Result<()> {
     Err(io::Error::other("Windows only"))
 }
+#[cfg(not(windows))]
+pub fn forward_panel() -> io::Result<()> {
+    Err(io::Error::other("Windows only"))
+}
 
-/// Serves the pipe until the app ends, handing each message's paths to `on_paths`.
+/// Serves the pipe until the app ends, handing each message's paths to `on_paths`, and a panel request to `on_panel`.
 #[cfg(windows)]
-pub async fn serve(on_paths: impl Fn(Vec<PathBuf>) + Send + Sync + 'static) -> io::Result<()> {
+pub async fn serve(
+    on_paths: impl Fn(Vec<PathBuf>) + Send + Sync + 'static,
+    on_panel: impl Fn() + Send + Sync + 'static,
+) -> io::Result<()> {
     use tokio::io::AsyncReadExt;
     use tokio::net::windows::named_pipe::ServerOptions;
     let name = name();
     let on_paths = std::sync::Arc::new(on_paths);
+    let on_panel = std::sync::Arc::new(on_panel);
     let mut server = ServerOptions::new()
         .first_pipe_instance(true)
         .reject_remote_clients(true)
@@ -102,7 +121,7 @@ pub async fn serve(on_paths: impl Fn(Vec<PathBuf>) + Send + Sync + 'static) -> i
             .reject_remote_clients(true)
             .access_outbound(false)
             .create(&name)?;
-        let on_paths = on_paths.clone();
+        let (on_paths, on_panel) = (on_paths.clone(), on_panel.clone());
         tokio::spawn(async move {
             let mut bytes = Vec::new();
             let read = tokio::time::timeout(
@@ -112,7 +131,12 @@ pub async fn serve(on_paths: impl Fn(Vec<PathBuf>) + Send + Sync + 'static) -> i
                     .read_to_end(&mut bytes),
             )
             .await;
-            if let (Ok(Ok(_)), Some(paths)) = (read, decode(&bytes)) {
+            if !matches!(read, Ok(Ok(_))) {
+                return;
+            }
+            if bytes == PANEL {
+                on_panel();
+            } else if let Some(paths) = decode(&bytes) {
                 on_paths(paths);
             }
         });
@@ -133,6 +157,11 @@ mod tests {
         assert_eq!(decode(b"WCS1\nrelative\\x"), None);
         assert_eq!(decode(b"WCS1\nC:\\a\0"), None);
         assert_eq!(decode(b"WCS1\n"), None);
+        assert_eq!(
+            decode(PANEL),
+            None,
+            "the panel request is never a list of paths (WN-118)"
+        );
         assert_eq!(decode(b"XXXX\nC:\\a"), None);
         assert_eq!(decode(b"WCS1\nC:\\\xff"), None);
         assert!(encode(&[PathBuf::from("C:\\a\0b")]).is_err());
@@ -140,15 +169,21 @@ mod tests {
 
     #[cfg(windows)]
     #[tokio::test]
-    async fn a_second_process_hands_paths_over() {
+    async fn a_second_process_hands_paths_and_panel_requests_over() {
         // Only when no app of this session runs (the pipe is per session).
         if std::fs::OpenOptions::new().write(true).open(name()).is_ok() {
             return;
         }
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
-        let server = tokio::spawn(serve(move |p| {
-            let _ = tx.send(p);
-        }));
+        let (panel_tx, mut panel_rx) = tokio::sync::mpsc::unbounded_channel();
+        let server = tokio::spawn(serve(
+            move |p| {
+                let _ = tx.send(p);
+            },
+            move || {
+                let _ = panel_tx.send(());
+            },
+        ));
         let paths = vec![PathBuf::from(r"C:\Windows\win.ini")];
         let sent = paths.clone();
         tokio::task::spawn_blocking(move || forward(&sent))
@@ -159,6 +194,16 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(got, Some(paths));
+        // WN-118: a toast click's second process asks for the panel.
+        tokio::task::spawn_blocking(forward_panel)
+            .await
+            .unwrap()
+            .unwrap();
+        let panel = tokio::time::timeout(Duration::from_secs(5), panel_rx.recv())
+            .await
+            .unwrap();
+        assert_eq!(panel, Some(()));
+        assert!(rx.try_recv().is_err(), "no paths from a panel request");
         server.abort();
     }
 }

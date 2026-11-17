@@ -17,7 +17,10 @@
     <CustomAction Id="WindConnectRemoveAutostart" FileKey="Path" ExeCommand="--remove-autostart" Execute="immediate" Return="ignore" />
     <!-- CCS/1 RULE:the Explorer "Wyślij na telefon" verb (WN-39) is per user too; same best-effort cleanup. -->
     <CustomAction Id="WindConnectRemoveShellMenu" FileKey="Path" ExeCommand="--remove-shell-menu" Execute="immediate" Return="ignore" />
+    <!-- CCS/1 RULE:the toast sender (AUMID, icon) and the windconnect-panel: scheme (WN-118) are per user too. -->
+    <CustomAction Id="WindConnectRemoveToasts" FileKey="Path" ExeCommand="--remove-toasts" Execute="immediate" Return="ignore" />
     <InstallExecuteSequence>
+      <Custom Action="WindConnectRemoveToasts" Before="RemoveFiles">REMOVE="ALL" AND NOT UPGRADINGPRODUCTCODE</Custom>
       <Custom Action="WindConnectRemoveAutostart" Before="RemoveFiles">REMOVE="ALL" AND NOT UPGRADINGPRODUCTCODE</Custom>
       <Custom Action="WindConnectRemoveShellMenu" Before="RemoveFiles">REMOVE="ALL" AND NOT UPGRADINGPRODUCTCODE</Custom>
     </InstallExecuteSequence>

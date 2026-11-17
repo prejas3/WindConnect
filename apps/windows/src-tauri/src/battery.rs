@@ -94,7 +94,35 @@ pub fn notify(app: &tauri::AppHandle, alert: Alert, phone: &str) {
     });
 }
 
-#[cfg(windows)]
+/// The toast: a click launches the panel URI, so it opens the panel even after this process ended (WN-118).
+#[cfg_attr(debug_assertions, allow(dead_code))]
+pub fn toast_xml(title: &str, text: &str) -> String {
+    use crate::notify::escape;
+    format!(
+        r#"<toast launch="{}" activationType="protocol"><visual><binding template="ToastGeneric"><text>{}</text><text>{}</text></binding></visual></toast>"#,
+        crate::toast::PANEL_URI,
+        escape(title),
+        escape(text)
+    )
+}
+
+#[cfg(all(windows, not(debug_assertions)))]
+fn toast(app: &tauri::AppHandle, title: &str, text: &str) -> Result<(), String> {
+    use windows::core::HSTRING;
+    use windows::Data::Xml::Dom::XmlDocument;
+    use windows::UI::Notifications::{ToastNotification, ToastNotificationManager};
+    let id = crate::toast::app_id(app)?;
+    let show = || -> windows::core::Result<()> {
+        let xml = XmlDocument::new()?;
+        xml.LoadXml(&HSTRING::from(toast_xml(title, text)))?;
+        let toast = ToastNotification::CreateToastNotification(&xml)?;
+        ToastNotificationManager::CreateToastNotifierWithId(&HSTRING::from(id))?.Show(&toast)
+    };
+    show().map_err(|e| e.to_string())
+}
+
+/// Debug sends as PowerShell (no URI registered): the click is handled in process.
+#[cfg(all(windows, debug_assertions))]
 fn toast(app: &tauri::AppHandle, title: &str, text: &str) -> Result<(), String> {
     use tauri_winrt_notification::Toast;
     let id = crate::toast::app_id(app)?;
@@ -132,6 +160,18 @@ mod tests {
         assert!(!is_low(b(15, true)), "charging: no badge");
         assert!(!is_low(b(16, false)));
         assert!(!is_low(None));
+    }
+
+    #[test]
+    fn toast_opens_the_panel_by_uri_and_escapes_the_phone_name() {
+        let (title, text) = alert_text(Alert::Low(9), "<Ola & \"Bob\">");
+        let xml = toast_xml(&title, &text);
+        assert!(
+            xml.starts_with(r#"<toast launch="windconnect-panel:" activationType="protocol">"#),
+            "{xml}"
+        );
+        assert!(xml.contains("&lt;Ola &amp; &quot;Bob&quot;&gt;"), "{xml}");
+        assert!(!xml.contains("<Ola"), "{xml}");
     }
 
     #[test]

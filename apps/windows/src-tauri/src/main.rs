@@ -211,15 +211,32 @@ fn main() {
         }
         return;
     }
+    #[cfg(windows)]
+    if std::env::args().any(|arg| arg == "--remove-toasts") {
+        if let Err(error) = toast::remove(toast::IDENTIFIER) {
+            eprintln!("toast cleanup: {error}");
+            std::process::exit(1);
+        }
+        return;
+    }
     // CCS/1 FLOW:Explorer "Wyślij na telefon" runs `--send <item>`: a running app gets the paths over the pipe.
     let sending = sent_paths(std::env::args_os().skip(1));
-    let activate = sending.is_empty() && !std::env::args().any(|arg| arg == "--autostart");
+    // CCS/1 FLOW:a battery toast clicked after its process ended runs `windconnect-panel:` (WN-118): the running app
+    // shows its panel (over the pipe, not the main window), or this start does.
+    let panel_request = toast::panel_requested(std::env::args());
+    let activate =
+        sending.is_empty() && !panel_request && !std::env::args().any(|arg| arg == "--autostart");
     let _instance = match instance::claim(activate) {
         Ok(Some(instance)) => instance,
         Ok(None) => {
             if !sending.is_empty() {
                 if let Err(error) = send_pipe::forward(&sending) {
                     eprintln!("send to running app: {error}");
+                    std::process::exit(1);
+                }
+            } else if panel_request {
+                if let Err(error) = send_pipe::forward_panel() {
+                    eprintln!("panel request to running app: {error}");
                     std::process::exit(1);
                 }
             }
@@ -247,11 +264,19 @@ fn main() {
             {
                 let handle = app.handle().clone();
                 tauri::async_runtime::spawn(async move {
-                    let shown = handle.clone();
-                    let served = send_pipe::serve(move |paths| {
-                        files::queue(&shown, paths);
-                        let _ = panel::show(&shown);
-                    });
+                    let (shown, asked) = (handle.clone(), handle.clone());
+                    let served = send_pipe::serve(
+                        move |paths| {
+                            files::queue(&shown, paths);
+                            let _ = panel::show(&shown);
+                        },
+                        move || {
+                            let panel = asked.clone();
+                            let _ = asked.run_on_main_thread(move || {
+                                let _ = panel::show(&panel);
+                            });
+                        },
+                    );
                     if let Err(error) = served.await {
                         eprintln!("send pipe: {error}");
                     }
