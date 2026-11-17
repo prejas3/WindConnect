@@ -292,40 +292,77 @@ mod tests {
         use wind_core::relay::RelayLink;
         use wind_core::session::{LocalInfo, Router, Session};
         use wind_core::transport::PinnedKeys;
-        let info = |name: &str| LocalInfo { name: name.into(), kind: DeviceKind::Computer, app: None };
-        let rt = tokio::runtime::Builder::new_multi_thread().worker_threads(2).enable_all().build().unwrap();
+        let info = |name: &str| LocalInfo {
+            name: name.into(),
+            kind: DeviceKind::Computer,
+            app: None,
+        };
+        let rt = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .build()
+            .unwrap();
         rt.block_on(async {
             let url = std::env::var("RELAY_URL").unwrap_or_else(|_| "ws://127.0.0.1:8787".into());
             let device = || {
                 let id = DeviceIdentity::generate().unwrap();
                 let pins = Arc::new(PinnedKeys::new());
-                let endpoint = Endpoint::bind("127.0.0.1:0".parse().unwrap(), &id, pins.clone()).unwrap();
+                let endpoint =
+                    Endpoint::bind("127.0.0.1:0".parse().unwrap(), &id, pins.clone()).unwrap();
                 (id, pins, endpoint)
             };
             let ((pc, pc_pins, pc_end), (phone, phone_pins, phone_end)) = (device(), device());
             pc_pins.pin(phone.public_key());
             phone_pins.pin(pc.public_key());
-            let pc_link = RelayLink::connect(&url, &pc, phone.public_key(), pc_end.clone()).await.unwrap();
+            let pc_link = RelayLink::connect(&url, &pc, phone.public_key(), pc_end.clone())
+                .await
+                .unwrap();
             let accepting = pc_end.clone();
             let accepted = tokio::spawn(async move {
                 let conn = accepting.accept().await.unwrap().unwrap();
-                Session::accept(conn, info("pc"), Router::new()).await.unwrap().0
+                Session::accept(conn, info("pc"), Router::new())
+                    .await
+                    .unwrap()
+                    .0
             });
-            let phone_link = RelayLink::connect(&url, &phone, pc.public_key(), phone_end.clone()).await.unwrap();
+            let phone_link = RelayLink::connect(&url, &phone, pc.public_key(), phone_end.clone())
+                .await
+                .unwrap();
             let t = Duration::from_secs(10);
             let (phone_session, _events) = tokio::time::timeout(
-                t, Session::dial(&phone_end, phone_link.addr(), pc.public_key(), info("phone"), Router::new()),
-            ).await.unwrap().unwrap();
+                t,
+                Session::dial(
+                    &phone_end,
+                    phone_link.addr(),
+                    pc.public_key(),
+                    info("phone"),
+                    Router::new(),
+                ),
+            )
+            .await
+            .unwrap()
+            .unwrap();
             let pc_session = tokio::time::timeout(t, accepted).await.unwrap().unwrap();
 
             let relay = Relay::default();
             relay.stand_ins.lock().unwrap().insert(pc_link.addr());
-            relay.sessions.lock().unwrap().push(pc_session.connection().clone());
+            relay
+                .sessions
+                .lock()
+                .unwrap()
+                .push(pc_session.connection().clone());
             let off = std::time::Instant::now();
-            assert_eq!(close_relay_sessions(&relay), 1, "the session's peer is the PC link's stand-in");
-            tokio::time::timeout(Duration::from_secs(2), phone_session.connection().quinn().closed())
-                .await
-                .expect("the phone sees the session end at once");
+            assert_eq!(
+                close_relay_sessions(&relay),
+                1,
+                "the session's peer is the PC link's stand-in"
+            );
+            tokio::time::timeout(
+                Duration::from_secs(2),
+                phone_session.connection().quinn().closed(),
+            )
+            .await
+            .expect("the phone sees the session end at once");
             println!("relay off -> phone session closed in {:?}", off.elapsed());
             assert!(relay.stand_ins.lock().unwrap().is_empty());
         });
