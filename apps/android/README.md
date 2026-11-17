@@ -946,3 +946,14 @@ CHECK:`node scripts/check-android-store-permissions.cjs <apk> github|play`
 na każdym buildzie, `apps/windows/scripts/check-sms-play-android.cjs`
 (prawdziwy PC + emulator z APK play: brak `sms/1`, `sms_status`
 `{connected:true, available:false}`, tekst okna).
+
+## Szybki powrót do komputera po jego restarcie (WN-142)
+
+RULE:usługa w tle ponawia połączenie z odstępem 3 s → 60 s, ale czekanie kończy się
+od razu, gdy sparowany komputer wraca w wykrywaniu: pojawia się po zniknięciu albo
+pod innym adresem niż ten z nieudanej próby (np. aplikacja PC po aktualizacji na
+nowym porcie). Te same adresy nie budzą pętli, więc BUSY i odmowy nie są ponawiane
+w kółko (WC-28); wykrycie tylko budzi pętlę, połączenie nadal wymaga przypiętego
+klucza (`PcReturn.kt`, `PcReturnTest`).
+CHECK:`check-update-android.cjs` z `PC_DOWN_MS=150000`: telefon wraca 0,5 s po
+powrocie PC (wcześniej 14–22 s, najgorzej ~60 s); 8 restartów PC: 0,5–2,7 s.

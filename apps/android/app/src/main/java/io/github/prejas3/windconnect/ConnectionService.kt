@@ -15,6 +15,7 @@ import io.github.prejas3.windconnect.core.WindCore
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 
 /** CCS/1 PURPOSE:visible, user-stoppable ownership of the paired LAN connection across UI/boot. */
 class ConnectionService : Service() {
@@ -58,18 +59,32 @@ class ConnectionService : Service() {
                 reconnect = launch {
                     // CCS/1 RULE:no unauthorised address/key is persisted; every retry reloads trusted peers.
                     var backoff = 3_000L
+                    // WN-142: the PC's addresses as discovery sees them; a PC that comes back (an update, a restart)
+                    // ends the backoff at once instead of after up to 60 s.
+                    var fingerprint: String? = null
+                    var tried: Set<String> = emptySet()
+                    fun seen(snapshot: io.github.prejas3.windconnect.bindings.NetworkSnapshot, of: String) =
+                        snapshot.peers.firstOrNull { it.fingerprint == of }?.addresses.orEmpty().toSet()
                     while (isActive) {
-                        delay(backoff)
+                        val of = fingerprint
+                        if (of == null) delay(backoff)
+                        else awaitPcReturn(opened.network.map { seen(it, of) }, tried, backoff)
                         if (opened.state.value !is ConnectionState.Connected && opened.state.value !is ConnectionState.Connecting) {
+                            // What discovery showed as the attempt started: a PC that comes back during a failing
+                            // attempt (on a new address) still ends the next wait.
+                            var atStart: Set<String> = emptySet()
                             try {
                                 val peer = opened.pairedDevices().lastOrNull()
                                 if (peer == null) { stopSelf(); break }
+                                fingerprint = peer.fingerprint
+                                atStart = seen(opened.network.value, peer.fingerprint)
                                 // WC-28: automatic, so it waits out BUSY/refusals until a network change or the user.
                                 opened.connectPaired(peer, user = false); backoff = 3_000
                             }
                             catch (error: Exception) {
                                 if (error is CancellationException && error !is TimeoutCancellationException) throw error
                                 backoff = (backoff * 2).coerceAtMost(60_000)
+                                tried = atStart
                             }
                         } else backoff = 3_000
                     }
