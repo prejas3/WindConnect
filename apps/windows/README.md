@@ -613,3 +613,13 @@ wyłączenie zamyka ją; 2026-11-16: telefon widzi koniec po 2,5 ms).
 Prawdziwa aplikacja: `node apps/windows/scripts/check-relay-native.cjs`
 (widoczna sekcja, domyślnie wyłączona, błąd złego adresu, plik `relay-url`
 zapisany i usunięty, stan po restarcie; zrzuty w `RELAY_ARTIFACTS`).
+
+## Panel otwiera się od góry (WN-145)
+
+RULE:panel pamiętał ostatnie przewinięcie, więc mógł się otworzyć w połowie treści
+(pod paskiem zadań u góry wyglądał na ucięty; samo położenie okna jest poprawne,
+`place` uwzględnia pasek z każdej strony). Każde otwarcie zaczyna od góry, a gdy
+trwa parowanie (widoczny QR albo kod), karta parowania z dołu panelu jest
+przewijana do widoku, także gdy QR pojawia się przy otwartym panelu („Dodaj telefon”).
+CHECK:`node apps/windows/scripts/check-panel-scroll-ui.cjs` (atrapa IPC, bez okna
+aplikacji; bez poprawki pada na „opens at the top”).

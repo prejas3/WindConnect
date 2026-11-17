@@ -177,6 +177,16 @@ function renderFind(find, connected) {
   if (status.textContent !== line) status.textContent = line;
 }
 
+// WN-145: the panel kept its last scroll, so it could open mid-way (looking cut off at the top). Each opening starts at
+// the top, except while a pairing shows its QR or code: that card (near the bottom) is brought into view, also when the
+// QR appears with the panel open ("Dodaj telefon").
+let pairingShown = false;
+function pairingVisible() { return !document.querySelector('#pairing-qr').hidden || !document.querySelector('#pairing-code').hidden; }
+function showPairing() { document.querySelector('#pairing-qr').closest('section').scrollIntoView({ block: 'nearest' }); }
+function scrollForOpening() {
+  if (pairingVisible()) showPairing();
+  else { document.scrollingElement.scrollTop = 0; document.body.scrollTop = 0; }
+}
 function renderPairing(state) {
   renderDevices(state.devices);
   const waiting = state.phase === 'waiting';
@@ -230,6 +240,9 @@ function renderPairing(state) {
   } else { canvas.width = canvas.height = 0; }
   // CCS/1 SEC:the payload is not kept; zero its modules once drawn (WN-94). The IPC JSON and GC copies are beyond reach.
   if (state.qr && Array.isArray(state.qr.dark)) state.qr.dark.fill(false);
+  const shown = pairingVisible();
+  if (shown && !pairingShown) showPairing();
+  pairingShown = shown;
 }
 // CCS/1 FLOW:files-state (engine, <=10/s) -> summary + newest rows; files-drag -> drop zone; files-notice -> status line.
 let noticeTimer;
@@ -285,6 +298,7 @@ async function start() {
     theme();
     await refreshShortcut();
     renderPairing(await invoke('pairing_snapshot'));
+    scrollForOpening();
     const panel = document.querySelector('.panel');
     panel.classList.remove('opening'); void panel.offsetHeight; panel.classList.add('opening');
     document.querySelector('#dismiss').focus({ preventScroll: true });
