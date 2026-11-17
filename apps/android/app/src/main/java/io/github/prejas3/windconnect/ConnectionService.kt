@@ -65,11 +65,13 @@ class ConnectionService : Service() {
                     var tried: Set<String> = emptySet()
                     fun seen(snapshot: io.github.prejas3.windconnect.bindings.NetworkSnapshot, of: String) =
                         snapshot.peers.firstOrNull { it.fingerprint == of }?.addresses.orEmpty().toSet()
+                    fun active(state: ConnectionState) = state is ConnectionState.Connected || state is ConnectionState.Connecting
                     while (isActive) {
+                        // WN-149: connected (or connecting) waits for the session to end, never on discovery: that
+                        // spun this main-thread loop after a successful reconnect.
                         val of = fingerprint
-                        if (of == null) delay(backoff)
-                        else awaitPcReturn(opened.network.map { seen(it, of) }, tried, backoff)
-                        if (opened.state.value !is ConnectionState.Connected && opened.state.value !is ConnectionState.Connecting) {
+                        reconnectWait(opened.state.map(::active), of?.let { f -> opened.network.map { seen(it, f) } }, tried, backoff)
+                        if (!active(opened.state.value)) {
                             // What discovery showed as the attempt started: a PC that comes back during a failing
                             // attempt (on a new address) still ends the next wait.
                             var atStart: Set<String> = emptySet()
@@ -84,8 +86,9 @@ class ConnectionService : Service() {
                             catch (error: Exception) {
                                 if (error is CancellationException && error !is TimeoutCancellationException) throw error
                                 backoff = (backoff * 2).coerceAtMost(60_000)
-                                tried = atStart
                             }
+                            // WN-149: after every attempt, also one held back (BUSY, refused) or that succeeded.
+                            tried = atStart
                         } else backoff = 3_000
                     }
                 }

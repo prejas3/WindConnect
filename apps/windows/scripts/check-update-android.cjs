@@ -1,6 +1,7 @@
 // CCS/1 PURPOSE:WN-126 an existing pairing survives updates, without pairing again: real QR pairing, then
 // (A) the APK replaced in place while the PC runs, (B) the PC restarted with its kept identity and paired list,
-// (C) the APK replaced while the PC is down, then the PC back. Each must end in a new authenticated session,
+// (C) the APK replaced while the PC is down, then the PC back. Each must end in a new authenticated session, with the
+// app's main thread idle after it (WN-149),
 // with no app crash (a crashed background service is restarted ever later, WN-126).
 // SEC:disposable emulator only (ro.kernel.qemu), isolated peer identity in TEMP; no TLS/trust bypass, no re-pairing.
 // PC_RESTARTS=n repeats (B). Needs: debug APK + androidTest APK, `cargo build -p windconnect-windows --example background_peer`,
@@ -42,6 +43,21 @@ async function stopPeer() {
   await fs.writeFile(path.join(root, 'connected.txt'), 'false');
 }
 // A new session (sessions.txt grew past `before`) that is live now.
+// WN-149: after a reconnect the app's main thread is free: the reconnect loop runs there, and a wait that didn't suspend
+// spun it (WN-148). Its CPU over 2 s (from /proc, ticks of 10 ms) stays under half a core, and an activity starts.
+async function mainThreadIdle(label) {
+  await delay(3000); // a few turns of the loop while connected
+  const pid = device('shell', 'pidof', pkg).trim().split(/\s+/)[0];
+  assert(pid, `${label}: app process`);
+  const ticks = () => { const f = device('shell', 'run-as', pkg, 'cat', `/proc/${pid}/task/${pid}/stat`).split(') ')[1].split(' '); return Number(f[11]) + Number(f[12]); };
+  const t0 = ticks(); await delay(2000); const used = (ticks() - t0) / 200;
+  const start = device('shell', 'am', 'start', '-W', '-n', `${pkg}/.MainActivity`);
+  device('shell', 'input', 'keyevent', 'KEYCODE_HOME');
+  assert(used < 0.5, `${label}: main thread busy ${Math.round(used * 100)}% of a core after the reconnect`);
+  assert(/Status: ok/.test(start), `${label}: activity start ${start}`);
+  console.log(`${label}: main thread ${Math.round(used * 100)}% of a core, activity ${(start.match(/TotalTime: (\d+)/) || [])[1]} ms`);
+  return Math.round(used * 100);
+}
 async function reconnected(label, before) {
   const started = Date.now();
   while (Date.now() - started < limitMs) {
@@ -100,6 +116,7 @@ async function reconnected(label, before) {
     let before = Number(await read('sessions.txt', '0'));
     device('install', '-r', apk);
     report.apkUpdateMs = await reconnected('A apk-update', before);
+    report.mainThreadCpu = [await mainThreadIdle('A apk-update')];
 
     // (B) The PC app updated: it stops and starts again from its kept identity and paired list.
     // PC_RESTARTS repeats it (a restart that was missed once in four runs, WN-126).
@@ -109,6 +126,7 @@ async function reconnected(label, before) {
       await delay(3000);
       await startPeer();
       report.pcRestartMs.push(await reconnected(`B pc-restart-${restart}`, 0));
+      report.mainThreadCpu.push(await mainThreadIdle(`B pc-restart-${restart}`));
     }
 
     // (C) Both updated, the phone first while the PC is down, as when installing the new pair of builds.
@@ -117,6 +135,7 @@ async function reconnected(label, before) {
     await delay(Number(process.env.PC_DOWN_MS || 30000));
     await startPeer();
     report.bothUpdatedMs = await reconnected('C both-updated', 0);
+    report.mainThreadCpu.push(await mainThreadIdle('C both-updated'));
 
     assert.equal(await read('paired.txt'), pairedFile, 'the PC paired list is unchanged: nothing paired again');
     const phonePaired = device('shell', 'run-as', pkg, 'cat', 'no_backup/paired.txt');

@@ -959,3 +959,4 @@ w kółko (WC-28); wykrycie tylko budzi pętlę, połączenie nadal wymaga przyp
 klucza (`PcReturn.kt`, `PcReturnTest`).
 CHECK:`check-update-android.cjs` z `PC_DOWN_MS=150000`: telefon wraca 0,5 s po
 powrocie PC (wcześniej 14–22 s, najgorzej ~60 s); 8 restartów PC: 0,5–2,7 s.
+RULE (WN-149): pętla ponownego łączenia działa na wątku głównym; przy połączeniu (lub łączeniu) czeka na koniec sesji albo odstęp, nigdy na wykrywanie, a każdy obrót trwa co najmniej 500 ms (`reconnectWait`, `ReconnectWaitTest`). `check-update-android.cjs` sprawdza też, że wątek główny jest wolny po każdym powrocie.

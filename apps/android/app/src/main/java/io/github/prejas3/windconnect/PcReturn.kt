@@ -3,6 +3,7 @@ package io.github.prejas3.windconnect
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeoutOrNull
 
 /**
@@ -15,6 +16,25 @@ import kotlinx.coroutines.withTimeoutOrNull
  * [addresses] is the PC's current address set as discovery sees it (empty when not seen).
  * True when the PC came back, false when the time ran out.
  */
+/** WN-149: the shortest wait between two attempts, whatever ends it: the loop can never spin. */
+internal const val MIN_TURN_MS = 500L
+
+/**
+ * WN-149: one wait of the background reconnect loop (on the main thread). While a session is up or being set up
+ * ([active] true), discovery can't end the wait: it lasts until the session ends or [ms] passes. Otherwise a visible PC
+ * whose addresses differ from [tried] would end every wait at once and the loop would spin, freezing the UI. When idle,
+ * at least [MIN_TURN_MS], then [awaitPcReturn] for the rest of [ms] ([addresses] null: a plain wait).
+ */
+internal suspend fun reconnectWait(active: Flow<Boolean>, addresses: Flow<Set<String>>?, tried: Set<String>, ms: Long) {
+    if (active.first()) {
+        withTimeoutOrNull(ms) { active.first { !it } }
+        return
+    }
+    val floor = MIN_TURN_MS.coerceAtMost(ms)
+    delay(floor)
+    if (addresses == null) delay(ms - floor) else awaitPcReturn(addresses, tried, ms - floor)
+}
+
 internal suspend fun awaitPcReturn(addresses: Flow<Set<String>>, tried: Set<String>, ms: Long): Boolean {
     var gone = tried.isEmpty()
     return withTimeoutOrNull(ms) {
