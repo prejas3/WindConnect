@@ -1,7 +1,7 @@
 //! CCS/1 PURPOSE:finite real pairing/TLS peer for Android service tests, independent of the installed desktop app.
 use std::{path::PathBuf, sync::Arc, time::Duration};
 use wind_core::{
-    identity::DeviceIdentity,
+    identity::{DeviceIdentity, FileKeyStore},
     pairing::{PairedDevicesFile, PairingConfig, PairingListener},
     protocol::DeviceKind,
     session::{LocalInfo, Router, Session},
@@ -15,8 +15,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             .nth(1)
             .ok_or("temporary directory required")?,
     );
-    let identity = DeviceIdentity::generate()?;
+    // WN-126: `--keep` is a PC that restarts (an update): the identity and the
+    // paired list live in `directory` and are loaded again, as the app does.
+    let keep = std::env::args().nth(2).as_deref() == Some("--keep");
+    let identity = if keep {
+        DeviceIdentity::load_or_create(&FileKeyStore::new(directory.join("identity.key")))?
+    } else {
+        DeviceIdentity::generate()?
+    };
     let pins = Arc::new(PinnedKeys::new());
+    if keep {
+        PairedDevicesFile::in_dir(&directory).load()?.pin_all(&pins);
+    }
     let endpoint = Endpoint::bind("0.0.0.0:0".parse()?, &identity, pins.clone())?;
     let mut pairing = PairingListener::bind(
         "0.0.0.0:0".parse()?,
@@ -56,8 +66,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let (sender, mut receiver) = tokio::sync::mpsc::channel(1);
     let acceptor = tokio::spawn(async move {
         while let Some(incoming) = accepting.accept().await {
-            if let Ok(connection) = incoming {
-                if let Ok(Ok(session)) = tokio::time::timeout(
+            let Ok(connection) = incoming.inspect_err(|e| eprintln!("incoming: {e}")) else {
+                continue;
+            };
+            {
+                let accepted = tokio::time::timeout(
                     Duration::from_secs(6),
                     Session::accept(
                         connection,
@@ -69,8 +82,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                         Router::new(),
                     ),
                 )
-                .await
-                {
+                .await;
+                eprintln!(
+                    "session: {:?}",
+                    accepted
+                        .as_ref()
+                        .map(|r| r.as_ref().map(|_| "ok").map_err(|e| e.to_string()))
+                );
+                if let Ok(Ok(session)) = accepted {
                     if sender.send(session).await.is_err() {
                         break;
                     }

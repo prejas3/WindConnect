@@ -714,7 +714,11 @@ class WindCore private constructor(
         val touchpadWatch = opened.watchTouchpad()
         mutableTouchpadAccepted.value = touchpadWatch.current()
         touchpadCaps = scope.launch {
+            // CCS/1 WHY:next() fails ("channel closed") once the session ends. Uncaught, it crashed the app, and
+            // Android put off restarting the crashed background service (30 min after a second crash): the phone
+            // stayed disconnected until the app was opened, e.g. to pair again (WN-126).
             try { while (true) mutableTouchpadAccepted.value = touchpadWatch.next() }
+            catch (error: Exception) { if (error is CancellationException) throw error }
             finally { touchpadWatch.destroy(); mutableTouchpadAccepted.value = false }
         }
         mutableState.value = ConnectionState.Connected(peer.name, peer.fingerprint, rtt, opened.route())

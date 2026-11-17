@@ -117,7 +117,9 @@ class PairingTest {
                 context.getSystemService(android.content.ClipboardManager::class.java).setPrimaryClip(android.content.ClipData.newPlainText("WN35 old clip", "WN35-STALE-BEFORE-CONNECT"))
             }
         }
-        if (background) assertFalse("app cannot acquire CPU wake locks", context.packageManager.getPackageInfo(context.packageName, android.content.pm.PackageManager.GET_PERMISSIONS).requestedPermissions?.contains(android.Manifest.permission.WAKE_LOCK) == true)
+        // WN-126: `-e doze false` skips the Doze/wake-lock proof (and this premise of it).
+        val doze = InstrumentationRegistry.getArguments().getString("doze") != "false"
+        if (background && doze) assertFalse("app cannot acquire CPU wake locks", context.packageManager.getPackageInfo(context.packageName, android.content.pm.PackageManager.GET_PERMISSIONS).requestedPermissions?.contains(android.Manifest.permission.WAKE_LOCK) == true)
         // WN-50: `-e notifications denied` keeps POST_NOTIFICATIONS refused (revoked before the run) for the stop-without-notifications proof.
         if (android.os.Build.VERSION.SDK_INT >= 33 && InstrumentationRegistry.getArguments().getString("notifications") != "denied") InstrumentationRegistry.getInstrumentation().uiAutomation.grantRuntimePermission(context.packageName, android.Manifest.permission.POST_NOTIFICATIONS)
         val file = File(compose.activity.cacheDir, "desktop-qr.png")
@@ -260,6 +262,11 @@ class PairingTest {
             assertTrue(notification().extras.getString(android.app.Notification.EXTRA_TEXT).orEmpty().startsWith("Połączono"))
             assertEquals(2, notification().actions.size)
             compose.activityRule.scenario.close()
+            // WN-126: `-e doze false` stops here: paired, background on and connected, for the host's update checks.
+            if (!doze) {
+                InstrumentationRegistry.getInstrumentation().sendStatus(0, android.os.Bundle().apply { putString("backgroundConnected", "true") })
+                return
+            }
             fun shell(command: String): String = InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand(command).use { descriptor ->
                 android.os.ParcelFileDescriptor.AutoCloseInputStream(descriptor).bufferedReader().use { it.readText() }
             }

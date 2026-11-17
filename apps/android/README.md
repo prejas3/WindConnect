@@ -884,3 +884,39 @@ od razu, gdy aplikacja jest na ekranie, a w tle pokazuje powiadomienie
 „Otwórz link z komputera”. Ustawienie „Otwieraj linki z komputera”
 (domyślnie włączone); wyłączone -> komputer dostaje „odrzucono”.
 Test: `apps/windows/scripts/check-actions-android.cjs`, `PcActionTextTest`.
+
+## Parowanie po aktualizacji (WN-126)
+
+Zgłoszenie z testu WN-120 na S25 (2026-11-13): „problem z łącznością, po
+ponownym sparowaniu test przeszedł”. Co ustalono:
+
+- Tożsamości się nie zmieniły. `paired.txt` na PC (dziennik dopisywany)
+  ma jeden klucz telefonu od 11-10 do 11-13: usunięcie 12:52:37,
+  ponowne dodanie 12:52:56 z tym samym kluczem; `identity.key` PC z 11-10.
+  Wszystkie testowe APK 0.30–0.61 mają jeden certyfikat (debug.keystore
+  użytkownika) i rosnące `versionCode`, więc aktualizacja nie wymagała
+  odinstalowania (to skasowałoby `noBackupFilesDir`). Magazyny kluczy nigdy
+  nie tworzą nowego klucza w miejsce nieczytelnego. Ponowne parowanie
+  zadziałało więc jako ręczne wznowienie połączenia, nie naprawa kluczy.
+- Odtworzony przypadek (master, od WN-51): po zakończeniu sesji (np. restart
+  lub aktualizacja PC) pętla możliwości touchpada dostawała `channel closed`
+  bez obsługi i aplikacja padała. Android wznawia usługę po awarii z coraz
+  większym opóźnieniem (po drugiej awarii 30 min), więc telefon zostawał
+  rozłączony do otwarcia aplikacji. Poprawka w `WindCore.adopt`; przed nią
+  `check-update-android.cjs` zawodził przy 2. z 12 restartów PC, po niej
+  12/12 i 0 awarii.
+- Przyczyny wersji 0.54.0 nie da się już wskazać (brak logów; ta pętla
+  powstała później). Gdy problem wróci na telefonie, przed ponownym
+  parowaniem zanotuj: wersje APK i EXE oraz kolejność instalacji, tekst
+  powiadomienia WindConnect i stan na PC, a z PC z adb:
+  `adb logcat -b crash -d` i `adb shell dumpsys activity services io.github.prejas3.windconnect`
+  (szukaj „Restarting” i „crashed”). Z `paired.txt` wystarczy pierwszych
+  8 znaków kluczy; plików kluczy prywatnych nie kopiuj.
+
+CHECK: `apps/windows/scripts/check-update-android.cjs` (jednorazowy emulator,
+`ANDROID_SERIAL`, `JAVA_HOME`, `ANDROID_HOME`; debug APK + androidTest i
+`cargo build -p windconnect-windows --example background_peer`). Paruje raz
+prawdziwym QR, potem: (A) `adb install -r` przy działającym PC, (B) restart PC
+z zachowaną tożsamością i listą (`PC_RESTARTS=n` powtarza), (C) aktualizacja
+APK przy wyłączonym PC (`PC_DOWN_MS`). Każdy krok wymaga nowej sesji bez
+parowania, listy sparowanych bez zmian i braku awarii aplikacji.
