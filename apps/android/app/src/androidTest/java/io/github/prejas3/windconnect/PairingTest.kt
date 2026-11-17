@@ -117,9 +117,10 @@ class PairingTest {
                 context.getSystemService(android.content.ClipboardManager::class.java).setPrimaryClip(android.content.ClipData.newPlainText("WN35 old clip", "WN35-STALE-BEFORE-CONNECT"))
             }
         }
-        // WN-126: `-e doze false` skips the Doze/wake-lock proof (and this premise of it).
+        // WN-126: `-e doze false` skips the Doze/wake-lock proof.
+        // WN-141: the manifest has WAKE_LOCK from WorkManager (Glance's widget updates take wake locks; removing it would
+        // break them), so the proof below checks the real rule instead: nothing of ours holds a wake lock in Doze.
         val doze = InstrumentationRegistry.getArguments().getString("doze") != "false"
-        if (background && doze) assertFalse("app cannot acquire CPU wake locks", context.packageManager.getPackageInfo(context.packageName, android.content.pm.PackageManager.GET_PERMISSIONS).requestedPermissions?.contains(android.Manifest.permission.WAKE_LOCK) == true)
         // WN-50: `-e notifications denied` keeps POST_NOTIFICATIONS refused (revoked before the run) for the stop-without-notifications proof.
         if (android.os.Build.VERSION.SDK_INT >= 33 && InstrumentationRegistry.getArguments().getString("notifications") != "denied") InstrumentationRegistry.getInstrumentation().uiAutomation.grantRuntimePermission(context.packageName, android.Manifest.permission.POST_NOTIFICATIONS)
         val file = File(compose.activity.cacheDir, "desktop-qr.png")
@@ -276,6 +277,10 @@ class PairingTest {
             val exempt = InstrumentationRegistry.getArguments().getString("batteryExempt") != "false"
             val seconds = (InstrumentationRegistry.getArguments().getString("soakSeconds")?.toIntOrNull() ?: 60).coerceIn(60, 1800)
             var connectedChecks = 0
+            // WN-141: wake locks this app's UID holds now, apart from WorkManager's own (tag "WorkManager…").
+            val ownUid = Regex("""\buid=${context.applicationInfo.uid}\b""")
+            fun ownWakeLocks(): List<String> = shell("dumpsys power").substringAfter("Wake Locks:").substringBefore("Suspend Blockers:")
+                .lines().filter { ownUid.containsMatchIn(it) && !it.contains("'WorkManager") }
             try {
                 shell("cmd deviceidle whitelist ${if (exempt) "+" else "-"}${context.packageName}")
                 assertEquals(exempt, context.getSystemService(android.os.PowerManager::class.java).isIgnoringBatteryOptimizations(context.packageName))
@@ -289,8 +294,7 @@ class PairingTest {
                     if (connected) connectedChecks++
                     if (exempt) assertTrue("session remains connected without Activity in Doze", connected)
                     if ((index + 1) % 12 == 0) {
-                        val activeLocks = shell("dumpsys power").substringAfter("Wake Locks:").substringBefore("Suspend Blockers:")
-                        assertFalse("no application wake lock during Doze", activeLocks.contains("WindConnect:session"))
+                        assertEquals("no wake lock of ours during Doze", emptyList<String>(), ownWakeLocks())
                         InstrumentationRegistry.getInstrumentation().sendStatus(0, android.os.Bundle().apply {
                             putString("soakProgress", "${(index + 1) * 5}/$seconds seconds, exempt=$exempt, connectedChecks=$connectedChecks, wakeLock=false")
                         })
@@ -310,8 +314,7 @@ class PairingTest {
                 while (manager.activeNotifications.any { it.id == ConnectionService.ID } && android.os.SystemClock.elapsedRealtime() < stopped) Thread.sleep(50)
                 assertFalse(ConnectionService.enabled(context))
                 assertTrue(manager.activeNotifications.none { it.id == ConnectionService.ID })
-                val locks = shell("dumpsys power").substringAfter("Wake Locks:").substringBefore("Suspend Blockers:")
-                assertFalse("notification stop releases active wake lock", locks.contains("WindConnect:session"))
+                assertEquals("no wake lock of ours after the notification's Stop", emptyList<String>(), ownWakeLocks())
                 ConnectionBootReceiver().onReceive(context, Intent(Intent.ACTION_BOOT_COMPLETED))
                 Thread.sleep(500)
                 assertTrue("explicit stop survives boot", manager.activeNotifications.none { it.id == ConnectionService.ID })

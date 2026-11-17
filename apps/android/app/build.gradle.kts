@@ -12,8 +12,8 @@ android {
         applicationId = "io.github.prejas3.windconnect"
         minSdk = 29
         targetSdk = 35
-        versionCode = 81
-        versionName = "0.71.1"
+        versionCode = 82
+        versionName = "0.71.2"
         @Suppress("UNCHECKED_CAST")
         ndk { abiFilters += rootProject.extra["windAbis"] as List<String> }
 
