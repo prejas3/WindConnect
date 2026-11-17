@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- WN-124 (decision D2): the Google Play build (-PwindStore=play). Play restricts the SMS and
+     Call Log permission groups; SMS and calls on the PC stay in the GitHub/F-Droid build. Contacts
+     (names for SMS and callers) and ANSWER_PHONE_CALLS (rejecting from the PC) go with them.
+     Removing a permission here also removes it if a library declares it. -->
+<!-- Lint reads each removal below as a declaration needing a telephony <uses-feature>; they remove, so that check is off here. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    tools:ignore="PermissionImpliesUnsupportedChromeOsHardware">
+    <uses-permission android:name="android.permission.READ_SMS" tools:node="remove" />
+    <uses-permission android:name="android.permission.SEND_SMS" tools:node="remove" />
+    <uses-permission android:name="android.permission.RECEIVE_SMS" tools:node="remove" />
+    <uses-permission android:name="android.permission.RECEIVE_MMS" tools:node="remove" />
+    <uses-permission android:name="android.permission.RECEIVE_WAP_PUSH" tools:node="remove" />
+    <uses-permission android:name="android.permission.READ_CALL_LOG" tools:node="remove" />
+    <uses-permission android:name="android.permission.WRITE_CALL_LOG" tools:node="remove" />
+    <uses-permission android:name="android.permission.READ_CONTACTS" tools:node="remove" />
+    <uses-permission android:name="android.permission.ANSWER_PHONE_CALLS" tools:node="remove" />
+</manifest>

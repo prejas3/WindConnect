@@ -69,7 +69,7 @@ function renderThreads() {
   }
   list.replaceChildren(fragment);
   say('#threads-status', !status.connected && !threads.length ? 'Telefon nie jest połączony.'
-    : status.connected && !status.available ? 'Telefon nie udostępnia SMS. Włącz „SMS na komputerze” w ustawieniach WindConnect na telefonie.'
+    : status.connected && !status.available ? 'Telefon nie udostępnia SMS. Włącz „SMS na komputerze” w ustawieniach WindConnect na telefonie (wersja z Google Play nie ma SMS).'
     : !threads.length ? 'Brak wątków.' : !status.connected ? 'Telefon rozłączony: widzisz to, co już było odczytane.' : '');
 }
 

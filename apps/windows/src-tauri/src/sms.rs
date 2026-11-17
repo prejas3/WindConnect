@@ -285,7 +285,7 @@ fn ask_error(e: AskError) -> String {
     match e {
         AskError::Session(wind_core::session::SessionError::CapabilityMissing(_))
         | AskError::Status(Status::Denied) => {
-            "Telefon nie udostępnia SMS. Włącz „SMS na komputerze” w ustawieniach WindConnect na telefonie.".into()
+            "Telefon nie udostępnia SMS. Włącz „SMS na komputerze” w ustawieniach WindConnect na telefonie (wersja z Google Play nie ma SMS).".into()
         }
         AskError::Status(Status::NotFound) => "Tego wątku nie ma już na telefonie.".into(),
         AskError::Status(Status::Busy) => {

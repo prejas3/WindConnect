@@ -12,8 +12,8 @@ android {
         applicationId = "io.github.prejas3.windconnect"
         minSdk = 29
         targetSdk = 35
-        versionCode = 79
-        versionName = "0.70.0"
+        versionCode = 80
+        versionName = "0.71.0"
         @Suppress("UNCHECKED_CAST")
         ndk { abiFilters += rootProject.extra["windAbis"] as List<String> }
 
@@ -23,6 +23,13 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+    }
+
+    // WN-124: the Play build's manifest removes the restricted permissions; the features
+    // follow from what the APK declares (PermissionsDeclared.kt, WindCore), not from a flag.
+    if (rootProject.extra["windStore"] == "play") {
+        sourceSets.getByName("debug").manifest.srcFile("src/play/AndroidManifest.xml")
+        sourceSets.getByName("release").manifest.srcFile("src/play/AndroidManifest.xml")
     }
 
     buildTypes {
@@ -61,4 +68,11 @@ dependencies {
     androidTestImplementation(platform("androidx.compose:compose-bom:2025.04.01"))
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
+}
+
+// WN-124: a Play APK is named app-play-*.apk and built in app/build-play, so it is never mistaken
+// for the full one and the two builds never overwrite each other's outputs.
+if (rootProject.extra["windStore"] == "play") {
+    base.archivesName.set("app-play")
+    layout.buildDirectory.set(layout.projectDirectory.dir("build-play"))
 }

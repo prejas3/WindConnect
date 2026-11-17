@@ -38,6 +38,12 @@ jobs:
         run: ./gradlew --no-daemon :app:lintDebug
       - name: Build debug APK
         run: ./gradlew --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest
+      # WN-124 (decision D2): the full build keeps SMS, Call Log and contacts; the Play build has none of them.
+      - name: Store permissions (GitHub and Play builds)
+        run: |
+          node ../../scripts/check-android-store-permissions.cjs app/build/outputs/apk/debug/app-debug.apk github
+          ./gradlew --no-daemon :app:assembleDebug -PwindStore=play
+          node ../../scripts/check-android-store-permissions.cjs app/build-play/outputs/apk/debug/app-play-debug.apk play
       - name: Core unit tests (JVM)
         run: ./gradlew --no-daemon :wind-core:testDebugUnitTest
       - name: Build reusable core AAR

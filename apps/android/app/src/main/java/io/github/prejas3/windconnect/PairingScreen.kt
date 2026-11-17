@@ -5,6 +5,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.provider.Settings
+import io.github.prejas3.windconnect.core.declaresPermission
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -66,9 +67,10 @@ fun PairingScreen(model: PairingViewModel, diagnostic: @Composable () -> Unit) {
                 FindControls()
                 MediaControls()
                 NotifyControls()
-                SmsControls()
+                // WN-124: the Play build declares no SMS / Call Log permissions, so these settings aren't there.
+                if (context.declaresPermission(Manifest.permission.READ_SMS)) SmsControls()
                 GalleryControls()
-                CallControls()
+                if (context.declaresPermission(Manifest.permission.READ_CALL_LOG)) CallControls()
                 LinkControls()
                 RelayControls()
                 ClipboardControls(state, model::sendClipboard, model::setClipboardEnabled, model::setClipboardImageLimit)

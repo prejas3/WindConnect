@@ -4,6 +4,7 @@ dist/
 .gradle/
 .kotlin/
 build/
+build-play/
 local.properties
 .idea/
 *.iml

@@ -23,3 +23,11 @@ val windAbis: List<String> = if (!debugOnly || requestedAbi == "all") allAbis el
         }
     }
 extra["windAbis"] = windAbis
+
+// WN-124 (decision D2): which store a build is for. "github" (the default; GitHub Releases
+// and F-Droid) has every feature; -PwindStore=play leaves out what Google Play restricts:
+// the SMS and Call Log permission groups and contacts (app/src/play/AndroidManifest.xml),
+// with "SMS na komputerze" and "Połączenia na komputerze" hidden. Its APK is app-play-*.apk.
+val windStore = providers.gradleProperty("windStore").getOrElse("github")
+require(windStore in listOf("github", "play")) { "windStore must be github or play" }
+extra["windStore"] = windStore

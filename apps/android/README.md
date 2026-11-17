@@ -920,3 +920,29 @@ prawdziwym QR, potem: (A) `adb install -r` przy działającym PC, (B) restart PC
 z zachowaną tożsamością i listą (`PC_RESTARTS=n` powtarza), (C) aktualizacja
 APK przy wyłączonym PC (`PC_DOWN_MS`). Każdy krok wymaga nowej sesji bez
 parowania, listy sparowanych bez zmian i braku awarii aplikacji.
+
+## Wersja GitHub/F-Droid i wersja Google Play (WN-124, decyzja D2)
+
+Jeden kod, dwa buildy wybierane właściwością Gradle `windStore`:
+
+- `github` (domyślny, GitHub Releases i F-Droid): wszystkie funkcje, w tym
+  „SMS na komputerze” (READ_SMS, SEND_SMS) i „Połączenia na komputerze”
+  (READ_CALL_LOG, ANSWER_PHONE_CALLS) oraz kontakty (READ_CONTACTS).
+  APK: `app/build/outputs/apk/<typ>/app-<typ>.apk`, jak dotąd.
+- `play` (`./gradlew :app:assembleRelease -PwindStore=play`): Google Play
+  ogranicza grupy uprawnień SMS i rejestru połączeń, więc
+  `app/src/play/AndroidManifest.xml` usuwa (`tools:node="remove"`, także z
+  bibliotek) READ_SMS, SEND_SMS, RECEIVE_SMS/MMS/WAP_PUSH, READ_CALL_LOG,
+  WRITE_CALL_LOG, READ_CONTACTS i ANSWER_PHONE_CALLS. Build w
+  `app/build-play`, APK `app-play-<typ>.apk`, więc nie nadpisuje pełnego.
+
+RULE:funkcje wynikają z tego, co APK deklaruje (`declaresPermission`, wind-core),
+nie z flagi: bez READ_SMS WindCore nie ustawia źródła SMS, więc `sms/1` nie jest
+trasowane ani ogłaszane, a w Ustawieniach nie ma „SMS na komputerze”; bez
+READ_CALL_LOG nie ma „Połączenia na komputerze”. Okno „Wiadomości” na PC mówi
+wtedy, że telefon nie udostępnia SMS (z podpowiedzią o wersji z Google Play).
+CHECK:`node scripts/check-android-store-permissions.cjs <apk> github|play`
+(aapt; CI sprawdza oba buildy), `StoreVariantTest` (`-e windStore github|play`)
+na każdym buildzie, `apps/windows/scripts/check-sms-play-android.cjs`
+(prawdziwy PC + emulator z APK play: brak `sms/1`, `sms_status`
+`{connected:true, available:false}`, tekst okna).

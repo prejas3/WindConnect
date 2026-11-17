@@ -409,11 +409,12 @@ class WindCore private constructor(
     }
 
     // WN-55: SMS read on the PC. Own consent (setting off by default) and READ_SMS, asked only when the person turns it
-    // on; contacts (READ_CONTACTS) are optional. Decision D2: only this (GitHub/F-Droid) build declares the permissions.
+    // on; contacts (READ_CONTACTS) are optional. Decision D2: only the GitHub/F-Droid build declares the permissions; the
+    // Play build (WN-124) declares no READ_SMS, so no source is set and sms/1 is never routed or announced.
     private val phoneSms = PhoneSms(appContext).also { sms ->
         sms.sendingAllowed = { mutableSmsSendAllowed.value }
         sms.reportSend = { token, state -> client.smsSendState(token, state) }
-        client.setSmsSource(sms)
+        if (appContext.declaresPermission(android.Manifest.permission.READ_SMS)) client.setSmsSource(sms)
     }
     // WN-56: "Wysyłanie z komputera" (default off; SEND_SMS, and READ_PHONE_STATE for the SIM list, asked when turned on).
     private val mutableSmsSendAllowed = MutableStateFlow(settings.getBoolean(SMS_SEND_ALLOWED, false))

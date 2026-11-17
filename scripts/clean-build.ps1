@@ -10,7 +10,7 @@ Removes only build output, from a fixed list under the repository root:
   - MSI packages of versions older than [workspace.package] version in
     Cargo.toml, in target/release/bundle/msi; the current and newer ones
     stay, and without a readable version none is removed (a warning says so)
-  - Gradle builds: apps/android/build, app/build, wind-core/build, .gradle
+  - Gradle builds: apps/android/build, app/build, app/build-play (WN-124), wind-core/build, .gradle
   - the fuzzing target: crates/wind-core/fuzz/target and its corpus copies
     in fuzz/artifacts are left alone (they are inputs, not output)
 With -Full it also removes the whole Cargo target folder.
@@ -119,6 +119,7 @@ if ($Full) {
 foreach ($path in @(
         'apps/android/build',
         'apps/android/app/build',
+        'apps/android/app/build-play',
         'apps/android/wind-core/build',
         'apps/android/.gradle',
         'crates/wind-core/fuzz/target'
