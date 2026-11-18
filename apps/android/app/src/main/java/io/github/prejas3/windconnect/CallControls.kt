@@ -1,5 +1,6 @@
 package io.github.prejas3.windconnect
 
+import io.github.prejas3.windconnect.ui.*
 import androidx.compose.ui.semantics.heading
 
 import android.Manifest
@@ -63,24 +64,20 @@ fun CallControls() {
             Manifest.permission.ANSWER_PHONE_CALLS, Manifest.permission.READ_CONTACTS))
         else connections.setCallsAllowed(on)
     }
-    WindCard {
-        Text(str(R.string.calls_title), style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
-        Text(str(R.string.calls_about))
-        Text(str(R.string.calls_permissions),
-            style = MaterialTheme.typography.bodySmall)
-        WindSwitch(str(R.string.calls_title), allowed && access, turn, Modifier.testTag("callsAllowed"))
-        Text(when {
+    val noAccess = refused || (allowed && !access)
+    WindSettingRow("call", str(R.string.calls_title), str(R.string.sum_calls), checked = allowed && access, onCheckedChange = turn, switchTag = "callsAllowed",
+        status = when {
             allowed && access && reject -> str(R.string.calls_full)
             allowed && access -> str(R.string.calls_no_answer)
-            refused || (allowed && !access) -> str(R.string.calls_no_access)
-            else -> str(R.string.off_sentence)
-        }, style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("callsState").semantics { liveRegion = LiveRegionMode.Polite })
-        if (refused || (allowed && (!access || !reject))) {
+            noAccess -> str(R.string.calls_no_access)
+            else -> null
+        }, statusTag = "callsState", warning = noAccess,
+        actions = if (refused || (allowed && (!access || !reject))) { {
             WindButton(str(R.string.open_app_settings), {
                 val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null))
                 if (context !is Activity) intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 context.startActivity(intent)
             }, Modifier.testTag("callsSettings"), kind = ButtonKind.Secondary)
-        }
-    }
+        } } else null,
+        more = { Text(str(R.string.calls_about)); Text(str(R.string.calls_permissions)) })
 }

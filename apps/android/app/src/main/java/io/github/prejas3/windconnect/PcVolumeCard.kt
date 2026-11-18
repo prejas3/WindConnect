@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -26,19 +25,10 @@ import io.github.prejas3.windconnect.core.PcVolume
 import io.github.prejas3.windconnect.ui.ButtonKind
 import io.github.prejas3.windconnect.ui.WindButton
 import io.github.prejas3.windconnect.ui.WindCard
+import io.github.prejas3.windconnect.ui.*
+import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
-
-/** WN-48: the PC's output volume, shown while the PC shares it (PROTOCOL.md §9.9). */
-@Composable
-fun PcVolumeCard() {
-    val connections = (LocalContext.current.applicationContext as WindApplication).connections
-    val volume by connections.pcVolume.collectAsStateWithLifecycle()
-    val shown = volume ?: return
-    WindCard(Modifier.fillMaxWidth().testTag("pcVolume")) {
-        PcVolumeControls(shown, { connections.setPcVolume(level = it) }, { connections.setPcVolume(muted = it) })
-    }
-}
 
 /** How long after a local change a pushed level (often the echo of our own `Set`) doesn't move the slider. */
 const val VOLUME_HOLD_MS = 500L
@@ -60,28 +50,29 @@ internal fun PcVolumeControls(volume: PcVolume, onLevel: (Int) -> Unit, onMute: 
         level = volume.level
         muted = volume.muted
     }
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-        Text(str(R.string.pc_volume), style = MaterialTheme.typography.titleSmall)
+    // WN-130: name, value and the mute icon on one line, the slider under it.
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(str(R.string.pc_volume_short), style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
         Text(if (muted) str(R.string.muted) else "$level%", style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("pcVolumeValue"))
+        WindIconButton(if (muted) "volume" else "mute", if (muted) str(R.string.pc_unmute) else str(R.string.pc_mute), {
+            localAt = SystemClock.uptimeMillis()
+            muted = !muted
+            onMute(muted)
+        }, Modifier.testTag("pcVolumeMute"))
     }
-    Slider(
+    WindSlider(
         value = level / 100f,
         onValueChange = { v ->
             dragging = true
             localAt = SystemClock.uptimeMillis()
-            level = (v * 100).roundToInt()
+            level = (v * 20).roundToInt() * 5
             onLevel(level)
         },
         onValueChangeFinished = { dragging = false; localAt = SystemClock.uptimeMillis() },
-        steps = 19,
+        step = 0.05f,
         modifier = Modifier.fillMaxWidth().testTag("pcVolumeSlider").semantics {
             contentDescription = str(R.string.pc_volume)
             stateDescription = if (muted) str(R.string.volume_muted_state, "$level%") else "$level%"
         },
     )
-    WindButton(if (muted) str(R.string.pc_unmute) else str(R.string.pc_mute), {
-        localAt = SystemClock.uptimeMillis()
-        muted = !muted
-        onMute(muted)
-    }, Modifier.testTag("pcVolumeMute"), kind = ButtonKind.Quiet)
 }

@@ -1,5 +1,6 @@
 package io.github.prejas3.windconnect
 
+import io.github.prejas3.windconnect.ui.*
 import androidx.compose.ui.semantics.heading
 
 import android.Manifest
@@ -76,35 +77,33 @@ fun SmsControls() {
             ask.launch(arrayOf(Manifest.permission.READ_SMS, Manifest.permission.READ_CONTACTS))
         } else connections.setSmsAllowed(on)
     }
-    WindCard {
-        Text(str(R.string.sms_title), style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
-        Text(str(R.string.sms_about))
-        Text(str(R.string.sms_permissions),
-            style = MaterialTheme.typography.bodySmall)
-        WindSwitch(str(R.string.sms_title), allowed && access, turn, Modifier.testTag("smsAllowed"))
-        val state = when {
-            allowed && access && contacts -> str(R.string.sms_with_contacts)
-            allowed && access -> str(R.string.sms_no_contacts)
-            refused || (allowed && !access) -> str(R.string.sms_no_access)
-            else -> str(R.string.off_sentence)
-        }
-        Text(state, style = MaterialTheme.typography.bodySmall,
-            modifier = Modifier.testTag("smsState").semantics { liveRegion = LiveRegionMode.Polite })
-        // WN-56: sending is a separate consent and needs reading on (the PC sends from the window that shows the threads).
-        if (allowed && access) {
-            WindSwitch(str(R.string.sms_send_title), sendAllowed && sendAccess, turnSend, Modifier.testTag("smsSendAllowed"))
-            Text(when {
-                sendAllowed && sendAccess -> str(R.string.sms_send_about)
-                sendRefused || (sendAllowed && !sendAccess) -> str(R.string.sms_send_denied)
-                else -> str(R.string.sms_send_permissions)
-            }, style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("smsSendState"))
-        }
-        if (refused || sendRefused || (allowed && !access) || (allowed && access && !contacts)) {
+    // WN-130: one row; the state line only when it says more than the switch (on, or access missing).
+    val noAccess = refused || (allowed && !access)
+    val state = when {
+        allowed && access && contacts -> str(R.string.sms_with_contacts)
+        allowed && access -> str(R.string.sms_no_contacts)
+        noAccess -> str(R.string.sms_no_access)
+        else -> null
+    }
+    WindSettingRow("message", str(R.string.sms_title), str(R.string.sum_sms), checked = allowed && access, onCheckedChange = turn, switchTag = "smsAllowed",
+        status = state, statusTag = "smsState", warning = noAccess,
+        actions = if (refused || sendRefused || noAccess || (allowed && access && !contacts)) { {
             WindButton(str(R.string.open_app_settings), {
                 val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null))
                 if (context !is Activity) intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 context.startActivity(intent)
             }, Modifier.testTag("smsSettings"), kind = ButtonKind.Secondary)
-        }
+        } } else null,
+        more = { Text(str(R.string.sms_about)); Text(str(R.string.sms_permissions)) })
+    // WN-56: sending is a separate consent and needs reading on (the PC sends from the window that shows the threads).
+    if (allowed && access) {
+        WindDivider()
+        WindSettingRow("message", str(R.string.sms_send_title), str(R.string.sum_sms_send), checked = sendAllowed && sendAccess, onCheckedChange = turnSend,
+            switchTag = "smsSendAllowed", statusTag = "smsSendState", warning = sendRefused || (sendAllowed && !sendAccess),
+            status = when {
+                sendAllowed && sendAccess -> str(R.string.sms_send_about)
+                sendRefused || (sendAllowed && !sendAccess) -> str(R.string.sms_send_denied)
+                else -> str(R.string.sms_send_permissions)
+            })
     }
 }

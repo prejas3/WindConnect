@@ -7,7 +7,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import io.github.prejas3.windconnect.ui.ButtonKind
+import io.github.prejas3.windconnect.ui.WindButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -36,7 +37,7 @@ fun ClipboardHistoryCard(entries: List<ClipboardHistoryView>, enabled: Boolean, 
     WindCard(Modifier.fillMaxWidth().testTag("clipboardHistory")) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(str(R.string.history_title), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-            if (entries.any { !it.pinned }) TextButton({ actions.clear() }, Modifier.testTag("historyClear")) { Text(str(R.string.clear)) }
+            if (entries.any { !it.pinned }) WindButton(str(R.string.clear), { actions.clear() }, Modifier.testTag("historyClear"), kind = ButtonKind.Quiet)
         }
         if (entries.isEmpty()) Text(
             if (enabled) str(R.string.history_empty)
@@ -65,8 +66,8 @@ private fun HistoryRow(entry: ClipboardHistoryView, actions: ClipboardHistoryAct
             }
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-            TextButton({ actions.pin(entry.id, !entry.pinned) }, Modifier.testTag("historyPin${entry.id}")) { Text(if (entry.pinned) str(R.string.unpin) else str(R.string.pin)) }
-            TextButton({ actions.remove(entry.id) }, Modifier.testTag("historyRemove${entry.id}")) { Text(str(R.string.remove)) }
+            WindButton(if (entry.pinned) str(R.string.unpin) else str(R.string.pin), { actions.pin(entry.id, !entry.pinned) }, Modifier.testTag("historyPin${entry.id}"), kind = ButtonKind.Quiet)
+            WindButton(str(R.string.remove), { actions.remove(entry.id) }, Modifier.testTag("historyRemove${entry.id}"), kind = ButtonKind.Quiet)
         }
     }
 }

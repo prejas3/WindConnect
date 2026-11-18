@@ -2,6 +2,7 @@ package io.github.prejas3.windconnect
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
+import io.github.prejas3.windconnect.ui.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -20,22 +21,21 @@ internal fun RemoteKeyboard(value: TextFieldValue, change: (TextFieldValue) -> U
     var lastSubmitted by remember { mutableStateOf<TextFieldValue?>(null) }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(str(R.string.keyboard_about))
-        OutlinedTextField(value=value,onValueChange={lastSubmitted=null;change(it)},enabled=active,label={Text(str(R.string.keyboard_label))},
-            modifier=Modifier.fillMaxWidth().testTag("remoteKeyboardDraft"),minLines=2,maxLines=4)
+        WindTextArea(value,{lastSubmitted=null;change(it)},str(R.string.keyboard_label),Modifier.testTag("remoteKeyboardDraft"),enabled=active)
         val bytes=value.text.toByteArray(Charsets.UTF_8).size
         if(bytes>RemoteKeyboardDraft.MAX_BYTES) Text(str(R.string.keyboard_too_long),color=MaterialTheme.colorScheme.error)
-        Button(onClick={if(active && lastSubmitted!=value && RemoteKeyboardDraft.canSend(value) && send(TouchpadCommand.Text(value.text))){lastSubmitted=value;change(TextFieldValue())}},
-            enabled=active && RemoteKeyboardDraft.canSend(value),modifier=Modifier.testTag("remoteKeyboardSend")){Text(str(R.string.send))}
+        WindButton(str(R.string.send),{if(active && lastSubmitted!=value && RemoteKeyboardDraft.canSend(value) && send(TouchpadCommand.Text(value.text))){lastSubmitted=value;change(TextFieldValue())}},
+            Modifier.testTag("remoteKeyboardSend"),enabled=active && RemoteKeyboardDraft.canSend(value))
         for(row in listOf(listOf("Enter" to 13L,"Tab" to 9L,"⌫" to 8L,"Delete" to 46L,"Esc" to 27L),
             listOf("←" to 37L,"↑" to 38L,"↓" to 40L,"→" to 39L),
             listOf("Home" to 36L,"End" to 35L,"PgUp" to 33L,"PgDn" to 34L))) {
             Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(4.dp)) {
-                row.forEach{(label,code)->OutlinedButton(onClick={send(TouchpadCommand.Key(code.toULong(),0u))},enabled=active,modifier=Modifier.weight(1f),contentPadding=PaddingValues(4.dp)){Text(label)}}
+                row.forEach{(label,code)->WindButton(label,{send(TouchpadCommand.Key(code.toULong(),0u))},Modifier.weight(1f),enabled=active,kind=ButtonKind.Secondary,dense=true)}
             }
         }
         for(row in listOf(listOf("Ctrl+C" to 67L,"Ctrl+V" to 86L,"Ctrl+X" to 88L),listOf("Ctrl+Z" to 90L,"Ctrl+A" to 65L,"Alt+Tab" to 9L))) {
             Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(4.dp)) {
-                row.forEach{(label,code)->OutlinedButton(onClick={send(TouchpadCommand.Key(code.toULong(),if(label=="Alt+Tab")2u else 1u))},enabled=active,modifier=Modifier.weight(1f),contentPadding=PaddingValues(4.dp)){Text(label)}}
+                row.forEach{(label,code)->WindButton(label,{send(TouchpadCommand.Key(code.toULong(),if(label=="Alt+Tab")2u else 1u))},Modifier.weight(1f),enabled=active,kind=ButtonKind.Secondary,dense=true)}
             }
         }
         Text(str(R.string.keyboard_limits),style=MaterialTheme.typography.bodySmall)

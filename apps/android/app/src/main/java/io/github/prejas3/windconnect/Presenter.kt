@@ -9,6 +9,7 @@ import android.view.KeyEvent
 import android.view.MotionEvent
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
+import io.github.prejas3.windconnect.ui.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
@@ -102,23 +103,23 @@ internal fun PresenterPanel(active: Boolean, laserSupported: Boolean, gyro: Bool
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(PresentationTimer.format(now), Modifier.testTag("presenterTimer"), style = MaterialTheme.typography.displayMedium.copy(fontFamily = FontFamily.Monospace))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton({ if (timer.running) timer.pause() else timer.start(); running = timer.running }, Modifier.testTag("presenterTimerToggle")) { Text(if (running) str(R.string.presenter_pause) else str(R.string.presenter_start)) }
-            TextButton({ timer.reset(); running = false; now = 0L }) { Text(str(R.string.presenter_reset)) }
+            WindButton(if (running) str(R.string.presenter_pause) else str(R.string.presenter_start), { if (timer.running) timer.pause() else timer.start(); running = timer.running }, Modifier.testTag("presenterTimerToggle"), kind = ButtonKind.Secondary)
+            WindButton(str(R.string.presenter_reset), { timer.reset(); running = false; now = 0L }, kind = ButtonKind.Quiet)
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            OutlinedButton({ slide(PresenterKeys.PREVIOUS) }, Modifier.weight(1f).heightIn(min = 72.dp).testTag("presenterPrevious"), enabled = active) { Text(str(R.string.presenter_previous)) }
-            Button({ slide(PresenterKeys.NEXT) }, Modifier.weight(1f).heightIn(min = 72.dp).testTag("presenterNext"), enabled = active) { Text(str(R.string.presenter_next)) }
+            WindButton(str(R.string.presenter_previous), { slide(PresenterKeys.PREVIOUS) }, Modifier.weight(1f).heightIn(min = 72.dp).testTag("presenterPrevious"), enabled = active, kind = ButtonKind.Secondary)
+            WindButton(str(R.string.presenter_next), { slide(PresenterKeys.NEXT) }, Modifier.weight(1f).heightIn(min = 72.dp).testTag("presenterNext"), enabled = active)
         }
         val laserReady = active && laserSupported && gyro
         var held by remember { mutableStateOf(false) }
-        FilledTonalButton({}, Modifier.fillMaxWidth().heightIn(min = 96.dp).testTag("presenterLaser").pointerInteropFilter { e ->
+        WindButton(if (held) str(R.string.presenter_laser_on) else str(R.string.presenter_laser_hold), {}, Modifier.fillMaxWidth().heightIn(min = 96.dp).testTag("presenterLaser").pointerInteropFilter { e ->
             if (!laserReady) return@pointerInteropFilter false
             when (e.actionMasked) {
                 MotionEvent.ACTION_DOWN -> { held = true; laser(true) }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> { held = false; laser(false) }
             }
             true
-        }, enabled = laserReady) { Text(if (held) str(R.string.presenter_laser_on) else str(R.string.presenter_laser_hold)) }
+        }, enabled = laserReady, kind = ButtonKind.Secondary)
         Text(str(R.string.presenter_help), style = MaterialTheme.typography.bodySmall)
         when {
             !gyro -> Text(str(R.string.presenter_no_gyro), style = MaterialTheme.typography.bodySmall)

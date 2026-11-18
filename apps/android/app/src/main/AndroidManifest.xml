@@ -37,6 +37,8 @@
         <service android:name=".ReceiveFilesService" android:exported="false" android:foregroundServiceType="connectedDevice" android:stopWithTask="false" />
         <receiver android:name=".ReceiveFilesCancelReceiver" android:exported="false" />
         <activity android:name=".ReceiveFilesActivity" android:exported="false" />
+        <activity android:name=".OpenReceivedActivity" android:exported="false" android:excludeFromRecents="true" android:noHistory="true"
+            android:taskAffinity="" android:theme="@android:style/Theme.Translucent.NoTitleBar" />
         <activity android:name=".TouchpadActivity" android:exported="false" />
         <activity android:name=".ShareFilesActivity" android:exported="true" android:label="@string/share_files">
             <intent-filter>

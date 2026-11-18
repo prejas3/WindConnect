@@ -1,5 +1,6 @@
 package io.github.prejas3.windconnect
 
+import io.github.prejas3.windconnect.ui.*
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.heading
 
@@ -49,21 +50,19 @@ internal fun RelayCard(relay: String?, set: (String?) -> Unit) {
     var draft by remember(relay) { mutableStateOf(relay ?: "") }
     var error by remember { mutableStateOf<String?>(null) }
     var wanted by remember(relay) { mutableStateOf(relay != null) }
-    WindCard {
-        Text(str(R.string.relay_title), style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
-        WindSwitch(str(R.string.relay_switch), wanted, { on ->
+    WindSettingRow("relay", str(R.string.relay_title), str(R.string.sum_relay), checked = wanted, switchTag = "relayEnabled",
+        onCheckedChange = { on ->
             wanted = on
             error = RelaySetting.apply(set, if (on) draft.trim() else null)
             if (error != null) wanted = relay != null
-        }, Modifier.testTag("relayEnabled"))
-        OutlinedTextField(draft, { draft = it; error = null }, Modifier.fillMaxWidth().testTag("relayUrl"),
-            label = { Text(str(R.string.relay_address)) }, placeholder = { Text(RelaySetting.HINT) }, singleLine = true,
-            isError = error != null, supportingText = error?.let { { Text(it, Modifier.testTag("relayError")) } },
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri))
-        if (relay != null && draft.trim() != relay) WindButton(str(R.string.relay_save), {
-            error = RelaySetting.apply(set, draft.trim())
-        }, Modifier.testTag("relaySave"), kind = ButtonKind.Secondary)
-        Text(str(R.string.relay_about),
-            style = MaterialTheme.typography.bodySmall)
-    }
+        },
+        actions = {
+            WindField(draft, { draft = it; error = null }, str(R.string.relay_address) + " (" + RelaySetting.HINT + ")", Modifier.testTag("relayUrl"),
+                keyboardType = KeyboardType.Uri)
+            error?.let { Text(it, Modifier.testTag("relayError"), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+            if (relay != null && draft.trim() != relay) WindButton(str(R.string.relay_save), {
+                error = RelaySetting.apply(set, draft.trim())
+            }, Modifier.testTag("relaySave"), kind = ButtonKind.Secondary)
+        },
+        more = { Text(str(R.string.relay_about)) })
 }

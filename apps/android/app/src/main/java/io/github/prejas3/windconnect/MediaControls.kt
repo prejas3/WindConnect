@@ -1,5 +1,6 @@
 package io.github.prejas3.windconnect
 
+import io.github.prejas3.windconnect.ui.*
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.heading
 
@@ -39,25 +40,26 @@ fun MediaControls() {
         lifecycle.lifecycle.addObserver(observer)
         onDispose { lifecycle.lifecycle.removeObserver(observer) }
     }
-    WindCard {
-        Text(str(R.string.media_title), style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
-        Text(str(R.string.media_about))
-        Text(str(R.string.media_access_about),
-            style = MaterialTheme.typography.bodySmall)
-        Text(if (access) str(R.string.access_granted) else str(R.string.access_none), modifier = Modifier.testTag("mediaAccess"))
-        WindButton(if (access) str(R.string.access_change) else str(R.string.access_grant), {
-            context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-        }, modifier = Modifier.testTag("mediaAccessSettings"), kind = ButtonKind.Secondary)
-        WindSwitch(str(R.string.media_show), allowed, connections::setMediaAllowed, Modifier.testTag("mediaAllowed"))
-        // WN-47: the other direction.
-        val pcAllowed by connections.pcMediaAllowed.collectAsStateWithLifecycle()
-        WindSwitch(str(R.string.media_pc_player), pcAllowed, connections::setPcMediaAllowed, Modifier.testTag("pcMediaAllowed"))
-        Text(str(R.string.media_pc_player_about),
-            style = MaterialTheme.typography.bodySmall)
-        // WN-48: volume both ways.
-        val volumeAllowed by connections.volumeAllowed.collectAsStateWithLifecycle()
-        WindSwitch(str(R.string.media_volume), volumeAllowed, connections::setVolumeAllowed, Modifier.testTag("volumeAllowed"))
-        Text(str(R.string.media_volume_about),
-            style = MaterialTheme.typography.bodySmall)
-    }
+    // WN-130: access missing is the one thing shown in red with its action; the rest is under "More".
+    val openAccess = { context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+    WindSettingRow("music", str(R.string.media_title), str(R.string.sum_media), checked = allowed, onCheckedChange = connections::setMediaAllowed,
+        switchTag = "mediaAllowed", status = if (access) null else str(R.string.needs_access), statusTag = "mediaAccess", warning = allowed && !access,
+        actions = if (access) null else { { WindButton(str(R.string.access_grant_short), openAccess, Modifier.testTag("mediaAccessSettings"), kind = ButtonKind.Secondary) } },
+        more = {
+            Text(str(R.string.media_about)); Text(str(R.string.media_access_about))
+            if (access) WindButton(str(R.string.access_change), openAccess, kind = ButtonKind.Quiet)
+        })
+}
+
+/** WN-47 / WN-48, the other direction: the PC's player and volume on the phone (settings group "Computer on the phone"). */
+@Composable
+fun PcMediaControls() {
+    val connections = (LocalContext.current.applicationContext as WindApplication).connections
+    val pcAllowed by connections.pcMediaAllowed.collectAsStateWithLifecycle()
+    WindSettingRow("music", str(R.string.media_pc_player), str(R.string.sum_pc_player), checked = pcAllowed, onCheckedChange = connections::setPcMediaAllowed,
+        switchTag = "pcMediaAllowed", more = { Text(str(R.string.media_pc_player_about)) })
+    WindDivider()
+    val volumeAllowed by connections.volumeAllowed.collectAsStateWithLifecycle()
+    WindSettingRow("volume", str(R.string.media_volume), str(R.string.sum_volume), checked = volumeAllowed, onCheckedChange = connections::setVolumeAllowed,
+        switchTag = "volumeAllowed", more = { Text(str(R.string.media_volume_about)) })
 }

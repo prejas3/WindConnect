@@ -1,5 +1,6 @@
 package io.github.prejas3.windconnect
 
+import io.github.prejas3.windconnect.ui.*
 import androidx.compose.ui.semantics.heading
 
 import androidx.compose.foundation.background
@@ -31,11 +32,8 @@ import io.github.prejas3.windconnect.ui.WindSwitch
 fun FindControls() {
     val connections = (LocalContext.current.applicationContext as WindApplication).connections
     val allowed by connections.findAllowed.collectAsStateWithLifecycle()
-    WindCard {
-        Text(str(R.string.find_channel), style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
-        WindSwitch(str(R.string.find_allow), allowed, connections::setFindAllowed, Modifier.testTag("findAllowed"))
-        Text(str(R.string.find_about), style = MaterialTheme.typography.bodySmall)
-    }
+    WindSettingRow("target", str(R.string.find_channel), str(R.string.sum_find), checked = allowed, onCheckedChange = connections::setFindAllowed,
+        switchTag = "findAllowed", more = { Text(str(R.string.find_about)) })
 }
 
 /** Shown over every screen while the phone rings for the PC; works without notifications. */

@@ -1,5 +1,6 @@
 package io.github.prejas3.windconnect
 
+import io.github.prejas3.windconnect.ui.*
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.heading
 
@@ -54,19 +55,16 @@ fun ClipboardTileControls() {
 @Composable
 internal fun TileAddControls(sdkInt: Int, requestAdd: ((TileAddState) -> Unit) -> Unit) {
     var state by remember { mutableStateOf(TileAddState.Idle) }
-    WindCard {
-        Text(str(R.string.tile_title), style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
-        if (sdkInt >= 33) {
-            Text(state.message, Modifier.testTag("tileAddStatus"))
-            // CCS/1 RULE:only an explicit tap requests the OS prompt; refusal never triggers a retry.
-            // WHY:keep the action after success so a tile removed from SystemUI can be added again.
-            WindButton(str(R.string.tile_add), {
-                state = TileAddState.Pending
-                requestAdd { state = it }
-            }, Modifier.testTag("addClipboardTile"), enabled = state != TileAddState.Pending, kind = ButtonKind.Secondary)
-        } else {
-            Text(str(R.string.tile_manual),
-                Modifier.testTag("tileManualInstructions"))
-        }
-    }
+    WindSettingRow("grid", str(R.string.tile_title), str(R.string.sum_tile),
+        status = if (sdkInt >= 33) state.message else null, statusTag = "tileAddStatus",
+        actions = {
+            if (sdkInt >= 33) {
+                // CCS/1 RULE:only an explicit tap requests the OS prompt; refusal never triggers a retry.
+                // WHY:keep the action after success so a tile removed from SystemUI can be added again.
+                WindButton(str(R.string.tile_add), {
+                    state = TileAddState.Pending
+                    requestAdd { state = it }
+                }, Modifier.testTag("addClipboardTile"), enabled = state != TileAddState.Pending, kind = ButtonKind.Secondary)
+            } else Text(str(R.string.tile_manual), Modifier.testTag("tileManualInstructions"), style = MaterialTheme.typography.bodySmall)
+        })
 }

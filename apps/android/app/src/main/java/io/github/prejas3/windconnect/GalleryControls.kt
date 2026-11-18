@@ -1,5 +1,6 @@
 package io.github.prejas3.windconnect
 
+import io.github.prejas3.windconnect.ui.*
 import androidx.compose.ui.semantics.heading
 
 import android.app.Activity
@@ -58,24 +59,16 @@ fun GalleryControls() {
     val turn = { on: Boolean ->
         if (on && !access) ask.launch(PhoneGallery.PERMISSION) else connections.setGalleryAllowed(on)
     }
-    WindCard {
-        Text(str(R.string.gallery_title), style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
-        Text(str(R.string.gallery_about))
-        Text(str(R.string.gallery_permission), style = MaterialTheme.typography.bodySmall)
-        WindSwitch(str(R.string.gallery_title), allowed && access, turn, Modifier.testTag("galleryAllowed"))
-        val state = when {
-            allowed && access -> str(R.string.gallery_on)
-            refused || (allowed && !access) -> str(R.string.gallery_no_access)
-            else -> str(R.string.off_sentence)
-        }
-        Text(state, style = MaterialTheme.typography.bodySmall,
-            modifier = Modifier.testTag("galleryState").semantics { liveRegion = LiveRegionMode.Polite })
-        if (refused || (allowed && !access)) {
+    val noAccess = refused || (allowed && !access)
+    WindSettingRow("image", str(R.string.gallery_title), str(R.string.sum_gallery), checked = allowed && access, onCheckedChange = turn, switchTag = "galleryAllowed",
+        status = when { allowed && access -> str(R.string.gallery_on); noAccess -> str(R.string.gallery_no_access); else -> null },
+        statusTag = "galleryState", warning = noAccess,
+        actions = if (noAccess) { {
             WindButton(str(R.string.open_app_settings), {
                 val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null))
                 if (context !is Activity) intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 context.startActivity(intent)
             }, Modifier.testTag("gallerySettings"), kind = ButtonKind.Secondary)
-        }
-    }
+        } } else null,
+        more = { Text(str(R.string.gallery_about)); Text(str(R.string.gallery_permission)) })
 }

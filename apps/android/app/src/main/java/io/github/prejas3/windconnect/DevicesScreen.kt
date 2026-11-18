@@ -1,5 +1,6 @@
 package io.github.prejas3.windconnect
 
+import io.github.prejas3.windconnect.ui.*
 import androidx.compose.ui.semantics.heading
 
 import androidx.compose.ui.res.stringResource
@@ -45,8 +46,7 @@ fun DevicesScreen(
     onRename: (PairedEntry, String) -> Unit,
     onUnpair: (PairedEntry) -> Unit,
 ) {
-    Text(stringResource(R.string.devices_paired), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.semantics { heading() })
-    WindButton(stringResource(R.string.back), onBack, Modifier.testTag("closeDevices"), kind = ButtonKind.Quiet)
+    WindBackHeader(stringResource(R.string.devices_paired), onBack, "closeDevices")
     if (state.message.isNotEmpty()) Text(state.message, modifier = Modifier.testTag("devicesMessage").semantics { liveRegion = LiveRegionMode.Polite }, style = MaterialTheme.typography.bodyMedium)
     val connected = state.connection as? ConnectionState.Connected
     var editing by rememberSaveable { mutableStateOf<String?>(null) }

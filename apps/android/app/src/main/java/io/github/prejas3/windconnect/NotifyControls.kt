@@ -1,5 +1,6 @@
 package io.github.prejas3.windconnect
 
+import io.github.prejas3.windconnect.ui.*
 import androidx.compose.ui.semantics.heading
 
 import android.content.ComponentName
@@ -23,9 +24,6 @@ import io.github.prejas3.windconnect.core.NotifyAppsState
 import io.github.prejas3.windconnect.core.NotifyListenerService
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -39,6 +37,7 @@ import io.github.prejas3.windconnect.ui.ButtonKind
 import io.github.prejas3.windconnect.ui.WindButton
 import io.github.prejas3.windconnect.ui.WindCard
 import io.github.prejas3.windconnect.ui.WindSwitch
+import io.github.prejas3.windconnect.ui.WindSegmented
 
 /**
  * WN-42 Settings: the phone's notifications on the PC. Its own consent (PROTOCOL.md §9.6 rule 6): a separate system access entry,
@@ -57,22 +56,24 @@ fun NotifyControls() {
         lifecycle.lifecycle.addObserver(observer)
         onDispose { lifecycle.lifecycle.removeObserver(observer) }
     }
-    WindCard {
-        Text(str(R.string.notify_title), style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
-        Text(str(R.string.notify_about))
-        Text(str(R.string.notify_access_about), style = MaterialTheme.typography.bodySmall)
-        Text(if (access) str(R.string.access_granted) else str(R.string.access_none), modifier = Modifier.testTag("notifyAccess"))
-        WindButton(if (access) str(R.string.access_change) else str(R.string.access_grant), {
-            val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                Intent(Settings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS).putExtra(
-                    Settings.EXTRA_NOTIFICATION_LISTENER_COMPONENT_NAME,
-                    ComponentName(context, NotifyListenerService::class.java).flattenToString())
-            } else Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
-            context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-        }, modifier = Modifier.testTag("notifyAccessSettings"), kind = ButtonKind.Secondary)
-        WindSwitch(str(R.string.notify_title), allowed, connections::setNotifyAllowed, Modifier.testTag("notifyAllowed"))
-        if (allowed) NotifyApps(connections)
+    val openAccess = {
+        val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            Intent(Settings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS).putExtra(
+                Settings.EXTRA_NOTIFICATION_LISTENER_COMPONENT_NAME,
+                ComponentName(context, NotifyListenerService::class.java).flattenToString())
+        } else Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
+        context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
+    WindSettingRow("bell", str(R.string.notify_title), str(R.string.sum_notify), checked = allowed, onCheckedChange = connections::setNotifyAllowed,
+        switchTag = "notifyAllowed", status = if (access) null else str(R.string.needs_access), statusTag = "notifyAccess", warning = allowed && !access,
+        actions = {
+            if (!access) WindButton(str(R.string.access_grant_short), openAccess, Modifier.testTag("notifyAccessSettings"), kind = ButtonKind.Secondary)
+            if (allowed) NotifyApps(connections)
+        },
+        more = {
+            Text(str(R.string.notify_about)); Text(str(R.string.notify_access_about))
+            if (access) WindButton(str(R.string.access_change), openAccess, kind = ButtonKind.Quiet)
+        })
 }
 
 /**
@@ -92,14 +93,8 @@ internal fun NotifyAppsList(state: NotifyAppsState, label: (String) -> String, o
     var query by rememberSaveable { mutableStateOf("") }
     Text(str(R.string.notify_apps), style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 8.dp))
     val modes = listOf(NotifyAppMode.AllExcept to str(R.string.notify_all_but_off), NotifyAppMode.OnlyChosen to str(R.string.notify_only_chosen))
-    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().testTag("notifyAppMode")) {
-        modes.forEachIndexed { index, (mode, label) ->
-            SegmentedButton(selected = state.mode == mode, onClick = { onMode(mode) },
-                shape = SegmentedButtonDefaults.itemShape(index, modes.size), modifier = Modifier.testTag("notifyAppMode$mode")) {
-                Text(label, style = MaterialTheme.typography.labelMedium)
-            }
-        }
-    }
+    WindSegmented(modes.map { it.first }, state.mode, { mode -> modes.first { it.first == mode }.second }, onMode,
+        Modifier.testTag("notifyAppMode"), tag = { "notifyAppMode$it" })
     Text(when {
         state.sendsNothing -> str(R.string.notify_none_sent)
         state.mode == NotifyAppMode.OnlyChosen -> str(R.string.notify_only_on)

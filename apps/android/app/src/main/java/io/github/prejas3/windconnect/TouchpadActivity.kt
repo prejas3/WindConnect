@@ -19,6 +19,11 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.semantics.*
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.input.TextFieldValue
@@ -86,8 +91,8 @@ class TouchpadActivity : ComponentActivity() {
                         WindButton(str(R.string.close),{finish()},kind=ButtonKind.Quiet)
                     }
                     Row(horizontalArrangement=Arrangement.spacedBy(4.dp)) {
-                        TextButton(onClick={showPresenter(false);typing=!typing},enabled=active && keyboardSupported,modifier=Modifier.testTag("remoteKeyboardToggle")){Text(if(typing)str(R.string.action_touchpad) else str(R.string.touchpad_keyboard))}
-                        TextButton(onClick={typing=false;showPresenter(!presenting)},enabled=active && keyboardSupported,modifier=Modifier.testTag("presenterToggle")){Text(if(presenting)str(R.string.action_touchpad) else str(R.string.touchpad_presentation))}
+                        WindButton(if(typing)str(R.string.action_touchpad) else str(R.string.touchpad_keyboard),{showPresenter(false);typing=!typing},Modifier.testTag("remoteKeyboardToggle"),enabled=active && keyboardSupported,kind=ButtonKind.Quiet)
+                        WindButton(if(presenting)str(R.string.action_touchpad) else str(R.string.touchpad_presentation),{typing=false;showPresenter(!presenting)},Modifier.testTag("presenterToggle"),enabled=active && keyboardSupported,kind=ButtonKind.Quiet)
                     }
                     Text(status,Modifier.testTag("touchpadStatus"),style=MaterialTheme.typography.bodyMedium)
                     if(active && !keyboardSupported)Text(str(R.string.touchpad_keyboard_old),style=MaterialTheme.typography.bodySmall)
@@ -105,15 +110,18 @@ class TouchpadActivity : ComponentActivity() {
                     } else {
                     AndroidView(factory={PadView(it,{capture}, {active})},modifier=Modifier.fillMaxWidth().weight(1f).background(MaterialTheme.colorScheme.surfaceContainer).testTag("touchpadSurface"))
                     Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(12.dp)) {
-                        for(left in listOf(true,false)) Button(onClick={capture?.button(left,true);capture?.button(left,false)},enabled=active,
-                            modifier=Modifier.weight(1f).heightIn(min=56.dp).pointerInteropFilter { event ->
+                        // WN-130: own control (outlined, like WindButton Secondary); press and release stay separate for drag-and-hold.
+                        for(left in listOf(true,false)) Box(Modifier.weight(1f).heightIn(min=56.dp).clip(RoundedCornerShape(24.dp))
+                            .border(1.dp,if(active)MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.outline,RoundedCornerShape(24.dp))
+                            .semantics(mergeDescendants=true){role=Role.Button;if(!active)disabled();onClick{capture?.button(left,true);capture?.button(left,false);active}}
+                            .pointerInteropFilter { event ->
                                 if(active)when(event.actionMasked){MotionEvent.ACTION_DOWN->capture?.button(left,true);MotionEvent.ACTION_UP,MotionEvent.ACTION_CANCEL->capture?.button(left,false)}
                                 active
-                            }){Text(if(left)str(R.string.touchpad_left_hold) else str(R.string.touchpad_right))}
+                            },contentAlignment=Alignment.Center){Text(if(left)str(R.string.touchpad_left_hold) else str(R.string.touchpad_right),style=MaterialTheme.typography.labelLarge,color=if(active)MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)}
                     }
                     Column(Modifier.heightIn(max=270.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(8.dp)) {
                     Text(str(R.string.touchpad_sensitivity),style=MaterialTheme.typography.labelLarge)
-                    Slider(value=sensitivity,onValueChange={sensitivity=it;capture?.engine?.sensitivity=it},onValueChangeFinished={settings.edit().putFloat("sensitivity",sensitivity).apply()},valueRange=0.5f..3f)
+                    WindSlider(value=sensitivity,step=0.125f,onValueChange={sensitivity=it;capture?.engine?.sensitivity=it},onValueChangeFinished={settings.edit().putFloat("sensitivity",sensitivity).apply()},valueRange=0.5f..3f)
                     WindSwitch(str(R.string.touchpad_natural),natural,{natural=it;capture?.engine?.natural=it;settings.edit().putBoolean("natural",it).apply()})
                     Text(str(R.string.touchpad_help),style=MaterialTheme.typography.bodySmall)
                     Text(if(gestures) str(R.string.touchpad_gestures) else str(R.string.touchpad_gestures_old),style=MaterialTheme.typography.bodySmall)

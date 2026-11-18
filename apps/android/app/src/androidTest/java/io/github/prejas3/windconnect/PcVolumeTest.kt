@@ -8,7 +8,7 @@ import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.semantics.SemanticsActions
@@ -46,7 +46,7 @@ class PcVolumeTest {
         Thread.sleep(VOLUME_HOLD_MS + 200)
         compose.waitUntil(2_000) { runCatching { valueIs("45%") }.isSuccess }
         // Mute sends only muted.
-        compose.onNodeWithText("Wycisz komputer").performClick()
+        compose.onNodeWithContentDescription("Wycisz komputer").performClick()
         assertEquals(listOf(true), mutes)
         assertEquals(1, levels.size)
         valueIs("Wyciszony")

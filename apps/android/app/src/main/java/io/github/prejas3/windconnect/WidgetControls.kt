@@ -20,9 +20,8 @@ fun WidgetControls() {
     val scope = rememberCoroutineScope()
     var message by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
-    WindCard {
-        Text(str(R.string.widget_title), style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
-        Text(str(R.string.widget_about))
+    WindSettingRow("pc", str(R.string.widget_title), str(R.string.sum_widget), status = message.ifEmpty { null }, statusTag = "widgetAddStatus",
+        more = { Text(str(R.string.widget_about)) }, actions = {
         WindButton(str(R.string.widget_add), {
             busy = true
             scope.launch {
@@ -36,6 +35,5 @@ fun WidgetControls() {
                 } finally { busy = false }
             }
         }, Modifier.testTag("addWidget"), enabled = !busy, kind = ButtonKind.Secondary)
-        if (message.isNotEmpty()) Text(message, Modifier.testTag("widgetAddStatus"))
-    }
+    })
 }

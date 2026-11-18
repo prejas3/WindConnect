@@ -89,6 +89,8 @@ internal object FileReceiving {
     private var lastBusy = false
     private val rate = TransferRate()
     private var lastResult = ""
+    /** WN-130: receipts present when the current batch began; what's new since is what the finished notice opens. */
+    private var batchBase: Set<String>? = null
     private val mutable = MutableStateFlow(ReceiveUi())
     val ui = mutable.asStateFlow()
     fun enabled(context: Context) = context.getSharedPreferences("file-receiving", Context.MODE_PRIVATE).getBoolean("enabled", true)
@@ -161,19 +163,32 @@ internal object FileReceiving {
         val now = android.os.SystemClock.elapsedRealtime()
         if (busy && lastBusy && now - lastNotice < 1000) return
         if (!busy && !lastBusy && state.receipts.isEmpty()) return
+        if (busy && !lastBusy) batchBase = state.receipts.map { it.key }.toSet()
+        // WN-130: one new file: a tap opens it; several: a tap opens the list.
+        val fresh = if (busy || lastResult.isNotEmpty()) emptyList() else state.receipts.filter { it.key !in (batchBase ?: state.receipts.drop(1).map { r -> r.key }.toSet()) }
         lastNotice = now; lastBusy = busy
         val manager = context.getSystemService(NotificationManager::class.java)
         manager.createNotificationChannel(NotificationChannel(CHANNEL, str(R.string.receive_title), NotificationManager.IMPORTANCE_LOW).apply { setShowBadge(false) })
-        val open = PendingIntent.getActivity(context, ID, Intent(context, ReceiveFilesActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val list = PendingIntent.getActivity(context, ID, Intent(context, ReceiveFilesActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val single = fresh.singleOrNull()
+        val open = if (single == null) list else PendingIntent.getActivity(context, ID + 2, Intent(context, OpenReceivedActivity::class.java)
+            .putExtra(OpenReceivedActivity.KEY, single.key).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val done = active.sumOf { it.done.toLong() }; val size = active.sumOf { it.size.toLong() }
         val speed = rate.update(now, done, busy && done < size && active.none { it.state == "waiting" })
         val message = if (busy) {
             if (done == size) str(R.string.receive_publishing) else str(R.string.bytes_of, transferBytes(done), transferBytes(size)) + (speed?.let { " · " + str(R.string.per_second, transferBytes(it)) } ?: "")
         } else lastResult.ifEmpty { state.receipts.firstOrNull()?.let { "${it.folder}${it.name}" } ?: str(R.string.receive_finished) }
         val notification = Notification.Builder(context, CHANNEL).setSmallIcon(R.drawable.ic_connection)
-            .setContentTitle(if (busy) str(R.string.receive_receiving) else if (lastResult.isNotEmpty()) str(R.string.receive_finished) else str(R.string.receive_in_downloads)).setContentText(message)
+            .setContentTitle(when {
+                busy -> str(R.string.receive_receiving)
+                lastResult.isNotEmpty() -> str(R.string.receive_finished)
+                single != null -> str(R.string.receive_got_one, single.name)
+                fresh.size > 1 -> str(R.string.receive_got_many, fresh.size)
+                else -> str(R.string.receive_in_downloads)
+            }).setContentText(if (single != null) "${transferBytes(single.size)} · ${single.folder}" else message)
             .setContentIntent(open).setOnlyAlertOnce(true).setOngoing(busy).setVisibility(Notification.VISIBILITY_PRIVATE)
             .setPublicVersion(Notification.Builder(context, CHANNEL).setSmallIcon(R.drawable.ic_connection).setContentTitle("WindConnect").setContentText(str(R.string.receive_unlock)).setContentIntent(open).build())
+            .apply { if (single != null) addAction(Notification.Action.Builder(null, str(R.string.receive_all_files), list).build()) }
             .apply { if (busy) {
                 setProgress(1000, if (size == 0L) 0 else (done.coerceAtMost(size) * 1000 / size).toInt(), false)
                 addAction(Notification.Action.Builder(null, str(R.string.cancel), PendingIntent.getBroadcast(context, ID + 1, Intent(context, ReceiveFilesCancelReceiver::class.java), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)).build())

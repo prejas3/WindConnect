@@ -34,8 +34,8 @@ class OnboardingTest {
         compose.onNodeWithTag("pairNearby").assertExists()
         // The Welcome card is the first thing on the screen.
         val welcomeTop = compose.onNodeWithTag("welcome").fetchSemanticsNode().boundsInRoot.top
-        val stripTop = compose.onNodeWithTag("connectionStrip").fetchSemanticsNode().boundsInRoot.top
-        assertTrue("welcome above the strip", welcomeTop < stripTop)
+        val stripTop = compose.onNodeWithTag("computerCard").fetchSemanticsNode().boundsInRoot.top
+        assertTrue("welcome above the computer card", welcomeTop < stripTop)
     }
 
     @Test fun doneScreenAsksOnceAndSaysTheConsequence() {

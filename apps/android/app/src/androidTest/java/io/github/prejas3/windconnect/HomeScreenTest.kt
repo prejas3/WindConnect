@@ -53,10 +53,11 @@ class HomeScreenTest {
             }
         } }
         compose.onNodeWithTag("computerName").assertTextEquals("Twój komputer")
-        compose.onNodeWithTag("computerLatency").assertTextEquals("Brak sparowanego komputera")
+        compose.onNodeWithTag("pairingStatus").assertTextEquals("Brak sparowanego komputera")
         for (tag in listOf("homeSend", "homeTouchpad", "homeLock", "homeLink"))
             compose.onNodeWithTag(tag).assertIsNotEnabled().assertTextContains("Niedostępne")
-        compose.onNodeWithText("Nie ma jeszcze transferów").assertExists()
+        // WN-130: no received-files card before pairing, and no placeholder transfers.
+        compose.onNodeWithTag("receiveFilesControls").assertDoesNotExist()
         compose.onNodeWithTag("scanQr").performScrollTo().performClick()
         assertTrue(scan)
     }
@@ -71,7 +72,7 @@ class HomeScreenTest {
         compose.onNodeWithTag("computerLatency").assertTextContains("ms", substring = true)
         compose.runOnIdle { state.value = state.value.copy(connection = ConnectionState.Disconnected("test")) }
         compose.onNodeWithTag("computerName").assertTextEquals("Mój PC")
-        compose.onNodeWithTag("computerLatency").assertTextEquals("Komputer poza zasięgiem")
+        compose.onNodeWithTag("pairingStatus").assertTextEquals("Komputer poza zasięgiem")
     }
 
     @Test fun unavailableActionAtLargeFontDoesNotRunAndBecomesNormalWhenAvailable() {

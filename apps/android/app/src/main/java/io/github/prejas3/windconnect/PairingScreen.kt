@@ -1,5 +1,6 @@
 package io.github.prejas3.windconnect
 
+import io.github.prejas3.windconnect.core.ConnectionState
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.heading
 
@@ -58,30 +59,55 @@ fun PairingScreen(model: PairingViewModel, diagnostic: @Composable () -> Unit) {
                 val scan = { if (!hasCamera) permission.launch(Manifest.permission.CAMERA); model.scan() }
                 HomeScreen(state, scan, onDiagnostics = { diagnostics = true }, onNearby = model::nearby, onClipboard = model::sendClipboard, onClipboardEnabled = model::setClipboardEnabled,
                     onSendFile = { context.startActivity(Intent(context, ShareFilesActivity::class.java).setAction(ShareFilesActivity.PICK)) }, history = model.clipboardHistoryActions)
-                if (state.devices.isNotEmpty()) WindButton(stringResource(R.string.devices_paired), model::devices, Modifier.fillMaxWidth().testTag("openDevices"), kind = ButtonKind.Secondary)
             }
             "devices" -> DevicesScreen(state, onBack = model::cancel, onConnect = model::connectDevice, onRename = model::renameDevice, onUnpair = model::unpairDevice)
             "settings" -> {
-                Text(stringResource(R.string.settings), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.semantics { heading() })
-                WindButton(stringResource(R.string.back), model::cancel, Modifier.testTag("closeSettings"), kind = ButtonKind.Quiet)
-                ClipboardTileControls()
-                LauncherShortcutControls()
-                WidgetControls()
-                BackgroundControls(state.hasPairedDevice)
-                FindControls()
-                MediaControls()
-                NotifyControls()
-                // WN-124: the Play build declares no SMS / Call Log permissions, so these settings aren't there.
-                if (context.declaresPermission(Manifest.permission.READ_SMS)) SmsControls()
-                GalleryControls()
-                if (context.declaresPermission(Manifest.permission.READ_CALL_LOG)) CallControls()
-                LinkControls()
-                RelayControls()
-                ClipboardControls(state, model::sendClipboard, model::setClipboardEnabled, model::setClipboardImageLimit)
-                ClipboardHistoryCard(state.clipboardHistory, state.clipboard.enabled, model.clipboardHistoryActions)
-                if (state.devices.isNotEmpty()) WindButton(stringResource(R.string.devices_paired), model::devices, Modifier.testTag("openDevices"), kind = ButtonKind.Secondary)
-                WindButton(stringResource(R.string.pair_another), model::scan, Modifier.testTag("scanQr"), enabled = state.ready, kind = ButtonKind.Secondary)
-                WindButton(stringResource(R.string.pair_without_camera), model::nearby, Modifier.testTag("pairNearby"), enabled = state.ready, kind = ButtonKind.Secondary)
+                // WN-130: four groups of short rows instead of fourteen same-looking cards; details under "More" in each row.
+                WindBackHeader(stringResource(R.string.settings), model::cancel, "closeSettings")
+                WindSection(stringResource(R.string.group_computer)) {
+                    if (state.devices.isNotEmpty()) {
+                        val connectedName = state.devices.firstOrNull { (state.connection as? ConnectionState.Connected)?.fingerprint == it.fingerprint }?.let { computerLabel(it.name) }
+                        WindSettingRow("pc", stringResource(R.string.devices_paired),
+                            connectedName?.let { stringResource(R.string.devices_summary_one, it) } ?: stringResource(R.string.devices_summary_count, state.devices.size),
+                            switchTag = "openDevices", onClick = model::devices)
+                        WindDivider()
+                    }
+                    WindSettingRow("plus", stringResource(R.string.pair_another), stringResource(R.string.sum_pair), switchTag = "scanQr", onClick = model::scan, enabled = state.ready,
+                        actions = { WindButton(stringResource(R.string.pair_without_camera), model::nearby, Modifier.testTag("pairNearby"), enabled = state.ready, kind = ButtonKind.Quiet) })
+                }
+                WindSection(stringResource(R.string.group_phone_on_pc)) {
+                    NotifyControls()
+                    WindDivider()
+                    // WN-124: the Play build declares no SMS / Call Log permissions, so these settings aren't there.
+                    if (context.declaresPermission(Manifest.permission.READ_SMS)) { SmsControls(); WindDivider() }
+                    if (context.declaresPermission(Manifest.permission.READ_CALL_LOG)) { CallControls(); WindDivider() }
+                    GalleryControls()
+                    WindDivider()
+                    MediaControls()
+                }
+                WindSection(stringResource(R.string.group_pc_on_phone)) {
+                    PcMediaControls()
+                    WindDivider()
+                    LinkControls()
+                    WindDivider()
+                    FindControls()
+                    WindDivider()
+                    ReceiveSettingRow()
+                }
+                WindSection(stringResource(R.string.group_clipboard)) {
+                    ClipboardSettingRows(state, model::setClipboardEnabled, model::setClipboardImageLimit)
+                }
+                WindSection(stringResource(R.string.group_shortcuts)) {
+                    BackgroundControls(state.hasPairedDevice)
+                    WindDivider()
+                    ClipboardTileControls()
+                    WindDivider()
+                    LauncherShortcutControls()
+                    WindDivider()
+                    WidgetControls()
+                    WindDivider()
+                    RelayControls()
+                }
             }
             "scanner" -> {
                 Text(stringResource(R.string.scan_title), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.semantics { heading() })

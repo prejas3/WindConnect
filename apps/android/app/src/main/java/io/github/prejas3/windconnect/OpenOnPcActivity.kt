@@ -9,7 +9,8 @@ import androidx.activity.compose.setContent
 import androidx.annotation.VisibleForTesting
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import io.github.prejas3.windconnect.ui.ButtonKind
+import io.github.prejas3.windconnect.ui.WindButton
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -54,17 +55,17 @@ class OpenOnPcActivity : ComponentActivity() {
                     title = { Text(str(R.string.open_on_pc_question, pc)) },
                     text = { Text("$host\n$shown", modifier = Modifier.testTag("openOnPcLink")) },
                     confirmButton = {
-                        TextButton(enabled = !sending, onClick = {
+                        WindButton(str(R.string.action_open_on_pc), enabled = !sending, onClick = {
                             sending = true
                             scope.launch {
                                 val status = withTimeoutOrNull(8_000) { send(link) } ?: "failed"
                                 Toast.makeText(applicationContext, PcActionText.of(status, str(R.string.action_open_on_pc)), Toast.LENGTH_SHORT).show()
                                 finish()
                             }
-                        }, modifier = Modifier.testTag("openOnPcConfirm")) { Text(str(R.string.action_open_on_pc)) }
+                        }, modifier = Modifier.testTag("openOnPcConfirm"))
                     },
                     dismissButton = {
-                        TextButton(enabled = !sending, onClick = { finish() }, modifier = Modifier.testTag("openOnPcCancel")) { Text(str(R.string.cancel)) }
+                        WindButton(str(R.string.cancel), enabled = !sending, onClick = { finish() }, modifier = Modifier.testTag("openOnPcCancel"), kind = ButtonKind.Quiet)
                     },
                 )
             }

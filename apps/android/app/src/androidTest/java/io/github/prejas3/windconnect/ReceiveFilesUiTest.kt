@@ -30,7 +30,7 @@ class ReceiveFilesUiTest {
             receipts = listOf(ReceivedFile("receipt", "data (1).json", "Download/WindConnect/folder/", 131079, "content://media/external_primary/downloads/1")))
         compose.setContent { WindConnectTheme(mode, false) {
             CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, 1.5f)) {
-                Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp)) { ReceiveFilesControls(state) }
+                Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp)) { ReceiveFilesControls(state, compact = false) }
             }
         } }
         compose.onNodeWithText("Gotowy · Pobrane/WindConnect").assertExists()
@@ -39,7 +39,7 @@ class ReceiveFilesUiTest {
         assertEquals(.5f, progress.config[SemanticsProperties.ProgressBarRangeInfo].current)
         val image = compose.onRoot().captureToImage().asAndroidBitmap()
         File(InstrumentationRegistry.getInstrumentation().targetContext.cacheDir, "wn120-${mode.name}-150.png").outputStream().use { image.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }; image.recycle()
-        compose.onNodeWithText("Pokaż w Pobranych").performScrollTo().assertIsEnabled()
-        compose.onNodeWithText("Otwórz data (1).json").performScrollTo().assertIsEnabled()
+        compose.onNodeWithText("Otwórz Pobrane").performScrollTo().assertIsEnabled()
+        compose.onNodeWithTag("received-receipt").performScrollTo().assertIsEnabled().assertTextContains("data (1).json", substring = true)
     }
 }

@@ -87,19 +87,21 @@ class AccessibilityTest {
 
     @Test fun homeConnected() = everyCase {
         HomeScreen(connected, {}, {}, onClipboard = {}, onClipboardEnabled = {}, onSendFile = {})
-        ClipboardControls(connected, {}, {}, {})
+        ClipboardSettingRows(connected, {}, {})
     }
 
     @Test fun pairedComputers() = everyCase { DevicesScreen(connected, onBack = {}, onConnect = {}, onRename = { _, _ -> }, onUnpair = {}) }
 
     @Test fun settings() {
+        // WN-130: the settings screen's groups, as PairingScreen lays them out.
         everyCase {
-            ClipboardTileControls(); LauncherShortcutControls(); WidgetControls(); BackgroundControls(true); FindControls()
-            MediaControls(); NotifyControls(); SmsControls(); GalleryControls(); CallControls(); LinkControls(); RelayControls()
+            io.github.prejas3.windconnect.ui.WindSection("Telefon na komputerze") { NotifyControls(); SmsControls(); CallControls(); GalleryControls(); MediaControls() }
+            io.github.prejas3.windconnect.ui.WindSection("Komputer na telefonie") { PcMediaControls(); LinkControls(); FindControls(); ReceiveSettingRow() }
+            io.github.prejas3.windconnect.ui.WindSection("Skróty i praca w tle") { BackgroundControls(true); ClipboardTileControls(); LauncherShortcutControls(); WidgetControls(); RelayControls() }
         }
-        // TalkBack's heading navigation jumps between the settings cards.
+        // TalkBack's heading navigation jumps between the settings groups.
         val headings = compose.onAllNodes(isHeading(), useUnmergedTree = true).fetchSemanticsNodes().size
-        org.junit.Assert.assertTrue("headings: $headings", headings >= 12)
+        org.junit.Assert.assertTrue("headings: $headings", headings >= 3)
     }
 
     @Test fun pairedAndReceiving() = everyCase { DoneScreen("Biurko", "Połączono z komputerem", onDone = {}); ReceiveFilesControls() }

@@ -1,5 +1,6 @@
 package io.github.prejas3.windconnect
 
+import io.github.prejas3.windconnect.ui.*
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.heading
 
@@ -55,29 +56,30 @@ fun BackgroundControls(hasPairedDevice: Boolean) {
             permission.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
     }
-    WindCard {
-        Text(str(R.string.background_title), style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
-        Text(if (enabled) str(R.string.background_on_state) else str(R.string.off), modifier = Modifier.testTag("backgroundStatus"))
-        WindButton(if (enabled) str(R.string.background_stop) else str(R.string.background_start), {
-            if (enabled) ConnectionService.stop(context) else {
+    // WN-130: the start/stop button became the row's switch; warnings (notifications off, battery) stay visible with their action.
+    WindSettingRow("bolt", str(R.string.background_title), str(R.string.sum_background), checked = enabled, enabled = hasPairedDevice, switchTag = "backgroundToggle",
+        onCheckedChange = { on ->
+            if (!on) ConnectionService.stop(context) else {
                 ConnectionService.start(context, enable = true)
                 if (Build.VERSION.SDK_INT >= 33 && !notifications) permission.launch(Manifest.permission.POST_NOTIFICATIONS)
             }
             refresh()
-        }, enabled = hasPairedDevice, modifier = Modifier.testTag("backgroundToggle"), kind = ButtonKind.Secondary)
-        if (enabled && !notifications) {
-            Text(str(R.string.background_notifications_off))
-            WindButton(str(R.string.notification_settings), {
-                context.startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName))
-            }, kind = ButtonKind.Quiet)
-        }
-        if (enabled) {
-            Text(if (battery) str(R.string.battery_unrestricted) else str(R.string.battery_optimized))
-            if (!battery) WindButton(str(R.string.battery_optimization), {
-                context.startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
-            }, modifier = Modifier.testTag("batterySettings"), kind = ButtonKind.Quiet)
-            Text(str(R.string.battery_samsung), style = MaterialTheme.typography.bodySmall)
-        }
-        if (message.isNotEmpty()) Text(message)
-    }
+        },
+        status = message.ifEmpty { if (enabled) str(R.string.background_on_state) else str(R.string.off) }, statusTag = "backgroundStatus",
+        warning = message.isNotEmpty() || (enabled && (!notifications || !battery)),
+        actions = if (!enabled) null else { {
+            if (!notifications) {
+                Text(str(R.string.background_notifications_off), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                WindButton(str(R.string.notification_settings), {
+                    context.startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName))
+                }, kind = ButtonKind.Secondary)
+            }
+            if (!battery) {
+                Text(str(R.string.battery_optimized), style = MaterialTheme.typography.bodySmall)
+                WindButton(str(R.string.battery_optimization), {
+                    context.startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+                }, modifier = Modifier.testTag("batterySettings"), kind = ButtonKind.Secondary)
+            }
+        } },
+        more = if (!enabled) null else { { Text(if (battery) str(R.string.battery_unrestricted) else str(R.string.battery_optimized)); Text(str(R.string.battery_samsung)) } })
 }

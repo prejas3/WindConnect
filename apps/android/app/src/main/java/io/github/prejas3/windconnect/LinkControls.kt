@@ -1,5 +1,6 @@
 package io.github.prejas3.windconnect
 
+import io.github.prejas3.windconnect.ui.*
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.heading
 
@@ -19,10 +20,6 @@ import io.github.prejas3.windconnect.ui.WindSwitch
 fun LinkControls() {
     val connections = (LocalContext.current.applicationContext as WindApplication).connections
     val allowed by connections.openLinks.collectAsStateWithLifecycle()
-    WindCard {
-        Text(str(R.string.link_channel), style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
-        WindSwitch(str(R.string.links_allow), allowed, connections::setOpenLinks, Modifier.testTag("openLinks"))
-        Text(str(R.string.links_about),
-            style = MaterialTheme.typography.bodySmall)
-    }
+    WindSettingRow("external", str(R.string.link_channel), str(R.string.sum_links), checked = allowed, onCheckedChange = connections::setOpenLinks,
+        switchTag = "openLinks", more = { Text(str(R.string.links_about)) })
 }

@@ -43,7 +43,6 @@ class PairingTest {
         compose.onNodeWithTag("backgroundStatus").assertExists()
         compose.onNodeWithTag("closeSettings").performClick()
         compose.onNodeWithTag("computerCard").assertExists()
-        compose.onNodeWithTag("recentTransfers").assertExists()
     }
 
     @Test fun externalViewRequiresConfirmationAndCancellationDoesNotTrust() {
