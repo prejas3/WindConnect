@@ -178,17 +178,20 @@ internal sealed interface NotificationEvent {
 
 /** App labels and 64 px PNG icons, per package, made once. */
 internal class AppIcons(context: Context) {
-    private val pm = context.applicationContext.packageManager
+    private val app = context.applicationContext
+    private val pm = app.packageManager
     private val labels = LruCache<String, String>(64)
     private val icons = LruCache<String, ByteArray>(64)
 
-    fun label(packageName: String): String = labels.get(packageName) ?: (try {
-        pm.getApplicationLabel(pm.getApplicationInfo(packageName, 0)).toString()
-    } catch (_: Exception) { packageName }).let { NotificationRules.clean(it, NotificationRules.MAX_APP) ?: PhoneMedia.bounded(packageName, NotificationRules.MAX_APP) }
-        .also { labels.put(packageName, it) }
+    // WN-159: through AppLabels (also what notifications taught); a package-name fallback isn't cached, so the name
+    // replaces it once known.
+    fun label(packageName: String): String = labels.get(packageName) ?: AppLabels.label(app, packageName).let { found ->
+        (NotificationRules.clean(found, NotificationRules.MAX_APP) ?: PhoneMedia.bounded(packageName, NotificationRules.MAX_APP))
+            .also { if (found != packageName) labels.put(packageName, it) }
+    }
 
     fun icon(packageName: String): ByteArray? = icons.get(packageName) ?: try {
-        val drawable = pm.getApplicationIcon(packageName)
+        val drawable = AppLabels.infoFor(app, packageName)?.let { pm.getApplicationIcon(it) } ?: pm.getApplicationIcon(packageName)
         val bitmap = Bitmap.createBitmap(64, 64, Bitmap.Config.ARGB_8888)
         drawable.setBounds(0, 0, 64, 64)
         drawable.draw(Canvas(bitmap))
@@ -234,6 +237,8 @@ class NotifyListenerService : NotificationListenerService() {
         val content = NotificationRules.content(sbn.parts(), packageName) ?: return
         // WN-45: listed for the app filter (package name only), then filtered before anything is kept or sent.
         NotifyApps.saw(this, sbn.packageName)
+        // WN-159: the app's name from the info the notification carries (package visibility hides most apps).
+        AppLabels.learn(this, sbn.packageName, AppLabels.info(sbn.notification, sbn.packageName))
         if (!NotifyApps.allows(this, sbn.packageName)) return
         val ranking = Ranking()
         val ranked = try { currentRanking?.getRanking(sbn.key, ranking) == true } catch (_: Exception) { false }

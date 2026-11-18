@@ -91,7 +91,9 @@ internal class PhoneMedia(
             publish(null, null); return
         }
         val meta = c.metadata
-        val label = try { context.packageManager.getApplicationLabel(context.packageManager.getApplicationInfo(c.packageName, 0)).toString() } catch (_: Exception) { c.packageName }
+        // WN-159: also from the player's own notification (package visibility hides most apps).
+        MediaListenerService.learn(c.packageName)
+        val label = AppLabels.label(context, c.packageName)
         val playing = state.state == PlaybackState.STATE_PLAYING
         val speed = (state.playbackSpeed * 1000).roundToLong().coerceAtLeast(0)
         val since = SystemClock.elapsedRealtime() - state.lastPositionUpdateTime
@@ -188,9 +190,21 @@ class MediaListenerService : NotificationListenerService() {
         if (!allowed(this)) requestUnbind()
     }
     override fun onListenerDisconnected() { current = null }
+    /** WN-159: a player's notification names its app; learned for the media card's label. */
+    override fun onNotificationPosted(sbn: android.service.notification.StatusBarNotification) {
+        if (sbn.notification.extras?.containsKey(android.app.Notification.EXTRA_MEDIA_SESSION) == true)
+            AppLabels.learn(this, sbn.packageName, AppLabels.info(sbn.notification, sbn.packageName))
+    }
 
     companion object {
         @Volatile private var current: WeakReference<MediaListenerService>? = null
+
+        /** WN-159: learns [packageName]'s name from its notification still shown, if any. */
+        fun learn(packageName: String) {
+            val service = current?.get() ?: return
+            val sbn = try { service.activeNotifications?.firstOrNull { it.packageName == packageName } } catch (_: Exception) { null } ?: return
+            AppLabels.learn(service, packageName, AppLabels.info(sbn.notification, packageName))
+        }
 
         fun granted(context: Context): Boolean =
             context.getSystemService(android.app.NotificationManager::class.java)

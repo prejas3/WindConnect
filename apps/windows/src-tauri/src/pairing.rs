@@ -1053,7 +1053,10 @@ async fn run(
                 media_commands = Some(session_commands);
                 notify_input = Some(session_notify);
                 let quiet = quiet_hours.clone();
-                notifications = Some(crate::notify::Notifications::new(toasts.clone(), snapshot.phone.as_deref().unwrap_or(crate::i18n::tr("common.phone_capital")))
+                // WN-159: the phone's name in a toast only tells phones apart: with one paired phone the line is the app alone.
+                let several = store.load().map(|l| l.devices.len() > 1).unwrap_or(false);
+                let toast_phone = if several { snapshot.phone.as_deref().unwrap_or(crate::i18n::tr("common.phone_capital")) } else { "" };
+                notifications = Some(crate::notify::Notifications::new(toasts.clone(), toast_phone)
                     .silenced_by(move || crate::notify::silenced_now(&quiet.lock().unwrap())));
                 pc_media = None;
                 if share_media.load(std::sync::atomic::Ordering::SeqCst) {

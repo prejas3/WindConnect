@@ -154,15 +154,20 @@ fn toast_xml_for(view: &ToastView, icon: Option<&Path>, release: bool) -> String
     if let Some(t) = &view.text {
         x.push_str(&format!("<text>{}</text>", escape(t)));
     }
-    let via = if view.phone.is_empty() {
-        view.app.clone()
-    } else {
-        format!("{} · {}", view.app, view.phone)
+    // WN-159: "app · phone" (the phone only when several are paired); without a title the app is already the first
+    // line, so the attribution doesn't repeat it.
+    let via = match (view.title.is_some(), view.phone.is_empty()) {
+        (true, true) => Some(view.app.clone()),
+        (true, false) => Some(format!("{} · {}", view.app, view.phone)),
+        (false, true) => None,
+        (false, false) => Some(view.phone.clone()),
     };
-    x.push_str(&format!(
-        r#"<text placement="attribution">{}</text>"#,
-        escape(&via)
-    ));
+    if let Some(via) = via {
+        x.push_str(&format!(
+            r#"<text placement="attribution">{}</text>"#,
+            escape(&via)
+        ));
+    }
     if let Some(path) = icon {
         let uri = format!("file:///{}", path.display().to_string().replace('\\', "/"));
         x.push_str(&format!(
@@ -1251,6 +1256,37 @@ mod tests {
         assert!(!first.exists(), "the oldest went first");
         cache.clear();
         assert!(!dir.path().join("notify-icons").exists());
+    }
+
+    /// WN-159: one paired phone: the attribution is the app alone; no title: the app is the first line and isn't
+    /// repeated; several phones: the phone is added.
+    #[test]
+    fn attribution_is_the_app_and_the_phone_only_when_it_helps() {
+        let one = toast_xml(&ToastView::new(&posted(), ""), None);
+        assert!(
+            one.contains(r#"<text placement="attribution">Signal</text>"#),
+            "{one}"
+        );
+        let untitled = Posted {
+            title: None,
+            ..posted()
+        };
+        let x = toast_xml(&ToastView::new(&untitled, ""), None);
+        assert!(
+            x.contains("<text>Signal</text><text>Będziesz o 19?</text>"),
+            "{x}"
+        );
+        assert!(!x.contains("attribution"), "{x}");
+        let x = toast_xml(&ToastView::new(&untitled, "Pixel 9"), None);
+        assert!(
+            x.contains(r#"<text placement="attribution">Pixel 9</text>"#),
+            "{x}"
+        );
+        assert_eq!(
+            x.matches("Signal").count(),
+            2,
+            "first line and header title only: {x}"
+        );
     }
 
     #[test]

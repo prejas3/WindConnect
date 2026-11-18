@@ -76,7 +76,7 @@ class ConnectionOwner(private val application: Application) {
     val notifyApps = mutableNotifyApps.asStateFlow()
     fun setNotifyAppMode(mode: io.github.prejas3.windconnect.core.NotifyAppMode) { core?.setNotifyAppMode(mode) }
     fun setNotifyApp(packageName: String, on: Boolean) { core?.setNotifyApp(packageName, on) }
-    fun appLabel(packageName: String): String = core?.appLabel(packageName) ?: packageName
+    fun appLabel(packageName: String): String = core?.appLabel(packageName) ?: WindCore.appLabel(application, packageName)
     // WN-48: the PC's volume, and whether the PC may show/change STREAM_MUSIC (and this shows the PC's).
     private val mutablePcVolume = MutableStateFlow<io.github.prejas3.windconnect.core.PcVolume?>(null)
     val pcVolume = mutablePcVolume.asStateFlow()
@@ -128,7 +128,7 @@ class ConnectionOwner(private val application: Application) {
     fun refreshCalls() { val opened = core ?: return; scope.launch { opened.refreshCalls() } }
 
     suspend fun acquire(): WindCore = gate.withLock {
-        val opened = core ?: WindCore.open(application, android.os.Build.MODEL.take(64)).also { opened ->
+        val opened = core ?: WindCore.open(application, phoneName(application)).also { opened ->
             core = opened
             mutableState.value = opened.state.value
             observation = scope.launch {
@@ -181,3 +181,8 @@ class ConnectionOwner(private val application: Application) {
         }
     }
 }
+
+/** WN-159: the name the PC shows for this phone: the one set in the phone's settings ("Galaxy S25 Ultra"), else the model. */
+internal fun phoneName(context: android.content.Context): String =
+    (try { android.provider.Settings.Global.getString(context.contentResolver, android.provider.Settings.Global.DEVICE_NAME) } catch (_: Exception) { null })
+        ?.trim()?.takeIf { it.isNotEmpty() }?.take(64) ?: android.os.Build.MODEL.take(64)

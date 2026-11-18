@@ -1101,6 +1101,8 @@ class WindCore private constructor(
     }
 
     companion object {
+        /** WN-159: an app's name (installed, else learned from its notifications), also before the core is open. */
+        fun appLabel(context: Context, packageName: String): String = AppLabels.label(context.applicationContext, packageName)
         private const val SETTINGS = "windconnect.core"
         internal const val SETTINGS_FILE = SETTINGS
         internal const val MEDIA_ALLOWED = "media_allowed"
