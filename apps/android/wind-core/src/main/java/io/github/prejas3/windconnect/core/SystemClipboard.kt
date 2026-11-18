@@ -20,7 +20,13 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 
-data class ClipboardUi(val enabled: Boolean = true, val status: String = "", val busy: Boolean = false, val delivered: Long = 0, val received: Long = 0, val imageLimitMb: Int = SystemClipboard.DEFAULT_IMAGE_LIMIT_MB)
+/** [statusMirrorsSwitch]: the status only repeats the sync switch (WN-153), so the screen leaves it out without comparing text. */
+data class ClipboardUi(val enabled: Boolean = true, val status: String = "", val busy: Boolean = false, val delivered: Long = 0, val received: Long = 0, val imageLimitMb: Int = SystemClipboard.DEFAULT_IMAGE_LIMIT_MB, val statusMirrorsSwitch: Boolean = false) {
+    /** What happened since, or null when there is nothing beyond what the switch says. */
+    val eventStatus: String? get() = status.takeIf { it.isNotEmpty() && !statusMirrorsSwitch }
+    fun withEvent(text: String) = copy(status = text, statusMirrorsSwitch = false)
+    fun withSwitch(value: Boolean, text: String) = copy(enabled = value, status = text, statusMirrorsSwitch = true)
+}
 
 /** An image to send: its PNG, a thumbnail PNG and the pixel size (WN-36). */
 internal class OutgoingImage(val png: ByteArray, val thumbnail: ByteArray, val width: Long, val height: Long)
@@ -42,7 +48,7 @@ internal class SystemClipboard(
     private val manager = context.getSystemService(ClipboardManager::class.java)
     private val main = Handler(Looper.getMainLooper())
     private val mutable = MutableStateFlow(preferences.getBoolean("clipboard_enabled", true).let { enabled ->
-        ClipboardUi(enabled, syncText(enabled),
+        ClipboardUi(enabled, syncText(enabled), statusMirrorsSwitch = true,
             imageLimitMb = preferences.getInt(IMAGE_LIMIT, DEFAULT_IMAGE_LIMIT_MB).takeIf { it in IMAGE_LIMITS_MB } ?: DEFAULT_IMAGE_LIMIT_MB)
     })
     val ui = mutable.asStateFlow()
@@ -69,7 +75,7 @@ internal class SystemClipboard(
     fun setEnabled(value: Boolean) {
         enabledChanged(value)
         preferences.edit().putBoolean("clipboard_enabled", value).apply()
-        mutable.update { it.copy(enabled = value, status = syncText(value)) }
+        mutable.update { it.withSwitch(value, syncText(value)) }
         // CCS/1 RULE:sync off keeps nothing new and drops the unpinned entries; pins stay.
         if (!value) { synchronized(history) { history.clear() }; publishHistory() }
         main.post { updateListener() }
@@ -140,7 +146,7 @@ internal class SystemClipboard(
         try {
             val image = withContext(Dispatchers.IO) { readImage(uri, limit) }
             val result = when (image) {
-                is ImageRead.Ready -> publishImage(image.image, manual) { mutable.update { it.copy(status = context.getString(R.string.clip_image_sending)) } }
+                is ImageRead.Ready -> publishImage(image.image, manual) { mutable.update { it.withEvent(context.getString(R.string.clip_image_sending)) } }
                 is ImageRead.TooLarge -> "too-large" to null
                 ImageRead.Unreadable -> "unreadable" to null
             }
@@ -148,7 +154,7 @@ internal class SystemClipboard(
                 mutable.update { it.copy(delivered = it.delivered + 1) }
                 (image as ImageRead.Ready).image.let { record(ClipboardHistoryItem.Image(it.png, it.thumbnail, it.width, it.height, fromPc = false)) }
             }
-            if (result.first != "unchanged" || manual) mutable.update { it.copy(status = imageStatusText(result.first, result.second, limit)) }
+            if (result.first != "unchanged" || manual) mutable.update { it.withEvent(imageStatusText(result.first, result.second, limit)) }
             return result.first
         } finally { mutable.update { it.copy(busy = false) } }
     }
@@ -195,7 +201,7 @@ internal class SystemClipboard(
             val clip = ClipData.newPlainText("WindConnect", text)
             clip.description.extras = PersistableBundle().apply { putBoolean(SENSITIVE, true) }
             manager.setPrimaryClip(clip)
-            mutable.update { it.copy(status = context.getString(R.string.clip_received), received = it.received + 1) }
+            mutable.update { it.withEvent(context.getString(R.string.clip_received)).copy(received = it.received + 1) }
             record(ClipboardHistoryItem.Text(text, fromPc = true))
             true
         } catch (_: Exception) { false }
@@ -211,7 +217,7 @@ internal class SystemClipboard(
             ClipImageProvider.publish(image)
             val clip = ClipData(ClipDescription(context.getString(R.string.clip_image_from_pc), arrayOf(ClipImageProvider.PNG)), ClipData.Item(ClipImageProvider.uri(context, image)))
             manager.setPrimaryClip(clip)
-            mutable.update { it.copy(status = context.getString(R.string.clip_image_received), received = it.received + 1) }
+            mutable.update { it.withEvent(context.getString(R.string.clip_image_received)).copy(received = it.received + 1) }
             recordWhenComplete(image)
             true
         } catch (_: Exception) { ClipImageProvider.publish(null); false }
@@ -274,14 +280,14 @@ internal class SystemClipboard(
                     manager.setPrimaryClip(ClipData(ClipDescription(context.getString(R.string.clip_image_from_history), arrayOf(ClipImageProvider.PNG)), ClipData.Item(ClipImageProvider.uri(context, stored))))
                 }
             }
-            mutable.update { it.copy(status = context.getString(R.string.clip_copied_from_history)) }
+            mutable.update { it.withEvent(context.getString(R.string.clip_copied_from_history)) }
             true
         } catch (_: Exception) { false }
     }
     fun historyPin(id: Long, pinned: Boolean): PinResult {
         val result = synchronized(history) { history.pin(id, pinned) }
         if (result == PinResult.Ok) { savePins(); publishHistory() }
-        else mutable.update { it.copy(status = when (result) {
+        else mutable.update { it.withEvent(when (result) {
             PinResult.Full -> context.getString(R.string.clip_pin_full, ClipboardHistory.MAX_PINNED)
             PinResult.TooLarge -> context.getString(R.string.clip_pin_too_large)
             else -> context.getString(R.string.clip_pin_gone)
@@ -295,7 +301,7 @@ internal class SystemClipboard(
     }
     /** Removes the unpinned entries. */
     fun historyClear() { synchronized(history) { history.clear() }; publishHistory() }
-    private fun report(result: String) { mutable.update { it.copy(status = statusText(result)) } }
+    private fun report(result: String) { mutable.update { it.withEvent(statusText(result)) } }
     private fun syncText(enabled: Boolean) = context.getString(if (enabled) R.string.clip_sync_auto else R.string.clip_sync_off)
     /** Megabytes with at most one decimal, in the phone's number format (WN-63). */
     private fun mb(bytes: Long): String {

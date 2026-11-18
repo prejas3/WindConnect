@@ -1,6 +1,6 @@
 {
   "productName": "WindConnect icon proof",
-  "version": "0.77.0",
+  "version": "0.77.1",
   "identifier": "io.github.prejas3.windconnect.icon-proof",
   "build": { "frontendDist": "../../../frontend" },
   "app": { "windows": [] },

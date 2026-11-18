@@ -20,4 +20,10 @@ class TransferProgressTest {
         // Selection is by original index; equal names/URIs never stand in for delivery confirmation.
         assertEquals(listOf("c", "d", "e"), FileRetry.remaining(listOf("a", "b", "c", "d", "e"), setOf(0, 1)))
     }
+    @Test fun sizesFollowTheUiLanguage() {
+        // WN-153: the decimal separator follows the language, as on Windows.
+        assertEquals("1,5 MiB", transferBytes(1536L * 1024, java.util.Locale.forLanguageTag("pl")))
+        assertEquals("1.5 MiB", transferBytes(1536L * 1024, java.util.Locale.ENGLISH))
+        assertEquals("512 B", transferBytes(512, java.util.Locale.forLanguageTag("pl")))
+    }
 }

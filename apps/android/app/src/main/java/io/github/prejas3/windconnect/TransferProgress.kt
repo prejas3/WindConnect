@@ -29,9 +29,10 @@ internal object FileRetry {
     fun <T> remaining(uris: List<T>, confirmed: Set<Int>) = uris.filterIndexed { index, _ -> index !in confirmed }
 }
 
-internal fun transferBytes(bytes: Long): String {
+/** Sizes in the UI language's number format (WN-153): "1,5 MiB" in Polish, "1.5 MiB" in English. */
+internal fun transferBytes(bytes: Long, locale: java.util.Locale = java.util.Locale.getDefault()): String {
     var number = bytes.coerceAtLeast(0).toDouble(); var unit = 0
     val units = listOf("B", "KiB", "MiB", "GiB")
     while (number >= 1024 && unit < units.lastIndex) { number /= 1024; unit++ }
-    return if (unit == 0) "${number.toLong()} B" else String.format(java.util.Locale.ROOT, "%.1f %s", number, units[unit])
+    return if (unit == 0) "${number.toLong()} B" else String.format(locale, "%.1f %s", number, units[unit])
 }
