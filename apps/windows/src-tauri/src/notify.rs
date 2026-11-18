@@ -127,8 +127,27 @@ impl ToastView {
 /// The toast's XML: title (or the app), text, "app · phone", the app icon, a header per phone app (grouping in
 /// Action Center). `icon`: the cached file, when there is one.
 pub fn toast_xml(view: &ToastView, icon: Option<&Path>) -> String {
-    let mut x = String::from(
-        r#"<toast launch="windconnect-notify"><visual><binding template="ToastGeneric">"#,
+    toast_xml_for(view, icon, !cfg!(debug_assertions))
+}
+
+/// What a click on the toast body or on its header runs (WN-144). `release`: the panel URI (protocol activation), so it
+/// opens the panel also after the app restarted or closed, when no in-process handler is left; debug sends as PowerShell
+/// (no URI registered) and keeps the in-process click. Body: `launch` + `activationType`; header: `arguments` + same.
+fn click_attrs(release: bool, name: &str) -> String {
+    if release {
+        format!(
+            r#"{name}="{}" activationType="protocol""#,
+            crate::toast::PANEL_URI
+        )
+    } else {
+        format!(r#"{name}="windconnect-notify""#)
+    }
+}
+
+fn toast_xml_for(view: &ToastView, icon: Option<&Path>, release: bool) -> String {
+    let mut x = format!(
+        r#"<toast {}><visual><binding template="ToastGeneric">"#,
+        click_attrs(release, "launch")
     );
     let first = view.title.as_deref().unwrap_or(&view.app);
     x.push_str(&format!("<text>{}</text>", escape(first)));
@@ -167,9 +186,10 @@ pub fn toast_xml(view: &ToastView, icon: Option<&Path>) -> String {
         &view.package
     };
     x.push_str(&format!(
-        r#"<header id="{}" title="{}" arguments="windconnect-notify"/>"#,
+        r#"<header id="{}" title="{}" {}/>"#,
         escape(header),
-        escape(&view.app)
+        escape(&view.app),
+        click_attrs(release, "arguments")
     ));
     x.push_str("</toast>");
     x
@@ -1071,6 +1091,31 @@ mod tests {
             "{x}"
         );
         assert!(x.contains(r#"<header id="org.thoughtcrime.securesms" title="Signal" arguments="windconnect-notify"/>"#), "{x}");
+    }
+
+    #[test]
+    fn release_clicks_open_the_panel_by_uri_and_reply_stays_in_process() {
+        // WN-144: body and header launch the panel URI (works after a restart); the reply is a background action.
+        let mut n = posted();
+        n.reply = Some("Odpowiedz".into());
+        let x = toast_xml_for(&ToastView::new(&n, "Pixel 9"), None, true);
+        assert!(
+            x.starts_with(r#"<toast launch="windconnect-panel:" activationType="protocol">"#),
+            "{x}"
+        );
+        assert!(
+            x.contains(
+                r#"title="Signal" arguments="windconnect-panel:" activationType="protocol"/>"#
+            ),
+            "{x}"
+        );
+        assert!(x.contains(r#"activationType="background"/>"#), "{x}");
+        assert!(!x.contains("windconnect-notify"), "{x}");
+        let debug = toast_xml_for(&ToastView::new(&n, "Pixel 9"), None, false);
+        assert!(
+            debug.starts_with(r#"<toast launch="windconnect-notify">"#),
+            "{debug}"
+        );
     }
 
     #[test]
