@@ -113,7 +113,10 @@ fun ClipboardControls(state: PairingUi, onSend: () -> Unit, onEnabled: (Boolean)
     WindCard(Modifier.fillMaxWidth().testTag("clipboardCard")) {
         Text(stringResource(R.string.clipboard_shared), style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
         WindSwitch(stringResource(R.string.clip_sync_auto_label), state.clipboard.enabled, onEnabled, Modifier.testTag("clipboardEnabled"))
-        Text(state.clipboard.status, style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("clipboardStatus"))
+        // WN-65: the switch already says whether sync is on; the line only shows what happened since.
+        val syncLabels = listOf(stringResource(io.github.prejas3.windconnect.core.R.string.clip_sync_auto), stringResource(io.github.prejas3.windconnect.core.R.string.clip_sync_off))
+        if (state.clipboard.status.isNotEmpty() && state.clipboard.status !in syncLabels)
+            Text(state.clipboard.status, style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("clipboardStatus"))
         Text(stringResource(R.string.clipboard_about), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (onImageLimit != null) {
             // WN-36: images over this size are neither sent nor taken.

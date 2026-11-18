@@ -101,3 +101,6 @@ body.onboarding-active #actions, body.onboarding-active [data-clipboard-controls
 .time-stepper [role="spinbutton"] { min-width: 52px; text-align: center; font-variant-numeric: tabular-nums; font-weight: 650; padding: 4px 2px; border-radius: 6px; }
 .time-stepper [role="spinbutton"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .time-stepper .button { min-width: 30px; }
+
+/* WN-65: the touchpad setting in the main window, padded like the other surfaces. */
+.surface.touchpad-card { padding: 16px 24px; margin-bottom: 20px; display: grid; gap: 10px; justify-items: start; }

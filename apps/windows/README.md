@@ -1,5 +1,10 @@
 # Windows
 
+## Przegląd z makietami (WN-65)
+
+CCS/1
+CHECK:`node apps/windows/scripts/capture-screens-ui.cjs` (Playwright) robi zrzuty w obu motywach: panel z każdą sekcją, panel podczas parowania, okno główne, SMS i menu zasobnika (TEMP/windconnect-wn65-screens). Panel: nagłówek z telefonem pierwszy, karty co 20 px, touchpad i schowek jako karty, karta touchpada tylko przy połączonym telefonie.
+
 ## Dostępność: Narrator, klawiatura, kontrast, duży tekst (WN-64)
 
 CCS/1

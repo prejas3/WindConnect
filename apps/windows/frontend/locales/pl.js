@@ -265,7 +265,7 @@ export default {
   "panel.pairing-accept": "Kody są takie same",
   "panel.pairing-cancel": "Anuluj",
   "panel.pairing-code_label": "Kod do porównania",
-  "panel.pairing-hint": "Pozostałe akcje pojawią się w kolejnych etapach. Pliki możesz też przeciągnąć na ten panel albo wysłać z menu Eksploratora.",
+  "panel.pairing-hint": "Pliki możesz też przeciągnąć na ten panel albo wysłać z Eksploratora: „Wyślij na telefon” w menu pliku.",
   "panel.pairing-instructions": "Otwórz skaner w WindConnect na telefonie. Kod jest jednorazowy i ważny przez 5 minut.",
   "panel.pairing-message": "Przygotowywanie bezpiecznego połączenia…",
   "panel.pairing-qr_label": "Jednorazowy kod QR do sparowania telefonu",

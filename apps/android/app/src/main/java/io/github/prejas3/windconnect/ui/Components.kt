@@ -46,7 +46,10 @@ fun WindButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier,
 
 @Composable
 fun WindCard(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
-    Column(modifier.clip(RoundedCornerShape(20.dp)).background(MaterialTheme.colorScheme.surfaceVariant).padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp), content = content)
+    // WN-65: card text without its own style reads at one size (bodyMedium), titles and notes keep theirs.
+    androidx.compose.material3.ProvideTextStyle(MaterialTheme.typography.bodyMedium) {
+        Column(modifier.clip(RoundedCornerShape(20.dp)).background(MaterialTheme.colorScheme.surfaceVariant).padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp), content = content)
+    }
 }
 
 @Composable

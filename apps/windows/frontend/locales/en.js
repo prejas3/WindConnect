@@ -265,7 +265,7 @@ export default {
   "panel.pairing-accept": "The codes match",
   "panel.pairing-cancel": "Cancel",
   "panel.pairing-code_label": "Code to compare",
-  "panel.pairing-hint": "More actions come in later stages. You can also drag files onto this panel or send them from the File Explorer menu.",
+  "panel.pairing-hint": "You can also drag files onto this panel or send them from File Explorer: “Send to phone” in a file's menu.",
   "panel.pairing-instructions": "Open the scanner in WindConnect on the phone. The code is single-use and valid for 5 minutes.",
   "panel.pairing-message": "Preparing a secure connection…",
   "panel.pairing-qr_label": "One-time QR code for pairing a phone",

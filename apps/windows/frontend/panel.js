@@ -196,6 +196,8 @@ function renderPairing(state) {
   const asking = state.phase === 'sas-code';
   document.querySelector('#phone-name').textContent = state.phone || t('panel.phone-name');
   document.querySelector('#connection-state').textContent = ({ connected: t('panel.state.connected'), waiting: t('panel.state.waiting'), 'sas-waiting': t('panel.state.waiting'), 'sas-code': t('panel.state.compare'), 'sas-confirming': t('panel.state.compare'), connecting: t('panel.state.connecting'), offline: t('panel.state.offline'), loading: t('main.status') })[state.phase] || t('menu.tray-state');
+  // WN-65: connected, the header already names the phone; the card keeps only its hint (the title still labels it).
+  document.querySelector('#pairing-title').hidden = connected;
   document.querySelector('#pairing-title').textContent = connected ? (state.phone || t('panel.title.connected')) : waiting ? t('panel.pairing-title') : sas ? t('panel.pairing-sas') : state.phase === 'connecting' ? t('panel.title.finishing') : t('panel.title.pairing');
   // CCS/1 SEC:the code is shown only while a decision is pending; accept only after the person compares both screens (§12.6).
   const code = document.querySelector('#pairing-code');

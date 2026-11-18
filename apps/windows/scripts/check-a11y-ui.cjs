@@ -42,7 +42,7 @@ const files = { phone: 'Pixel 9', active: 1, activeSize: 100, activeDone: 40, ro
 const history = [{ id: 1, kind: 'text', preview: 'https://example.com', direction: 'to-phone', at: 1794300000000, pinned: false, ready: true }];
 const gallery = { available: true, photos: [{ id: 1, name: 'IMG_2041.jpg', date_ms: 1794300000000, screenshot: false, thumb: pixel }] };
 
-function stub(state, files, history, gallery) {
+function stub({ state, files, history, gallery }) {
   window.__listeners = {};
   window.__TAURI__ = {
     core: { invoke: async cmd => ({
@@ -126,7 +126,7 @@ async function walk(page, label) {
     for (const theme of ['light', 'dark']) {
       const page = await browser.newPage({ locale: 'pl-PL', viewport: { width: 380, height: 760 }, colorScheme: theme });
       const errors = []; page.on('pageerror', e => errors.push(e.message));
-      await page.addInitScript(stub, full, files, history, gallery);
+      await page.addInitScript(stub, { state: full, files: files, history: history, gallery: gallery });
       await page.goto(`${base}/panel.html`);
       await page.locator('#devices:not([hidden])').waitFor();
       await page.locator('#media:not([hidden])').waitFor();
@@ -153,7 +153,7 @@ async function walk(page, label) {
       await page.close();
       for (const file of ['index.html', 'sms.html', 'tray-menu.html']) {
         const other = await browser.newPage({ locale: 'pl-PL', viewport: { width: 920, height: 800 }, colorScheme: theme });
-        await other.addInitScript(stub, full, files, history, gallery);
+        await other.addInitScript(stub, { state: full, files: files, history: history, gallery: gallery });
         await other.goto(`${base}/${file}`);
         await other.waitForTimeout(400);
         await walk(other, `${file} ${theme}`);
@@ -163,7 +163,7 @@ async function walk(page, label) {
     }
     // Forced colors (Windows contrast themes): controls keep visible borders and the focus ring.
     const hc = await browser.newPage({ locale: 'pl-PL', viewport: { width: 380, height: 760 }, forcedColors: 'active' });
-    await hc.addInitScript(stub, full, files, history, gallery);
+    await hc.addInitScript(stub, { state: full, files: files, history: history, gallery: gallery });
     await hc.goto(`${base}/panel.html`);
     await hc.locator('#media:not([hidden])').waitFor();
     await walk(hc, 'panel forced-colors');

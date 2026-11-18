@@ -28,8 +28,8 @@ body { min-height: 100vh; overflow: auto; }
 .quick-actions #find-phone[aria-pressed="true"] svg { stroke: currentColor; }
 .find-status { font-size: 12px; margin: 6px 2px 0; min-height: 0; }
 .find-status:empty { display: none; }
-.sms-open { width: 100%; margin-top: 8px; }
-.open-on-phone { display: flex; gap: 6px; margin-top: 8px; }
+.sms-open { width: 100%; }
+.open-on-phone { display: flex; gap: 6px; }
 .open-on-phone input { flex: 1; min-width: 0; padding: 5px 8px; background: var(--field); border: 1px solid var(--border); border-radius: var(--radius-control); font-size: var(--text-caption); }
 .missed-row { display: flex; justify-content: space-between; gap: 8px; padding: 4px 0; }
 .missed-who { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -122,3 +122,8 @@ body { min-height: 100vh; overflow: auto; }
 .gallery-list .photo:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .gallery-list .photo.fetching::after { content: ""; position: absolute; left: 0; bottom: 0; height: 3px; width: var(--progress, 0%); background: var(--accent); transition: width 100ms linear; }
 @media (prefers-reduced-motion: reduce) { .gallery-list .photo.fetching::after { transition: none; } }
+
+/* WN-65: the touchpad and clipboard settings read as cards like the other sections. */
+.touchpad-card { justify-items: start; }
+.touchpad-card p { font-size: 12px; color: var(--sub); }
+.clipboard-card .control-row:last-of-type { border: 0; }
