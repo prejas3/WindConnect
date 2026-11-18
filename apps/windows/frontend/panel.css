@@ -127,3 +127,28 @@ body { min-height: 100vh; overflow: auto; }
 .touchpad-card { justify-items: start; }
 .touchpad-card p { font-size: 12px; color: var(--sub); }
 .clipboard-card .control-row:last-of-type { border: 0; }
+
+/* WN-129: the media position uses the volume slider's look (track, fill, round thumb). */
+.media-progress { position: relative; height: 20px; background: none; overflow: visible; margin: 4px 0 0; }
+.media-progress::before { content: ""; position: absolute; left: 0; right: 0; top: 8px; height: 4px; border-radius: 2px; background: var(--border); }
+.media-progress span { position: absolute; left: 0; top: 8px; height: 4px; border-radius: 2px; }
+.media-progress span::after { content: ""; position: absolute; right: -8px; top: -6px; width: 16px; height: 16px; border-radius: 50%; background: var(--accent); box-shadow: 0 1px 3px #0003; }
+.media-progress[aria-disabled="true"] span::after { background: var(--sub); }
+/* WN-129: a phone in "Phones": name, a neutral state line with a dot, the fingerprint as a small separate line. */
+.device-list .name { font-weight: 650; }
+.device-list .device-state { display: flex; align-items: center; gap: 6px; color: var(--sub); }
+.device-list .device-state::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--sub); flex: none; }
+.device-list .device-state.connected::before { background: var(--success); }
+.device-list .device-state.connected { color: var(--sub); }
+.device-list .device-fingerprint { color: var(--sub); font-size: 11px; letter-spacing: .02em; }
+.device-list .device-actions { margin-left: 0; gap: 6px; margin-top: 4px; }
+/* WN-129: transfers as compact rows; the folder is an icon at the row's end; the newest few, then "Show all". */
+#transfers-list { max-height: none; }
+.panel #transfers-list li { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: 8px; padding: 6px 0; }
+.panel #transfers-list li:last-child { border-bottom: 0; }
+.panel #transfers-list .name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.transfer-actions { margin-top: 0; flex-wrap: nowrap; }
+.transfer-actions .icon svg { width: 18px; height: 18px; }
+/* WN-129: the touchpad permission as one line under the tiles, not a card. */
+.panel .touchpad-card { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 2px; background: none; margin-top: -10px; }
+.panel .touchpad-card p { font-size: 12px; }

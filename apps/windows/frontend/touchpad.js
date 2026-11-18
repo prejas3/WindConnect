@@ -9,7 +9,7 @@ box.hidden = inPanel;
 box.setAttribute('aria-label', t('touchpad.title'));
 const status = document.createElement('p'); status.setAttribute('role', 'status');
 status.id = 'touchpad-status';
-const button = document.createElement('button'); button.className = 'button secondary';
+const button = document.createElement('button'); button.className = inPanel ? 'button quiet small' : 'button';
 let allowed = true;
 button.addEventListener('click', async () => {
   button.disabled = true;

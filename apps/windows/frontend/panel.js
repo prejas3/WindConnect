@@ -24,17 +24,21 @@ function deviceRow(row) {
   const head = document.createElement('div'); head.className = 'device-head';
   const text = document.createElement('div');
   const name = document.createElement('span'); name.className = 'name'; name.textContent = row.name; name.title = row.name;
+  // WN-129: the state on its own neutral line (dot shows connected); the fingerprint is a small line of its own.
   const detail = document.createElement('small');
   const when = new Date(row.paired_at * 1000).toLocaleDateString(locale);
-  detail.textContent = row.owed ? t('devices.removed_pending') : t('devices.state_line', { state: t(row.connected ? 'devices.connected' : 'devices.disconnected'), when, fingerprint: row.fingerprint });
-  detail.className = row.owed ? 'owed' : row.connected ? 'connected' : '';
+  detail.textContent = row.owed ? t('devices.removed_pending') : t('devices.status_line', { state: t(row.connected ? 'devices.connected' : 'devices.disconnected'), when });
+  detail.className = row.owed ? 'owed' : row.connected ? 'device-state connected' : 'device-state';
+  const print = document.createElement('small'); print.className = 'device-fingerprint';
+  print.textContent = t('devices.fingerprint_line', { fingerprint: row.fingerprint });
   text.append(name, detail);
+  if (!row.owed) text.append(print);
   const actions = document.createElement('div'); actions.className = 'device-actions';
   const button = (label, kind, onClick, aria) => { const b = document.createElement('button'); b.className = `button ${kind} small`; b.textContent = label; b.setAttribute('aria-label', t('common.action_for', { action: aria || label, name: row.name })); b.addEventListener('click', onClick); return b; };
   const send = (action, extra = {}) => invoke?.('device_action', { action, key: row.key, ...extra }).catch(error);
   if (!row.owed) {
+    if (row.connected) actions.append(button(t('common.disconnect'), '', () => send('disconnect')));
     actions.append(button(t('common.rename'), 'quiet', () => { editing = { key: row.key, mode: 'rename' }; renderDevices(lastDevices); }));
-    if (row.connected) actions.append(button(t('common.disconnect'), 'quiet', () => send('disconnect')));
     actions.append(button(t('common.remove'), 'quiet', () => { editing = { key: row.key, mode: 'unpair' }; renderDevices(lastDevices); }, t('devices.unpair')));
   }
   head.append(text, actions);

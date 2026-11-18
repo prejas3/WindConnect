@@ -104,3 +104,18 @@ body.onboarding-active #actions, body.onboarding-active [data-clipboard-controls
 
 /* WN-65: the touchpad setting in the main window, padded like the other surfaces. */
 .surface.touchpad-card { padding: 16px 24px; margin-bottom: 20px; display: grid; gap: 10px; justify-items: start; }
+
+/* WN-129: one button hierarchy and one segmented control with Android (WN-130). Primary = filled (one per section),
+   default .button = outlined, .quiet = accent text; pill shapes. Icon-only quiet buttons keep the text colour. */
+.button { border-radius: 999px; background: transparent; border-color: var(--sub); }
+.button.small { padding: 5px 12px; }
+.button.quiet { color: var(--accent-text); }
+.button.quiet.icon, #dismiss, #media-previous, #media-next, #phone-mute, .notification-dismiss { color: var(--text); }
+.button:disabled,.tile:disabled { background: transparent; }
+.button.primary:disabled { background: var(--tile); border-color: transparent; }
+.segmented { gap: 0; padding: 0; background: transparent; border: 1px solid var(--sub); border-radius: 999px; overflow: hidden; flex-wrap: nowrap; }
+.segmented button { border-radius: 0; padding: 7px 14px; }
+.segmented button + button { border-left: 1px solid var(--sub); }
+.segmented button[aria-pressed="true"] { background: var(--accent-bg); color: var(--accent-ink); box-shadow: none; }
+.segmented button[aria-pressed="true"]::before { content: "✓ "; }
+.segmented button:hover { background: var(--tile); color: inherit; }
