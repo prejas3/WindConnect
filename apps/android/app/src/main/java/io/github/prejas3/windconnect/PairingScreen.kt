@@ -1,5 +1,8 @@
 package io.github.prejas3.windconnect
 
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.heading
+
 import androidx.compose.ui.res.stringResource
 import android.Manifest
 import android.content.Intent
@@ -59,7 +62,7 @@ fun PairingScreen(model: PairingViewModel, diagnostic: @Composable () -> Unit) {
             }
             "devices" -> DevicesScreen(state, onBack = model::cancel, onConnect = model::connectDevice, onRename = model::renameDevice, onUnpair = model::unpairDevice)
             "settings" -> {
-                Text(stringResource(R.string.settings), style = MaterialTheme.typography.headlineSmall)
+                Text(stringResource(R.string.settings), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.semantics { heading() })
                 WindButton(stringResource(R.string.back), model::cancel, Modifier.testTag("closeSettings"), kind = ButtonKind.Quiet)
                 ClipboardTileControls()
                 LauncherShortcutControls()
@@ -81,7 +84,7 @@ fun PairingScreen(model: PairingViewModel, diagnostic: @Composable () -> Unit) {
                 WindButton(stringResource(R.string.pair_without_camera), model::nearby, Modifier.testTag("pairNearby"), enabled = state.ready, kind = ButtonKind.Secondary)
             }
             "scanner" -> {
-                Text(stringResource(R.string.scan_title), style = MaterialTheme.typography.headlineSmall)
+                Text(stringResource(R.string.scan_title), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.semantics { heading() })
                 Text(stringResource(R.string.scan_about))
                 if (hasCamera) {
                     QrCamera(Modifier.fillMaxWidth().height(320.dp).testTag("cameraPreview"), model::offerLink, model::cameraError)
@@ -93,7 +96,7 @@ fun PairingScreen(model: PairingViewModel, diagnostic: @Composable () -> Unit) {
                 WindButton(stringResource(R.string.cancel), model::cancel, Modifier.testTag("cancelPairing"), kind = ButtonKind.Secondary)
             }
             "confirm", "pairing" -> {
-                Text(stringResource(R.string.confirm_title), style = MaterialTheme.typography.headlineSmall)
+                Text(stringResource(R.string.confirm_title), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.semantics { heading() })
                 WindCard(Modifier.fillMaxWidth()) {
                     Text(state.name, style = MaterialTheme.typography.titleLarge, modifier = Modifier.testTag("pairingPeer"))
                     Text(stringResource(R.string.confirm_fingerprint), style = MaterialTheme.typography.labelMedium)
@@ -105,12 +108,12 @@ fun PairingScreen(model: PairingViewModel, diagnostic: @Composable () -> Unit) {
                 else Text(stringResource(R.string.pairing_verifying), modifier = Modifier.testTag("pairingProgress"))
             }
             "nearby" -> {
-                Text(stringResource(R.string.nearby_title), style = MaterialTheme.typography.headlineSmall)
+                Text(stringResource(R.string.nearby_title), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.semantics { heading() })
                 Text(stringResource(R.string.nearby_about))
                 if (state.nearby.isEmpty()) Text(stringResource(R.string.nearby_searching), modifier = Modifier.testTag("nearbyEmpty"))
                 state.nearby.forEach { device ->
                     WindCard(Modifier.fillMaxWidth().testTag("nearbyDevice")) {
-                        Text(stringResource(R.string.nearby_ready), style = MaterialTheme.typography.titleMedium)
+                        Text(stringResource(R.string.nearby_ready), style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
                         Text(shortFingerprint(device.fingerprint), style = MaterialTheme.typography.bodySmall)
                         WindButton(stringResource(R.string.pair), { model.pairWith(device) }, Modifier.fillMaxWidth())
                     }
@@ -119,12 +122,12 @@ fun PairingScreen(model: PairingViewModel, diagnostic: @Composable () -> Unit) {
                 WindButton(stringResource(R.string.cancel), model::cancel, Modifier.testTag("cancelPairing"), kind = ButtonKind.Secondary)
             }
             "sas-connecting" -> {
-                Text(stringResource(R.string.sas_connecting), style = MaterialTheme.typography.headlineSmall)
+                Text(stringResource(R.string.sas_connecting), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.semantics { heading() })
                 Text(stringResource(R.string.sas_soon))
                 WindButton(stringResource(R.string.cancel), model::cancel, Modifier.testTag("cancelPairing"), kind = ButtonKind.Secondary)
             }
             "sas-code", "sas-rejected", "sas-confirming" -> {
-                Text(stringResource(R.string.sas_compare), style = MaterialTheme.typography.headlineSmall)
+                Text(stringResource(R.string.sas_compare), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.semantics { heading() })
                 WindCard(Modifier.fillMaxWidth()) {
                     Text(state.name, style = MaterialTheme.typography.titleMedium, modifier = Modifier.testTag("pairingPeer"))
                     Text(state.code, style = MaterialTheme.typography.displayMedium, modifier = Modifier.testTag("sasCode"))
@@ -136,7 +139,7 @@ fun PairingScreen(model: PairingViewModel, diagnostic: @Composable () -> Unit) {
             }
             "paired" -> DoneScreen(state.name, state.message, onDone = model::cancel)
             else -> {
-                Text(stringResource(R.string.pair_failed), style = MaterialTheme.typography.headlineSmall)
+                Text(stringResource(R.string.pair_failed), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.semantics { heading() })
                 Text(state.message, modifier = Modifier.testTag("pairingError"), color = MaterialTheme.colorScheme.error)
                 WindButton(stringResource(R.string.scan_new), model::scan)
                 WindButton(stringResource(R.string.go_back), model::cancel, Modifier.testTag("cancelPairing"), kind = ButtonKind.Secondary)

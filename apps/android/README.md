@@ -1,5 +1,11 @@
 # Android
 
+## Dostępność: TalkBack i duża czcionka (WN-64)
+
+CCS/1
+RULE:tytuły ekranów i kart ustawień są nagłówkami (nawigacja TalkBack po nagłówkach), ikony i akcje mają opisy, cele dotyku co najmniej 48 dp, kontrast tekstu i obrazów zgodny z Accessibility Test Framework. Ekrany przewijają się, więc największy rozmiar czcionki niczego nie ucina.
+CHECK:`AccessibilityTest` (instrumentacyjny): Google Accessibility Test Framework przez `tryPerformAccessibilityChecks` na ekranie głównym (bez i z komputerem), liście komputerów, ustawieniach, ekranie „Gotowe” i odbiorze plików, kawałek po kawałku podczas przewijania, w jasnym i ciemnym motywie oraz przy skali czcionki 2; kontrola negatywna sprawdza, że test wykrywa nieopisany przycisk 10 dp.
+
 ## Języki: polski i angielski (WN-63)
 
 CCS/1

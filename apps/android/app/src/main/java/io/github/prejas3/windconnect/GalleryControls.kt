@@ -1,5 +1,7 @@
 package io.github.prejas3.windconnect
 
+import androidx.compose.ui.semantics.heading
+
 import android.app.Activity
 import android.content.Intent
 import android.net.Uri
@@ -57,7 +59,7 @@ fun GalleryControls() {
         if (on && !access) ask.launch(PhoneGallery.PERMISSION) else connections.setGalleryAllowed(on)
     }
     WindCard {
-        Text(str(R.string.gallery_title), style = MaterialTheme.typography.titleMedium)
+        Text(str(R.string.gallery_title), style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
         Text(str(R.string.gallery_about))
         Text(str(R.string.gallery_permission), style = MaterialTheme.typography.bodySmall)
         WindSwitch(str(R.string.gallery_title), allowed && access, turn, Modifier.testTag("galleryAllowed"))

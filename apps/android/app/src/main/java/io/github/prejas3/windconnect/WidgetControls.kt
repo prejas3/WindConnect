@@ -1,5 +1,8 @@
 package io.github.prejas3.windconnect
 
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.heading
+
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -18,7 +21,7 @@ fun WidgetControls() {
     var message by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     WindCard {
-        Text(str(R.string.widget_title), style = MaterialTheme.typography.titleMedium)
+        Text(str(R.string.widget_title), style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
         Text(str(R.string.widget_about))
         WindButton(str(R.string.widget_add), {
             busy = true

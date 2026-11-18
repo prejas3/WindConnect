@@ -1,5 +1,8 @@
 package io.github.prejas3.windconnect
 
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.heading
+
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -47,7 +50,7 @@ internal fun RelayCard(relay: String?, set: (String?) -> Unit) {
     var error by remember { mutableStateOf<String?>(null) }
     var wanted by remember(relay) { mutableStateOf(relay != null) }
     WindCard {
-        Text(str(R.string.relay_title), style = MaterialTheme.typography.titleMedium)
+        Text(str(R.string.relay_title), style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
         WindSwitch(str(R.string.relay_switch), wanted, { on ->
             wanted = on
             error = RelaySetting.apply(set, if (on) draft.trim() else null)

@@ -1,5 +1,7 @@
 package io.github.prejas3.windconnect
 
+import androidx.compose.ui.semantics.heading
+
 import android.Manifest
 import android.app.Activity
 import android.content.Intent
@@ -75,7 +77,7 @@ fun SmsControls() {
         } else connections.setSmsAllowed(on)
     }
     WindCard {
-        Text(str(R.string.sms_title), style = MaterialTheme.typography.titleMedium)
+        Text(str(R.string.sms_title), style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
         Text(str(R.string.sms_about))
         Text(str(R.string.sms_permissions),
             style = MaterialTheme.typography.bodySmall)

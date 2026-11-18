@@ -1,9 +1,10 @@
 body { min-height: 100vh; overflow: auto; }
 .panel { padding: 18px; max-width: none; min-height: 100vh; display: flex; flex-direction: column; gap: 20px; border: 1px solid var(--border); border-radius: var(--radius-panel); }
-.panel-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.panel-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+/* WN-64: large text (Windows "Text size" up to 225%) wraps the battery and tiles instead of clipping. */
 .panel-heading h1 { font-size: 16px; letter-spacing: -.4px; display: flex; align-items: center; gap: 7px; }
 .panel-heading p { font-size: 12px; margin-top: 5px; }
-.panel-heading > div { min-width: 0; flex: 1; }
+.panel-heading > div { min-width: 0; flex: 1 1 12em; }
 /* WN-49: the phone's battery; amber when low, the bolt while charging. No live region: alerts are toasts. */
 /* WN-46: the phone's player. Texts come from other apps: set as text only (panel.js). */
 .media-card { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-areas: "art body" "controls controls"; gap: 8px 12px; margin-top: 10px; padding: 12px; border-radius: 10px; background: var(--tile); }
@@ -50,8 +51,8 @@ body { min-height: 100vh; overflow: auto; }
 .pairing-card .button-row { justify-content: center; }
 .panel:has(#pairing-qr:not([hidden])) { gap: 12px; }
 .state-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--sub); }
-.quick-actions { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 8px; }
-.quick-actions button { display: flex; flex-direction: column; align-items: center; gap: 8px; background: var(--tile); border-radius: var(--radius-tile); padding: 12px 2px; font-size: 11px; }
+.quick-actions { display: grid; grid-template-columns: repeat(auto-fit,minmax(76px,1fr)); gap: 8px; }
+.quick-actions button { display: flex; flex-direction: column; align-items: center; gap: 8px; background: var(--tile); border-radius: var(--radius-tile); padding: 12px 4px; font-size: 11px; text-align: center; overflow-wrap: anywhere; }
 .quick-actions button:disabled { color: var(--disabled); }
 .panel-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 12px; padding: 20px 4px; }
 .panel-empty h2 { font-size: 17px; }
@@ -79,7 +80,7 @@ body { min-height: 100vh; overflow: auto; }
 .device-list li + li { border-top: 1px solid var(--border); padding-top: 8px; }
 .device-list .device-head { display: grid; grid-template-columns: minmax(0,1fr); gap: 4px; }
 .device-list .device-actions { display: flex; flex-wrap: wrap; gap: 4px; margin-left: -10px; }
-.device-list .connected { color: var(--accent); }.device-list .owed { color: var(--warning); }
+.device-list .connected { color: var(--accent-text); }.device-list .owed { color: var(--warning); }
 .device-list .field { margin: 6px 0 0; }.device-list .confirm { margin-top: 6px; font-size: 12px; }
 .device-list .confirm .button-row, .device-list .field .button-row { display: flex; gap: 4px; justify-content: flex-end; margin-top: 6px; }
 /* WN-44: the phone's notifications; texts from other apps go in as text only (notifications.js). */

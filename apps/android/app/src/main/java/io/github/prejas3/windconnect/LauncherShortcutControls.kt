@@ -1,5 +1,8 @@
 package io.github.prejas3.windconnect
 
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.heading
+
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -13,7 +16,7 @@ fun LauncherShortcutControls() {
     val context = LocalContext.current
     var message by remember { mutableStateOf("") }
     WindCard {
-        Text(str(R.string.shortcuts_title), style = MaterialTheme.typography.titleMedium)
+        Text(str(R.string.shortcuts_title), style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
         Text(str(R.string.shortcuts_about))
         LauncherAction.entries.forEach { action ->
             WindButton(str(R.string.shortcut_pin, action.title), { message = LauncherShortcuts.pin(context, action) },

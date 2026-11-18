@@ -1,5 +1,7 @@
 package io.github.prejas3.windconnect
 
+import androidx.compose.ui.semantics.heading
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Arrangement
@@ -30,7 +32,7 @@ fun FindControls() {
     val connections = (LocalContext.current.applicationContext as WindApplication).connections
     val allowed by connections.findAllowed.collectAsStateWithLifecycle()
     WindCard {
-        Text(str(R.string.find_channel), style = MaterialTheme.typography.titleMedium)
+        Text(str(R.string.find_channel), style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
         WindSwitch(str(R.string.find_allow), allowed, connections::setFindAllowed, Modifier.testTag("findAllowed"))
         Text(str(R.string.find_about), style = MaterialTheme.typography.bodySmall)
     }

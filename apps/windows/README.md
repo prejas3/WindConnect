@@ -1,5 +1,11 @@
 # Windows
 
+## Dostępność: Narrator, klawiatura, kontrast, duży tekst (WN-64)
+
+CCS/1
+RULE:cały panel i pozostałe okna przechodzi się samym Tab/Shift+Tab (kolejność jak na ekranie, bez pułapek, widoczny pierścień fokusu), każda kontrolka ma nazwę dla Narratora, tekst ma kontrast WCAG AA w obu motywach, tryb kontrastu Windows (forced-colors) zachowuje obramowania i fokus. Duży tekst (Ułatwienia dostępu → Rozmiar tekstu, do 200%) przenosi kafelki i baterię do kolejnych wierszy zamiast ucinać.
+CHECK:`node apps/windows/scripts/check-a11y-ui.cjs` (Playwright, `PLAYWRIGHT_MODULE`): panel z każdą sekcją, index, SMS i menu zasobnika; drzewo dostępności Chromium (to samo, które UIA podaje Narratorowi), kontrast tekstu, 200% bez poziomego przewijania, zrzuty w TEMP.
+
 ## Języki: polski i angielski (WN-63)
 
 CCS/1

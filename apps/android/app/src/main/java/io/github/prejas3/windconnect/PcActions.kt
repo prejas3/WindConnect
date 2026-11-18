@@ -1,5 +1,7 @@
 package io.github.prejas3.windconnect
 
+import androidx.compose.ui.semantics.heading
+
 import android.content.ClipboardManager
 import android.content.Context
 import androidx.compose.foundation.layout.Arrangement
@@ -86,7 +88,7 @@ fun PcActionsCard(state: PcActionsState, connected: Boolean) {
     androidx.compose.runtime.LaunchedEffect(connected) { if (connected) state.refresh() else state.custom.value = emptyList() }
     if (!connected || (status == null && !asking && custom.isEmpty())) return
     WindCard {
-        Text(str(R.string.pc_actions_title), style = MaterialTheme.typography.titleMedium)
+        Text(str(R.string.pc_actions_title), style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
         if (asking) {
             Text(str(R.string.pc_link_prompt), style = MaterialTheme.typography.bodySmall)
             WindField(typed, { typed = it }, "https://…", Modifier.fillMaxWidth().testTag("pcLinkField"))

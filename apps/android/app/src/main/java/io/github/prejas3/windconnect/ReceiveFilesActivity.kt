@@ -37,7 +37,7 @@ internal fun ReceiveFilesControls(state: ReceiveUi = FileReceiving.ui.collectAsS
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var openError by remember { mutableStateOf("") }
-    Text(str(R.string.receive_title), style = MaterialTheme.typography.titleMedium)
+    Text(str(R.string.receive_title), style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
     WindCard(Modifier.fillMaxWidth().testTag("receiveFilesControls")) {
         Text(if (!state.enabled) str(R.string.receive_off) else if (state.ready) str(R.string.receive_ready) else str(R.string.receive_waiting_ready))
         Text(str(R.string.receive_where), style = MaterialTheme.typography.bodySmall)

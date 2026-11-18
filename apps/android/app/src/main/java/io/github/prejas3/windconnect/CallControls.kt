@@ -1,5 +1,7 @@
 package io.github.prejas3.windconnect
 
+import androidx.compose.ui.semantics.heading
+
 import android.Manifest
 import android.app.Activity
 import android.content.Intent
@@ -62,7 +64,7 @@ fun CallControls() {
         else connections.setCallsAllowed(on)
     }
     WindCard {
-        Text(str(R.string.calls_title), style = MaterialTheme.typography.titleMedium)
+        Text(str(R.string.calls_title), style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
         Text(str(R.string.calls_about))
         Text(str(R.string.calls_permissions),
             style = MaterialTheme.typography.bodySmall)

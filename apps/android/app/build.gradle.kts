@@ -12,8 +12,8 @@ android {
         applicationId = "io.github.prejas3.windconnect"
         minSdk = 29
         targetSdk = 35
-        versionCode = 88
-        versionName = "0.75.0"
+        versionCode = 89
+        versionName = "0.76.0"
         @Suppress("UNCHECKED_CAST")
         ndk { abiFilters += rootProject.extra["windAbis"] as List<String> }
 
@@ -71,6 +71,8 @@ dependencies {
     androidTestImplementation("junit:junit:4.13.2")
     androidTestImplementation(platform("androidx.compose:compose-bom:2025.04.01"))
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
+    // WN-64: Google's Accessibility Test Framework behind Compose's tryPerformAccessibilityChecks.
+    androidTestImplementation("com.google.android.apps.common.testing.accessibility.framework:accessibility-test-framework:4.1.1")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 }
 

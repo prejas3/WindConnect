@@ -119,9 +119,9 @@ class ShareFilesActivity : ComponentActivity() {
             WindApp(forceContent = true) {
                 Column(Modifier.fillMaxSize().padding(24.dp).testTag("shareFiles"),
                     verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    Text(str(R.string.share_title), style = MaterialTheme.typography.headlineSmall)
+                    Text(str(R.string.share_title), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.semantics { heading() })
                     if (sending.message.isNotEmpty()) WindCard(Modifier.fillMaxWidth()) {
-                        Text(if (sending.busy) str(R.string.share_sending) else str(R.string.share_last), style = MaterialTheme.typography.titleMedium)
+                        Text(if (sending.busy) str(R.string.share_sending) else str(R.string.share_last), style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
                         Text(sending.message, Modifier.testTag("fileSendStatus"))
                         if (!sending.busy && sending.canRetry) WindButton(str(R.string.share_retry), {
                             model.prepareRetry { selectedUris = it }
@@ -142,7 +142,7 @@ class ShareFilesActivity : ComponentActivity() {
                     } else {
                     WindButton(str(R.string.share_pick), { pendingPicker = true; openPendingPicker() }, Modifier.testTag("pickFiles"), enabled = !sending.busy, kind = ButtonKind.Secondary)
                     Text(str(R.string.share_selected, selectedUris.size), Modifier.testTag("selectedFileCount"))
-                    Text(str(R.string.share_target), style = MaterialTheme.typography.titleMedium)
+                    Text(str(R.string.share_target), style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
                     if (model.peers.isEmpty()) Text(str(R.string.share_pair_first))
                     model.peers.forEach { peer ->
                         WindButton("${computerLabel(peer.name)} · ${peer.fingerprint.take(8)}", { model.selected = peer.fingerprint },

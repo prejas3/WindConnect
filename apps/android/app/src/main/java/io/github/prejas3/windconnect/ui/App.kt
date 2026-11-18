@@ -59,7 +59,7 @@ private fun ComponentPreview(mode: ThemeMode, dynamic: Boolean, onMode: (ThemeMo
     var complete by rememberSaveable { mutableStateOf(false) }
     val colors = MaterialTheme.colorScheme
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(18.dp).testTag("componentPreview"), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Text(stringResource(R.string.preview_title), style = MaterialTheme.typography.headlineSmall)
+        Text(stringResource(R.string.preview_title), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.semantics { heading() })
         Text(stringResource(R.string.preview_dev), color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             listOf(ThemeMode.System to stringResource(R.string.theme_system), ThemeMode.Light to stringResource(R.string.theme_light), ThemeMode.Dark to stringResource(R.string.theme_dark)).forEach { (item, label) ->
@@ -71,7 +71,7 @@ private fun ComponentPreview(mode: ThemeMode, dynamic: Boolean, onMode: (ThemeMo
         } else Text(stringResource(R.string.preview_palette), color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
         Text(if (dynamic && Build.VERSION.SDK_INT >= 31) stringResource(R.string.preview_material_you) else stringResource(R.string.preview_mock_palette), modifier = Modifier.testTag("paletteSource"), style = MaterialTheme.typography.bodySmall)
         WindCard(Modifier.fillMaxWidth()) {
-            Text("SZYMON-PC", style = MaterialTheme.typography.headlineSmall)
+            Text("SZYMON-PC", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.semantics { heading() })
             Text(stringResource(R.string.preview_pc_state), color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 WindAction(stringResource(R.string.action_send_file), stringResource(R.string.preview_to_computer), "send", { feedback = R.string.preview_sample_send }, Modifier.weight(1f).testTag("actionSend"))
@@ -83,7 +83,7 @@ private fun ComponentPreview(mode: ThemeMode, dynamic: Boolean, onMode: (ThemeMo
             }
         }
         WindCard(Modifier.fillMaxWidth()) {
-            Text(stringResource(R.string.preview_transfer), style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.preview_transfer), style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
             Text(if (complete) stringResource(R.string.preview_sent) else stringResource(R.string.preview_progress), style = MaterialTheme.typography.bodyMedium)
             Box(Modifier.fillMaxWidth().height(5.dp).background(colors.surface).semantics { progressBarRangeInfo = ProgressBarRangeInfo(if (complete) 1f else .64f, 0f..1f) }) {
                 Box(Modifier.fillMaxWidth(if (complete) 1f else .64f).fillMaxHeight().background(colors.primary))
@@ -91,7 +91,7 @@ private fun ComponentPreview(mode: ThemeMode, dynamic: Boolean, onMode: (ThemeMo
             WindButton(if (complete) stringResource(R.string.preview_reset) else stringResource(R.string.preview_finish), { complete = !complete }, kind = ButtonKind.Secondary)
         }
         WindCard(Modifier.fillMaxWidth()) {
-            Text(stringResource(R.string.preview_fields), style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.preview_fields), style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
             WindSwitch(stringResource(R.string.preview_auto_clipboard), clipboard, { clipboard = it }, Modifier.testTag("sampleSwitch"))
             WindField(name, { name = it }, stringResource(R.string.preview_pc_name), Modifier.testTag("sampleName"), errorText = if (validated && name.isBlank()) stringResource(R.string.preview_name_required) else null)
             WindButton(stringResource(R.string.preview_check_name), { validated = true; if (name.isNotBlank()) feedback = R.string.preview_sample_name }, Modifier.testTag("validateName"))

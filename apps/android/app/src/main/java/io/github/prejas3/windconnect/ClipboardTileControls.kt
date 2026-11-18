@@ -1,5 +1,8 @@
 package io.github.prejas3.windconnect
 
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.heading
+
 import android.app.StatusBarManager
 import android.content.ComponentName
 import android.graphics.drawable.Icon
@@ -52,7 +55,7 @@ fun ClipboardTileControls() {
 internal fun TileAddControls(sdkInt: Int, requestAdd: ((TileAddState) -> Unit) -> Unit) {
     var state by remember { mutableStateOf(TileAddState.Idle) }
     WindCard {
-        Text(str(R.string.tile_title), style = MaterialTheme.typography.titleMedium)
+        Text(str(R.string.tile_title), style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
         if (sdkInt >= 33) {
             Text(state.message, Modifier.testTag("tileAddStatus"))
             // CCS/1 RULE:only an explicit tap requests the OS prompt; refusal never triggers a retry.

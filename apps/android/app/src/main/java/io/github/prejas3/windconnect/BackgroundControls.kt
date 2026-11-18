@@ -1,5 +1,8 @@
 package io.github.prejas3.windconnect
 
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.heading
+
 import android.Manifest
 import android.app.NotificationManager
 import android.content.Intent
@@ -53,7 +56,7 @@ fun BackgroundControls(hasPairedDevice: Boolean) {
         }
     }
     WindCard {
-        Text(str(R.string.background_title), style = MaterialTheme.typography.titleMedium)
+        Text(str(R.string.background_title), style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
         Text(if (enabled) str(R.string.background_on_state) else str(R.string.off), modifier = Modifier.testTag("backgroundStatus"))
         WindButton(if (enabled) str(R.string.background_stop) else str(R.string.background_start), {
             if (enabled) ConnectionService.stop(context) else {

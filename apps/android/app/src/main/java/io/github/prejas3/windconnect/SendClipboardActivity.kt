@@ -1,5 +1,8 @@
 package io.github.prejas3.windconnect
 
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.heading
+
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -27,7 +30,7 @@ class SendClipboardActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent { WindApp(forceContent = true) {
             Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
-                Text(str(R.string.send_clipboard), style = MaterialTheme.typography.headlineSmall)
+                Text(str(R.string.send_clipboard), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.semantics { heading() })
                 Text(status.value)
                 WindButton(str(R.string.close), { finish() }, kind = ButtonKind.Secondary)
             }

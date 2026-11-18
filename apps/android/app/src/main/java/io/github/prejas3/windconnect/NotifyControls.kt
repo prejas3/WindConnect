@@ -1,5 +1,7 @@
 package io.github.prejas3.windconnect
 
+import androidx.compose.ui.semantics.heading
+
 import android.content.ComponentName
 import android.content.Intent
 import android.os.Build
@@ -56,7 +58,7 @@ fun NotifyControls() {
         onDispose { lifecycle.lifecycle.removeObserver(observer) }
     }
     WindCard {
-        Text(str(R.string.notify_title), style = MaterialTheme.typography.titleMedium)
+        Text(str(R.string.notify_title), style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
         Text(str(R.string.notify_about))
         Text(str(R.string.notify_access_about), style = MaterialTheme.typography.bodySmall)
         Text(if (access) str(R.string.access_granted) else str(R.string.access_none), modifier = Modifier.testTag("notifyAccess"))

@@ -1,5 +1,7 @@
 package io.github.prejas3.windconnect
 
+import androidx.compose.ui.semantics.heading
+
 import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -90,7 +92,7 @@ fun HomeScreen(state: PairingUi, onScan: () -> Unit, onDiagnostics: () -> Unit, 
     PcVolumeCard() // WN-48: the PC's volume; shown while the PC shares it.
     PcActionsCard(pcActions, connected != null) // WN-100: the outcome, the link box and the PC's own actions.
     if (known) ReceiveFilesControls()
-    Text(stringResource(R.string.home_recent), style = MaterialTheme.typography.titleMedium)
+    Text(stringResource(R.string.home_recent), style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
     WindCard(Modifier.fillMaxWidth().testTag("recentTransfers")) {
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
             WindIcon("file")
@@ -109,7 +111,7 @@ fun HomeScreen(state: PairingUi, onScan: () -> Unit, onDiagnostics: () -> Unit, 
 @OptIn(ExperimentalMaterial3Api::class)
 fun ClipboardControls(state: PairingUi, onSend: () -> Unit, onEnabled: (Boolean) -> Unit, onImageLimit: ((Int) -> Unit)? = null) {
     WindCard(Modifier.fillMaxWidth().testTag("clipboardCard")) {
-        Text(stringResource(R.string.clipboard_shared), style = MaterialTheme.typography.titleMedium)
+        Text(stringResource(R.string.clipboard_shared), style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
         WindSwitch(stringResource(R.string.clip_sync_auto_label), state.clipboard.enabled, onEnabled, Modifier.testTag("clipboardEnabled"))
         Text(state.clipboard.status, style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("clipboardStatus"))
         Text(stringResource(R.string.clipboard_about), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
