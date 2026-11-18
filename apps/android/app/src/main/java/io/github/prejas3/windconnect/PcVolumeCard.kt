@@ -65,7 +65,7 @@ internal fun PcVolumeControls(volume: PcVolume, onLevel: (Int) -> Unit, onMute: 
         onValueChange = { v ->
             dragging = true
             localAt = SystemClock.uptimeMillis()
-            level = (v * 20).roundToInt() * 5
+            level = (v * 100).roundToInt()
             onLevel(level)
         },
         onValueChangeFinished = { dragging = false; localAt = SystemClock.uptimeMillis() },

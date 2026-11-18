@@ -165,7 +165,7 @@ internal object FileReceiving {
         if (!busy && !lastBusy && state.receipts.isEmpty()) return
         if (busy && !lastBusy) batchBase = state.receipts.map { it.key }.toSet()
         // WN-130: one new file: a tap opens it; several: a tap opens the list.
-        val fresh = if (busy || lastResult.isNotEmpty()) emptyList() else state.receipts.filter { it.key !in (batchBase ?: state.receipts.drop(1).map { r -> r.key }.toSet()) }
+        val fresh = freshReceipts(state.receipts, { it.key }, batchBase, busy, lastResult)
         lastNotice = now; lastBusy = busy
         val manager = context.getSystemService(NotificationManager::class.java)
         manager.createNotificationChannel(NotificationChannel(CHANNEL, str(R.string.receive_title), NotificationManager.IMPORTANCE_LOW).apply { setShowBadge(false) })
@@ -188,7 +188,10 @@ internal object FileReceiving {
             }).setContentText(if (single != null) "${transferBytes(single.size)} · ${single.folder}" else message)
             .setContentIntent(open).setOnlyAlertOnce(true).setOngoing(busy).setVisibility(Notification.VISIBILITY_PRIVATE)
             .setPublicVersion(Notification.Builder(context, CHANNEL).setSmallIcon(R.drawable.ic_connection).setContentTitle("WindConnect").setContentText(str(R.string.receive_unlock)).setContentIntent(open).build())
-            .apply { if (single != null) addAction(Notification.Action.Builder(null, str(R.string.receive_all_files), list).build()) }
+            .apply { if (single != null) {
+                addAction(Notification.Action.Builder(null, str(R.string.open), open).build())
+                addAction(Notification.Action.Builder(null, str(R.string.receive_all_files), list).build())
+            } }
             .apply { if (busy) {
                 setProgress(1000, if (size == 0L) 0 else (done.coerceAtMost(size) * 1000 / size).toInt(), false)
                 addAction(Notification.Action.Builder(null, str(R.string.cancel), PendingIntent.getBroadcast(context, ID + 1, Intent(context, ReceiveFilesCancelReceiver::class.java), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)).build())

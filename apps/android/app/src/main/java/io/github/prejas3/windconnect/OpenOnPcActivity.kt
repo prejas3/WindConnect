@@ -7,7 +7,15 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.annotation.VisibleForTesting
-import androidx.compose.material3.AlertDialog
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import io.github.prejas3.windconnect.ui.WindCard
 import androidx.compose.material3.Text
 import io.github.prejas3.windconnect.ui.ButtonKind
 import io.github.prejas3.windconnect.ui.WindButton
@@ -50,11 +58,13 @@ class OpenOnPcActivity : ComponentActivity() {
             WindConnectTheme {
                 val scope = rememberCoroutineScope()
                 var sending by remember { mutableStateOf(false) }
-                AlertDialog(
-                    onDismissRequest = { if (!sending) finish() },
-                    title = { Text(str(R.string.open_on_pc_question, pc)) },
-                    text = { Text("$host\n$shown", modifier = Modifier.testTag("openOnPcLink")) },
-                    confirmButton = {
+                // WN-156: own dialog (WindCard, title, WindButton row) instead of Material's AlertDialog.
+                Dialog(onDismissRequest = { if (!sending) finish() }) {
+                  WindCard(Modifier.fillMaxWidth()) {
+                    Text(str(R.string.open_on_pc_question, pc), style = MaterialTheme.typography.titleLarge, modifier = Modifier.semantics { heading() })
+                    Text("$host\n$shown", modifier = Modifier.testTag("openOnPcLink"))
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, androidx.compose.ui.Alignment.End)) {
+                        WindButton(str(R.string.cancel), enabled = !sending, onClick = { finish() }, modifier = Modifier.testTag("openOnPcCancel"), kind = ButtonKind.Quiet)
                         WindButton(str(R.string.action_open_on_pc), enabled = !sending, onClick = {
                             sending = true
                             scope.launch {
@@ -63,11 +73,9 @@ class OpenOnPcActivity : ComponentActivity() {
                                 finish()
                             }
                         }, modifier = Modifier.testTag("openOnPcConfirm"))
-                    },
-                    dismissButton = {
-                        WindButton(str(R.string.cancel), enabled = !sending, onClick = { finish() }, modifier = Modifier.testTag("openOnPcCancel"), kind = ButtonKind.Quiet)
-                    },
-                )
+                    }
+                  }
+                }
             }
         }
     }

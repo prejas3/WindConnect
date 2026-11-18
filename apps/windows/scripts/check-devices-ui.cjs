@@ -53,6 +53,13 @@ const stub = rows => {
     assert.match(await rows.nth(2).textContent(), /dowie się przy następnym połączeniu/);
     assert.equal(await rows.nth(2).locator('button').count(), 0, 'an owed row has no actions');
     assert.equal(await rows.nth(1).getByRole('button', { name: /^Rozłącz/ }).count(), 0, 'disconnect only for the connected phone');
+    // WN-156: the state line has no fingerprint; the fingerprint is its own line; Disconnect is the outlined button.
+    assert.doesNotMatch(await rows.nth(0).locator('.device-state').textContent(), /K4TQ/);
+    assert.match(await rows.nth(0).locator('.device-state').textContent(), /Połączony/);
+    assert.equal(await rows.nth(0).locator('.device-state.connected').count(), 1);
+    assert.equal(await rows.nth(0).locator('.device-fingerprint').textContent(), 'Odcisk: K4TQ-9WZM-2HXP');
+    assert.equal(await rows.nth(2).locator('.device-fingerprint').count(), 0, 'an owed row shows no fingerprint');
+    assert.doesNotMatch(await rows.nth(0).getByRole('button', { name: /^Rozłącz/ }).evaluate(b => b.className), /quiet|primary/);
 
     // Rename: Enter saves the trimmed name; an empty name is refused in place.
     await rows.nth(1).getByRole('button', { name: /^Zmień nazwę/ }).click();

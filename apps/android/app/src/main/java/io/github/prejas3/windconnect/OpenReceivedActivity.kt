@@ -18,7 +18,7 @@ class OpenReceivedActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         val key = intent.getStringExtra(KEY)
         lifecycleScope.launch {
-            val uri = key?.let { FileReceiving.openUri(it) }
+            val uri = key?.let { (testUri ?: { k -> FileReceiving.openUri(k) })(it) }
             if (uri == null) startActivity(Intent(this@OpenReceivedActivity, ReceiveFilesActivity::class.java))
             else try {
                 startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri, contentResolver.getType(uri) ?: "application/octet-stream")
@@ -30,5 +30,9 @@ class OpenReceivedActivity : ComponentActivity() {
             finish()
         }
     }
-    companion object { const val KEY = "receipt" }
+    companion object {
+        const val KEY = "receipt"
+        /** Tests only: the journal lookup (no core opened in an instrumented test). */
+        @androidx.annotation.VisibleForTesting @JvmStatic var testUri: (suspend (String) -> android.net.Uri?)? = null
+    }
 }

@@ -81,6 +81,24 @@ const stub = () => {
     await page.locator('#transfers-clear').click();
     const calls = await page.evaluate(() => window.__calls.filter(c => c[0] === 'files_action').map(c => [c[1].action, c[1].id || null]));
     assert.deepEqual(calls, [['pick', null], ['cancel', '1'.repeat(32)], ['retry', '3'.repeat(32)], ['clear', null]]);
+    // WN-156: five finished show the newest three and "Show all (5)"; the toggle shows five, then collapses; with
+    // nothing left to collapse the toggle goes away.
+    await page.evaluate(() => { const rows = [...'abcde'].map(c => ({ id: c.repeat(32), direction: 'incoming', name: `${c}.txt`, size: 5, done: 5, state: 'done', reason: null, canOpen: true })); window.__listeners['files-state']({ payload: { rows } }); });
+    const more = page.locator('#transfers-more');
+    assert.equal(await page.locator('#transfers-list li').count(), 3);
+    assert.equal(await more.textContent(), 'Pokaż wszystkie (5)');
+    assert.equal(await more.getAttribute('aria-expanded'), 'false');
+    assert.equal(await more.getAttribute('aria-controls'), 'transfers-list');
+    await more.click();
+    assert.equal(await page.locator('#transfers-list li').count(), 5);
+    assert.equal(await more.getAttribute('aria-expanded'), 'true');
+    assert.equal(await more.textContent(), 'Pokaż mniej');
+    await more.click();
+    assert.equal(await page.locator('#transfers-list li').count(), 3);
+    await more.click();
+    await page.evaluate(() => window.__listeners['files-state']({ payload: { rows: [{ id: 'f'.repeat(32), direction: 'incoming', name: 'f.txt', size: 5, done: 5, state: 'done', reason: null, canOpen: true }] } }));
+    assert.equal(await more.isVisible(), false, 'no "Show less" with nothing to collapse');
+    assert.equal(await more.getAttribute('aria-expanded'), 'false');
     await page.evaluate(() => {const row={id:'5'.repeat(32),direction:'incoming',name:'<img src=x onerror=alert(1)>',size:null,done:123,state:'running',rate:null};window.__listeners['files-state']({payload:{rows:[row]}});});
     assert.equal(await page.locator('#transfers-list img').count(),0);
     assert.equal(await page.locator('#transfers-list [role=progressbar]').getAttribute('aria-valuenow'),null);

@@ -94,10 +94,9 @@ fun PairingScreen(model: PairingViewModel, diagnostic: @Composable () -> Unit) {
                     WindDivider()
                     ReceiveSettingRow()
                 }
-                WindSection(stringResource(R.string.group_clipboard)) {
-                    ClipboardSettingRows(state, model::setClipboardEnabled, model::setClipboardImageLimit)
-                }
                 WindSection(stringResource(R.string.group_shortcuts)) {
+                    ClipboardSettingRows(state, model::setClipboardEnabled, model::setClipboardImageLimit)
+                    WindDivider()
                     BackgroundControls(state.hasPairedDevice)
                     WindDivider()
                     ClipboardTileControls()

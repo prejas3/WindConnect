@@ -482,8 +482,7 @@
     <string name="group_computer">Komputer</string>
     <string name="group_phone_on_pc">Telefon na komputerze</string>
     <string name="group_pc_on_phone">Komputer na telefonie</string>
-    <string name="group_clipboard">Schowek</string>
-    <string name="group_shortcuts">Skróty i praca w tle</string>
+    <string name="group_shortcuts">Schowek, skróty i praca w tle</string>
     <string name="sum_notify">Odpowiadanie i odrzucanie z PC</string>
     <string name="sum_sms">Wątki SMS i MMS w oknie Wiadomości</string>
     <string name="sum_sms_send">Odpowiedzi wysyłane z PC</string>

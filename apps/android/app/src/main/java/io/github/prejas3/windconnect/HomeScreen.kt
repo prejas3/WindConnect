@@ -23,6 +23,13 @@ import java.util.Locale
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 
 // CCS/1 SEC:peer labels are presentation only; strip control/direction overrides without changing trusted keys.
 internal fun computerLabel(value: String?): String = value.orEmpty().filterNot {
@@ -77,9 +84,15 @@ fun HomeScreen(state: PairingUi, onScan: () -> Unit, onDiagnostics: () -> Unit, 
             WindAction(stringResource(R.string.action_open_on_pc), stringResource(R.string.home_link_sub), "external", pcActions.openLink.takeIf { connected != null }, Modifier.weight(1f).fillMaxHeight().testTag("homeLink"))
         }
     }
-    if (onClipboard != null && onClipboardEnabled != null) ClipboardControls(state, onClipboard, onClipboardEnabled)
-    // WN-130: an empty history no longer takes a card; it appears with its first item.
-    if (history != null && state.clipboardHistory.isNotEmpty()) ClipboardHistoryCard(state.clipboardHistory, state.clipboard.enabled, history)
+    // WN-130/WN-156: "History" in the clipboard card's header shows the history card (also when empty) and scrolls to it;
+    // an empty history otherwise takes no card.
+    var historyAsked by remember { mutableIntStateOf(0) }
+    val historyView = remember { BringIntoViewRequester() }
+    LaunchedEffect(historyAsked) { if (historyAsked > 0) { withFrameNanos { }; historyView.bringIntoView() } }
+    if (onClipboard != null && onClipboardEnabled != null) ClipboardControls(state, onClipboard, onClipboardEnabled, onHistory = history?.let { { historyAsked++ } })
+    if (history != null && (state.clipboardHistory.isNotEmpty() || historyAsked > 0)) Box(Modifier.bringIntoViewRequester(historyView)) {
+        ClipboardHistoryCard(state.clipboardHistory, state.clipboard.enabled, history)
+    }
     PcMediaCard() // WN-47/48: the PC's player and volume, one card, shown while the PC shares either.
     PcActionsCard(pcActions, connected != null) // WN-100: the outcome, the link box and the PC's own actions.
     // WN-130: received files, newest few (the always-empty "Recent transfers" card is gone).
@@ -90,10 +103,13 @@ fun HomeScreen(state: PairingUi, onScan: () -> Unit, onDiagnostics: () -> Unit, 
 }
 
 @Composable
-fun ClipboardControls(state: PairingUi, onSend: () -> Unit, onEnabled: (Boolean) -> Unit) {
+fun ClipboardControls(state: PairingUi, onSend: () -> Unit, onEnabled: (Boolean) -> Unit, onHistory: (() -> Unit)? = null) {
     // WN-130 home: the switch, what happened since, and one action; the explanation and image limit are in Settings.
     WindCard(Modifier.fillMaxWidth().testTag("clipboardCard")) {
-        Text(stringResource(R.string.clipboard_shared), style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(stringResource(R.string.clipboard_shared), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f).semantics { heading() })
+            if (onHistory != null) WindButton(stringResource(R.string.clipboard_history_link), onHistory, Modifier.testTag("clipboardHistoryLink"), kind = ButtonKind.Quiet)
+        }
         Column {
             WindSwitch(stringResource(R.string.clip_sync_auto_label), state.clipboard.enabled, onEnabled, Modifier.testTag("clipboardEnabled"))
             Text(stringResource(R.string.sum_clip_sync), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

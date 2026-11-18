@@ -79,9 +79,11 @@ fun WindSlider(value: Float, onValueChange: (Float) -> Unit, modifier: Modifier 
     val finished = androidx.compose.runtime.rememberUpdatedState(onValueChangeFinished)
     val density = androidx.compose.ui.platform.LocalDensity.current.density
     fun at(x: Float, width: Int) = valueRange.start + span * ((x - 10f * density) / (width - 20f * density)).coerceIn(0f, 1f)
-    Canvas(modifier.fillMaxWidth().height(32.dp)
+    // WN-156: 48 dp tall touch area (the track is drawn centred); TalkBack moves it by [step] (steps between the ends).
+    val steps = if (step <= 0f || span <= 0f) 0 else (kotlin.math.round(span / step).toInt() - 1).coerceAtLeast(0)
+    Canvas(modifier.fillMaxWidth().height(48.dp)
         .semantics {
-            progressBarRangeInfo = androidx.compose.ui.semantics.ProgressBarRangeInfo(value, valueRange)
+            progressBarRangeInfo = androidx.compose.ui.semantics.ProgressBarRangeInfo(value, valueRange, steps)
             if (!enabled) disabled()
             setProgress { target -> if (!enabled) false else { latest.value(target.coerceIn(valueRange)); finished.value?.invoke(); true } }
         }
@@ -106,7 +108,7 @@ fun <T> WindSegmented(options: List<T>, selected: T, label: @Composable (T) -> S
         options.forEachIndexed { index, option ->
             val on = option == selected
             if (index > 0) Box(Modifier.width(1.dp).fillMaxHeight().background(colors.onSurfaceVariant))
-            Box(Modifier.weight(1f).defaultMinSize(minHeight = 44.dp).background(if (on) colors.primaryContainer else Color.Transparent)
+            Box(Modifier.weight(1f).defaultMinSize(minHeight = 48.dp).background(if (on) colors.primaryContainer else Color.Transparent)
                 .selectable(selected = on, role = Role.RadioButton, onClick = { onSelect(option) })
                 .then(if (tag(option).isNotEmpty()) Modifier.testTag(tag(option)) else Modifier).padding(horizontal = 8.dp, vertical = 10.dp), contentAlignment = Alignment.Center) {
                 Text(if (on) "✓ " + label(option) else label(option), color = if (on) colors.onPrimaryContainer else colors.onSurface, style = MaterialTheme.typography.labelLarge)
@@ -276,8 +278,8 @@ fun WindSettingRow(
                 if (open) androidx.compose.material3.ProvideTextStyle(MaterialTheme.typography.bodySmall.copy(color = colors.onSurfaceVariant)) { more(this) }
                 val label = stringResource(if (open) R.string.less else R.string.more)
                 Text(label, color = colors.primary, style = MaterialTheme.typography.labelLarge,
-                    modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable(role = Role.Button) { open = !open }.padding(vertical = 8.dp)
-                        .semantics { contentDescription = "$label: $title" })
+                    modifier = Modifier.heightIn(min = 48.dp).clip(RoundedCornerShape(8.dp)).clickable(role = Role.Button) { open = !open }
+                        .wrapContentHeight(Alignment.CenterVertically).padding(end = 8.dp).semantics { contentDescription = "$label: $title" })
             }
         }
     }

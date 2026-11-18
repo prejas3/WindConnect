@@ -51,4 +51,17 @@ class PcVolumeTest {
         assertEquals(1, levels.size)
         valueIs("Wyciszony")
     }
+
+    /** WN-156: a drag sets the PC's volume to the percent (1% steps); only TalkBack moves it by 5%. */
+    @Test fun anyPercentCanBeSet() {
+        val levels = mutableListOf<Int>()
+        compose.setContent {
+            WindConnectTheme(ThemeMode.Light, false) { Column { PcVolumeControls(PcVolume(40, false), { levels += it }, { }) } }
+        }
+        compose.onNodeWithTag("pcVolumeSlider").performSemanticsAction(SemanticsActions.SetProgress) { it(0.37f) }
+        assertEquals(37, levels.last())
+        valueIs("37%")
+        val info = compose.onNodeWithTag("pcVolumeSlider").fetchSemanticsNode().config[SemanticsProperties.ProgressBarRangeInfo]
+        assertEquals(19, info.steps)
+    }
 }

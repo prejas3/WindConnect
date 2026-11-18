@@ -97,11 +97,23 @@ class AccessibilityTest {
         everyCase {
             io.github.prejas3.windconnect.ui.WindSection("Telefon na komputerze") { NotifyControls(); SmsControls(); CallControls(); GalleryControls(); MediaControls() }
             io.github.prejas3.windconnect.ui.WindSection("Komputer na telefonie") { PcMediaControls(); LinkControls(); FindControls(); ReceiveSettingRow() }
-            io.github.prejas3.windconnect.ui.WindSection("Skróty i praca w tle") { BackgroundControls(true); ClipboardTileControls(); LauncherShortcutControls(); WidgetControls(); RelayControls() }
+            io.github.prejas3.windconnect.ui.WindSection("Schowek, skróty i praca w tle") { BackgroundControls(true); ClipboardTileControls(); LauncherShortcutControls(); WidgetControls(); RelayControls() }
         }
         // TalkBack's heading navigation jumps between the settings groups.
         val headings = compose.onAllNodes(isHeading(), useUnmergedTree = true).fetchSemanticsNodes().size
         org.junit.Assert.assertTrue("headings: $headings", headings >= 3)
+    }
+
+    /** WN-156 (WN-64 touch targets): the own slider, a segment and a row's "More" are at least 48 dp tall. */
+    @Test fun ownControlsAreLargeEnough() {
+        screen {
+            io.github.prejas3.windconnect.ui.WindSlider(0.4f, {}, Modifier.testTag("slider"))
+            io.github.prejas3.windconnect.ui.WindSegmented(listOf(5, 16), 5, { "$it MB" }, {}, tag = { "seg$it" })
+            io.github.prejas3.windconnect.ui.WindSettingRow("pc", "Wiersz", "Opis", more = { androidx.compose.material3.Text("Szczegóły") })
+        }
+        compose.onNodeWithTag("slider").assertHeightIsAtLeast(48.dp)
+        compose.onNodeWithTag("seg16").assertHeightIsAtLeast(48.dp)
+        compose.onNodeWithContentDescription("Więcej: Wiersz").assertHeightIsAtLeast(48.dp)
     }
 
     @Test fun pairedAndReceiving() = everyCase { DoneScreen("Biurko", "Połączono z komputerem", onDone = {}); ReceiveFilesControls() }

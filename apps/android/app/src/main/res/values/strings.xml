@@ -480,8 +480,7 @@
     <string name="group_computer">Computer</string>
     <string name="group_phone_on_pc">Phone on the computer</string>
     <string name="group_pc_on_phone">Computer on the phone</string>
-    <string name="group_clipboard">Clipboard</string>
-    <string name="group_shortcuts">Shortcuts and background</string>
+    <string name="group_shortcuts">Clipboard, shortcuts and background</string>
     <string name="sum_notify">Reply and dismiss from the PC</string>
     <string name="sum_sms">SMS and MMS threads in Messages</string>
     <string name="sum_sms_send">Replies sent from the PC</string>

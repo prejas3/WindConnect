@@ -13,6 +13,7 @@ export function createTransfers(document, action, clock = () => performance.now(
   find('-clear').addEventListener('click', () => action('clear'));
   // WN-129: a long history no longer fills the panel: running ones and the newest few, the rest behind "Show all".
   const more = document.createElement('button'); more.className = 'button quiet small'; more.id = 'transfers-more'; more.hidden = true;
+  more.setAttribute('aria-controls', 'transfers-list'); more.setAttribute('aria-expanded', 'false');
   more.addEventListener('click', () => { expanded = !expanded; render(last); });
   find('-list').after(more);
   function make(row) {
@@ -37,8 +38,11 @@ export function createTransfers(document, action, clock = () => performance.now(
     last = state;
     const all = state.rows || [], active = all.filter(r => ['queued', 'running', 'waiting'].includes(r.state));
     const finished = all.filter(r => !active.includes(r));
+    // WN-156: nothing left to collapse (cleared, or few finished): back to the short list, no stray "Show less".
+    if (finished.length <= TRANSFERS_SHOWN) expanded = false;
     const rows = expanded ? all : all.filter(r => active.includes(r) || finished.indexOf(r) < TRANSFERS_SHOWN);
     more.hidden = all.length <= rows.length && !expanded;
+    more.setAttribute('aria-expanded', String(expanded));
     more.textContent = expanded ? t('transfers.show_less') : t('transfers.show_all', { count: all.length });
     find('').hidden = !rows.length;
     find('-title').textContent = t('transfers.title');
