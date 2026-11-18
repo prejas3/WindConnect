@@ -55,18 +55,19 @@ pub fn send_paths(engine: &FileEngine, peer: [u8; 32], paths: &[PathBuf]) -> (us
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_else(|| path.display().to_string());
         if !path.is_absolute() {
-            problems.push(format!("{shown}: nieprawidłowa ścieżka"));
+            problems.push(crate::i18n::trf("files.bad_path", &[("name", &shown)]));
             continue;
         }
         match engine.send(peer, path) {
             Ok(ids) => queued += ids.len(),
-            Err(FilesError::BadPath(name, _)) => {
-                problems.push(format!("{shown}: nazwy „{name}” telefon nie przyjmie"))
-            }
+            Err(FilesError::BadPath(name, _)) => problems.push(crate::i18n::trf(
+                "files.bad_name",
+                &[("name", &shown), ("bad", &name)],
+            )),
             Err(FilesError::Io(e)) if e.kind() == std::io::ErrorKind::NotFound => {
-                problems.push(format!("{shown}: nie istnieje"))
+                problems.push(crate::i18n::trf("files.missing", &[("name", &shown)]))
             }
-            Err(_) => problems.push(format!("{shown}: nie można odczytać")),
+            Err(_) => problems.push(crate::i18n::trf("files.unreadable", &[("name", &shown)])),
         }
     }
     (queued, problems)
@@ -209,9 +210,9 @@ pub fn queue(app: &tauri::AppHandle, paths: Vec<PathBuf>) {
         notice(
             app,
             if ready {
-                "Najpierw sparuj telefon, a pliki zostaną wysłane.".into()
+                crate::i18n::tr("files.pair_first").into()
             } else {
-                format!("Przygotowywanie wysyłania ({waiting})…")
+                crate::i18n::trf("files.preparing", &[("count", &waiting)])
             },
             ready,
         );
@@ -224,14 +225,23 @@ pub fn queue(app: &tauri::AppHandle, paths: Vec<PathBuf>) {
         let Ok((queued, problems)) = result else {
             return;
         };
-        let to = target.name.unwrap_or_else(|| "telefon".into());
+        let to = target
+            .name
+            .unwrap_or_else(|| crate::i18n::tr("common.phone").into());
         let message = match (queued, problems.first()) {
-            (0, Some(first)) => format!("Nie wysłano: {first}"),
-            (n, None) => format!("Wysyłanie na {to}: {}", files_word(n)),
-            (n, Some(first)) => format!(
-                "Wysyłanie na {to}: {}. Pominięto {}: {first}",
-                files_word(n),
-                problems.len()
+            (0, Some(first)) => crate::i18n::trf("files.not_sent", &[("problem", first)]),
+            (n, None) => crate::i18n::trf(
+                "files.sending_to",
+                &[("to", &to), ("files", &files_word(n))],
+            ),
+            (n, Some(first)) => crate::i18n::trf(
+                "files.sending_skipped",
+                &[
+                    ("to", &to),
+                    ("files", &files_word(n)),
+                    ("skipped", &problems.len()),
+                    ("problem", first),
+                ],
             ),
         };
         notice(&app, message, queued == 0);
@@ -239,14 +249,7 @@ pub fn queue(app: &tauri::AppHandle, paths: Vec<PathBuf>) {
 }
 
 fn files_word(n: usize) -> String {
-    let word = if n == 1 {
-        "plik"
-    } else if (2..=4).contains(&(n % 10)) && !(12..=14).contains(&(n % 100)) {
-        "pliki"
-    } else {
-        "plików"
-    };
-    format!("{n} {word}")
+    crate::i18n::trp("files.count", n as u64)
 }
 
 /// The system file picker (several files); folders go by the Explorer menu or a drop.
@@ -254,7 +257,9 @@ fn files_word(n: usize) -> String {
 fn pick() -> Vec<PathBuf> {
     use windows_sys::Win32::UI::Controls::Dialogs::*;
     let mut buffer = vec![0u16; 64 * 1024];
-    let title: Vec<u16> = "Wyślij na telefon\0".encode_utf16().collect();
+    let title: Vec<u16> = format!("{}\0", crate::i18n::tr("files.send_to_phone"))
+        .encode_utf16()
+        .collect();
     // SAFETY: zeroed is a valid OPENFILENAMEW; the buffers outlive the call.
     let mut ofn: OPENFILENAMEW = unsafe { std::mem::zeroed() };
     ofn.lStructSize = std::mem::size_of::<OPENFILENAMEW>() as u32;
@@ -363,7 +368,7 @@ fn reparse_tag(path: &Path) -> std::io::Result<u32> {
 }
 
 pub fn checked_open_path(row: &TransferInfo, inbox: &Path) -> Result<PathBuf, String> {
-    let missing = "Plik został przeniesiony lub usunięty";
+    let missing = crate::i18n::tr("files.moved");
     let source = match row.direction {
         Direction::Outgoing => row.source.as_ref(),
         Direction::Incoming if row.state == TransferState::Done => row.saved_as.as_ref(),
@@ -375,7 +380,7 @@ pub fn checked_open_path(row: &TransferInfo, inbox: &Path) -> Result<PathBuf, St
         for ancestor in source.ancestors() {
             let meta = std::fs::symlink_metadata(ancestor).map_err(|_| missing)?;
             if meta.file_type().is_symlink() {
-                return Err("Nie można otworzyć dowiązania".into());
+                return Err(crate::i18n::tr("files.symlink").into());
             }
             #[cfg(windows)]
             {
@@ -383,7 +388,7 @@ pub fn checked_open_path(row: &TransferInfo, inbox: &Path) -> Result<PathBuf, St
                 if meta.file_attributes() & 0x400 != 0
                     && redirects_path(reparse_tag(ancestor).map_err(|_| missing)?)
                 {
-                    return Err("Nie można otworzyć punktu ponownej analizy".into());
+                    return Err(crate::i18n::tr("files.reparse").into());
                 }
             }
         }
@@ -395,7 +400,7 @@ pub fn checked_open_path(row: &TransferInfo, inbox: &Path) -> Result<PathBuf, St
     if row.direction == Direction::Incoming
         && !path.starts_with(inbox.canonicalize().map_err(|_| missing)?)
     {
-        return Err("Plik poza folderem odbioru".into());
+        return Err(crate::i18n::tr("files.outside").into());
     }
     Ok(path)
 }
@@ -420,7 +425,7 @@ fn select_in_explorer(path: &Path) -> Result<(), String> {
             CoUninitialize();
         }
         if result < 0 {
-            Err("Nie można otworzyć folderu w Eksploratorze".into())
+            Err(crate::i18n::tr("files.explorer_failed").into())
         } else {
             Ok(())
         }
@@ -428,7 +433,7 @@ fn select_in_explorer(path: &Path) -> Result<(), String> {
 }
 #[cfg(not(windows))]
 fn select_in_explorer(_: &Path) -> Result<(), String> {
-    Err("Eksplorator jest dostępny na Windows".into())
+    Err(crate::i18n::tr("files.explorer_windows").into())
 }
 
 #[tauri::command]
@@ -455,7 +460,7 @@ pub fn files_action(
         let matching: Vec<_> = rows.iter().filter(|t| t.id == id).collect();
         // CCS/1 SEC:wire IDs are peer-controlled inbound; ambiguity must never act on another transfer.
         if matching.len() != 1 {
-            return Err("Nie można jednoznacznie wybrać transferu".into());
+            return Err(crate::i18n::tr("files.ambiguous").into());
         }
         let row = matching[0];
         if action == "retry" {
@@ -465,9 +470,12 @@ pub fn files_action(
                     TransferState::Failed(_) | TransferState::Cancelled { .. }
                 )
             {
-                return Err("Nie można ponowić tego transferu".into());
+                return Err(crate::i18n::tr("files.cannot_retry").into());
             }
-            let directory = state.data_dir.get().ok_or("Brak listy urządzeń")?;
+            let directory = state
+                .data_dir
+                .get()
+                .ok_or(crate::i18n::tr("files.no_devices"))?;
             let paired = wind_core::pairing::PairedDevicesFile::in_dir(directory)
                 .load()
                 .map_err(|e| e.to_string())?;
@@ -476,11 +484,17 @@ pub fn files_action(
                 .iter()
                 .any(|p| p.key.fingerprint().as_bytes() == &row.peer)
             {
-                return Err("Urządzenie nie jest już sparowane".into());
+                return Err(crate::i18n::tr("files.not_paired").into());
             }
         }
         if action == "open" {
-            let path = checked_open_path(row, state.inbox.get().ok_or("Brak folderu odbioru")?)?;
+            let path = checked_open_path(
+                row,
+                state
+                    .inbox
+                    .get()
+                    .ok_or(crate::i18n::tr("files.no_folder"))?,
+            )?;
             return select_in_explorer(&path);
         }
     }

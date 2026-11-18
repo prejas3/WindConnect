@@ -7,6 +7,7 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class ClipboardTileTest {
+    init { StringsForTests.usePolish() }
     @Test fun addResultsDistinguishSuccessRefusalAndErrors() {
         assertEquals(TileAddState.Added, tileAddResult(StatusBarManager.TILE_ADD_REQUEST_RESULT_TILE_ADDED))
         assertEquals(TileAddState.Added, tileAddResult(StatusBarManager.TILE_ADD_REQUEST_RESULT_TILE_ALREADY_ADDED))

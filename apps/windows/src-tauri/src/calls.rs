@@ -38,7 +38,7 @@ fn who(number: &Option<String>, name: &Option<String>) -> String {
         .or(number.as_deref())
         .map(|s| clean(s, 128))
         .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| "Nieznany numer".into())
+        .unwrap_or_else(|| crate::i18n::tr("calls.unknown_number").into())
 }
 
 /// The incoming call's toast: who, the number under a name, "Połączenie · <phone>", the buttons it can use. Silent (the
@@ -53,8 +53,10 @@ pub fn ringing_xml(call: &Call, phone: &str) -> Option<String> {
         escape(&who(&c.number, &c.name))
     ));
     let line = match (&c.name, &c.number) {
-        (Some(_), Some(n)) => format!("Połączenie przychodzące · {}", clean(n, 64)),
-        _ => "Połączenie przychodzące".into(),
+        (Some(_), Some(n)) => {
+            crate::i18n::trf("calls.incoming_number", &[("number", &clean(n, 64))])
+        }
+        _ => crate::i18n::tr("calls.incoming").into(),
     };
     x.push_str(&format!("<text>{}</text>", escape(&line)));
     x.push_str(&format!(
@@ -64,25 +66,31 @@ pub fn ringing_xml(call: &Call, phone: &str) -> Option<String> {
     x.push_str("</binding></visual><actions>");
     if c.actions & CAN_SILENCE != 0 {
         x.push_str(&format!(
-            r#"<action content="Wycisz" arguments="call-silence:{}" activationType="background"/>"#,
+            r#"<action content="{}" arguments="call-silence:{}" activationType="background"/>"#,
+            escape(crate::i18n::tr("calls.silence")),
             c.call
         ));
     }
     if c.actions & CAN_REJECT != 0 {
         x.push_str(&format!(
-            r#"<action content="Odrzuć" arguments="call-reject:{}" activationType="background"/>"#,
+            r#"<action content="{}" arguments="call-reject:{}" activationType="background"/>"#,
+            escape(crate::i18n::tr("calls.decline")),
             c.call
         ));
     }
     // incomingCall needs a button to stay up; "Zamknij" only closes the toast.
-    x.push_str(r#"<action content="Zamknij" arguments="dismiss" activationType="system"/>"#);
+    x.push_str(&format!(
+        r#"<action content="{}" arguments="dismiss" activationType="system"/>"#,
+        escape(crate::i18n::tr("calls.close"))
+    ));
     x.push_str(r#"</actions><audio silent="true"/></toast>"#);
     Some(x)
 }
 
 pub fn missed_xml(m: &Missed, phone: &str) -> String {
-    let mut x = String::from(
-        r#"<toast launch="windconnect-call"><visual><binding template="ToastGeneric"><text>Nieodebrane połączenie</text>"#,
+    let mut x = format!(
+        r#"<toast launch="windconnect-call"><visual><binding template="ToastGeneric"><text>{}</text>"#,
+        escape(crate::i18n::tr("calls.missed"))
     );
     x.push_str(&format!(
         "<text>{}</text>",

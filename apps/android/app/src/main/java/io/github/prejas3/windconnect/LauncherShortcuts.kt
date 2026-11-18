@@ -7,10 +7,13 @@ import android.content.pm.ShortcutInfo
 import android.content.pm.ShortcutManager
 import android.graphics.drawable.Icon
 
-internal enum class LauncherAction(val id: String, val action: String, val label: Int, val title: String) {
-    Clipboard("send_clipboard", "io.github.prejas3.windconnect.shortcut.CLIPBOARD", R.string.shortcut_clipboard, "Wyślij schowek"),
-    File("send_file", "io.github.prejas3.windconnect.shortcut.FILE", R.string.shortcut_file, "Wyślij plik"),
-    Touchpad("touchpad", "io.github.prejas3.windconnect.shortcut.TOUCHPAD", R.string.shortcut_touchpad, "Touchpad");
+internal enum class LauncherAction(val id: String, val action: String, val label: Int) {
+    Clipboard("send_clipboard", "io.github.prejas3.windconnect.shortcut.CLIPBOARD", R.string.shortcut_clipboard),
+    File("send_file", "io.github.prejas3.windconnect.shortcut.FILE", R.string.shortcut_file),
+    Touchpad("touchpad", "io.github.prejas3.windconnect.shortcut.TOUCHPAD", R.string.shortcut_touchpad);
+
+    /** The shortcut's name in the phone's language (WN-63). */
+    val title: String get() = str(label)
 
     companion object {
         fun fromAction(action: String?) = entries.firstOrNull { it.action == action }
@@ -53,13 +56,13 @@ internal object LauncherShortcuts {
 
     fun pin(context: Context, action: LauncherAction): String {
         val manager = context.getSystemService(ShortcutManager::class.java)
-        if (manager == null || !manager.isRequestPinShortcutSupported) return "Ten launcher nie obsługuje przypinania skrótów."
+        if (manager == null || !manager.isRequestPinShortcutSupported) return str(R.string.shortcut_unsupported)
         return try {
             // CCS/1 RULE:static clipboard is referenced by ID only; it cannot be mutated into a dynamic shortcut.
             val shortcut = if (action == LauncherAction.Clipboard) ShortcutInfo.Builder(context, action.id).build()
                 else info(context, action, action.ordinal - 1)
-            if (manager.requestPinShortcut(shortcut, null)) "Prośba o przypięcie została przekazana do launchera. Potwierdź ją, jeśli pojawi się okno."
-            else "Launcher nie przyjął prośby o przypięcie skrótu."
-        } catch (_: RuntimeException) { "Nie udało się przypiąć skrótu. Spróbuj ponownie w launcherze." }
+            if (manager.requestPinShortcut(shortcut, null)) str(R.string.shortcut_requested)
+            else str(R.string.shortcut_refused)
+        } catch (_: RuntimeException) { str(R.string.shortcut_failed) }
     }
 }

@@ -13,10 +13,10 @@ fun LauncherShortcutControls() {
     val context = LocalContext.current
     var message by remember { mutableStateOf("") }
     WindCard {
-        Text("Skróty na ekranie głównym", style = MaterialTheme.typography.titleMedium)
-        Text("Przytrzymaj ikonę WindConnect w launcherze albo przypnij skrót poniżej. Bez połączenia z komputerem skrót pokaże, czego brakuje.")
+        Text(str(R.string.shortcuts_title), style = MaterialTheme.typography.titleMedium)
+        Text(str(R.string.shortcuts_about))
         LauncherAction.entries.forEach { action ->
-            WindButton("Przypnij: ${action.title}", { message = LauncherShortcuts.pin(context, action) },
+            WindButton(str(R.string.shortcut_pin, action.title), { message = LauncherShortcuts.pin(context, action) },
                 Modifier.testTag("pin_${action.id}"), kind = ButtonKind.Secondary)
         }
         if (message.isNotEmpty()) Text(message, Modifier.testTag("shortcutPinStatus"))

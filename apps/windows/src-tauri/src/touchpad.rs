@@ -110,7 +110,7 @@ impl Control {
                             let mut v = state.lock().unwrap();
                             v.active = false;
                             v.allowed = false;
-                            v.message="Touchpad wyłączony: pulpit zablokowany lub Windows odmówił sterowania. Włącz ponownie na zwykłym pulpicie.".into();
+                            v.message = crate::i18n::tr("touchpad.disabled").into();
                         }
                         refused = true;
                         live = false;
@@ -136,7 +136,7 @@ impl Control {
                 }
                 let mut v = state.lock().unwrap();
                 if v.active {
-                    v.message = format!("Telefon steruje kursorem i klawiaturą · {name}");
+                    v.message = crate::i18n::trf("touchpad.controlling", &[("name", &name)]);
                 }
                 if *v != published {
                     published = v.clone();

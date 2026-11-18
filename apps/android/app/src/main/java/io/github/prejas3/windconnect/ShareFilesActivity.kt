@@ -47,7 +47,7 @@ class FileShareViewModel(private val application: Application) : AndroidViewMode
                 selected = (opened.state.value as? ConnectionState.Connected)?.fingerprint ?: peers.lastOrNull()?.fingerprint
             } catch (failure: Exception) {
                 if (failure is CancellationException) throw failure
-                error = "Nie można odczytać sparowanych komputerów. Otwórz aplikację i spróbuj ponownie."
+                error = str(R.string.share_peers_failed)
             }
         }
     }
@@ -62,19 +62,19 @@ class FileShareViewModel(private val application: Application) : AndroidViewMode
                 names = shown; previewReady = shown.isNotEmpty()
             } catch (failure: Exception) {
                 if (failure is CancellationException) throw failure
-                error = "Nie można odczytać wybranych plików. Wybierz je ponownie."
+                error = str(R.string.share_read_failed)
             }
         }
     }
     fun fail(message: String) { error = message }
     fun prepareRetry(ready: (List<Uri>) -> Unit) {
-        val selection = FileRetry.selection ?: return fail("Wybierz pliki ponownie")
+        val selection = FileRetry.selection ?: return fail(str(R.string.share_pick_again))
         previewReady = false
         retryTarget = selection.target; selected = selection.target
         viewModelScope.launch {
             try {
-                val opened = core ?: error("Połączenie nie jest jeszcze gotowe")
-                check(opened.pairedDevices().any { it.fingerprint == selection.target }) { "Komputer nie jest już sparowany" }
+                val opened = core ?: error(str(R.string.share_not_ready))
+                check(opened.pairedDevices().any { it.fingerprint == selection.target }) { str(R.string.share_not_paired) }
                 withContext(Dispatchers.IO) {
                     FileImport.checkedUris(selection.uris).forEach { uri ->
                         application.contentResolver.openFileDescriptor(uri, "r").use { check(it != null) }
@@ -83,7 +83,7 @@ class FileShareViewModel(private val application: Application) : AndroidViewMode
                 ready(selection.uris); preview(selection.uris)
             } catch (failure: Exception) {
                 if (failure is CancellationException) throw failure
-                error = "Nie można ponowić odczytu. Wybierz ponownie pliki dla tego samego komputera."
+                error = str(R.string.share_retry_failed)
                 ready(emptyList())
             }
         }
@@ -103,7 +103,7 @@ class ShareFilesActivity : ComponentActivity() {
     private val picker = registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         pickerInFlight = false
         try { selectedUris = FileImport.checkedUris(uris); model.preview(selectedUris) }
-        catch (_: Exception) { model.fail("Nieprawidłowy wybór plików") }
+        catch (_: Exception) { model.fail(str(R.string.share_bad_selection)) }
     }
     @Suppress("DEPRECATION")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -113,50 +113,51 @@ class ShareFilesActivity : ComponentActivity() {
             selectedUris = savedInstanceState?.getParcelableArrayList<Uri>("selected")
                 ?: if (intent.action == PICK) emptyList() else FileImport.uris(intent)
             model.preview(selectedUris)
-        } catch (_: Exception) { model.fail("Wybierz pliki przez udostępnianie lub systemowy wybór plików") }
+        } catch (_: Exception) { model.fail(str(R.string.share_pick_how)) }
         setContent {
             val sending by FileSending.status.collectAsStateWithLifecycle()
             WindApp(forceContent = true) {
                 Column(Modifier.fillMaxSize().padding(24.dp).testTag("shareFiles"),
                     verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    Text("Wyślij pliki", style = MaterialTheme.typography.headlineSmall)
+                    Text(str(R.string.share_title), style = MaterialTheme.typography.headlineSmall)
                     if (sending.message.isNotEmpty()) WindCard(Modifier.fillMaxWidth()) {
-                        Text(if (sending.busy) "Trwa wysyłanie" else "Ostatnia wysyłka", style = MaterialTheme.typography.titleMedium)
+                        Text(if (sending.busy) str(R.string.share_sending) else str(R.string.share_last), style = MaterialTheme.typography.titleMedium)
                         Text(sending.message, Modifier.testTag("fileSendStatus"))
-                        if (!sending.busy && sending.canRetry) WindButton("Ponów niewysłane", {
+                        if (!sending.busy && sending.canRetry) WindButton(str(R.string.share_retry), {
                             model.prepareRetry { selectedUris = it }
                         }, Modifier.testTag("retryFiles"), kind = ButtonKind.Secondary)
-                        if (sending.busy) WindButton("Anuluj wysyłanie", { SendFilesService.cancel(this@ShareFilesActivity) }, Modifier.testTag("cancelFiles"), kind = ButtonKind.Secondary)
+                        if (sending.busy) WindButton(str(R.string.share_cancel), { SendFilesService.cancel(this@ShareFilesActivity) }, Modifier.testTag("cancelFiles"), kind = ButtonKind.Secondary)
                     }
                     Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     if (sending.busy) {
-                        if (sending.target.isNotEmpty()) Text("Do: ${sending.target}")
-                        Text("Pliki: ${sending.count} · odebrano: ${sending.completed}")
+                        if (sending.target.isNotEmpty()) Text(str(R.string.share_to, sending.target))
+                        Text(str(R.string.share_counts, sending.count, sending.completed))
                         TransferProgress(sending)
                         sending.rows.forEach { row ->
                             Text(row.name, style = MaterialTheme.typography.titleSmall)
-                            Text("${transferBytes(row.done)} z ${transferBytes(row.size)} · ${when(row.state) { "done" -> "Odebrano"; "waiting" -> "Czeka na połączenie"; "failed" -> "Błąd"; "cancelled" -> "Anulowano"; else -> "W toku" }}", style = MaterialTheme.typography.bodySmall)
+                            val rowState = str(when (row.state) { "done" -> R.string.row_done; "waiting" -> R.string.row_waiting; "failed" -> R.string.row_failed; "cancelled" -> R.string.row_cancelled; else -> R.string.row_progress })
+                            Text(str(R.string.bytes_of, transferBytes(row.done), transferBytes(row.size)) + " · " + rowState, style = MaterialTheme.typography.bodySmall)
                         }
-                        Text("Możesz zamknąć ekran. Wysyłanie będzie kontynuowane w tle.", style = MaterialTheme.typography.bodySmall)
+                        Text(str(R.string.share_close_ok), style = MaterialTheme.typography.bodySmall)
                     } else {
-                    WindButton("Wybierz pliki", { pendingPicker = true; openPendingPicker() }, Modifier.testTag("pickFiles"), enabled = !sending.busy, kind = ButtonKind.Secondary)
-                    Text("Wybrane pliki: ${selectedUris.size}", Modifier.testTag("selectedFileCount"))
-                    Text("Komputer docelowy", style = MaterialTheme.typography.titleMedium)
-                    if (model.peers.isEmpty()) Text("Najpierw sparuj komputer w WindConnect.")
+                    WindButton(str(R.string.share_pick), { pendingPicker = true; openPendingPicker() }, Modifier.testTag("pickFiles"), enabled = !sending.busy, kind = ButtonKind.Secondary)
+                    Text(str(R.string.share_selected, selectedUris.size), Modifier.testTag("selectedFileCount"))
+                    Text(str(R.string.share_target), style = MaterialTheme.typography.titleMedium)
+                    if (model.peers.isEmpty()) Text(str(R.string.share_pair_first))
                     model.peers.forEach { peer ->
                         WindButton("${computerLabel(peer.name)} · ${peer.fingerprint.take(8)}", { model.selected = peer.fingerprint },
                             Modifier.fillMaxWidth().semantics { selected = model.selected == peer.fingerprint }, enabled = !sending.busy && (model.retryTarget == null || model.retryTarget == peer.fingerprint),
                             kind = if (model.selected == peer.fingerprint) ButtonKind.Primary else ButtonKind.Secondary)
                     }
                     if (model.error.isNotEmpty()) Text(model.error, color = MaterialTheme.colorScheme.error, modifier = Modifier.testTag("fileShareError"))
-                    WindButton("Wyślij", {
+                    WindButton(str(R.string.send), {
                         try { SendFilesService.start(this@ShareFilesActivity, selectedUris, requireNotNull(model.selected)) }
-                        catch (_: Exception) { model.fail("Nie udało się rozpocząć wysyłki. Spróbuj ponownie przy otwartym ekranie.") }
+                        catch (_: Exception) { model.fail(str(R.string.share_start_failed)) }
                     }, Modifier.fillMaxWidth().testTag("confirmSendFiles"), enabled = !sending.busy && model.previewReady && model.peers.any { it.fingerprint == model.selected })
-                    Text("Pliki trafią do Pobrane/WindConnect na komputerze, do folderów według typu. Limit: 100 plików, 2 GiB na plik i 4 GiB na wysyłkę.", style = MaterialTheme.typography.bodySmall)
+                    Text(str(R.string.share_where), style = MaterialTheme.typography.bodySmall)
                     model.names.forEach { Text(it, Modifier.fillMaxWidth(), style = MaterialTheme.typography.bodySmall) }
                     }
-                    WindButton("Zamknij", { finish() }, kind = ButtonKind.Quiet)
+                    WindButton(str(R.string.close), { finish() }, kind = ButtonKind.Quiet)
                     }
                 }
             }
@@ -208,9 +209,10 @@ private fun TransferProgress(status: FileSendStatus) {
     val colors = MaterialTheme.colorScheme
     Box(Modifier.fillMaxWidth().height(8.dp).background(colors.surfaceVariant).testTag("transferProgress").semantics {
         progressBarRangeInfo = fraction?.let { ProgressBarRangeInfo(it, 0f..1f) } ?: ProgressBarRangeInfo.Indeterminate
-        contentDescription = "Postęp wysyłania"
+        contentDescription = str(R.string.share_progress)
     }) {
         Box(Modifier.fillMaxWidth(fraction ?: .35f).fillMaxHeight().background(colors.primary))
     }
-    Text("${transferBytes(status.done)}${total?.let { " z ${transferBytes(it)}" } ?: " · rozmiar jeszcze nieznany"} · ${status.rate?.let { transferBytes(it) + "/s" } ?: "—"}", Modifier.testTag("transferBytes"))
+    val bytes = total?.let { str(R.string.bytes_of, transferBytes(status.done), transferBytes(it)) } ?: (transferBytes(status.done) + " · " + str(R.string.size_unknown))
+    Text(bytes + " · " + (status.rate?.let { str(R.string.per_second, transferBytes(it)) } ?: "—"), Modifier.testTag("transferBytes"))
 }

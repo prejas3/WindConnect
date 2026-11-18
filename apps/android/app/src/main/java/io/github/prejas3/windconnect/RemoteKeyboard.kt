@@ -19,13 +19,13 @@ internal object RemoteKeyboardDraft {
 internal fun RemoteKeyboard(value: TextFieldValue, change: (TextFieldValue) -> Unit, active: Boolean, send: (TouchpadCommand) -> Boolean) {
     var lastSubmitted by remember { mutableStateOf<TextFieldValue?>(null) }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("Tekst trafi do aktywnego pola na komputerze dopiero po naciśnięciu Wyślij.")
-        OutlinedTextField(value=value,onValueChange={lastSubmitted=null;change(it)},enabled=active,label={Text("Tekst na komputer")},
+        Text(str(R.string.keyboard_about))
+        OutlinedTextField(value=value,onValueChange={lastSubmitted=null;change(it)},enabled=active,label={Text(str(R.string.keyboard_label))},
             modifier=Modifier.fillMaxWidth().testTag("remoteKeyboardDraft"),minLines=2,maxLines=4)
         val bytes=value.text.toByteArray(Charsets.UTF_8).size
-        if(bytes>RemoteKeyboardDraft.MAX_BYTES) Text("Za długi tekst. Limit to 4096 bajtów. Skróć tekst przed wysłaniem.",color=MaterialTheme.colorScheme.error)
+        if(bytes>RemoteKeyboardDraft.MAX_BYTES) Text(str(R.string.keyboard_too_long),color=MaterialTheme.colorScheme.error)
         Button(onClick={if(active && lastSubmitted!=value && RemoteKeyboardDraft.canSend(value) && send(TouchpadCommand.Text(value.text))){lastSubmitted=value;change(TextFieldValue())}},
-            enabled=active && RemoteKeyboardDraft.canSend(value),modifier=Modifier.testTag("remoteKeyboardSend")){Text("Wyślij")}
+            enabled=active && RemoteKeyboardDraft.canSend(value),modifier=Modifier.testTag("remoteKeyboardSend")){Text(str(R.string.send))}
         for(row in listOf(listOf("Enter" to 13L,"Tab" to 9L,"⌫" to 8L,"Delete" to 46L,"Esc" to 27L),
             listOf("←" to 37L,"↑" to 38L,"↓" to 40L,"→" to 39L),
             listOf("Home" to 36L,"End" to 35L,"PgUp" to 33L,"PgDn" to 34L))) {
@@ -38,6 +38,6 @@ internal fun RemoteKeyboard(value: TextFieldValue, change: (TextFieldValue) -> U
                 row.forEach{(label,code)->OutlinedButton(onClick={send(TouchpadCommand.Key(code.toULong(),if(label=="Alt+Tab")2u else 1u))},enabled=active,modifier=Modifier.weight(1f),contentPadding=PaddingValues(4.dp)){Text(label)}}
             }
         }
-        Text("Działa w zwykłych aplikacjach Windows. Ekran blokady i aplikacje administratora mogą odrzucać sterowanie.",style=MaterialTheme.typography.bodySmall)
+        Text(str(R.string.keyboard_limits),style=MaterialTheme.typography.bodySmall)
     }
 }

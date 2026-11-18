@@ -40,7 +40,7 @@ const stub = first => {
   await new Promise(r => server.listen(0, '127.0.0.1', r));
   const browser = await chromium.launch({ headless: true });
   try {
-    const page = await browser.newPage({ viewport: { width: 380, height: 760 } });
+    const page = await browser.newPage({ locale: 'pl-PL', viewport: { width: 380, height: 760 } });
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
     const hostile = row(B, { app: '<img src=x onerror=alert(1)>', title: '<b>x</b>', reply: null });

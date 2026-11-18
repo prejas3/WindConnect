@@ -45,7 +45,7 @@ const phone = { key: 'a'.repeat(64), name: 'Galaxy S25 Ultra', fingerprint: 'K4T
   await new Promise(r => server.listen(0, '127.0.0.1', r));
   const browser = await chromium.launch({ headless: true });
   try {
-    const page = await browser.newPage({ viewport: { width: 920, height: 720 } });
+    const page = await browser.newPage({ locale: 'pl-PL', viewport: { width: 920, height: 720 } });
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
     await page.addInitScript(stub);
@@ -107,7 +107,7 @@ const phone = { key: 'a'.repeat(64), name: 'Galaxy S25 Ultra', fingerprint: 'K4T
     assert.equal(await page.locator('#home').isVisible(), true, 'the ordinary main window after onboarding');
 
     // 5. Waiting state screenshots (QR) in both themes and at 150% text.
-    const fresh = await browser.newPage({ viewport: { width: 920, height: 720 } });
+    const fresh = await browser.newPage({ locale: 'pl-PL', viewport: { width: 920, height: 720 } });
     fresh.on('pageerror', e => errors.push(e.message));
     await fresh.addInitScript(stub);
     await fresh.goto(`http://127.0.0.1:${server.address().port}/index.html`);
@@ -125,7 +125,7 @@ const phone = { key: 'a'.repeat(64), name: 'Galaxy S25 Ultra', fingerprint: 'K4T
     // opens onboarding; the owed row itself doesn't count. And the reverse: paired at start, no onboarding.
     const owedPhone = { ...phone, key: 'b'.repeat(64), name: 'Usunięty telefon', connected: false, owed: true };
     const opened = async start => {
-      const p = await browser.newPage({ viewport: { width: 920, height: 720 } });
+      const p = await browser.newPage({ locale: 'pl-PL', viewport: { width: 920, height: 720 } });
       p.on('pageerror', e => errors.push(e.message));
       await p.addInitScript(stub, start);
       await p.goto(`http://127.0.0.1:${server.address().port}/index.html`);

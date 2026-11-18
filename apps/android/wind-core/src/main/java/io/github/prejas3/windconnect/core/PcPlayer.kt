@@ -66,7 +66,7 @@ internal class PcPlayer(context: Context, private val pcName: () -> String?, pri
 
     override fun now(now: MediaNow, art: ByteArray?) {
         val shown = PcMedia(
-            title = clean(now.title).ifEmpty { "Bez tytułu" },
+            title = clean(now.title).ifEmpty { context.getString(R.string.media_untitled) },
             artist = now.artist?.let(::clean)?.takeIf { it.isNotEmpty() },
             album = now.album?.let(::clean)?.takeIf { it.isNotEmpty() },
             app = clean(now.app),
@@ -112,7 +112,7 @@ internal class PcPlayer(context: Context, private val pcName: () -> String?, pri
             session = created
         }
         val title = shown.title
-        val subtitle = listOfNotNull(shown.artist, pcName()?.let { "na $it" }).joinToString(" · ")
+        val subtitle = listOfNotNull(shown.artist, pcName()?.let { context.getString(R.string.media_on_pc, it) }).joinToString(" · ")
         s.setMetadata(MediaMetadata.Builder()
             .putString(MediaMetadata.METADATA_KEY_TITLE, title)
             .putString(MediaMetadata.METADATA_KEY_ARTIST, shown.artist ?: "")
@@ -130,8 +130,8 @@ internal class PcPlayer(context: Context, private val pcName: () -> String?, pri
     }
 
     private fun notify(s: MediaSession, shown: PcMedia, subtitle: String) {
-        notifications.createNotificationChannel(NotificationChannel(CHANNEL, "Multimedia komputera", NotificationManager.IMPORTANCE_LOW).apply {
-            description = "Odtwarzacz komputera: tytuł i sterowanie"
+        notifications.createNotificationChannel(NotificationChannel(CHANNEL, context.getString(R.string.media_channel), NotificationManager.IMPORTANCE_LOW).apply {
+            description = context.getString(R.string.media_channel_description)
             setSound(null, null)
             enableVibration(false)
         })
@@ -141,10 +141,10 @@ internal class PcPlayer(context: Context, private val pcName: () -> String?, pri
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)).build()
         val can = { bit: Long -> shown.actions and bit != 0L }
         val actions = buildList {
-            if (can(8)) add(action(android.R.drawable.ic_media_previous, "Poprzedni", "previous", 61))
-            add(if (shown.playing) action(android.R.drawable.ic_media_pause, "Wstrzymaj", "pause", 62)
-                else action(android.R.drawable.ic_media_play, "Odtwórz", "play", 63))
-            if (can(4)) add(action(android.R.drawable.ic_media_next, "Następny", "next", 64))
+            if (can(8)) add(action(android.R.drawable.ic_media_previous, context.getString(R.string.media_previous), "previous", 61))
+            add(if (shown.playing) action(android.R.drawable.ic_media_pause, context.getString(R.string.media_pause), "pause", 62)
+                else action(android.R.drawable.ic_media_play, context.getString(R.string.media_play), "play", 63))
+            if (can(4)) add(action(android.R.drawable.ic_media_next, context.getString(R.string.media_next), "next", 64))
         }
         val icon = context.resources.getIdentifier("ic_connection", "drawable", context.packageName).takeIf { it != 0 } ?: android.R.drawable.ic_media_play
         val notification = Notification.Builder(context, CHANNEL)

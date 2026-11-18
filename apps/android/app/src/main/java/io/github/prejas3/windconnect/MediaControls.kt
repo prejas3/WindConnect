@@ -37,24 +37,24 @@ fun MediaControls() {
         onDispose { lifecycle.lifecycle.removeObserver(observer) }
     }
     WindCard {
-        Text("Multimedia na komputerze", style = MaterialTheme.typography.titleMedium)
-        Text("Komputer pokazuje, co gra na telefonie (tytuł, okładkę, postęp), i może sterować odtwarzaniem.")
-        Text("Android nazywa to dostępem do powiadomień. WindConnect używa go tylko do odczytu odtwarzacza; nie czyta treści powiadomień.",
+        Text(str(R.string.media_title), style = MaterialTheme.typography.titleMedium)
+        Text(str(R.string.media_about))
+        Text(str(R.string.media_access_about),
             style = MaterialTheme.typography.bodySmall)
-        Text(if (access) "Dostęp: przyznany" else "Dostęp: brak", modifier = Modifier.testTag("mediaAccess"))
-        WindButton(if (access) "Zmień dostęp w ustawieniach" else "Przyznaj dostęp w ustawieniach", {
+        Text(if (access) str(R.string.access_granted) else str(R.string.access_none), modifier = Modifier.testTag("mediaAccess"))
+        WindButton(if (access) str(R.string.access_change) else str(R.string.access_grant), {
             context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         }, modifier = Modifier.testTag("mediaAccessSettings"), kind = ButtonKind.Secondary)
-        WindSwitch("Pokaż multimedia na komputerze", allowed, connections::setMediaAllowed, Modifier.testTag("mediaAllowed"))
+        WindSwitch(str(R.string.media_show), allowed, connections::setMediaAllowed, Modifier.testTag("mediaAllowed"))
         // WN-47: the other direction.
         val pcAllowed by connections.pcMediaAllowed.collectAsStateWithLifecycle()
-        WindSwitch("Pokaż odtwarzacz komputera", pcAllowed, connections::setPcMediaAllowed, Modifier.testTag("pcMediaAllowed"))
-        Text("Co gra na komputerze, w aplikacji i w sterowaniu multimediami Androida. Tytuły widać też na ekranie blokady, jak przy innych odtwarzaczach.",
+        WindSwitch(str(R.string.media_pc_player), pcAllowed, connections::setPcMediaAllowed, Modifier.testTag("pcMediaAllowed"))
+        Text(str(R.string.media_pc_player_about),
             style = MaterialTheme.typography.bodySmall)
         // WN-48: volume both ways.
         val volumeAllowed by connections.volumeAllowed.collectAsStateWithLifecycle()
-        WindSwitch("Głośność z komputera", volumeAllowed, connections::setVolumeAllowed, Modifier.testTag("volumeAllowed"))
-        Text("Komputer pokazuje i zmienia głośność multimediów telefonu, a aplikacja pokazuje i zmienia głośność komputera.",
+        WindSwitch(str(R.string.media_volume), volumeAllowed, connections::setVolumeAllowed, Modifier.testTag("volumeAllowed"))
+        Text(str(R.string.media_volume_about),
             style = MaterialTheme.typography.bodySmall)
     }
 }

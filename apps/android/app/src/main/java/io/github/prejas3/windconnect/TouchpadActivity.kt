@@ -42,7 +42,7 @@ class TouchpadActivity : ComponentActivity() {
     private var capture: PadCapture? = null
     private var resumed = false
     private var target: String? = null
-    private var status by mutableStateOf("Przygotowywanie touchpada…")
+    private var status by mutableStateOf(str(R.string.touchpad_preparing))
     private var active by mutableStateOf(false)
     private var gestures by mutableStateOf(false)
     private var keyboardSupported by mutableStateOf(false)
@@ -64,17 +64,17 @@ class TouchpadActivity : ComponentActivity() {
             var acquired:WindCore?=null
             try { withContext(NonCancellable){acquired=owner.acquire()};ensureActive();core=acquired;maybeStart() }
             catch(e:CancellationException){throw e}
-            catch (_:Exception) { status="Nie udało się otworzyć połączenia" }
+            catch (_:Exception) { status=str(R.string.touchpad_open_failed) }
             finally {if(core!==acquired)withContext(NonCancellable){acquired?.let{owner.release(it)}}}
         }
         lifecycleScope.launch {
             owner.state.collect { state ->
-                if (state !is ConnectionState.Connected || state.fingerprint != target) { stop(); status="Połączenie zmienione. Otwórz touchpad ponownie dla wybranego komputera." }
+                if (state !is ConnectionState.Connected || state.fingerprint != target) { stop(); status=str(R.string.touchpad_changed) }
             }
         }
         lifecycleScope.launch {
             owner.touchpadAccepted.collect { accepted ->
-                if (!accepted) { stop();status="Komputer nie przyjmuje sterowania. Włącz touchpad na PC." }
+                if (!accepted) { stop();status=str(R.string.touchpad_refused_enable) }
                 else maybeStart()
             }
         }
@@ -82,15 +82,15 @@ class TouchpadActivity : ComponentActivity() {
             WindApp(forceContent=true) {
                 Column(Modifier.fillMaxSize().imePadding().padding(20.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
                     Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
-                        Text("Touchpad",style=MaterialTheme.typography.headlineSmall)
-                        WindButton("Zamknij",{finish()},kind=ButtonKind.Quiet)
+                        Text(str(R.string.action_touchpad),style=MaterialTheme.typography.headlineSmall)
+                        WindButton(str(R.string.close),{finish()},kind=ButtonKind.Quiet)
                     }
                     Row(horizontalArrangement=Arrangement.spacedBy(4.dp)) {
-                        TextButton(onClick={showPresenter(false);typing=!typing},enabled=active && keyboardSupported,modifier=Modifier.testTag("remoteKeyboardToggle")){Text(if(typing)"Touchpad" else "Klawiatura")}
-                        TextButton(onClick={typing=false;showPresenter(!presenting)},enabled=active && keyboardSupported,modifier=Modifier.testTag("presenterToggle")){Text(if(presenting)"Touchpad" else "Prezentacja")}
+                        TextButton(onClick={showPresenter(false);typing=!typing},enabled=active && keyboardSupported,modifier=Modifier.testTag("remoteKeyboardToggle")){Text(if(typing)str(R.string.action_touchpad) else str(R.string.touchpad_keyboard))}
+                        TextButton(onClick={typing=false;showPresenter(!presenting)},enabled=active && keyboardSupported,modifier=Modifier.testTag("presenterToggle")){Text(if(presenting)str(R.string.action_touchpad) else str(R.string.touchpad_presentation))}
                     }
                     Text(status,Modifier.testTag("touchpadStatus"),style=MaterialTheme.typography.bodyMedium)
-                    if(active && !keyboardSupported)Text("Klawiatura wymaga nowszej wersji WindConnect na komputerze.",style=MaterialTheme.typography.bodySmall)
+                    if(active && !keyboardSupported)Text(str(R.string.touchpad_keyboard_old),style=MaterialTheme.typography.bodySmall)
                     if(presenting) {
                         Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
                             PresenterPanel(active && keyboardSupported,laserSupported,gyro.available,timer,timerTick,{slide(it)}){on->
@@ -109,14 +109,14 @@ class TouchpadActivity : ComponentActivity() {
                             modifier=Modifier.weight(1f).heightIn(min=56.dp).pointerInteropFilter { event ->
                                 if(active)when(event.actionMasked){MotionEvent.ACTION_DOWN->capture?.button(left,true);MotionEvent.ACTION_UP,MotionEvent.ACTION_CANCEL->capture?.button(left,false)}
                                 active
-                            }){Text(if(left)"Lewy · przytrzymaj" else "Prawy")}
+                            }){Text(if(left)str(R.string.touchpad_left_hold) else str(R.string.touchpad_right))}
                     }
                     Column(Modifier.heightIn(max=270.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(8.dp)) {
-                    Text("Czułość",style=MaterialTheme.typography.labelLarge)
+                    Text(str(R.string.touchpad_sensitivity),style=MaterialTheme.typography.labelLarge)
                     Slider(value=sensitivity,onValueChange={sensitivity=it;capture?.engine?.sensitivity=it},onValueChangeFinished={settings.edit().putFloat("sensitivity",sensitivity).apply()},valueRange=0.5f..3f)
-                    WindSwitch("Naturalne przewijanie",natural,{natural=it;capture?.engine?.natural=it;settings.edit().putBoolean("natural",it).apply()})
-                    Text("1 palec: kursor, stuknięcie: klik. Przytrzymaj: przeciąganie. 2 palce: przewijanie i prawy klik.",style=MaterialTheme.typography.bodySmall)
-                    Text(if(gestures) "3 palce: ↑ widok zadań, ↓ pulpit, ← poprzednia aplikacja, → następna aplikacja." else "Gesty 3 palców wymagają nowszej wersji WindConnect na PC.",style=MaterialTheme.typography.bodySmall)
+                    WindSwitch(str(R.string.touchpad_natural),natural,{natural=it;capture?.engine?.natural=it;settings.edit().putBoolean("natural",it).apply()})
+                    Text(str(R.string.touchpad_help),style=MaterialTheme.typography.bodySmall)
+                    Text(if(gestures) str(R.string.touchpad_gestures) else str(R.string.touchpad_gestures_old),style=MaterialTheme.typography.bodySmall)
                     }
                     }
                 }
@@ -138,9 +138,9 @@ class TouchpadActivity : ComponentActivity() {
                 keyboardSupported=handle.keyboard()
                 laserSupported=handle.laser()
                 capture=PadCapture(handle,{message -> stop();status=message}).also { it.engine.sensitivity=sensitivity;it.engine.natural=natural }
-                handle=null;active=true;status="Sterujesz: ${computerLabel(state.peerName)}"
+                handle=null;active=true;status=str(R.string.touchpad_controlling, computerLabel(state.peerName))
             } catch(e:CancellationException) {throw e}
-            catch(_:Exception) {status="Komputer nie przyjmuje sterowania"}
+            catch(_:Exception) {status=str(R.string.touchpad_refused)}
             finally {
                 withContext(NonCancellable+Dispatchers.IO){handle?.finishInput();handle?.destroy()}
                 val interrupted=!currentCoroutineContext().isActive
@@ -170,7 +170,7 @@ class TouchpadActivity : ComponentActivity() {
 }
 
 private class PadView(context:android.content.Context,private val capture:()->PadCapture?,private val active:()->Boolean):View(context){
-    init {isFocusable=true;contentDescription="Obszar touchpada. Użyj przycisków poniżej do kliknięć."}
+    init {isFocusable=true;contentDescription=str(R.string.touchpad_area)}
     override fun onTouchEvent(event:MotionEvent):Boolean {
         if(!active())return false
         val pad=capture()?:return false
@@ -198,7 +198,7 @@ private class PadCapture(private val handle:TouchpadSession,private val failed:(
     init {scope.launch {
         try {for(batch in batches){if(closed)break;withContext(Dispatchers.IO){handle.send(batch)}}}
         catch(e:CancellationException){throw e}
-        catch(_:Exception){failed("Sterowanie przerwane. Wróć i otwórz touchpad ponownie.")}
+        catch(_:Exception){failed(str(R.string.touchpad_interrupted))}
         finally {withContext(NonCancellable+Dispatchers.IO){handle.finishInput();handle.destroy()};scope.cancel()}
     }}
     fun sample(fingers:List<TouchpadGestures.Finger>,time:Long){if(!closed){engine.sample(fingers,time);schedule()}}
@@ -211,10 +211,10 @@ private class PadCapture(private val handle:TouchpadSession,private val failed:(
     }
     fun keyboard(command:TouchpadCommand):Boolean {
         if(closed)return false
-        if(!(if(command is TouchpadCommand.Laser)handle.laser() else handle.keyboard())){close();failed("Komputer nie przyjmuje klawiatury. Otwórz touchpad ponownie.");return false}
+        if(!(if(command is TouchpadCommand.Laser)handle.laser() else handle.keyboard())){close();failed(str(R.string.touchpad_no_keyboard));return false}
         flush()
         if(closed)return false
-        if(batches.trySend(listOf(command)).isFailure){close();failed("Połączenie zbyt wolne. Sterowanie zatrzymane.");return false}
+        if(batches.trySend(listOf(command)).isFailure){close();failed(str(R.string.touchpad_slow_control));return false}
         return true
     }
     fun pointer(dx:Long,dy:Long){if(!closed)queue(PadCommand.Pointer(dx,dy))}
@@ -243,6 +243,6 @@ private class PadCapture(private val handle:TouchpadSession,private val failed:(
         if(frameTimeNanos-lastFrame<8_000_000){schedule();return};lastFrame=frameTimeNanos
         engine.frame(SystemClock.uptimeMillis());flush();if(engine.needsFrame)schedule()
     }
-    private fun flush(){if(pending.isEmpty()||closed)return;val batch=pending.toList();pending.clear();if(batches.trySend(batch).isFailure){close();failed("Połączenie zbyt wolne. Touchpad zatrzymany.")}}
+    private fun flush(){if(pending.isEmpty()||closed)return;val batch=pending.toList();pending.clear();if(batches.trySend(batch).isFailure){close();failed(str(R.string.touchpad_slow))}}
     fun close(){if(closed)return;closed=true;choreographer.removeFrameCallback(this);pending.clear();engine.cancel();batches.close();scope.cancel()}
 }

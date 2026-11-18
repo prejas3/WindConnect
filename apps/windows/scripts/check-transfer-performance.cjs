@@ -20,7 +20,7 @@ let browser, child;
 (async () => { try {
   await fs.mkdir(root, {recursive:true});
   await new Promise(r => server.listen(0,'127.0.0.1',r));
-  browser = await chromium.launch({headless:true}); const page = await browser.newPage({viewport:{width:420,height:640}});
+  browser = await chromium.launch({headless:true}); const page = await browser.newPage({ locale: 'pl-PL', viewport:{width:420,height:640}});
   await page.goto(`http://127.0.0.1:${server.address().port}`); await page.waitForFunction(() => !!window.render);
   const errors=[];page.on('pageerror',e=>errors.push(e.message));
   child = spawn(path.resolve('target/release/examples/transfers_bench.exe'),[root],{windowsHide:true,stdio:['ignore','pipe','pipe']});

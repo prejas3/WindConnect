@@ -5,6 +5,7 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class WidgetModelTest {
+    init { StringsForTests.usePolish() }
     @Test fun backgroundOffNeverClaimsLiveConnected() {
         val data = widgetData(ConnectionState.Connected("PC", "secret", 1), false, 80, false)
         assertFalse(data.connected)

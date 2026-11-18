@@ -57,21 +57,19 @@ fun GalleryControls() {
         if (on && !access) ask.launch(PhoneGallery.PERMISSION) else connections.setGalleryAllowed(on)
     }
     WindCard {
-        Text("Zdjęcia na komputerze", style = MaterialTheme.typography.titleMedium)
-        Text("Panel na komputerze pokazuje ostatnie zdjęcia i zrzuty ekranu z tego telefonu, a przeciągnięte na pulpit " +
-            "przenosi w pełnej jakości. Wszystko idzie tylko bezpośrednio na sparowany komputer, szyfrowane. Miniatury " +
-            "zostają tam w pamięci, a pełne zdjęcie trafia tylko tam, gdzie je przeciągniesz.")
-        Text("Po włączeniu Android zapyta o dostęp do zdjęć.", style = MaterialTheme.typography.bodySmall)
-        WindSwitch("Zdjęcia na komputerze", allowed && access, turn, Modifier.testTag("galleryAllowed"))
+        Text(str(R.string.gallery_title), style = MaterialTheme.typography.titleMedium)
+        Text(str(R.string.gallery_about))
+        Text(str(R.string.gallery_permission), style = MaterialTheme.typography.bodySmall)
+        WindSwitch(str(R.string.gallery_title), allowed && access, turn, Modifier.testTag("galleryAllowed"))
         val state = when {
-            allowed && access -> "Komputer widzi ostatnie zdjęcia i zrzuty ekranu."
-            refused || (allowed && !access) -> "Brak dostępu do zdjęć. Możesz go przyznać w ustawieniach aplikacji."
-            else -> "Wyłączone."
+            allowed && access -> str(R.string.gallery_on)
+            refused || (allowed && !access) -> str(R.string.gallery_no_access)
+            else -> str(R.string.off_sentence)
         }
         Text(state, style = MaterialTheme.typography.bodySmall,
             modifier = Modifier.testTag("galleryState").semantics { liveRegion = LiveRegionMode.Polite })
         if (refused || (allowed && !access)) {
-            WindButton("Otwórz ustawienia aplikacji", {
+            WindButton(str(R.string.open_app_settings), {
                 val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null))
                 if (context !is Activity) intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 context.startActivity(intent)

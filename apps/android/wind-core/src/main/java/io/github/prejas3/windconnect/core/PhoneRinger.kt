@@ -111,24 +111,24 @@ internal class PhoneRinger(context: Context, preferences: SharedPreferences, pri
 
     private fun showNotification() {
         val manager = context.getSystemService(NotificationManager::class.java)
-        manager.createNotificationChannel(NotificationChannel(CHANNEL, "Znajdź telefon", NotificationManager.IMPORTANCE_HIGH).apply {
-            description = "Dzwonienie na prośbę komputera"
+        manager.createNotificationChannel(NotificationChannel(CHANNEL, context.getString(R.string.find_channel), NotificationManager.IMPORTANCE_HIGH).apply {
+            description = context.getString(R.string.find_channel_description)
             setSound(null, null)
             enableVibration(false)
             lockscreenVisibility = Notification.VISIBILITY_PUBLIC
         })
         val stop = PendingIntent.getBroadcast(context, 50, Intent(context, FindStopReceiver::class.java), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val icon = context.resources.getIdentifier("ic_connection", "drawable", context.packageName).takeIf { it != 0 } ?: android.R.drawable.ic_lock_idle_alarm
-        val text = peerName()?.let { "Dzwoni na prośbę: $it" } ?: "Dzwoni na prośbę komputera"
+        val text = peerName()?.let { context.getString(R.string.find_ringing_for, it) } ?: context.getString(R.string.find_ringing)
         val notification = Notification.Builder(context, CHANNEL)
             .setSmallIcon(icon)
-            .setContentTitle("Znajdź telefon")
+            .setContentTitle(context.getString(R.string.find_channel))
             .setContentText(text)
             .setCategory(Notification.CATEGORY_ALARM)
             .setOngoing(true)
             .setVisibility(Notification.VISIBILITY_PUBLIC)
             .setContentIntent(stop)
-            .addAction(Notification.Action.Builder(null, "Zatrzymaj", stop).build())
+            .addAction(Notification.Action.Builder(null, context.getString(R.string.find_stop_action), stop).build())
             .build()
         // Without POST_NOTIFICATIONS nothing shows; the app's bar and volume keys still stop it (WN-50 review).
         try { manager.notify(NOTIFICATION, notification) } catch (_: SecurityException) {}

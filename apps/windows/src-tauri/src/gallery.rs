@@ -296,9 +296,9 @@ async fn original(app: &tauri::AppHandle, id: u64) -> Result<PathBuf, String> {
             .session
             .clone()
             .filter(offers)
-            .ok_or("Telefon nie udostępnia teraz zdjęć.")?;
+            .ok_or(crate::i18n::tr("gallery.unavailable"))?;
         if !state.items.iter().any(|i| i.id == id) {
-            return Err("Tego zdjęcia nie ma już na liście.".into());
+            return Err(crate::i18n::tr("gallery.not_listed").into());
         }
         let fetch = state.originals.entry(id).or_default().clone();
         (fetch, session, state.generation)
@@ -329,9 +329,9 @@ async fn original(app: &tauri::AppHandle, id: u64) -> Result<PathBuf, String> {
 
 async fn download(app: tauri::AppHandle, session: Session, id: u64) -> Result<PathBuf, String> {
     let message = |e: AskError| match e {
-        AskError::Status(Status::NotFound) => "Tego zdjęcia nie ma już na telefonie.".to_string(),
-        AskError::Status(Status::Denied) => "Telefon nie udostępnia teraz zdjęć.".to_string(),
-        _ => "Nie udało się pobrać zdjęcia z telefonu.".to_string(),
+        AskError::Status(Status::NotFound) => crate::i18n::tr("gallery.gone").to_string(),
+        AskError::Status(Status::Denied) => crate::i18n::tr("gallery.unavailable").to_string(),
+        _ => crate::i18n::tr("gallery.fetch_failed").to_string(),
     };
     let d = gallery::original(&session, id).await.map_err(message)?;
     let size = d.info.size;
@@ -356,41 +356,41 @@ async fn save(
     progress: &(dyn Fn(u64) + Sync),
 ) -> Result<PathBuf, String> {
     use tokio::io::AsyncWriteExt;
-    const FAILED: &str = "Nie udało się pobrać zdjęcia z telefonu.";
-    const NOT_A_PICTURE: &str = "Telefon wysłał plik, który nie jest zdjęciem.";
+    let failed: &str = crate::i18n::tr("gallery.fetch_failed");
+    let not_a_picture: &str = crate::i18n::tr("gallery.not_image");
     // Dropping `d` here stops the phone's stream.
-    let name = gallery::saved_name(id, &d.info).ok_or(NOT_A_PICTURE)?;
+    let name = gallery::saved_name(id, &d.info).ok_or(not_a_picture)?;
     let path = dir.join(&name);
     let part = dir.join(format!("{name}.part"));
     let write = async {
-        tokio::fs::create_dir_all(dir).await.map_err(|_| FAILED)?;
-        let mut file = tokio::fs::File::create(&part).await.map_err(|_| FAILED)?;
+        tokio::fs::create_dir_all(dir).await.map_err(|_| failed)?;
+        let mut file = tokio::fs::File::create(&part).await.map_err(|_| failed)?;
         let mut head = Vec::with_capacity(16);
         let mut checked = false;
         let mut last = std::time::Instant::now();
-        while let Some(bytes) = d.next().await.map_err(|_| FAILED)? {
+        while let Some(bytes) = d.next().await.map_err(|_| failed)? {
             if !checked {
                 head.extend(bytes.iter().take(16 - head.len()));
                 if head.len() == 16 || d.received() == d.info.size {
                     if !gallery::bytes_match(&name, &head) {
-                        return Err(NOT_A_PICTURE);
+                        return Err(not_a_picture);
                     }
                     checked = true;
                 }
             }
-            file.write_all(&bytes).await.map_err(|_| FAILED)?;
+            file.write_all(&bytes).await.map_err(|_| failed)?;
             if last.elapsed() >= std::time::Duration::from_millis(100) {
                 last = std::time::Instant::now();
                 progress(d.received());
             }
         }
         if !checked {
-            return Err(NOT_A_PICTURE);
+            return Err(not_a_picture);
         }
-        file.flush().await.map_err(|_| FAILED)?;
+        file.flush().await.map_err(|_| failed)?;
         drop(file);
-        wind_core::files::store::mark_of_the_web(&part, peer).map_err(|_| FAILED)?;
-        tokio::fs::rename(&part, &path).await.map_err(|_| FAILED)?;
+        wind_core::files::store::mark_of_the_web(&part, peer).map_err(|_| failed)?;
+        tokio::fs::rename(&part, &path).await.map_err(|_| failed)?;
         Ok(path)
     };
     let result = write.await;
@@ -431,7 +431,7 @@ pub async fn gallery_drag(app: tauri::AppHandle, id: u64) -> Result<&'static str
         Ok(Ok(true)) => Ok("dropped"),
         Ok(Ok(false)) => Ok("cancelled"),
         Ok(Err(e)) => Err(e),
-        Err(_) => Err("Przeciąganie przerwane.".into()),
+        Err(_) => Err(crate::i18n::tr("gallery.drag_cancelled").into()),
     }
 }
 
@@ -534,7 +534,7 @@ mod platform {
         if code > 32 {
             Ok(())
         } else {
-            Err("Windows nie ma programu do otwarcia tego zdjęcia.".into())
+            Err(crate::i18n::tr("gallery.no_viewer").into())
         }
     }
 }
@@ -546,10 +546,10 @@ mod platform {
         false
     }
     pub fn drag(_: &Path) -> Result<bool, String> {
-        Err("Przeciąganie działa tylko w Windows.".into())
+        Err(crate::i18n::tr("gallery.drag_windows").into())
     }
     pub fn open(_: &Path) -> Result<(), String> {
-        Err("Otwieranie działa tylko w Windows.".into())
+        Err(crate::i18n::tr("gallery.open_windows").into())
     }
 }
 

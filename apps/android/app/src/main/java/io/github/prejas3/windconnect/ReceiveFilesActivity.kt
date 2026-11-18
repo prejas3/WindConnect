@@ -26,7 +26,7 @@ class ReceiveFilesActivity : ComponentActivity() {
         setContent { WindApp(forceContent = true) {
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 ReceiveFilesControls()
-                WindButton("Zamknij", { finish() }, kind = ButtonKind.Secondary)
+                WindButton(str(R.string.close), { finish() }, kind = ButtonKind.Secondary)
             }
         } }
     }
@@ -37,45 +37,45 @@ internal fun ReceiveFilesControls(state: ReceiveUi = FileReceiving.ui.collectAsS
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var openError by remember { mutableStateOf("") }
-    Text("Odbiór plików", style = MaterialTheme.typography.titleMedium)
+    Text(str(R.string.receive_title), style = MaterialTheme.typography.titleMedium)
     WindCard(Modifier.fillMaxWidth().testTag("receiveFilesControls")) {
-        Text(if (!state.enabled) "Odbiór wyłączony" else if (state.ready) "Gotowy · Pobrane/WindConnect" else "Oczekiwanie na gotowość odbioru")
-        Text("Pliki trafiają do publicznych Pobranych po sprawdzeniu sumy kontrolnej. Limit: 2 GiB na plik, 4 GiB aktywnych transferów.", style = MaterialTheme.typography.bodySmall)
-        Text("Odbiór działa przy otwartej aplikacji lub po włączeniu „Połączenie w tle”. Bez zgody na powiadomienia postęp i anulowanie znajdziesz tutaj.", style = MaterialTheme.typography.bodySmall)
-        WindButton(if (state.enabled) "Wyłącz odbiór" else "Włącz odbiór", { FileReceiving.setEnabled(context, !state.enabled) }, kind = ButtonKind.Secondary)
+        Text(if (!state.enabled) str(R.string.receive_off) else if (state.ready) str(R.string.receive_ready) else str(R.string.receive_waiting_ready))
+        Text(str(R.string.receive_where), style = MaterialTheme.typography.bodySmall)
+        Text(str(R.string.receive_when), style = MaterialTheme.typography.bodySmall)
+        WindButton(if (state.enabled) str(R.string.receive_turn_off) else str(R.string.receive_turn_on), { FileReceiving.setEnabled(context, !state.enabled) }, kind = ButtonKind.Secondary)
         if (state.error.isNotEmpty()) Text(state.error, color = MaterialTheme.colorScheme.error)
         state.transfers.filter { it.state !in listOf("done", "failed", "cancelled") }.forEach { file ->
             Text(file.name.filterNot { it.isISOControl() || it in '\u202a'..'\u202e' || it in '\u2066'..'\u2069' || it == '\u200e' || it == '\u200f' }.take(240))
             val fraction = if (file.size == 0uL) 0f else (file.done.toDouble() / file.size.toDouble()).coerceIn(0.0, 1.0).toFloat()
             Box(Modifier.fillMaxWidth().height(8.dp).background(MaterialTheme.colorScheme.surfaceVariant).semantics {
                 progressBarRangeInfo = ProgressBarRangeInfo(fraction, 0f..1f)
-                contentDescription = "Postęp odbioru"
+                contentDescription = str(R.string.receive_progress)
             }) { Box(Modifier.fillMaxWidth(fraction).fillMaxHeight().background(MaterialTheme.colorScheme.primary)) }
-            Text(if (file.state == "waiting") "Oczekiwanie na połączenie" else if (file.done == file.size) "Publikowanie w Pobranych…" else "${transferBytes(file.done.toLong())} z ${transferBytes(file.size.toLong())}")
+            Text(if (file.state == "waiting") str(R.string.receive_waiting_connection) else if (file.done == file.size) str(R.string.receive_publishing) else str(R.string.bytes_of, transferBytes(file.done.toLong()), transferBytes(file.size.toLong())))
         }
-        if (state.transfers.any { it.state !in listOf("done", "failed", "cancelled") }) WindButton("Anuluj odbiór", { FileReceiving.cancelAll() }, kind = ButtonKind.Secondary)
-        WindButton("Pokaż w Pobranych", {
+        if (state.transfers.any { it.state !in listOf("done", "failed", "cancelled") }) WindButton(str(R.string.receive_cancel), { FileReceiving.cancelAll() }, kind = ButtonKind.Secondary)
+        WindButton(str(R.string.receive_show_downloads), {
             try { context.startActivity(Intent(DownloadManager.ACTION_VIEW_DOWNLOADS)) }
-            catch (_: android.content.ActivityNotFoundException) { openError = "Brak aplikacji do przeglądania Pobranych" }
+            catch (_: android.content.ActivityNotFoundException) { openError = str(R.string.receive_no_downloads_app) }
         }, kind = ButtonKind.Secondary)
         state.receipts.take(10).forEach { receipt ->
             Text(receipt.name, style = MaterialTheme.typography.titleSmall)
             Text(receipt.folder, style = MaterialTheme.typography.bodySmall)
-            WindButton("Otwórz ${receipt.name}", {
+            WindButton(str(R.string.open_named, receipt.name), {
                 scope.launch {
                     val uri = FileReceiving.openUri(receipt.key)
-                    if (uri == null) openError = "Plik został przeniesiony lub usunięty"
+                    if (uri == null) openError = str(R.string.receive_file_gone)
                     else try {
                         val view = Intent(Intent.ACTION_VIEW).setDataAndType(uri, context.contentResolver.getType(uri) ?: "application/octet-stream")
                             .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                        context.startActivity(Intent.createChooser(view, "Otwórz plik"))
-                    } catch (_: android.content.ActivityNotFoundException) { openError = "Brak aplikacji do otwarcia tego pliku" }
+                        context.startActivity(Intent.createChooser(view, str(R.string.receive_open_file)))
+                    } catch (_: android.content.ActivityNotFoundException) { openError = str(R.string.receive_no_app) }
                 }
             }, kind = ButtonKind.Secondary)
         }
         if (state.receipts.isNotEmpty()) {
-            Text("Wyczyszczenie historii zachowa pliki w Pobranych. Ponowne wysłanie starego transferu może wtedy utworzyć kolejną kopię.", style = MaterialTheme.typography.bodySmall)
-            WindButton("Wyczyść historię odbioru", { FileReceiving.clearHistory() }, kind = ButtonKind.Quiet)
+            Text(str(R.string.receive_clear_note), style = MaterialTheme.typography.bodySmall)
+            WindButton(str(R.string.receive_clear), { FileReceiving.clearHistory() }, kind = ButtonKind.Quiet)
         }
         if (openError.isNotEmpty()) Text(openError, color = MaterialTheme.colorScheme.error)
     }

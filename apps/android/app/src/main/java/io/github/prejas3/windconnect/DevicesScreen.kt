@@ -1,5 +1,6 @@
 package io.github.prejas3.windconnect
 
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
@@ -42,8 +43,8 @@ fun DevicesScreen(
     onRename: (PairedEntry, String) -> Unit,
     onUnpair: (PairedEntry) -> Unit,
 ) {
-    Text("Sparowane komputery", style = MaterialTheme.typography.headlineSmall)
-    WindButton("Powrót", onBack, Modifier.testTag("closeDevices"), kind = ButtonKind.Quiet)
+    Text(stringResource(R.string.devices_paired), style = MaterialTheme.typography.headlineSmall)
+    WindButton(stringResource(R.string.back), onBack, Modifier.testTag("closeDevices"), kind = ButtonKind.Quiet)
     if (state.message.isNotEmpty()) Text(state.message, modifier = Modifier.testTag("devicesMessage").semantics { liveRegion = LiveRegionMode.Polite }, style = MaterialTheme.typography.bodyMedium)
     val connected = state.connection as? ConnectionState.Connected
     var editing by rememberSaveable { mutableStateOf<String?>(null) }
@@ -52,47 +53,47 @@ fun DevicesScreen(
         val isConnected = connected?.fingerprint == entry.fingerprint
         val label = computerLabel(entry.name)
         WindCard(Modifier.fillMaxWidth().testTag("device-${entry.fingerprint.take(8)}")) {
-            Text(if (entry.owed) "Usunięty komputer" else label, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(if (entry.owed) stringResource(R.string.device_removed) else label, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
             val date = DateFormat.getDateInstance(DateFormat.MEDIUM).format(Date(entry.pairedAt.toLong() * 1000))
             Text(
                 when {
-                    entry.owed -> "Usunięto $date · komputer dowie się, gdy będzie w tej samej sieci"
-                    isConnected -> "Połączony · sparowano $date"
-                    else -> "Niepołączony · sparowano $date"
+                    entry.owed -> stringResource(R.string.device_removed_at, date)
+                    isConnected -> stringResource(R.string.device_connected_at, date)
+                    else -> stringResource(R.string.device_disconnected_at, date)
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = if (isConnected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Text("Odcisk: ${shortFingerprint(entry.fingerprint)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.fingerprint_short, shortFingerprint(entry.fingerprint)), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (entry.owed) return@WindCard
             when {
                 editing == entry.fingerprint -> {
                     var name by remember(entry.fingerprint) { mutableStateOf(label) }
                     var empty by remember { mutableStateOf(false) }
-                    WindField(name, { name = it.take(64); empty = false }, "Nazwa widoczna na tym telefonie", Modifier.testTag("renameField"), errorText = if (empty) "Nazwa nie może być pusta" else null)
+                    WindField(name, { name = it.take(64); empty = false }, stringResource(R.string.device_rename_label), Modifier.testTag("renameField"), errorText = if (empty) stringResource(R.string.device_name_empty) else null)
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        WindButton("Zapisz", { if (name.isBlank()) empty = true else { editing = null; onRename(entry, name.trim()) } }, Modifier.testTag("renameSave"))
-                        WindButton("Anuluj", { editing = null }, kind = ButtonKind.Quiet)
+                        WindButton(stringResource(R.string.save), { if (name.isBlank()) empty = true else { editing = null; onRename(entry, name.trim()) } }, Modifier.testTag("renameSave"))
+                        WindButton(stringResource(R.string.cancel), { editing = null }, kind = ButtonKind.Quiet)
                     }
                 }
                 asking == entry.fingerprint -> {
                     Text(
-                        "Usunąć parowanie z: $label? Komputer też je usunie${if (isConnected) "" else ", gdy znajdzie się w tej samej sieci"}. Ponowne połączenie wymaga nowego parowania.",
+                        stringResource(if (isConnected) R.string.unpair_question_now else R.string.unpair_question_later, label),
                         style = MaterialTheme.typography.bodyMedium,
                         modifier = Modifier.testTag("unpairQuestion"),
                     )
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        WindButton("Usuń parowanie", { asking = null; onUnpair(entry) }, Modifier.testTag("unpairConfirm"))
-                        WindButton("Anuluj", { asking = null }, kind = ButtonKind.Quiet)
+                        WindButton(stringResource(R.string.unpair), { asking = null; onUnpair(entry) }, Modifier.testTag("unpairConfirm"))
+                        WindButton(stringResource(R.string.cancel), { asking = null }, kind = ButtonKind.Quiet)
                     }
                 }
                 else -> FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (!isConnected) WindButton("Połącz", { onConnect(entry) }, Modifier.testTag("deviceConnect"), kind = ButtonKind.Secondary)
-                    WindButton("Zmień nazwę", { editing = entry.fingerprint; asking = null }, Modifier.testTag("deviceRename"), kind = ButtonKind.Quiet)
-                    WindButton("Usuń", { asking = entry.fingerprint; editing = null }, Modifier.testTag("deviceUnpair"), kind = ButtonKind.Quiet)
+                    if (!isConnected) WindButton(stringResource(R.string.connect), { onConnect(entry) }, Modifier.testTag("deviceConnect"), kind = ButtonKind.Secondary)
+                    WindButton(stringResource(R.string.rename), { editing = entry.fingerprint; asking = null }, Modifier.testTag("deviceRename"), kind = ButtonKind.Quiet)
+                    WindButton(stringResource(R.string.remove), { asking = entry.fingerprint; editing = null }, Modifier.testTag("deviceUnpair"), kind = ButtonKind.Quiet)
                 }
             }
         }
     }
-    if (state.devices.isEmpty()) Text("Brak sparowanych komputerów.", style = MaterialTheme.typography.bodyMedium)
+    if (state.devices.isEmpty()) Text(stringResource(R.string.devices_none), style = MaterialTheme.typography.bodyMedium)
 }

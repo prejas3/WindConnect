@@ -1,5 +1,6 @@
 package io.github.prejas3.windconnect
 
+import androidx.compose.ui.res.stringResource
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -34,30 +35,30 @@ import io.github.prejas3.windconnect.ui.WindCard
 @Composable
 fun WelcomeCard(ready: Boolean, onScan: () -> Unit, onNearby: (() -> Unit)?) {
     WindCard(Modifier.fillMaxWidth().testTag("welcome")) {
-        Text("Witaj w WindConnect", style = MaterialTheme.typography.titleLarge, modifier = Modifier.semantics { heading() })
-        Text("Połącz telefon z komputerem w kilka sekund. Potrzebujesz komputera z WindConnect w tej samej sieci Wi-Fi. Bez konta i bez chmury: połączenie jest szyfrowane od końca do końca.",
+        Text(stringResource(R.string.welcome_title), style = MaterialTheme.typography.titleLarge, modifier = Modifier.semantics { heading() })
+        Text(stringResource(R.string.welcome_about),
             style = MaterialTheme.typography.bodyMedium)
-        WindButton("Zeskanuj kod z komputera", onScan, Modifier.fillMaxWidth().testTag("scanQr"), enabled = ready)
-        Text("Aparat działa tylko podczas skanowania, a obraz nie opuszcza telefonu.", style = MaterialTheme.typography.bodySmall,
+        WindButton(stringResource(R.string.welcome_scan), onScan, Modifier.fillMaxWidth().testTag("scanQr"), enabled = ready)
+        Text(stringResource(R.string.welcome_camera), style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.testTag("cameraNote"))
         // WN-27: pairing by code comparison when the camera can't be used.
-        if (onNearby != null) WindButton("Paruj bez aparatu", onNearby, Modifier.fillMaxWidth().testTag("pairNearby"), enabled = ready, kind = ButtonKind.Secondary)
+        if (onNearby != null) WindButton(stringResource(R.string.pair_without_camera), onNearby, Modifier.fillMaxWidth().testTag("pairNearby"), enabled = ready, kind = ButtonKind.Secondary)
     }
 }
 
-/** What the person decided on the "Gotowe" screen; [notificationsDenied] only after "Utrzymuj". */
+/** What the person decided on the stringResource(R.string.done) screen; [notificationsDenied] only after "Utrzymuj". */
 data class BackgroundChoice(val decided: Boolean = false, val keep: Boolean = false, val notificationsDenied: Boolean = false)
 
 /** One sentence about the consequence of the background choice (WC-34 review: notifications refused). */
 fun backgroundOutcome(choice: BackgroundChoice): String? = when {
     !choice.decided -> null
-    !choice.keep -> "Możesz włączyć połączenie w tle później w Ustawieniach."
-    choice.notificationsDenied -> "Połączenie działa w tle, ale bez powiadomień nie zobaczysz stanu komputera ani akcji „Wyślij schowek”. Zmienisz to w Ustawieniach."
-    else -> "Włączone. Stan komputera i szybkie akcje zobaczysz w powiadomieniu."
+    !choice.keep -> str(R.string.background_later)
+    choice.notificationsDenied -> str(R.string.background_no_notifications)
+    else -> str(R.string.background_on)
 }
 
 /**
- * WC-34, after pairing: "Gotowe" and the single decision about the background connection
+ * WC-34, after pairing: stringResource(R.string.done) and the single decision about the background connection
  * (ConnectionService + notifications). Pairing no longer turns it on by itself.
  */
 @Composable
@@ -69,30 +70,30 @@ fun DoneScreen(name: String, status: String, onDone: () -> Unit) {
     val choice = BackgroundChoice(decided, keep, denied)
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted -> denied = !granted }
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        Text("Gotowe", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.testTag("pairingSuccess").semantics { heading() })
-        Text("Sparowano z: ${computerLabel(name)}", style = MaterialTheme.typography.titleMedium)
+        Text(stringResource(R.string.done), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.testTag("pairingSuccess").semantics { heading() })
+        Text(stringResource(R.string.paired_with, computerLabel(name)), style = MaterialTheme.typography.titleMedium)
         Text(status, modifier = Modifier.testTag("pairedConnectionStatus"))
-        Text("Klucz komputera jest bezpiecznie zapamiętany na tym telefonie.", style = MaterialTheme.typography.bodySmall)
+        Text(stringResource(R.string.paired_key_saved), style = MaterialTheme.typography.bodySmall)
         WindCard(Modifier.fillMaxWidth().testTag("backgroundChoice")) {
-            Text("Połączenie w tle", style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
-            Text("Telefon zostaje połączony z komputerem także po zamknięciu aplikacji. W powiadomieniu zobaczysz stan komputera i akcję „Wyślij schowek”.",
+            Text(stringResource(R.string.background_title), style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
+            Text(stringResource(R.string.background_about),
                 style = MaterialTheme.typography.bodyMedium)
             if (!choice.decided) {
-                WindButton("Utrzymuj połączenie w tle", {
+                WindButton(stringResource(R.string.background_keep), {
                     ConnectionService.start(context, enable = true)
                     decided = true; keep = true
                     val needs = Build.VERSION.SDK_INT >= 33 &&
                         context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
                     if (needs) permission.launch(Manifest.permission.POST_NOTIFICATIONS)
                 }, Modifier.fillMaxWidth().testTag("keepBackground"))
-                WindButton("Nie teraz", { decided = true; keep = false }, Modifier.fillMaxWidth().testTag("backgroundLater"), kind = ButtonKind.Quiet)
+                WindButton(stringResource(R.string.not_now), { decided = true; keep = false }, Modifier.fillMaxWidth().testTag("backgroundLater"), kind = ButtonKind.Quiet)
             } else {
                 Text(backgroundOutcome(choice).orEmpty(), modifier = Modifier.testTag("backgroundOutcome"), style = MaterialTheme.typography.bodyMedium)
-                if (choice.notificationsDenied) WindButton("Ustawienia powiadomień", {
+                if (choice.notificationsDenied) WindButton(stringResource(R.string.notification_settings), {
                     context.startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName))
                 }, kind = ButtonKind.Quiet)
             }
         }
-        WindButton("Gotowe", onDone, Modifier.fillMaxWidth().testTag("pairingDone"), kind = if (choice.decided) ButtonKind.Primary else ButtonKind.Secondary)
+        WindButton(stringResource(R.string.done), onDone, Modifier.fillMaxWidth().testTag("pairingDone"), kind = if (choice.decided) ButtonKind.Primary else ButtonKind.Secondary)
     }
 }

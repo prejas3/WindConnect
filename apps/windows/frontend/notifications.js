@@ -1,3 +1,4 @@
+import { t } from './i18n.js';
 // CCS/1 FLOW:WN-44 pairing-state.notifications -> "Powiadomienia" in the panel; reply (Enter/Wyślij) and ✕ -> notify_action.
 // SEC:texts come from other apps: textContent only. The reply text is never logged; it stays in the field until the phone says
 // it went out (Replied ok), and is kept after a failure so it isn't lost. Over 1024 UTF-8 bytes: blocked with a message, never
@@ -9,7 +10,7 @@ const rows = new Map();
 
 function statusText(row, state) {
   if (state.local) return state.local;
-  return ({ sending: 'Wysyłanie…', sent: 'Wysłano', failed: 'Nie udało się wysłać. Spróbuj ponownie.', 'too-long': `Odpowiedź jest za długa (ponad ${MAX_REPLY} bajtów). Skróć ją i wyślij ponownie.` })[row.status] || '';
+  return ({ sending: t('notifications.sending'), sent: t('transfers.sent'), failed: t('notifications.failed'), 'too-long': t('notifications.too_long', { max: MAX_REPLY }) })[row.status] || '';
 }
 
 function build(row) {
@@ -37,14 +38,14 @@ function ensureForm(state, tag) {
   if (state.form) return;
   const form = document.createElement('div'); form.className = 'notification-reply';
   const input = document.createElement('input');
-  input.type = 'text'; input.placeholder = 'Odpowiedz…'; input.autocomplete = 'off'; input.spellcheck = true;
-  const send = document.createElement('button'); send.className = 'button primary small'; send.textContent = 'Wyślij';
+  input.type = 'text'; input.placeholder = t('notifications.reply_placeholder'); input.autocomplete = 'off'; input.spellcheck = true;
+  const send = document.createElement('button'); send.className = 'button primary small'; send.textContent = t('common.send');
   const status = document.createElement('small'); status.className = 'notification-status'; status.setAttribute('role', 'status');
   const submit = async () => {
     const text = input.value.trim();
     if (!text) { input.focus(); return; }
     if (bytes(text) > MAX_REPLY) {
-      state.local = `Odpowiedź jest za długa (${bytes(text)} z ${MAX_REPLY} bajtów). Skróć ją, aby wysłać.`;
+      state.local = t('notifications.too_long_now', { bytes: bytes(text), max: MAX_REPLY });
       input.setAttribute('aria-invalid', 'true');
       render(state);
       return;
@@ -52,7 +53,7 @@ function ensureForm(state, tag) {
     state.local = '';
     state.pending = 'queued';
     try { await invoke?.('notify_action', { action: 'reply', tag, text }); }
-    catch (e) { state.pending = null; state.local = 'Nie udało się wysłać. Spróbuj ponownie.'; render(state); console.error(String(e).slice(0, 80)); }
+    catch (e) { state.pending = null; state.local = t('notifications.failed'); render(state); console.error(String(e).slice(0, 80)); }
   };
   input.addEventListener('input', () => {
     input.removeAttribute('aria-invalid');
@@ -77,16 +78,16 @@ function render(state) {
 function update(state, row) {
   const previous = state.row;
   state.row = row;
-  state.app.textContent = row.app || 'Telefon';
-  const title = row.title || row.app || 'Powiadomienie';
+  state.app.textContent = row.app || t('notifications.phone');
+  const title = row.title || row.app || t('notifications.notification');
   state.title.textContent = title; state.title.title = title;
   state.body.textContent = row.text || '';
   state.body.hidden = !row.text;
-  state.close.setAttribute('aria-label', `Odrzuć powiadomienie: ${title}`);
+  state.close.setAttribute('aria-label', t('notifications.dismiss', { title }));
   if (row.reply) {
     ensureForm(state, row.tag);
     state.input.setAttribute('aria-label', `${row.reply}: ${title}`);
-    state.send.setAttribute('aria-label', `Wyślij odpowiedź: ${title}`);
+    state.send.setAttribute('aria-label', t('notifications.send_reply', { title }));
     // Sending: the PC queued it ('sending'); then the phone's answer. Clear only after the phone said it went out.
     if (state.pending === 'queued' && row.status === 'sending') state.pending = 'sending';
     if (state.pending === 'sending' && row.status === 'sent') { state.input.value = ''; state.pending = null; }

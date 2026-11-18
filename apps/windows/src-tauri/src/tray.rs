@@ -46,7 +46,10 @@ pub fn tooltip(phase: Phase) -> String {
         Phase::Connected => crate::battery::tooltip(crate::battery::current()),
         _ => String::new(),
     };
-    format!("WindConnect · {}{battery}", phase.label())
+    crate::i18n::trf(
+        "tray.tooltip",
+        &[("state", &phase.label()), ("battery", &battery)],
+    )
 }
 pub fn show_main(app: &tauri::AppHandle) -> tauri::Result<()> {
     if let Some(panel) = app.get_webview_window("panel") {
@@ -100,7 +103,7 @@ pub fn install(app: &tauri::AppHandle) -> tauri::Result<TrayRuntime> {
     let indicator = Indicator::default();
     let tray = TrayIconBuilder::with_id("connection")
         .icon(crate::brand_icon::current(Phase::Unavailable))
-        .tooltip("WindConnect · Brak połączenia")
+        .tooltip(tooltip(crate::indicator::Phase::Unavailable))
         .show_menu_on_left_click(false)
         .on_tray_icon_event(|tray, event| {
             let result = match event {

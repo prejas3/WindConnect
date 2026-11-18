@@ -1,9 +1,11 @@
+import { t, plural, formatNumber } from './i18n.js';
 // CCS/1 PERF:keyed nodes retain focus at <=10 dirty updates/s; no polling or per-row timers.
 export function bytes(value) {
   if (!Number.isFinite(value) || value < 0) return '—';
   const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB']; let i = 0;
   while (value >= 1024 && i < units.length - 1) { value /= 1024; i++; }
-  return `${value.toFixed(i && value < 10 ? 1 : 0)} ${units[i]}`;
+  const digits = i && value < 10 ? 1 : 0;
+  return `${formatNumber(value, { minimumFractionDigits: digits, maximumFractionDigits: digits })} ${units[i]}`;
 }
 export function createTransfers(document, action, clock = () => performance.now()) {
   const nodes = new Map(); let announcedAt = -Infinity, announcedState = '';
@@ -18,7 +20,7 @@ export function createTransfers(document, action, clock = () => performance.now(
     bar.setAttribute('aria-valuemin', '0'); bar.setAttribute('aria-valuemax', '100'); bar.append(document.createElement('span'));
     const buttons = document.createElement('div'); buttons.className = 'transfer-actions';
     const controls = {};
-    for (const [kind, label] of [['cancel', 'Anuluj'], ['retry', 'Ponów'], ['open', 'Otwórz folder']]) {
+    for (const [kind, label] of [['cancel', t('common.cancel')], ['retry', t('common.retry')], ['open', t('transfers.open_folder')]]) {
       const button = document.createElement('button'); button.className = 'button quiet small'; button.textContent = label;
       button.addEventListener('click', () => action(kind, controls.id)); buttons.append(button); controls[kind] = button;
     }
@@ -28,8 +30,8 @@ export function createTransfers(document, action, clock = () => performance.now(
   return function render(state) {
     const rows = state.rows || [], active = rows.filter(r => ['queued', 'running', 'waiting'].includes(r.state));
     find('').hidden = !rows.length;
-    find('-title').textContent = 'Transfery plików';
-    const summary = active.length ? `${active.length} w toku` : `${rows.length} zakończone`;
+    find('-title').textContent = t('transfers.title');
+    const summary = active.length ? t('transfers.active', { count: active.length }) : plural('transfers.finished', rows.length);
     // Screen-reader announcements concern state, not each byte/speed sample.
     const signature = rows.map(r => `${r.key || r.id}:${r.state}`).join('|');
     if (signature !== announcedState || clock() - announcedAt >= 2000) {
@@ -43,21 +45,21 @@ export function createTransfers(document, action, clock = () => performance.now(
       let node = nodes.get(key); if (!node) { node = make(row); nodes.set(key, node); }
       if (list.children[index] !== node.li) list.insertBefore(node.li, list.children[index] || null);
       const incoming = row.direction === 'incoming';
-      const labels = { queued: 'W kolejce', running: incoming ? 'Odbieranie' : 'Wysyłanie', waiting: 'Czeka na połączenie', done: incoming ? 'Odebrano' : 'Wysłano', failed: 'Błąd transferu', cancelled: 'Anulowano' };
+      const labels = { queued: t('transfers.queued'), running: incoming ? t('transfers.receiving') : t('transfers.sending'), waiting: t('transfers.waiting'), done: incoming ? t('transfers.received') : t('transfers.sent'), failed: t('transfers.failed'), cancelled: t('transfers.cancelled') };
       const known = Number.isFinite(row.size) && row.size >= 0;
       const percent = known ? (row.size ? Math.min(100, Math.floor(row.done * 100 / row.size)) : row.state === 'done' ? 100 : 0) : null;
       node.name.textContent = row.name; node.name.title = row.name;
-      const amount = known ? `${bytes(row.done)} z ${bytes(row.size)}` : bytes(row.done);
-      node.detail.textContent = `${incoming ? '↓' : '↑'} ${row.reason || labels[row.state] || row.state} · ${amount}${row.state === 'running' ? ` · ${row.rate == null ? '—' : bytes(row.rate) + '/s'}` : ''}`;
+      const amount = known ? t('bytes.of', { done: bytes(row.done), size: bytes(row.size) }) : bytes(row.done);
+      node.detail.textContent = `${incoming ? '↓' : '↑'} ${row.reason || labels[row.state] || row.state} · ${amount}${row.state === 'running' ? ` · ${row.rate == null ? '—' : t('bytes.per_second', { rate: bytes(row.rate) })}` : ''}`;
       node.detail.classList.toggle('problem', row.state === 'failed');
       node.bar.hidden = !['running', 'queued', 'waiting'].includes(row.state);
-      node.bar.setAttribute('aria-label', `Postęp: ${row.name}`); node.bar.setAttribute('aria-valuetext', amount);
+      node.bar.setAttribute('aria-label', t('transfers.progress_of', { name: row.name })); node.bar.setAttribute('aria-valuetext', amount);
       node.bar.classList.toggle('indeterminate', !known);
       if (known) node.bar.setAttribute('aria-valuenow', String(percent)); else node.bar.removeAttribute('aria-valuenow');
       node.bar.style.setProperty('--done', `${percent || 0}%`);
       node.controls.id = row.id;
       for (const [kind, visible] of [['cancel', ['queued', 'running', 'waiting'].includes(row.state)], ['retry', row.canRetry], ['open', row.canOpen]]) {
-        const button = node.controls[kind]; button.hidden = !visible; button.setAttribute('aria-label', `${button.textContent}: ${row.name}`);
+        const button = node.controls[kind]; button.hidden = !visible; button.setAttribute('aria-label', t('common.action_for', { action: button.textContent, name: row.name }));
       }
     });
     for (const [key, node] of nodes) if (!present.has(key)) { node.li.remove(); nodes.delete(key); }

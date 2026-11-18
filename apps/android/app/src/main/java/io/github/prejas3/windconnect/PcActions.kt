@@ -32,12 +32,12 @@ import kotlinx.coroutines.launch
 /** WN-100: what the person reads for each status of a PC action (PROTOCOL.md §9.2). */
 object PcActionText {
     fun of(status: String, label: String): String = when (status) {
-        "done" -> "$label: wykonano"
-        "refused" -> "$label: odrzucono. Akcja jest wyłączona na komputerze (WindConnect > Akcje)."
-        "bad-argument" -> "$label: to nie jest adres http(s)"
-        "busy" -> "$label: za dużo próśb, spróbuj za chwilę"
-        "unavailable" -> "Komputer nie jest połączony albo nie przyjmuje akcji"
-        else -> "$label: nie udało się"
+        "done" -> str(R.string.pc_action_done, label)
+        "refused" -> str(R.string.pc_action_refused, label)
+        "bad-argument" -> str(R.string.pc_action_bad_url, label)
+        "busy" -> str(R.string.pc_action_busy, label)
+        "unavailable" -> str(R.string.pc_action_unavailable)
+        else -> str(R.string.pc_action_failed, label)
     }
 
     /** The first http(s) link in shared or copied text, or null. */
@@ -55,14 +55,14 @@ class PcActionsState(private val context: Context, private val scope: CoroutineS
         scope.launch { status.value = PcActionText.of(connections.runPcAction(id, url), label) }
     }
 
-    val lock: () -> Unit = { run("lock", "Zablokuj PC") }
+    val lock: () -> Unit = { run("lock", str(R.string.action_lock_pc)) }
 
     /** The last link: the clipboard's (read while the app is in front), else a box to type or paste one. */
     val openLink: () -> Unit = {
         val clip = context.getSystemService(ClipboardManager::class.java)?.primaryClip
         val text = if (clip != null && clip.itemCount > 0) clip.getItemAt(0).coerceToText(context)?.toString() else null
         val link = PcActionText.link(text)
-        if (link != null) run("open-url", "Otwórz na PC", link) else { asking.value = true; status.value = null }
+        if (link != null) run("open-url", str(R.string.action_open_on_pc), link) else { asking.value = true; status.value = null }
     }
 
     fun refresh() {
@@ -86,17 +86,17 @@ fun PcActionsCard(state: PcActionsState, connected: Boolean) {
     androidx.compose.runtime.LaunchedEffect(connected) { if (connected) state.refresh() else state.custom.value = emptyList() }
     if (!connected || (status == null && !asking && custom.isEmpty())) return
     WindCard {
-        Text("Akcje na komputerze", style = MaterialTheme.typography.titleMedium)
+        Text(str(R.string.pc_actions_title), style = MaterialTheme.typography.titleMedium)
         if (asking) {
-            Text("Schowek nie ma linku. Wpisz albo wklej adres:", style = MaterialTheme.typography.bodySmall)
+            Text(str(R.string.pc_link_prompt), style = MaterialTheme.typography.bodySmall)
             WindField(typed, { typed = it }, "https://…", Modifier.fillMaxWidth().testTag("pcLinkField"))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                WindButton("Otwórz na PC", {
+                WindButton(str(R.string.action_open_on_pc), {
                     state.asking.value = false
-                    state.run("open-url", "Otwórz na PC", typed.trim())
+                    state.run("open-url", str(R.string.action_open_on_pc), typed.trim())
                     typed = ""
                 }, Modifier.testTag("pcLinkSend"))
-                WindButton("Anuluj", { state.asking.value = false }, kind = ButtonKind.Quiet)
+                WindButton(str(R.string.cancel), { state.asking.value = false }, kind = ButtonKind.Quiet)
             }
         }
         for (action in custom) {

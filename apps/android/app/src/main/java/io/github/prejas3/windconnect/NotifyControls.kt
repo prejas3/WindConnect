@@ -56,15 +56,11 @@ fun NotifyControls() {
         onDispose { lifecycle.lifecycle.removeObserver(observer) }
     }
     WindCard {
-        Text("Powiadomienia na komputerze", style = MaterialTheme.typography.titleMedium)
-        Text("Nowe powiadomienia z telefonu (aplikacja, tytuł, treść, ikona) trafiają na sparowany komputer, gdy jest połączony. " +
-            "Nic nie idzie przez chmurę ani nie jest zapisywane. Stałe powiadomienia (np. odtwarzacz, nawigacja w tle) są pomijane. " +
-            "Z komputera można odpowiedzieć na wiadomość i odrzucić powiadomienie; odrzucone na jednym urządzeniu znika z drugiego.")
-        Text("To osobna zgoda: w ustawieniach Androida wybierz „WindConnect: powiadomienia na komputerze”. " +
-            "Dostęp dla multimediów nie wystarcza i nie jest tu używany. Android 15 może ukrywać treść wrażliwą (np. kody SMS); " +
-            "komputer zobaczy wtedy „Treść ukryta” albo nic.", style = MaterialTheme.typography.bodySmall)
-        Text(if (access) "Dostęp: przyznany" else "Dostęp: brak", modifier = Modifier.testTag("notifyAccess"))
-        WindButton(if (access) "Zmień dostęp w ustawieniach" else "Przyznaj dostęp w ustawieniach", {
+        Text(str(R.string.notify_title), style = MaterialTheme.typography.titleMedium)
+        Text(str(R.string.notify_about))
+        Text(str(R.string.notify_access_about), style = MaterialTheme.typography.bodySmall)
+        Text(if (access) str(R.string.access_granted) else str(R.string.access_none), modifier = Modifier.testTag("notifyAccess"))
+        WindButton(if (access) str(R.string.access_change) else str(R.string.access_grant), {
             val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 Intent(Settings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS).putExtra(
                     Settings.EXTRA_NOTIFICATION_LISTENER_COMPONENT_NAME,
@@ -72,7 +68,7 @@ fun NotifyControls() {
             } else Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
             context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         }, modifier = Modifier.testTag("notifyAccessSettings"), kind = ButtonKind.Secondary)
-        WindSwitch("Powiadomienia na komputerze", allowed, connections::setNotifyAllowed, Modifier.testTag("notifyAllowed"))
+        WindSwitch(str(R.string.notify_title), allowed, connections::setNotifyAllowed, Modifier.testTag("notifyAllowed"))
         if (allowed) NotifyApps(connections)
     }
 }
@@ -92,8 +88,8 @@ private fun NotifyApps(connections: ConnectionOwner) {
 @Composable
 internal fun NotifyAppsList(state: NotifyAppsState, label: (String) -> String, onMode: (NotifyAppMode) -> Unit, onApp: (String, Boolean) -> Unit) {
     var query by rememberSaveable { mutableStateOf("") }
-    Text("Aplikacje", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 8.dp))
-    val modes = listOf(NotifyAppMode.AllExcept to "Wszystkie oprócz wyłączonych", NotifyAppMode.OnlyChosen to "Tylko wybrane")
+    Text(str(R.string.notify_apps), style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 8.dp))
+    val modes = listOf(NotifyAppMode.AllExcept to str(R.string.notify_all_but_off), NotifyAppMode.OnlyChosen to str(R.string.notify_only_chosen))
     SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().testTag("notifyAppMode")) {
         modes.forEachIndexed { index, (mode, label) ->
             SegmentedButton(selected = state.mode == mode, onClick = { onMode(mode) },
@@ -103,16 +99,16 @@ internal fun NotifyAppsList(state: NotifyAppsState, label: (String) -> String, o
         }
     }
     Text(when {
-        state.sendsNothing -> "Nie wysyłasz żadnych powiadomień. Wybierz aplikacje poniżej."
-        state.mode == NotifyAppMode.OnlyChosen -> "Na komputer trafiają tylko włączone aplikacje; nowe są wyłączone."
-        else -> "Na komputer trafiają wszystkie aplikacje poza wyłączonymi; nowe są włączone."
+        state.sendsNothing -> str(R.string.notify_none_sent)
+        state.mode == NotifyAppMode.OnlyChosen -> str(R.string.notify_only_on)
+        else -> str(R.string.notify_all_on)
     }, style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("notifyAppsState").semantics { liveRegion = LiveRegionMode.Polite })
     val labelled = remember(state.seen) { state.seen.map { it to label(it) }.sortedBy { it.second.lowercase() } }
     if (labelled.isEmpty()) {
-        Text("Aplikacje pojawią się tu, gdy wyślą pierwsze powiadomienie.", style = MaterialTheme.typography.bodySmall)
+        Text(str(R.string.notify_apps_later), style = MaterialTheme.typography.bodySmall)
         return
     }
-    if (labelled.size > 12) WindField(query, { query = it }, "Szukaj aplikacji", Modifier.testTag("notifyAppSearch"))
+    if (labelled.size > 12) WindField(query, { query = it }, str(R.string.notify_search), Modifier.testTag("notifyAppSearch"))
     labelled.filter { query.isBlank() || it.second.contains(query.trim(), ignoreCase = true) }.forEach { (pkg, label) ->
         WindSwitch(label, state.allows(pkg), { on -> onApp(pkg, on) }, Modifier.testTag("notifyApp:$pkg"))
     }

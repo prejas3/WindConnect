@@ -4,6 +4,7 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class FileImportTest {
+    init { StringsForTests.usePolish() }
     @Test fun unsafeNamesAreConvertedToPortableBasenamesAndDisambiguated() {
         val used = mutableSetOf<String>()
         assertEquals("_CON_.jpg", FileImport.safeName("../CON?.jpg", null, used))

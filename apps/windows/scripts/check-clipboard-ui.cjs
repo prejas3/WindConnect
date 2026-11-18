@@ -24,7 +24,7 @@ const server = http.createServer(async (req, res) => {
   let browser;
   try {
     browser = await chromium.launch({ headless: true });
-    const page = await browser.newPage();
+    const page = await browser.newPage({ locale: 'pl-PL' });
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
     await page.addInitScript(() => {
@@ -125,7 +125,7 @@ const server = http.createServer(async (req, res) => {
     assert.equal(await history.locator('[data-history-empty]').isVisible(), true);
     assert.match(await history.locator('[data-history-empty]').textContent(), /Synchronizacja wyłączona: historia nie jest zapisywana/, 'sync is off here (toggled above)');
     // The panel: the history keeps the panel's width and scrolls on its own.
-    const panel = await browser.newPage({viewport:{width:380,height:720}});
+    const panel = await browser.newPage({ locale: 'pl-PL', viewport:{width:380,height:720}});
     panel.on('pageerror', error => errors.push(error.message));
     await panel.addInitScript(() => {
       const many = Array.from({length:22}, (_, i) => ({id:i+1,kind:'text',direction:i % 2 ? 'to-phone' : 'from-phone',at:Date.UTC(2026,10,12,9,i),pinned:i < 2,preview:`Pozycja ${i+1} `.repeat(12).trim(),thumbnail:null,width:null,height:null,ready:true}));

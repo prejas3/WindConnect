@@ -23,17 +23,17 @@ internal object RelaySetting {
 
     /** Applies [url] (null: off); returns the error to show at the field, or null when it was taken. */
     fun apply(set: (String?) -> Unit, url: String?): String? = try {
-        if (url != null && url.isBlank()) "Podaj adres przekaźnika" else { set(url); null }
+        if (url != null && url.isBlank()) str(R.string.relay_address_needed) else { set(url); null }
     } catch (error: Exception) {
         val message = error.message?.takeIf { it.isNotBlank() }
         // CCS/1 RULE:only a refused URL is "Nieprawidłowy adres"; a core still starting says just that (WN-139).
         if (error is io.github.prejas3.windconnect.bindings.CoreException.InvalidInput || error is IllegalArgumentException)
-            "Nieprawidłowy adres: " + (message ?: "użyj wss:// (ws:// tylko w sieci lokalnej)")
-        else message ?: "Nie udało się zmienić ustawienia przekaźnika"
+            str(R.string.relay_invalid, message ?: str(R.string.relay_use_wss))
+        else message ?: str(R.string.relay_change_failed)
     }
 }
 
-/** Settings: "Przekaźnik poza domem". The switch turns the relay on with the typed address, or off at once. */
+/** Settings: str(R.string.relay_title). The switch turns the relay on with the typed address, or off at once. */
 @Composable
 fun RelayControls() {
     val connections = (LocalContext.current.applicationContext as WindApplication).connections
@@ -47,23 +47,20 @@ internal fun RelayCard(relay: String?, set: (String?) -> Unit) {
     var error by remember { mutableStateOf<String?>(null) }
     var wanted by remember(relay) { mutableStateOf(relay != null) }
     WindCard {
-        Text("Przekaźnik poza domem", style = MaterialTheme.typography.titleMedium)
-        WindSwitch("Łącz przez przekaźnik, gdy komputer jest poza siecią", wanted, { on ->
+        Text(str(R.string.relay_title), style = MaterialTheme.typography.titleMedium)
+        WindSwitch(str(R.string.relay_switch), wanted, { on ->
             wanted = on
             error = RelaySetting.apply(set, if (on) draft.trim() else null)
             if (error != null) wanted = relay != null
         }, Modifier.testTag("relayEnabled"))
         OutlinedTextField(draft, { draft = it; error = null }, Modifier.fillMaxWidth().testTag("relayUrl"),
-            label = { Text("Adres przekaźnika") }, placeholder = { Text(RelaySetting.HINT) }, singleLine = true,
+            label = { Text(str(R.string.relay_address)) }, placeholder = { Text(RelaySetting.HINT) }, singleLine = true,
             isError = error != null, supportingText = error?.let { { Text(it, Modifier.testTag("relayError")) } },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri))
-        if (relay != null && draft.trim() != relay) WindButton("Zapisz adres", {
+        if (relay != null && draft.trim() != relay) WindButton(str(R.string.relay_save), {
             error = RelaySetting.apply(set, draft.trim())
         }, Modifier.testTag("relaySave"), kind = ButtonKind.Secondary)
-        Text("Gdy telefon i komputer nie są w tej samej sieci, połączenie może iść przez przekaźnik. " +
-            "Treść jest szyfrowana od końca do końca. Operator przekaźnika widzi adresy IP obu urządzeń, ich klucze publiczne, " +
-            "czas połączeń oraz liczbę i rozmiar przesyłanych danych, ale nie ich treść ani nazwy urządzeń. " +
-            "Wyłączenie natychmiast kończy połączenie przez przekaźnik.",
+        Text(str(R.string.relay_about),
             style = MaterialTheme.typography.bodySmall)
     }
 }

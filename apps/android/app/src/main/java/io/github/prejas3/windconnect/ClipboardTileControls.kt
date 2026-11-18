@@ -15,11 +15,11 @@ import io.github.prejas3.windconnect.ui.WindButton
 import io.github.prejas3.windconnect.ui.WindCard
 
 internal enum class TileAddState(val message: String) {
-    Idle("Dodaj skrót do wysyłania schowka do panelu szybkich ustawień."),
-    Pending("Potwierdź dodanie kafelka w oknie systemowym."),
-    Added("Kafelek jest już w panelu szybkich ustawień."),
-    Declined("Kafelek nie został dodany. Możesz dodać go później."),
-    Error("Nie udało się dodać kafelka. Spróbuj ponownie lub dodaj go przez edycję panelu."),
+    Idle(str(R.string.tile_add_about)),
+    Pending(str(R.string.tile_confirm)),
+    Added(str(R.string.tile_already)),
+    Declined(str(R.string.tile_not_added)),
+    Error(str(R.string.tile_failed)),
 }
 
 internal fun tileAddResult(result: Int): TileAddState = when (result) {
@@ -52,17 +52,17 @@ fun ClipboardTileControls() {
 internal fun TileAddControls(sdkInt: Int, requestAdd: ((TileAddState) -> Unit) -> Unit) {
     var state by remember { mutableStateOf(TileAddState.Idle) }
     WindCard {
-        Text("Szybkie ustawienia", style = MaterialTheme.typography.titleMedium)
+        Text(str(R.string.tile_title), style = MaterialTheme.typography.titleMedium)
         if (sdkInt >= 33) {
             Text(state.message, Modifier.testTag("tileAddStatus"))
             // CCS/1 RULE:only an explicit tap requests the OS prompt; refusal never triggers a retry.
             // WHY:keep the action after success so a tile removed from SystemUI can be added again.
-            WindButton("Dodaj do szybkich ustawień", {
+            WindButton(str(R.string.tile_add), {
                 state = TileAddState.Pending
                 requestAdd { state = it }
             }, Modifier.testTag("addClipboardTile"), enabled = state != TileAddState.Pending, kind = ButtonKind.Secondary)
         } else {
-            Text("Rozwiń panel szybkich ustawień, wybierz edycję kafelków i przeciągnij „Wyślij schowek” z WindConnect do panelu.",
+            Text(str(R.string.tile_manual),
                 Modifier.testTag("tileManualInstructions"))
         }
     }

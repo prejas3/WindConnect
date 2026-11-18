@@ -64,8 +64,8 @@ class DevicesScreenTest {
         assertEquals("Komputer usunął parowanie z tym telefonem", endMessage(ConnectionState.Disconnected("unpaired")))
         assertEquals("Usunięto parowanie z komputerem", endMessage(ConnectionState.Disconnected(END_UNPAIRED_HERE)))
         assert(endMessage(ConnectionState.Disconnected("busy"))!!.startsWith("Komputer jest połączony z innym telefonem"))
-        assertEquals(REFUSED, endMessage(ConnectionState.Disconnected("untrusted")))
-        assertEquals(REFUSED, endMessage(ConnectionState.Failed(REFUSED)))
+        assertEquals("Komputer odrzuca połączenie — sparuj ponownie", endMessage(ConnectionState.Disconnected("untrusted")))
+        assertEquals(R.string.end_refused, endMessageRes(ConnectionState.Failed(REFUSED)))
         assertNull(endMessage(ConnectionState.Disconnected("going-away")))
     }
 }

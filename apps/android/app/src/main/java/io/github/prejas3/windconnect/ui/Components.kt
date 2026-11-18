@@ -1,5 +1,7 @@
 package io.github.prejas3.windconnect.ui
 
+import io.github.prejas3.windconnect.R
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -107,6 +109,6 @@ fun WindAction(title: String, subtitle: String, icon: String, onClick: (() -> Un
         WindIcon(icon, tint = if (enabled) colors.primary else colors.onSurfaceVariant)
         Text(title, color = foreground, style = MaterialTheme.typography.labelLarge)
         Text(subtitle, color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
-        if (!enabled) Text("Niedostępne", modifier = Modifier.fillMaxWidth(), color = foreground, style = MaterialTheme.typography.labelSmall)
+        if (!enabled) Text(stringResource(R.string.unavailable), modifier = Modifier.fillMaxWidth(), color = foreground, style = MaterialTheme.typography.labelSmall)
     }
 }

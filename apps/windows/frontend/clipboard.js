@@ -1,7 +1,8 @@
+import { t, locale } from './i18n.js';
 // CCS/1 SEC:only settings/status cross IPC; clipboard payload stays in the native adapter. WN-37: the history list carries a one-line preview or a thumbnail, never the full content; copy goes by id.
 const invoke = window.__TAURI__?.core.invoke;
-const EMPTY_ON = 'Tu pojawią się ostatnio przesłane schowki. Treści oznaczone jako wrażliwe (np. hasła z menedżera) nigdy tu nie trafiają.';
-const EMPTY_OFF = 'Synchronizacja wyłączona: historia nie jest zapisywana. Przypięte pozycje zostają.';
+const EMPTY_ON = t('main.tu_pojawia_sie_ostatnio');
+const EMPTY_OFF = t('clipboard.history_off');
 function render(state) {
   document.querySelectorAll('[data-clipboard-controls]').forEach(element => { element.hidden = false; });
   document.querySelectorAll('[data-clipboard-toggle]').forEach(element => { element.setAttribute('aria-checked', String(state.enabled)); element.disabled = false; });
@@ -10,10 +11,10 @@ function render(state) {
   document.querySelectorAll('[data-history-empty]').forEach(element => { element.textContent = state.enabled ? EMPTY_ON : EMPTY_OFF; });
   // WN-36: the image limit (5 / 16 / 50 MB), one pressed button per group.
   document.querySelectorAll('[data-clipboard-limit] button').forEach(button => button.setAttribute('aria-pressed', String(Number(button.dataset.limit) === state.image_limit_mb)));
-  document.querySelectorAll('[data-clipboard-shortcut]').forEach(element => { element.textContent = state.shortcut_error ? 'Ctrl + Alt + Shift + C jest zajęty. Użyj przycisku Schowek.' : 'Wyślij: Ctrl + Alt + Shift + C'; });
+  document.querySelectorAll('[data-clipboard-shortcut]').forEach(element => { element.textContent = state.shortcut_error ? t('clipboard.shortcut_taken') : t('clipboard.shortcut'); });
 }
 async function refresh() { if (invoke) render(await invoke('clipboard_snapshot')); }
-function failed() { document.querySelectorAll('[data-clipboard-status]').forEach(element => { element.textContent = 'Nie udało się wykonać operacji schowka.'; }); }
+function failed() { document.querySelectorAll('[data-clipboard-status]').forEach(element => { element.textContent = t('clipboard.failed'); }); }
 document.querySelectorAll('[data-clipboard-send]').forEach(button => button.addEventListener('click', () => invoke?.('clipboard_action', { action: 'send' }).catch(failed)));
 document.querySelectorAll('[data-clipboard-limit] button').forEach(button => button.addEventListener('click', async () => {
   if (!invoke) return;
@@ -41,12 +42,12 @@ function icon(d, className) {
   if (className) svg.setAttribute('class', className);
   const path = document.createElementNS(SVG, 'path'); path.setAttribute('d', d); svg.append(path); return svg;
 }
-const time = new Intl.DateTimeFormat('pl-PL', { hour: '2-digit', minute: '2-digit' });
+const time = new Intl.DateTimeFormat(locale, { hour: '2-digit', minute: '2-digit' });
 function meta(entry) {
-  const where = entry.direction === 'to-phone' ? 'Do telefonu' : 'Z telefonu';
+  const where = entry.direction === 'to-phone' ? t('clipboard.to_phone') : t('clipboard.from_phone');
   const parts = [where, time.format(new Date(entry.at))];
   if (entry.kind === 'image') parts.splice(1, 0, `${entry.width}×${entry.height}`);
-  if (entry.pinned) parts.push('przypięte');
+  if (entry.pinned) parts.push(t('clipboard.pinned'));
   return parts.join(' · ');
 }
 function item(entry) {
@@ -56,17 +57,17 @@ function item(entry) {
   const small = document.createElement('small');
   if (entry.kind === 'image') {
     const img = document.createElement('img'); img.alt = ''; img.src = entry.thumbnail; copy.append(img);
-    name.textContent = 'Obraz';
+    name.textContent = t('clipboard.image');
   } else { copy.append(icon(TEXT_GLYPH, 'glyph')); name.textContent = entry.preview; }
-  small.textContent = entry.ready ? meta(entry) : 'Obraz dochodzi…';
+  small.textContent = entry.ready ? meta(entry) : t('clipboard.image_coming');
   copy.disabled = !entry.ready;
-  copy.setAttribute('aria-label', `Kopiuj: ${entry.kind === 'image' ? `obraz ${entry.width}×${entry.height}` : entry.preview}. ${small.textContent}`);
+  copy.setAttribute('aria-label', t('clipboard.copy_label', { what: entry.kind === 'image' ? t('clipboard.image_size', { width: entry.width, height: entry.height }) : entry.preview, meta: small.textContent }));
   text.append(name, small); copy.append(text);
   const pin = document.createElement('button'); pin.className = 'history-action'; pin.dataset.historyPin = '';
-  pin.setAttribute('aria-pressed', String(entry.pinned)); pin.setAttribute('aria-label', entry.pinned ? 'Odepnij' : 'Przypnij'); pin.title = pin.getAttribute('aria-label');
+  pin.setAttribute('aria-pressed', String(entry.pinned)); pin.setAttribute('aria-label', entry.pinned ? t('clipboard.unpin') : t('clipboard.pin')); pin.title = pin.getAttribute('aria-label');
   pin.append(icon(PIN));
   const remove = document.createElement('button'); remove.className = 'history-action'; remove.dataset.historyDelete = '';
-  remove.setAttribute('aria-label', 'Usuń z historii'); remove.title = 'Usuń z historii'; remove.append(icon(REMOVE));
+  remove.setAttribute('aria-label', t('clipboard.remove')); remove.title = t('clipboard.remove'); remove.append(icon(REMOVE));
   li.append(copy, pin, remove); return li;
 }
 function renderHistory(entries) {

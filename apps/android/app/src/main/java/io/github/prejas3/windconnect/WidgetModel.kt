@@ -4,15 +4,15 @@ import io.github.prejas3.windconnect.core.BatteryReading
 import io.github.prejas3.windconnect.core.ConnectionState
 
 internal data class WidgetData(
-    val name: String = "Twój komputer",
-    val status: String = "Połączenie w tle wyłączone",
+    val name: String = str(R.string.your_computer),
+    val status: String = str(R.string.widget_background_off),
     val connected: Boolean = false,
     val battery: Int? = null,
     val charging: Boolean = false,
     val theme: String = "System",
     val dynamic: Boolean = true,
 ) {
-    val batteryText: String get() = "Telefon: ${battery?.let { "$it%" } ?: "—"}${if (charging) " · ładowanie" else ""}"
+    val batteryText: String get() = str(if (charging) R.string.widget_battery_charging else R.string.widget_battery, battery?.let { "$it%" } ?: "—")
 }
 
 /** WN-119: the widget's percent and charging from the shared reading; none -> unknown (no percent, not charging). */
@@ -25,12 +25,12 @@ internal fun widgetData(state: ConnectionState, background: Boolean, percent: In
     theme: String = "System", dynamic: Boolean = true, pairedName: String? = null): WidgetData {
     val connected = background && state is ConnectionState.Connected
     val status = when {
-        !background -> "Połączenie w tle wyłączone"
-        state is ConnectionState.Connected -> "Połączono"
-        state is ConnectionState.Connecting -> "Łączenie…"
-        else -> "Brak połączenia"
+        !background -> str(R.string.widget_background_off)
+        state is ConnectionState.Connected -> str(R.string.connected)
+        state is ConnectionState.Connecting -> str(R.string.connecting)
+        else -> str(R.string.not_connected)
     }
     return WidgetData(if (state is ConnectionState.Connected) computerLabel(state.peerName)
-        else pairedName?.takeIf { it.isNotBlank() }?.let(::computerLabel) ?: "Twój komputer",
+        else pairedName?.takeIf { it.isNotBlank() }?.let(::computerLabel) ?: str(R.string.your_computer),
         status, connected, percent?.takeIf { it in 0..100 }, charging, theme, dynamic)
 }

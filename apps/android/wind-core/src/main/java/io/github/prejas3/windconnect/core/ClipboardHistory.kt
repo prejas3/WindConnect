@@ -83,10 +83,10 @@ class ClipboardHistory {
     val hasPins get() = entries.any { it.pinned }
 
     /** Pinned first, then the recent ones; newest first in each. */
-    fun views(): List<ClipboardHistoryView> = (entries.filter { it.pinned } + entries.filter { !it.pinned }).map { entry ->
+    fun views(imageLabel: (Long, Long) -> String = { w, h -> "$w×$h" }): List<ClipboardHistoryView> = (entries.filter { it.pinned } + entries.filter { !it.pinned }).map { entry ->
         when (val item = entry.item) {
             is ClipboardHistoryItem.Text -> ClipboardHistoryView(entry.id, false, preview(item.text), null, item.fromPc, entry.pinned)
-            is ClipboardHistoryItem.Image -> ClipboardHistoryView(entry.id, true, "Obraz ${item.width}×${item.height}", item.thumbnail, item.fromPc, entry.pinned)
+            is ClipboardHistoryItem.Image -> ClipboardHistoryView(entry.id, true, imageLabel(item.width, item.height), item.thumbnail, item.fromPc, entry.pinned)
         }
     }
 

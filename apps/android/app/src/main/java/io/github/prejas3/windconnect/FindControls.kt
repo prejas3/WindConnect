@@ -24,15 +24,15 @@ import io.github.prejas3.windconnect.ui.WindButton
 import io.github.prejas3.windconnect.ui.WindCard
 import io.github.prejas3.windconnect.ui.WindSwitch
 
-/** WN-50 Settings: "Pozwól komputerowi dzwonić" (default on). Off, the PC's "Dzwoń" tile is disabled. */
+/** WN-50 Settings: str(R.string.find_allow) (default on). Off, the PC's "Dzwoń" tile is disabled. */
 @Composable
 fun FindControls() {
     val connections = (LocalContext.current.applicationContext as WindApplication).connections
     val allowed by connections.findAllowed.collectAsStateWithLifecycle()
     WindCard {
-        Text("Znajdź telefon", style = MaterialTheme.typography.titleMedium)
-        WindSwitch("Pozwól komputerowi dzwonić", allowed, connections::setFindAllowed, Modifier.testTag("findAllowed"))
-        Text("Komputer może włączyć głośny dźwięk, także w trybie cichym, aż do 60 s. Zatrzymasz go w powiadomieniu, w aplikacji albo przyciskiem głośności przy otwartej aplikacji.", style = MaterialTheme.typography.bodySmall)
+        Text(str(R.string.find_channel), style = MaterialTheme.typography.titleMedium)
+        WindSwitch(str(R.string.find_allow), allowed, connections::setFindAllowed, Modifier.testTag("findAllowed"))
+        Text(str(R.string.find_about), style = MaterialTheme.typography.bodySmall)
     }
 }
 
@@ -48,7 +48,7 @@ fun StopRingingBar(onStop: () -> Unit, modifier: Modifier = Modifier) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        Text("Telefon dzwoni na prośbę komputera", color = MaterialTheme.colorScheme.onErrorContainer, modifier = Modifier.weight(1f))
-        WindButton("Zatrzymaj dzwonienie", onStop, Modifier.testTag("stopRinging"))
+        Text(str(R.string.find_ringing_now), color = MaterialTheme.colorScheme.onErrorContainer, modifier = Modifier.weight(1f))
+        WindButton(str(R.string.find_stop), onStop, Modifier.testTag("stopRinging"))
     }
 }

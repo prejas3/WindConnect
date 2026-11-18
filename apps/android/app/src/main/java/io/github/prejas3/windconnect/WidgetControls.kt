@@ -18,18 +18,18 @@ fun WidgetControls() {
     var message by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     WindCard {
-        Text("Widżet stanu PC", style = MaterialTheme.typography.titleMedium)
-        Text("Stan połączenia, bateria telefonu i szybkie akcje. Możesz też dodać go z listy widżetów launchera.")
-        WindButton("Dodaj widżet", {
+        Text(str(R.string.widget_title), style = MaterialTheme.typography.titleMedium)
+        Text(str(R.string.widget_about))
+        WindButton(str(R.string.widget_add), {
             busy = true
             scope.launch {
                 try {
                     val accepted = GlanceAppWidgetManager(context).requestPinGlanceAppWidget(WindWidgetReceiver::class.java, preview = WindWidget())
-                    message = if (accepted) "Prośba o dodanie widżetu została przekazana do launchera. Potwierdź ją, jeśli pojawi się okno."
-                    else "Dodaj WindConnect z listy widżetów launchera — ten launcher nie obsługuje próśb o przypięcie."
+                    message = if (accepted) str(R.string.widget_requested)
+                    else str(R.string.widget_unsupported)
                 } catch (error: Exception) {
                     if (error is CancellationException) throw error
-                    message = "Nie udało się dodać widżetu. Spróbuj z listy widżetów launchera."
+                    message = str(R.string.widget_failed)
                 } finally { busy = false }
             }
         }, Modifier.testTag("addWidget"), enabled = !busy, kind = ButtonKind.Secondary)

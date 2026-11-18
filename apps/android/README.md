@@ -1,5 +1,11 @@
 # Android
 
+## Języki: polski i angielski (WN-63)
+
+CCS/1
+RULE:każdy tekst UI jest w zasobach: `values/strings.xml` (angielski, język zapasowy) i `values-pl/strings.xml` (polski), osobno w `app` i `wind-core`. Polski telefon widzi polski, każdy inny język angielski; Android 13+ pozwala wybrać język aplikacji w ustawieniach (`res/xml/locales_config.xml`). `localeFilters` zostawia w APK tylko en i pl. Kod poza Compose bierze tekst przez `str()`/`plural()` (`Strings.kt`), Compose przez `stringResource`. Liczby mnogie: `<plurals>` (polskie one/few/many/other). Daty i liczby formatuje locale telefonu.
+CHECK:`TranslationParityTest` (JVM): te same nazwy i placeholdery w obu językach obu modułów. Testy JVM czytają polskie teksty z `values-pl` (`StringsForTests`). Testy instrumentacyjne uruchamia `PolishTestRunner` (aplikacja po polsku niezależnie od języka emulatora); `LocalizationTest` sprawdza na urządzeniu, że każdy tekst istnieje po angielsku i po polsku.
+
 ## Odbiór do publicznych Pobranych (WN-120)
 
 CCS/1

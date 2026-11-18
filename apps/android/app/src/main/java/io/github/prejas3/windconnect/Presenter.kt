@@ -102,12 +102,12 @@ internal fun PresenterPanel(active: Boolean, laserSupported: Boolean, gyro: Bool
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(PresentationTimer.format(now), Modifier.testTag("presenterTimer"), style = MaterialTheme.typography.displayMedium.copy(fontFamily = FontFamily.Monospace))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton({ if (timer.running) timer.pause() else timer.start(); running = timer.running }, Modifier.testTag("presenterTimerToggle")) { Text(if (running) "Pauza" else "Start") }
-            TextButton({ timer.reset(); running = false; now = 0L }) { Text("Zeruj") }
+            OutlinedButton({ if (timer.running) timer.pause() else timer.start(); running = timer.running }, Modifier.testTag("presenterTimerToggle")) { Text(if (running) str(R.string.presenter_pause) else str(R.string.presenter_start)) }
+            TextButton({ timer.reset(); running = false; now = 0L }) { Text(str(R.string.presenter_reset)) }
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            OutlinedButton({ slide(PresenterKeys.PREVIOUS) }, Modifier.weight(1f).heightIn(min = 72.dp).testTag("presenterPrevious"), enabled = active) { Text("◀ Poprzedni") }
-            Button({ slide(PresenterKeys.NEXT) }, Modifier.weight(1f).heightIn(min = 72.dp).testTag("presenterNext"), enabled = active) { Text("Następny ▶") }
+            OutlinedButton({ slide(PresenterKeys.PREVIOUS) }, Modifier.weight(1f).heightIn(min = 72.dp).testTag("presenterPrevious"), enabled = active) { Text(str(R.string.presenter_previous)) }
+            Button({ slide(PresenterKeys.NEXT) }, Modifier.weight(1f).heightIn(min = 72.dp).testTag("presenterNext"), enabled = active) { Text(str(R.string.presenter_next)) }
         }
         val laserReady = active && laserSupported && gyro
         var held by remember { mutableStateOf(false) }
@@ -118,11 +118,11 @@ internal fun PresenterPanel(active: Boolean, laserSupported: Boolean, gyro: Bool
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> { held = false; laser(false) }
             }
             true
-        }, enabled = laserReady) { Text(if (held) "Wskaźnik włączony · celuj telefonem" else "Przytrzymaj: wskaźnik laserowy") }
-        Text("Przycisk głośniej: następny slajd, ciszej: poprzedni. Działa w PowerPoint, Google Slides i innych pokazach w przeglądarce.", style = MaterialTheme.typography.bodySmall)
+        }, enabled = laserReady) { Text(if (held) str(R.string.presenter_laser_on) else str(R.string.presenter_laser_hold)) }
+        Text(str(R.string.presenter_help), style = MaterialTheme.typography.bodySmall)
         when {
-            !gyro -> Text("Ten telefon nie ma żyroskopu, więc wskaźnik laserowy jest niedostępny.", style = MaterialTheme.typography.bodySmall)
-            active && !laserSupported -> Text("Wskaźnik laserowy wymaga nowszej wersji WindConnect na komputerze.", style = MaterialTheme.typography.bodySmall)
+            !gyro -> Text(str(R.string.presenter_no_gyro), style = MaterialTheme.typography.bodySmall)
+            active && !laserSupported -> Text(str(R.string.presenter_laser_old), style = MaterialTheme.typography.bodySmall)
         }
     }
 }

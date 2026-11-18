@@ -15,6 +15,7 @@ class WindApplication : Application() {
     var visibleActivities = 0; private set
     override fun onCreate() {
         super.onCreate()
+        Strings.context = this
         LauncherShortcuts.publish(this)
         WidgetUpdates.start(this)
         registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
@@ -113,7 +114,7 @@ class ConnectionOwner(private val application: Application) {
     // WN-92: the relay (WN-60 D3, off by default); a refused URL throws to the settings field.
     private val mutableRelayUrl = MutableStateFlow<String?>(null)
     val relayUrl = mutableRelayUrl.asStateFlow()
-    fun setRelay(url: String?) { (core ?: error("WindConnect jeszcze się uruchamia")).setRelay(url) }
+    fun setRelay(url: String?) { (core ?: error(str(R.string.core_starting))).setRelay(url) }
     suspend fun runPcAction(id: String, url: String? = null): String = core?.runPcAction(id, url) ?: "unavailable"
     suspend fun pcActions(): List<io.github.prejas3.windconnect.bindings.RemoteAction> = core?.pcActions() ?: emptyList()
     // WN-57: calls on the PC (own setting, default off; phone and call-log permissions asked when turned on).

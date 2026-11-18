@@ -1,3 +1,4 @@
+import { t, applyI18n } from './i18n.js';
 // CCS/1 IO:dev-only examples | SEC:no transport, trust, filesystem or device actions.
 const paths = {
   send: '<path d="M12 16V4M7 9l5-5 5 5M5 17v3h14v-3"/>',
@@ -13,48 +14,49 @@ const icon = name => `<svg viewBox="0 0 24 24" aria-hidden="true">${paths[name]}
 export function mountGallery(toast) {
   const gallery = document.querySelector('#gallery');
   gallery.innerHTML = `
-    <div class="gallery-intro"><h2 id="gallery-title">Galeria kontrolek <span class="dev-badge">DEV</span></h2><p>Stany i zachowanie elementów interfejsu. Wszystkie dane są przykładowe.</p></div>
+    <div class="gallery-intro"><h2 id="gallery-title" data-i18n="gallery.gallery-title" data-i18n-pos="start"><span class="dev-badge" data-i18n="gallery.dev"></span></h2><p data-i18n="gallery.stany_i_zachowanie_elementow"></p></div>
     <div class="gallery-grid">
-      <section class="surface sample"><h3>Przyciski</h3><div class="button-row">
-        <button class="button primary" data-feedback="Przykład: przycisk główny">${icon('send')}Wyślij</button>
-        <button class="button" data-feedback="Przykład: przycisk drugorzędny">Dodaj urządzenie</button>
-        <button class="button quiet" data-feedback="Przykład: przycisk tekstowy">Więcej</button>
-        <button class="button danger" id="open-dialog">Rozłącz</button><button class="button" disabled>Niedostępny</button>
+      <section class="surface sample"><h3 data-i18n="gallery.przyciski"></h3><div class="button-row">
+        <button class="button primary" data-feedback="gallery.przyklad_przycisk_glowny" data-i18n="gallery.wyslij">${icon('send')}</button>
+        <button class="button" data-feedback="gallery.przyklad_przycisk_drugorzedny" data-i18n="gallery.dodaj_urzadzenie"></button>
+        <button class="button quiet" data-feedback="gallery.przyklad_przycisk_tekstowy" data-i18n="gallery.wiecej"></button>
+        <button class="button danger" id="open-dialog" data-i18n="gallery.open-dialog"></button><button class="button" disabled data-i18n="gallery.niedostepny"></button>
       </div><div class="tiles">
-        <button class="tile" data-feedback="Przykład: wysyłanie pliku">${icon('send')}Wyślij</button>
-        <button class="tile" id="clipboard-tile" aria-pressed="true">${icon('clipboard')}Schowek</button>
-        <button class="tile" data-feedback="Przykład: sygnał telefonu">${icon('bell')}Dzwoń</button>
-        <button class="tile" disabled>${icon('touch')}Touchpad</button>
-      </div><p>Własne ikony z makiety WN-20. Tab / Enter / Spacja.</p></section>
-      <section class="surface sample"><h3>Przełączniki i wybór</h3>
-        <div class="control-row"><div id="clipboard-label">Automatyczny schowek<small>Tylko przykład stanu kontrolki</small></div><button class="switch" role="switch" aria-checked="true" aria-labelledby="clipboard-label"></button></div>
-        <div class="control-row"><span id="notifications-label">Powiadomienia</span><button class="switch" role="switch" aria-checked="false" aria-labelledby="notifications-label"></button></div>
-        <div class="control-row"><span id="disabled-label">Niedostępny</span><button class="switch" role="switch" aria-checked="false" aria-labelledby="disabled-label" disabled></button></div>
-        <label class="check-label"><input class="checkbox" type="checkbox" checked>Uruchamiaj razem z systemem (przykład)</label>
+        <button class="tile" data-feedback="gallery.przyklad_wysylanie_pliku" data-i18n="gallery.wyslij">${icon('send')}</button>
+        <button class="tile" id="clipboard-tile" aria-pressed="true" data-i18n="gallery.clipboard-tile">${icon('clipboard')}</button>
+        <button class="tile" data-feedback="gallery.przyklad_sygnal_telefonu" data-i18n="gallery.dzwon">${icon('bell')}</button>
+        <button class="tile" disabled data-i18n="gallery.touchpad">${icon('touch')}</button>
+      </div><p data-i18n="gallery.wlasne_ikony_z_makiety"></p></section>
+      <section class="surface sample"><h3 data-i18n="gallery.przelaczniki_i_wybor"></h3>
+        <div class="control-row"><div id="clipboard-label" data-i18n="gallery.clipboard-label" data-i18n-pos="start"><small data-i18n="gallery.tylko_przyklad_stanu_kontrolki"></small></div><button class="switch" role="switch" aria-checked="true" aria-labelledby="clipboard-label"></button></div>
+        <div class="control-row"><span id="notifications-label" data-i18n="gallery.notifications-label"></span><button class="switch" role="switch" aria-checked="false" aria-labelledby="notifications-label"></button></div>
+        <div class="control-row"><span id="disabled-label" data-i18n="gallery.disabled-label"></span><button class="switch" role="switch" aria-checked="false" aria-labelledby="disabled-label" disabled></button></div>
+        <label class="check-label" data-i18n="gallery.uruchamiaj_razem_z_systemem"><input class="checkbox" type="checkbox" checked></label>
       </section>
-      <section class="surface sample"><h3>Pola i walidacja</h3><form id="sample-form" novalidate>
-        <label class="field" for="device-name">Nazwa urządzenia<input id="device-name" placeholder="Np. Komputer w domu" maxlength="64" autocomplete="off" aria-describedby="name-hint name-error"><span class="field-hint" id="name-hint">1–64 znaki. Dane pozostają w tej galerii.</span><span id="name-error" class="field-hint field-error" hidden>Wpisz nazwę urządzenia.</span></label>
-        <label class="field" for="device-id">Identyfikator (tylko odczyt)<input id="device-id" value="PRZYKŁAD-7F2A" readonly></label>
-        <label class="field" for="disabled-field">Pole niedostępne<input id="disabled-field" value="Brak uprawnienia" disabled></label>
-        <label class="field" for="sample-note">Wiadomość<textarea id="sample-note" placeholder="Zażółć gęślą jaźń…" maxlength="500"></textarea></label>
-        <button class="button primary" type="submit">Sprawdź nazwę</button>
+      <section class="surface sample"><h3 data-i18n="gallery.pola_i_walidacja"></h3><form id="sample-form" novalidate>
+        <label class="field" for="device-name" data-i18n="gallery.nazwa_urzadzenia" data-i18n-pos="start"><input id="device-name" data-i18n-placeholder="gallery.device-name_placeholder" maxlength="64" autocomplete="off" aria-describedby="name-hint name-error"><span class="field-hint" id="name-hint" data-i18n="gallery.name-hint"></span><span id="name-error" class="field-hint field-error" hidden data-i18n="gallery.name-error"></span></label>
+        <label class="field" for="device-id" data-i18n="gallery.identyfikator_tylko_odczyt" data-i18n-pos="start"><input id="device-id" data-i18n-value="gallery.device-id_value" readonly></label>
+        <label class="field" for="disabled-field" data-i18n="gallery.pole_niedostepne" data-i18n-pos="start"><input id="disabled-field" data-i18n-value="gallery.disabled-field_value" disabled></label>
+        <label class="field" for="sample-note" data-i18n="gallery.wiadomosc" data-i18n-pos="start"><textarea id="sample-note" data-i18n-placeholder="gallery.sample-note_placeholder" maxlength="500"></textarea></label>
+        <button class="button primary" type="submit" data-i18n="gallery.sprawdz_nazwe"></button>
       </form></section>
-      <section class="surface sample"><h3>Lista urządzeń</h3>
-        <div class="device-list" role="listbox" aria-label="Przykładowe urządzenia">
-          <div class="device-option" role="option" tabindex="0" aria-selected="true">${icon('phone')}<span><strong>Galaxy S25 Ultra</strong><small>Przykład · telefon</small></span><span class="selection">${icon('check')}</span></div>
-          <div class="device-option" role="option" tabindex="-1" aria-selected="false">${icon('pc')}<span><strong>Komputer w domu</strong><small>Przykład · Windows 11</small></span><span class="selection">${icon('check')}</span></div>
-          <div class="device-option" role="option" tabindex="-1" aria-selected="false" aria-disabled="true">${icon('pc')}<span><strong>Niedostępne urządzenie</strong><small>Opcja wyłączona</small></span></div>
-        </div><p>Strzałki ↑ ↓, Home / End wybierają i przenoszą fokus. Wyłączona opcja jest pomijana.</p>
+      <section class="surface sample"><h3 data-i18n="gallery.lista_urzadzen"></h3>
+        <div class="device-list" role="listbox" data-i18n-aria-label="gallery.przykladowe_urzadzenia">
+          <div class="device-option" role="option" tabindex="0" aria-selected="true">${icon('phone')}<span><strong data-i18n="gallery.galaxy_s25_ultra"></strong><small data-i18n="gallery.przyklad_telefon"></small></span><span class="selection">${icon('check')}</span></div>
+          <div class="device-option" role="option" tabindex="-1" aria-selected="false">${icon('pc')}<span><strong data-i18n="gallery.komputer_w_domu"></strong><small data-i18n="gallery.przyklad_windows_11"></small></span><span class="selection">${icon('check')}</span></div>
+          <div class="device-option" role="option" tabindex="-1" aria-selected="false" aria-disabled="true">${icon('pc')}<span><strong data-i18n="gallery.niedostepne_urzadzenie"></strong><small data-i18n="gallery.opcja_wylaczona"></small></span></div>
+        </div><p data-i18n="gallery.strzalki_home_end_wybieraja"></p>
       </section>
-      <section class="surface sample"><h3>Status i postęp</h3><div class="button-row"><span class="status-pill success">Połączono</span><span class="status-pill warning">Szukam telefonu</span><span class="status-pill offline">Poza zasięgiem</span></div>
-        <div id="sample-progress" class="progress" role="progressbar" aria-label="Przykładowy transfer" aria-valuemin="0" aria-valuemax="100" aria-valuenow="64"><span></span></div>
-        <p id="progress-label">Przykład · 154 z 240 MB · 64%</p><div class="button-row"><button class="button small" id="complete-progress">Zakończ przykład</button><button class="button quiet small" id="reset-progress">Resetuj</button></div>
+      <section class="surface sample"><h3 data-i18n="gallery.status_i_postep"></h3><div class="button-row"><span class="status-pill success" data-i18n="gallery.polaczono"></span><span class="status-pill warning" data-i18n="gallery.szukam_telefonu"></span><span class="status-pill offline" data-i18n="gallery.poza_zasiegiem"></span></div>
+        <div id="sample-progress" class="progress" role="progressbar" data-i18n-aria-label="gallery.sample-progress_label" aria-valuemin="0" aria-valuemax="100" aria-valuenow="64"><span></span></div>
+        <p id="progress-label" data-i18n="gallery.progress-label"></p><div class="button-row"><button class="button small" id="complete-progress" data-i18n="gallery.complete-progress"></button><button class="button quiet small" id="reset-progress" data-i18n="gallery.reset-progress"></button></div>
       </section>
-      <section class="surface sample"><h3>Ruch i typografia</h3><div class="motion-preview" id="motion-preview"><strong>Galaxy S25 Ultra</strong><p>Zażółć gęślą jaźń. 0123456789 · 82%</p></div><button class="button" id="replay-motion">Odtwórz wejście</button><p>DM Sans · wejście 160 ms / 8 px · naciśnięcie 90 ms / 0,98. Ustawienie ograniczonego ruchu systemu wyłącza animacje.</p></section>
-      <section class="surface sample wide"><h3>Tokeny kolorów</h3><div class="token-grid"><div class="swatch surface-token"><i></i><span>Powierzchnia</span></div><div class="swatch tile-token"><i></i><span>Kafelki</span></div><div class="swatch accent-token"><i></i><span>Akcent</span></div><div class="swatch text-token"><i></i><span>Tekst</span></div></div><p>Paleta morska i grafitowa z WN-20. Oba motywy można przełączyć u góry.</p></section>
+      <section class="surface sample"><h3 data-i18n="gallery.ruch_i_typografia"></h3><div class="motion-preview" id="motion-preview"><strong data-i18n="gallery.galaxy_s25_ultra"></strong><p data-i18n="gallery.zazolc_gesla_jazn_0123456789"></p></div><button class="button" id="replay-motion" data-i18n="gallery.replay-motion"></button><p data-i18n="gallery.dm_sans_wejscie_160"></p></section>
+      <section class="surface sample wide"><h3 data-i18n="gallery.tokeny_kolorow"></h3><div class="token-grid"><div class="swatch surface-token"><i></i><span data-i18n="gallery.powierzchnia"></span></div><div class="swatch tile-token"><i></i><span data-i18n="gallery.kafelki"></span></div><div class="swatch accent-token"><i></i><span data-i18n="gallery.akcent"></span></div><div class="swatch text-token"><i></i><span data-i18n="gallery.tekst"></span></div></div><p data-i18n="gallery.paleta_morska_i_grafitowa"></p></section>
     </div>`;
 
-  gallery.querySelectorAll('[data-feedback]').forEach(button => button.addEventListener('click', () => toast(button.dataset.feedback)));
+  applyI18n(gallery);
+  gallery.querySelectorAll('[data-feedback]').forEach(button => button.addEventListener('click', () => toast(t(button.dataset.feedback))));
   gallery.querySelectorAll('[role="switch"]').forEach(button => button.addEventListener('click', () => {
     button.setAttribute('aria-checked', String(button.getAttribute('aria-checked') !== 'true'));
   }));
@@ -73,7 +75,7 @@ export function mountGallery(toast) {
   input.addEventListener('input', () => { if (input.hasAttribute('aria-invalid')) validate(); });
   gallery.querySelector('#sample-form').addEventListener('submit', event => {
     event.preventDefault();
-    if (!validate()) input.focus(); else toast('Przykład: nazwa jest poprawna.');
+    if (!validate()) input.focus(); else toast(t('gallery.name_ok'));
   });
   const list = gallery.querySelector('[role="listbox"]');
   const options = [...list.querySelectorAll('[role="option"]:not([aria-disabled="true"])')];
@@ -92,10 +94,10 @@ export function mountGallery(toast) {
   const progress = gallery.querySelector('#sample-progress');
   const label = gallery.querySelector('#progress-label');
   gallery.querySelector('#complete-progress').addEventListener('click', () => {
-    progress.dataset.complete = 'true'; progress.setAttribute('aria-valuenow', '100'); label.textContent = 'Przykład zakończony · 240 MB · 100%';
+    progress.dataset.complete = 'true'; progress.setAttribute('aria-valuenow', '100'); label.textContent = t('gallery.progress_done');
   });
   gallery.querySelector('#reset-progress').addEventListener('click', () => {
-    progress.dataset.complete = 'false'; progress.setAttribute('aria-valuenow', '64'); label.textContent = 'Przykład · 154 z 240 MB · 64%';
+    progress.dataset.complete = 'false'; progress.setAttribute('aria-valuenow', '64'); label.textContent = t('gallery.progress');
   });
   gallery.querySelector('#replay-motion').addEventListener('click', () => {
     const preview = gallery.querySelector('#motion-preview'); preview.classList.remove('playing'); void preview.offsetWidth; preview.classList.add('playing');
@@ -116,7 +118,7 @@ export function mountGallery(toast) {
     dialog.querySelector('[data-dismiss]').focus();
   });
   overlay.querySelector('[data-dismiss]').addEventListener('click', close);
-  overlay.querySelector('[data-confirm]').addEventListener('click', () => { close(); toast('Przykład: potwierdzono.'); });
+  overlay.querySelector('[data-confirm]').addEventListener('click', () => { close(); toast(t('gallery.confirmed')); });
   overlay.addEventListener('click', event => { if (event.target === overlay) close(); });
   overlay.addEventListener('keydown', event => {
     if (event.key === 'Escape') { event.preventDefault(); close(); }

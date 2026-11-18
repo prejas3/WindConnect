@@ -47,7 +47,7 @@ const stub = () => {
   const url = `http://127.0.0.1:${server.address().port}/panel.html`;
   const browser = await chromium.launch({ headless: true });
   try {
-    const page = await browser.newPage({ viewport: { width: 380, height: 540 } });
+    const page = await browser.newPage({ locale: 'pl-PL', viewport: { width: 380, height: 540 } });
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
     await page.addInitScript(stub);

@@ -46,7 +46,7 @@ class IncomingFiles(private val context: Context, private val transactionPhase: 
             while (true) { val n = input.read(buffer); if (n < 0) break; require(output.size() + n <= 4 * 1024 * 1024); output.write(buffer, 0, n) }
             output.toByteArray()
         }
-        require(bytes.size <= 4 * 1024 * 1024) { "Dziennik odbioru jest za duży" }
+        require(bytes.size <= 4 * 1024 * 1024) { context.getString(R.string.files_journal_large) }
         val array = JSONArray(String(bytes, Charsets.UTF_8))
         require(array.length() <= 512)
         for (index in 0 until array.length()) {
@@ -140,10 +140,10 @@ class IncomingFiles(private val context: Context, private val transactionPhase: 
                 require(previous.getString("wire") == file.name && previous.getLong("size") == size)
                 val digest = FileInputStream(source).use { digest(it, control) }
                 require(previous.getString("phase") == "published" && previous.getString("sha256") == digest)
-                check(readOwned(uri(previous))?.optInt("pending") == 0) { "Odebrany wcześniej plik został przeniesiony lub usunięty" }
+                check(readOwned(uri(previous))?.optInt("pending") == 0) { context.getString(R.string.files_previous_gone) }
                 return@synchronized FileCommitResult(FileCommitStatus.PUBLISHED, null)
             }
-            check(records.size < 512) { "Historia odbioru jest pełna. Wyczyść historię w WindConnect." }
+            check(records.size < 512) { context.getString(R.string.files_history_full) }
             check(!control.isCancelled())
             val pendingName = "wc-" + MessageDigest.getInstance("SHA-256").digest(key.toByteArray()).hex() + ".pending"
             record = JSONObject().put("key", key).put("phase", "pending").put("wire", file.name).put("size", size).put("source", source.canonicalPath)
@@ -153,7 +153,7 @@ class IncomingFiles(private val context: Context, private val transactionPhase: 
                 put(MediaStore.MediaColumns.MIME_TYPE, "application/octet-stream")
                 put(MediaStore.MediaColumns.RELATIVE_PATH, "Download/WindConnect/_incoming/")
                 put(MediaStore.MediaColumns.IS_PENDING, 1)
-            }) ?: error("Nie można utworzyć pliku w Pobranych")
+            }) ?: error(context.getString(R.string.files_create_failed))
             transactionPhase("inserted")
             record.put("uri", value.toString()); save()
             transactionPhase("pending")
@@ -164,7 +164,7 @@ class IncomingFiles(private val context: Context, private val transactionPhase: 
                     ParcelFileDescriptor.AutoCloseOutputStream(descriptor).use { output ->
                         val buffer = ByteArray(64 * 1024)
                         while (true) {
-                            check(!control.isCancelled()) { "Anulowano odbiór" }
+                            check(!control.isCancelled()) { context.getString(R.string.files_receive_cancelled) }
                             val length = input.read(buffer); if (length < 0) break
                             copied += length; require(copied <= size)
                             output.write(buffer, 0, length); hash.update(buffer, 0, length)
@@ -173,7 +173,7 @@ class IncomingFiles(private val context: Context, private val transactionPhase: 
                         output.flush(); output.fd.sync()
                     }
                 }
-            } ?: error("Nie można zapisać pliku w Pobranych")
+            } ?: error(context.getString(R.string.files_write_failed))
             require(copied == size); check(!control.isCancelled())
             record.put("sha256", hash.digest().hex()).put("phase", "ready"); save()
             transactionPhase("ready")
@@ -185,7 +185,7 @@ class IncomingFiles(private val context: Context, private val transactionPhase: 
                 put(MediaStore.MediaColumns.MIME_TYPE, mime); put(MediaStore.MediaColumns.IS_PENDING, 0)
             }, null, null) == 1)
             transactionPhase("visible")
-            val actual = readOwned(value) ?: error("Opublikowany plik nie jest dostępny")
+            val actual = readOwned(value) ?: error(context.getString(R.string.files_published_missing))
             require(actual.getInt("pending") == 0 && actual.getLong("size") == size)
             record.put("phase", "published").put("name", actual.getString("name")).put("folder", actual.getString("folder")); save(); publishReceipts()
             transactionPhase("published")
@@ -198,7 +198,7 @@ class IncomingFiles(private val context: Context, private val transactionPhase: 
                 val visible = try { record.has("uri") && readOwned(uri(record))?.optInt("pending") == 0 } catch (_: Exception) { true }
                 if (!visible) { records.remove(key); try { save() } catch (_: Exception) { } }
             }
-            mutableError.value = failure.message ?: "Nie udało się opublikować pliku w Pobranych"
+            mutableError.value = failure.message ?: context.getString(R.string.files_publish_failed)
             val noSpace = generateSequence<Throwable>(failure) { it.cause }.any { it is android.system.ErrnoException && it.errno == android.system.OsConstants.ENOSPC || it.message?.contains("ENOSPC") == true }
             FileCommitResult(if (control.isCancelled()) FileCommitStatus.CANCELLED else if (noSpace) FileCommitStatus.NO_SPACE else FileCommitStatus.FAILED, mutableError.value)
         }

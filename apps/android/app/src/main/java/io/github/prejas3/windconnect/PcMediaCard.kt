@@ -50,7 +50,7 @@ fun PcMediaCard() {
     val position = shown.positionAt(now)
     val can = { bit: Long -> shown.actions and bit != 0L }
     WindCard(Modifier.fillMaxWidth().testTag("pcMedia")) {
-        Text("Na komputerze · ${shown.app}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(str(R.string.pc_media_app, shown.app), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
             shown.art?.let { Image(it.asImageBitmap(), contentDescription = null, modifier = Modifier.size(56.dp).clip(RoundedCornerShape(8.dp))) }
             Column(Modifier.weight(1f)) {
@@ -65,16 +65,16 @@ fun PcMediaCard() {
             Slider(value = dragged ?: (position.toFloat() / total), enabled = can(16),
                 onValueChange = { dragged = it },
                 onValueChangeFinished = { dragged?.let { connections.pcMediaCommand("seek", (it * total).toLong()) }; dragged = null },
-                modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Pozycja ${clock(position)} z ${clock(total)}" })
+                modifier = Modifier.fillMaxWidth().semantics { contentDescription = str(R.string.media_position, clock(position), clock(total)) })
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text(clock(position), style = MaterialTheme.typography.bodySmall); Text(clock(total), style = MaterialTheme.typography.bodySmall)
             }
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)) {
-            WindButton("Poprzedni", { connections.pcMediaCommand("previous") }, Modifier.testTag("pcMediaPrevious"), enabled = can(8), kind = ButtonKind.Quiet)
-            WindButton(if (shown.playing) "Wstrzymaj" else "Odtwórz", { connections.pcMediaCommand(if (shown.playing) "pause" else "play") },
+            WindButton(str(R.string.media_previous), { connections.pcMediaCommand("previous") }, Modifier.testTag("pcMediaPrevious"), enabled = can(8), kind = ButtonKind.Quiet)
+            WindButton(if (shown.playing) str(R.string.media_pause) else str(R.string.media_play), { connections.pcMediaCommand(if (shown.playing) "pause" else "play") },
                 Modifier.testTag("pcMediaToggle"), enabled = can(if (shown.playing) 2 else 1))
-            WindButton("Następny", { connections.pcMediaCommand("next") }, Modifier.testTag("pcMediaNext"), enabled = can(4), kind = ButtonKind.Quiet)
+            WindButton(str(R.string.media_next), { connections.pcMediaCommand("next") }, Modifier.testTag("pcMediaNext"), enabled = can(4), kind = ButtonKind.Quiet)
         }
     }
 }

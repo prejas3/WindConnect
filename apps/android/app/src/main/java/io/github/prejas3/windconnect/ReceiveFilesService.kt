@@ -69,7 +69,7 @@ internal object FileReceiving {
                         }
                     } catch (error: Exception) {
                         if (error is CancellationException) throw error
-                        failure("Nie można przygotować odbioru plików")
+                        failure(str(R.string.receive_prepare_failed))
                     } finally { if (!kept && opened != null) {
                         withContext(NonCancellable) { try { removeOwner(app, uiOwner) } finally { app.connections.release(requireNotNull(opened)) } }
                     } }
@@ -110,7 +110,7 @@ internal object FileReceiving {
                 launch { opened.files.collect { rows ->
                     val incoming = rows.filter { it.incoming }.take(16)
                     val failed = incoming.firstOrNull { it.state == "failed" || it.state == "cancelled" }
-                    if (failed != null) lastResult = if (failed.state == "cancelled") "Odbiór anulowany" else if (failed.failure == "no_space") "Za mało miejsca lub przekroczono limit odbioru" else "Nie udało się odebrać pliku"
+                    if (failed != null) lastResult = if (failed.state == "cancelled") str(R.string.receive_cancelled) else if (failed.failure == "no_space") str(R.string.receive_no_space) else str(R.string.receive_failed)
                     if (incoming.any { it.state == "running" }) lastResult = ""
                     mutable.update { it.copy(transfers = incoming, error = if (failed?.state == "failed") lastResult else it.error) }
                     notice(context); ReceiveFilesService.instance?.checkIdle()
@@ -140,7 +140,7 @@ internal object FileReceiving {
             else { core?.disableFileReceiving(); mutable.update { it.copy(ready = false) } }
         } catch (failure: Exception) {
             if (failure is CancellationException) throw failure
-            mutable.update { it.copy(ready = false, error = "Nie można przygotować Pobranych. Odbiór jest wyłączony; połączenie i schowek mogą działać dalej.") }
+            mutable.update { it.copy(ready = false, error = str(R.string.receive_downloads_failed)) }
         }
     }
     fun setEnabled(context: Context, value: Boolean) {
@@ -163,28 +163,28 @@ internal object FileReceiving {
         if (!busy && !lastBusy && state.receipts.isEmpty()) return
         lastNotice = now; lastBusy = busy
         val manager = context.getSystemService(NotificationManager::class.java)
-        manager.createNotificationChannel(NotificationChannel(CHANNEL, "Odbiór plików", NotificationManager.IMPORTANCE_LOW).apply { setShowBadge(false) })
+        manager.createNotificationChannel(NotificationChannel(CHANNEL, str(R.string.receive_title), NotificationManager.IMPORTANCE_LOW).apply { setShowBadge(false) })
         val open = PendingIntent.getActivity(context, ID, Intent(context, ReceiveFilesActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val done = active.sumOf { it.done.toLong() }; val size = active.sumOf { it.size.toLong() }
         val speed = rate.update(now, done, busy && done < size && active.none { it.state == "waiting" })
         val message = if (busy) {
-            if (done == size) "Publikowanie w Pobranych…" else "${transferBytes(done)} z ${transferBytes(size)}" + (speed?.let { " · ${transferBytes(it)}/s" } ?: "")
-        } else lastResult.ifEmpty { state.receipts.firstOrNull()?.let { "${it.folder}${it.name}" } ?: "Odbiór zakończony" }
+            if (done == size) str(R.string.receive_publishing) else str(R.string.bytes_of, transferBytes(done), transferBytes(size)) + (speed?.let { " · " + str(R.string.per_second, transferBytes(it)) } ?: "")
+        } else lastResult.ifEmpty { state.receipts.firstOrNull()?.let { "${it.folder}${it.name}" } ?: str(R.string.receive_finished) }
         val notification = Notification.Builder(context, CHANNEL).setSmallIcon(R.drawable.ic_connection)
-            .setContentTitle(if (busy) "Odbieranie plików" else if (lastResult.isNotEmpty()) "Odbiór zakończony" else "Plik w Pobranych").setContentText(message)
+            .setContentTitle(if (busy) str(R.string.receive_receiving) else if (lastResult.isNotEmpty()) str(R.string.receive_finished) else str(R.string.receive_in_downloads)).setContentText(message)
             .setContentIntent(open).setOnlyAlertOnce(true).setOngoing(busy).setVisibility(Notification.VISIBILITY_PRIVATE)
-            .setPublicVersion(Notification.Builder(context, CHANNEL).setSmallIcon(R.drawable.ic_connection).setContentTitle("WindConnect").setContentText("Odblokuj, aby zobaczyć odbiór plików").setContentIntent(open).build())
+            .setPublicVersion(Notification.Builder(context, CHANNEL).setSmallIcon(R.drawable.ic_connection).setContentTitle("WindConnect").setContentText(str(R.string.receive_unlock)).setContentIntent(open).build())
             .apply { if (busy) {
                 setProgress(1000, if (size == 0L) 0 else (done.coerceAtMost(size) * 1000 / size).toInt(), false)
-                addAction(Notification.Action.Builder(null, "Anuluj", PendingIntent.getBroadcast(context, ID + 1, Intent(context, ReceiveFilesCancelReceiver::class.java), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)).build())
+                addAction(Notification.Action.Builder(null, str(R.string.cancel), PendingIntent.getBroadcast(context, ID + 1, Intent(context, ReceiveFilesCancelReceiver::class.java), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)).build())
             } }.build()
         try { manager.notify(ID, notification) } catch (_: SecurityException) { }
     }
     fun foregroundNotice(context: Context): Notification {
         val manager = context.getSystemService(NotificationManager::class.java)
-        manager.createNotificationChannel(NotificationChannel("file-receiver-owner", "Gotowość odbioru", NotificationManager.IMPORTANCE_LOW).apply { setShowBadge(false) })
+        manager.createNotificationChannel(NotificationChannel("file-receiver-owner", str(R.string.receive_owner_channel), NotificationManager.IMPORTANCE_LOW).apply { setShowBadge(false) })
         return Notification.Builder(context, "file-receiver-owner").setSmallIcon(R.drawable.ic_connection)
-            .setContentTitle("WindConnect · odbiór plików").setContentText("Aktywny odbiór · Pobrane/WindConnect")
+            .setContentTitle(str(R.string.receive_owner_title)).setContentText(str(R.string.receive_owner_text))
             .setOnlyAlertOnce(true).setOngoing(true).setVisibility(Notification.VISIBILITY_PRIVATE).build()
     }
 }
@@ -200,7 +200,7 @@ class ReceiveFilesService : Service() {
     override fun onCreate() {
         super.onCreate()
         try { startForeground(121, FileReceiving.foregroundNotice(this), ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE) }
-        catch (_: RuntimeException) { FileReceiving.failure("Nie można uruchomić widocznego odbioru"); FileReceiving.startupFailed(); stopSelf(); return }
+        catch (_: RuntimeException) { FileReceiving.failure(str(R.string.receive_start_failed)); FileReceiving.startupFailed(); stopSelf(); return }
         instance = this
         scope.launch {
             var opened: WindCore? = null
@@ -214,7 +214,7 @@ class ReceiveFilesService : Service() {
                 awaitCancellation()
             } catch (failure: Exception) {
                 if (failure is CancellationException) throw failure
-                FileReceiving.failure("Nie można przygotować odbioru plików"); FileReceiving.startupFailed(); stopSelf()
+                FileReceiving.failure(str(R.string.receive_prepare_failed)); FileReceiving.startupFailed(); stopSelf()
             } finally { withContext(NonCancellable) {
                 ownsConnection = false
                 try { FileReceiving.removeOwner(this@ReceiveFilesService, this@ReceiveFilesService) }

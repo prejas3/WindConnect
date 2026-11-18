@@ -4,6 +4,7 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class RelaySettingTest {
+    init { StringsForTests.usePolish() }
     @Test fun refusedUrlBecomesTheFieldErrorAndOffAlwaysPasses() {
         val calls = mutableListOf<String?>()
         val set: (String?) -> Unit = { url -> calls += url; if (url?.startsWith("wss://") == false) throw IllegalArgumentException("must start with wss://") }

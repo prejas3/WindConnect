@@ -4,6 +4,7 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class LauncherActionTest {
+    init { StringsForTests.usePolish() }
     @Test fun acceptsOnlyTheThreeFixedActions() {
         LauncherAction.entries.forEach { assertEquals(it, LauncherAction.fromAction(it.action)) }
         listOf(null, "", "android.intent.action.VIEW", "io.github.prejas3.windconnect.shortcut.FILE/../../",

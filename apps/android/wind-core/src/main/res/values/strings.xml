@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- WN-63: every UI text of this module; English is the fallback (values), Polish in values-pl. -->
+<resources>
+    <!-- Clipboard (SystemClipboard) -->
+    <string name="clip_sync_auto">Automatic sync</string>
+    <string name="clip_sync_off">Sync off</string>
+    <string name="clip_sync_auto_off">Automatic sync is off</string>
+    <string name="clip_image_from_pc">Image from the computer</string>
+    <string name="clip_image_from_history">Image from history</string>
+    <string name="clip_received">Clipboard received from the computer</string>
+    <string name="clip_image_received">Image received from the computer</string>
+    <string name="clip_copied_from_history">Copied from history</string>
+    <string name="clip_pin_full">You can pin up to %1$d items</string>
+    <string name="clip_pin_too_large">Pinned images can take up to 64 MB</string>
+    <string name="clip_pin_gone">This item is no longer in the history</string>
+    <string name="clip_image_size">Image %1$d×%2$d</string>
+    <string name="clip_image_sent">Image sent to the computer</string>
+    <string name="clip_image_too_large">The image is over the %1$s MB limit in settings</string>
+    <string name="clip_image_peer_limit">The computer takes images up to %1$s MB</string>
+    <string name="clip_image_unsupported">The computer doesn\'t support images — update the app</string>
+    <string name="clip_image_replaced">A newer clipboard replaced the image</string>
+    <string name="clip_image_unreadable">Couldn\'t read the image from the clipboard</string>
+    <string name="clip_image_failed">Couldn\'t pass the image to the computer</string>
+    <string name="clip_applied">Clipboard delivered to the computer</string>
+    <string name="clip_sensitive">Content marked as sensitive — not sent</string>
+    <string name="clip_unchanged">The clipboard is already in sync</string>
+    <string name="clip_refused">The computer refused the clipboard or a newer change was already applied</string>
+    <string name="clip_invalid">Text up to 256 KiB without NUL characters is supported</string>
+    <string name="clip_empty">No text in the clipboard or no access to it</string>
+    <string name="clip_busy">The clipboard is busy — try again</string>
+    <string name="clip_failed">Couldn\'t write the clipboard on the computer</string>
+    <string name="clip_unavailable">Clipboard unavailable — check the connection to the computer</string>
+    <!-- Files -->
+    <string name="files_publish_failed">Couldn\'t publish the file in Downloads</string>
+    <string name="files_create_failed">Can\'t create a file in Downloads</string>
+    <string name="files_write_failed">Can\'t write the file in Downloads</string>
+    <string name="files_published_missing">The published file isn\'t available</string>
+    <string name="files_no_connection">Not connected to the computer</string>
+    <string name="files_target_changed">The target computer changed. Start sending again.</string>
+    <string name="files_not_accepted">The computer doesn\'t accept files</string>
+    <!-- Links, media, find -->
+    <string name="link_channel">Links from the computer</string>
+    <string name="link_channel_description">A link the computer asks to open on the phone</string>
+    <string name="link_open_title">Open the link from the computer</string>
+    <string name="media_untitled">Untitled</string>
+    <string name="media_on_pc">on %1$s</string>
+    <string name="media_channel">Computer media</string>
+    <string name="media_channel_description">The computer\'s player: title and controls</string>
+    <string name="media_previous">Previous</string>
+    <string name="media_pause">Pause</string>
+    <string name="media_play">Play</string>
+    <string name="media_next">Next</string>
+    <string name="find_channel">Find the phone</string>
+    <string name="find_channel_description">Ringing when the computer asks</string>
+    <string name="find_ringing_for">Ringing for: %1$s</string>
+    <string name="find_ringing">Ringing for the computer</string>
+    <string name="files_journal_large">The receiving journal is too large</string>
+    <string name="files_previous_gone">A file received earlier was moved or deleted</string>
+    <string name="files_history_full">The receiving history is full. Clear it in WindConnect.</string>
+    <string name="files_receive_cancelled">Receiving cancelled</string>
+    <string name="find_stop_action">Stop</string>
+    <string name="clip_image_sending">Sending the image…</string>
+    <string name="touchpad_target_changed">The computer changed</string>
+    <string name="clip_image_file_name">image.png</string>
+</resources>

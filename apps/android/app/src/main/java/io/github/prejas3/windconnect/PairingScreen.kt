@@ -1,5 +1,6 @@
 package io.github.prejas3.windconnect
 
+import androidx.compose.ui.res.stringResource
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -54,12 +55,12 @@ fun PairingScreen(model: PairingViewModel, diagnostic: @Composable () -> Unit) {
                 val scan = { if (!hasCamera) permission.launch(Manifest.permission.CAMERA); model.scan() }
                 HomeScreen(state, scan, onDiagnostics = { diagnostics = true }, onNearby = model::nearby, onClipboard = model::sendClipboard, onClipboardEnabled = model::setClipboardEnabled,
                     onSendFile = { context.startActivity(Intent(context, ShareFilesActivity::class.java).setAction(ShareFilesActivity.PICK)) }, history = model.clipboardHistoryActions)
-                if (state.devices.isNotEmpty()) WindButton("Sparowane komputery", model::devices, Modifier.fillMaxWidth().testTag("openDevices"), kind = ButtonKind.Secondary)
+                if (state.devices.isNotEmpty()) WindButton(stringResource(R.string.devices_paired), model::devices, Modifier.fillMaxWidth().testTag("openDevices"), kind = ButtonKind.Secondary)
             }
             "devices" -> DevicesScreen(state, onBack = model::cancel, onConnect = model::connectDevice, onRename = model::renameDevice, onUnpair = model::unpairDevice)
             "settings" -> {
-                Text("Ustawienia", style = MaterialTheme.typography.headlineSmall)
-                WindButton("Powrót", model::cancel, Modifier.testTag("closeSettings"), kind = ButtonKind.Quiet)
+                Text(stringResource(R.string.settings), style = MaterialTheme.typography.headlineSmall)
+                WindButton(stringResource(R.string.back), model::cancel, Modifier.testTag("closeSettings"), kind = ButtonKind.Quiet)
                 ClipboardTileControls()
                 LauncherShortcutControls()
                 WidgetControls()
@@ -75,70 +76,70 @@ fun PairingScreen(model: PairingViewModel, diagnostic: @Composable () -> Unit) {
                 RelayControls()
                 ClipboardControls(state, model::sendClipboard, model::setClipboardEnabled, model::setClipboardImageLimit)
                 ClipboardHistoryCard(state.clipboardHistory, state.clipboard.enabled, model.clipboardHistoryActions)
-                if (state.devices.isNotEmpty()) WindButton("Sparowane komputery", model::devices, Modifier.testTag("openDevices"), kind = ButtonKind.Secondary)
-                WindButton("Sparuj kolejny komputer", model::scan, Modifier.testTag("scanQr"), enabled = state.ready, kind = ButtonKind.Secondary)
-                WindButton("Paruj bez aparatu", model::nearby, Modifier.testTag("pairNearby"), enabled = state.ready, kind = ButtonKind.Secondary)
+                if (state.devices.isNotEmpty()) WindButton(stringResource(R.string.devices_paired), model::devices, Modifier.testTag("openDevices"), kind = ButtonKind.Secondary)
+                WindButton(stringResource(R.string.pair_another), model::scan, Modifier.testTag("scanQr"), enabled = state.ready, kind = ButtonKind.Secondary)
+                WindButton(stringResource(R.string.pair_without_camera), model::nearby, Modifier.testTag("pairNearby"), enabled = state.ready, kind = ButtonKind.Secondary)
             }
             "scanner" -> {
-                Text("Zeskanuj kod QR", style = MaterialTheme.typography.headlineSmall)
-                Text("Skieruj aparat na kod w WindConnect na komputerze. Obraz jest analizowany wyłącznie na telefonie.")
+                Text(stringResource(R.string.scan_title), style = MaterialTheme.typography.headlineSmall)
+                Text(stringResource(R.string.scan_about))
                 if (hasCamera) {
                     QrCamera(Modifier.fillMaxWidth().height(320.dp).testTag("cameraPreview"), model::offerLink, model::cameraError)
                 } else {
-                    Text(if (denied) "Brak dostępu do aparatu. Możesz zezwolić w ustawieniach albo otworzyć kod aparatem systemowym." else "Aparat zostanie włączony dopiero po udzieleniu zgody.")
-                    WindButton("Zezwól na aparat", { permission.launch(Manifest.permission.CAMERA) }, Modifier.testTag("cameraPermission"))
-                    if (denied) WindButton("Ustawienia uprawnień", { context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}"))) }, kind = ButtonKind.Secondary)
+                    Text(if (denied) stringResource(R.string.scan_denied) else stringResource(R.string.scan_consent))
+                    WindButton(stringResource(R.string.camera_allow), { permission.launch(Manifest.permission.CAMERA) }, Modifier.testTag("cameraPermission"))
+                    if (denied) WindButton(stringResource(R.string.permission_settings), { context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}"))) }, kind = ButtonKind.Secondary)
                 }
-                WindButton("Anuluj", model::cancel, Modifier.testTag("cancelPairing"), kind = ButtonKind.Secondary)
+                WindButton(stringResource(R.string.cancel), model::cancel, Modifier.testTag("cancelPairing"), kind = ButtonKind.Secondary)
             }
             "confirm", "pairing" -> {
-                Text("Sparować z komputerem?", style = MaterialTheme.typography.headlineSmall)
+                Text(stringResource(R.string.confirm_title), style = MaterialTheme.typography.headlineSmall)
                 WindCard(Modifier.fillMaxWidth()) {
                     Text(state.name, style = MaterialTheme.typography.titleLarge, modifier = Modifier.testTag("pairingPeer"))
-                    Text("Odcisk klucza komputera", style = MaterialTheme.typography.labelMedium)
+                    Text(stringResource(R.string.confirm_fingerprint), style = MaterialTheme.typography.labelMedium)
                     Text(state.fingerprint, style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("pairingFingerprint"))
                 }
-                Text("Sparuj tylko, jeśli ten kod QR wyświetlił Twój komputer. Nazwa pochodzi z kodu QR. Samo otwarcie linku nie nadaje urządzeniu zaufania.")
-                WindButton(if (state.screen == "pairing") "Parowanie…" else "Sparuj urządzenia", model::confirm, Modifier.fillMaxWidth().testTag("confirmPairing"), enabled = state.ready && state.screen == "confirm")
-                if (state.screen == "confirm") WindButton("Anuluj", model::cancel, Modifier.testTag("cancelPairing"), kind = ButtonKind.Secondary)
-                else Text("Weryfikowanie jednorazowego kodu. To może potrwać do 30 sekund.", modifier = Modifier.testTag("pairingProgress"))
+                Text(stringResource(R.string.confirm_about))
+                WindButton(if (state.screen == "pairing") stringResource(R.string.pairing_progress) else stringResource(R.string.pair_devices), model::confirm, Modifier.fillMaxWidth().testTag("confirmPairing"), enabled = state.ready && state.screen == "confirm")
+                if (state.screen == "confirm") WindButton(stringResource(R.string.cancel), model::cancel, Modifier.testTag("cancelPairing"), kind = ButtonKind.Secondary)
+                else Text(stringResource(R.string.pairing_verifying), modifier = Modifier.testTag("pairingProgress"))
             }
             "nearby" -> {
-                Text("Komputery w pobliżu", style = MaterialTheme.typography.headlineSmall)
-                Text("Na komputerze otwórz panel WindConnect i wybierz „Paruj bez aparatu”. Komputer pojawi się tutaj.")
-                if (state.nearby.isEmpty()) Text("Szukam w tej sieci Wi-Fi…", modifier = Modifier.testTag("nearbyEmpty"))
+                Text(stringResource(R.string.nearby_title), style = MaterialTheme.typography.headlineSmall)
+                Text(stringResource(R.string.nearby_about))
+                if (state.nearby.isEmpty()) Text(stringResource(R.string.nearby_searching), modifier = Modifier.testTag("nearbyEmpty"))
                 state.nearby.forEach { device ->
                     WindCard(Modifier.fillMaxWidth().testTag("nearbyDevice")) {
-                        Text("Komputer gotowy do parowania", style = MaterialTheme.typography.titleMedium)
+                        Text(stringResource(R.string.nearby_ready), style = MaterialTheme.typography.titleMedium)
                         Text(shortFingerprint(device.fingerprint), style = MaterialTheme.typography.bodySmall)
-                        WindButton("Paruj", { model.pairWith(device) }, Modifier.fillMaxWidth())
+                        WindButton(stringResource(R.string.pair), { model.pairWith(device) }, Modifier.fillMaxWidth())
                     }
                 }
-                Text("Lista pochodzi z sieci i niczego nie potwierdza. O zaufaniu decyduje porównanie kodów na obu ekranach.", style = MaterialTheme.typography.bodySmall)
-                WindButton("Anuluj", model::cancel, Modifier.testTag("cancelPairing"), kind = ButtonKind.Secondary)
+                Text(stringResource(R.string.nearby_note), style = MaterialTheme.typography.bodySmall)
+                WindButton(stringResource(R.string.cancel), model::cancel, Modifier.testTag("cancelPairing"), kind = ButtonKind.Secondary)
             }
             "sas-connecting" -> {
-                Text("Łączenie z komputerem…", style = MaterialTheme.typography.headlineSmall)
-                Text("Za chwilę oba ekrany pokażą ten sam sześciocyfrowy kod.")
-                WindButton("Anuluj", model::cancel, Modifier.testTag("cancelPairing"), kind = ButtonKind.Secondary)
+                Text(stringResource(R.string.sas_connecting), style = MaterialTheme.typography.headlineSmall)
+                Text(stringResource(R.string.sas_soon))
+                WindButton(stringResource(R.string.cancel), model::cancel, Modifier.testTag("cancelPairing"), kind = ButtonKind.Secondary)
             }
             "sas-code", "sas-rejected", "sas-confirming" -> {
-                Text("Porównaj kody", style = MaterialTheme.typography.headlineSmall)
+                Text(stringResource(R.string.sas_compare), style = MaterialTheme.typography.headlineSmall)
                 WindCard(Modifier.fillMaxWidth()) {
                     Text(state.name, style = MaterialTheme.typography.titleMedium, modifier = Modifier.testTag("pairingPeer"))
                     Text(state.code, style = MaterialTheme.typography.displayMedium, modifier = Modifier.testTag("sasCode"))
                 }
-                Text("Sparuj tylko wtedy, gdy komputer pokazuje dokładnie ten sam kod. Inny kod oznacza, że łączysz się z innym urządzeniem.")
-                WindButton("Kody są takie same", { model.decide(true) }, Modifier.fillMaxWidth().testTag("sasSame"), enabled = state.screen == "sas-code")
-                WindButton("Kody się różnią", { model.decide(false) }, Modifier.fillMaxWidth().testTag("sasDifferent"), enabled = state.screen == "sas-code", kind = ButtonKind.Secondary)
-                if (state.screen == "sas-confirming") Text("Czekam na potwierdzenie na komputerze.", modifier = Modifier.testTag("pairingProgress"))
+                Text(stringResource(R.string.sas_about))
+                WindButton(stringResource(R.string.sas_same), { model.decide(true) }, Modifier.fillMaxWidth().testTag("sasSame"), enabled = state.screen == "sas-code")
+                WindButton(stringResource(R.string.sas_different), { model.decide(false) }, Modifier.fillMaxWidth().testTag("sasDifferent"), enabled = state.screen == "sas-code", kind = ButtonKind.Secondary)
+                if (state.screen == "sas-confirming") Text(stringResource(R.string.sas_waiting), modifier = Modifier.testTag("pairingProgress"))
             }
             "paired" -> DoneScreen(state.name, state.message, onDone = model::cancel)
             else -> {
-                Text("Nie można sparować", style = MaterialTheme.typography.headlineSmall)
+                Text(stringResource(R.string.pair_failed), style = MaterialTheme.typography.headlineSmall)
                 Text(state.message, modifier = Modifier.testTag("pairingError"), color = MaterialTheme.colorScheme.error)
-                WindButton("Zeskanuj nowy kod", model::scan)
-                WindButton("Wróć", model::cancel, Modifier.testTag("cancelPairing"), kind = ButtonKind.Secondary)
+                WindButton(stringResource(R.string.scan_new), model::scan)
+                WindButton(stringResource(R.string.go_back), model::cancel, Modifier.testTag("cancelPairing"), kind = ButtonKind.Secondary)
             }
         }
     }

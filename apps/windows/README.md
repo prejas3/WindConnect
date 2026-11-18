@@ -1,5 +1,11 @@
 # Windows
 
+## Języki: polski i angielski (WN-63)
+
+CCS/1
+RULE:język interfejsu to język wyświetlania Windows: polski dla polskiego, angielski dla każdego innego. Frontend czyta go z `navigator.language` WebView2, kod natywny (zasobnik, toasty, menu Eksploratora, statusy i błędy pokazywane w UI) z `GetUserDefaultUILanguage`; `WINDCONNECT_LANG=pl|en` wymusza język natywnych tekstów. Teksty: `frontend/locales/{pl,en}.js` (klucze, `{nazwa}` jako placeholder, liczba mnoga przez `plural()`), `src-tauri/locales/{pl,en}.json`. Strony oznaczają teksty atrybutami `data-i18n` / `data-i18n-<atrybut>`, skrypty używają `t()`; daty i liczby formatuje `Intl` w języku UI.
+CHECK:`node apps/windows/scripts/check-i18n.cjs`: te same klucze i placeholdery w obu językach, każdy użyty klucz istnieje; z `PLAYWRIGHT_MODULE` renderuje wszystkie strony po angielsku i polsku (bez polskich znaków i surowych kluczy w wersji angielskiej, zrzuty w TEMP). Testy UI Playwright otwierają strony z `locale: 'pl-PL'`. `cargo test` sprawdza parytet `src-tauri/locales`.
+
 ## Touchpad z telefonu (WN-51)
 
 Touchpad jest domyślnie dozwolony dla sparowanego telefonu. Otwórz „Touchpad” na ekranie głównym Androida: jeden palec porusza kursorem, stuknięcie klika, przytrzymanie przeciąga, dwa palce przewijają (z inercją), stuknięcie dwoma palcami daje prawy klik. Przyciski pod obszarem pozwalają też przytrzymać lewy/prawy przycisk. Czułość i naturalne przewijanie są ustawiane na telefonie.

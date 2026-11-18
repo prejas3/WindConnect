@@ -43,15 +43,15 @@ class LinkOpener(context: Context) : UrlOpener {
         if (Build.VERSION.SDK_INT >= 33 && app.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return false
         val manager = app.getSystemService(NotificationManager::class.java)
         if (!manager.areNotificationsEnabled()) return false
-        manager.createNotificationChannel(NotificationChannel(CHANNEL, "Linki z komputera", NotificationManager.IMPORTANCE_HIGH).apply {
-            description = "Link, który komputer prosi otworzyć na telefonie"
+        manager.createNotificationChannel(NotificationChannel(CHANNEL, app.getString(R.string.link_channel), NotificationManager.IMPORTANCE_HIGH).apply {
+            description = app.getString(R.string.link_channel_description)
         })
         val id = (System.currentTimeMillis() and 0x7fff_ffff).toInt()
         val open = PendingIntent.getActivity(app, id, view, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_ONE_SHOT)
         val host = uri.host ?: ""
         val notification = android.app.Notification.Builder(app, CHANNEL)
             .setSmallIcon(android.R.drawable.ic_menu_view)
-            .setContentTitle("Otwórz link z komputera")
+            .setContentTitle(app.getString(R.string.link_open_title))
             .setContentText(host)
             .setStyle(android.app.Notification.BigTextStyle().bigText(SmsRules.clean(uri.toString()).take(300)))
             .setContentIntent(open)

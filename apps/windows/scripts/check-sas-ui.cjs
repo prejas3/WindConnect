@@ -35,7 +35,7 @@ const state = (phase, extra = {}) => ({ phase, phone: null, qr: null, message: '
   await new Promise(r => server.listen(0, '127.0.0.1', r));
   const browser = await chromium.launch({ headless: true });
   try {
-    const page = await browser.newPage({ viewport: { width: 380, height: 540 } });
+    const page = await browser.newPage({ locale: 'pl-PL', viewport: { width: 380, height: 540 } });
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
     await page.addInitScript(stub);

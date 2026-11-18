@@ -48,12 +48,15 @@ data class PairingUi(
 )
 
 /** What the home screen says when a session ended for a WC-28 reason; null for an ordinary end. */
-fun endMessage(state: ConnectionState): String? = when {
-    state is ConnectionState.Disconnected && state.reason == "unpaired" -> "Komputer usunął parowanie z tym telefonem"
-    state is ConnectionState.Disconnected && state.reason == END_UNPAIRED_HERE -> "Usunięto parowanie z komputerem"
-    state is ConnectionState.Disconnected && state.reason == "busy" -> "Komputer jest połączony z innym telefonem. Stuknij „Połącz”, gdy będzie wolny."
-    state is ConnectionState.Disconnected && state.reason == "untrusted" -> REFUSED
-    state is ConnectionState.Failed && state.message == REFUSED -> REFUSED
+fun endMessage(state: ConnectionState): String? = endMessageRes(state)?.let { str(it) }
+
+/** [endMessage]'s text as a resource id (WN-63). */
+fun endMessageRes(state: ConnectionState): Int? = when {
+    state is ConnectionState.Disconnected && state.reason == "unpaired" -> R.string.end_unpaired_by_pc
+    state is ConnectionState.Disconnected && state.reason == END_UNPAIRED_HERE -> R.string.end_unpaired_here
+    state is ConnectionState.Disconnected && state.reason == "busy" -> R.string.end_busy
+    state is ConnectionState.Disconnected && state.reason == "untrusted" -> R.string.end_refused
+    state is ConnectionState.Failed && state.message == REFUSED -> R.string.end_refused
     else -> null
 }
 
@@ -92,9 +95,9 @@ class PairingViewModel(application: Application) : AndroidViewModel(application)
                 viewModelScope.launch {
                     opened.state.collect { state ->
                         val message = endMessage(state) ?: when (state) {
-                            is ConnectionState.Connected -> "Połączono z komputerem"
-                            is ConnectionState.Disconnected -> "Komputer rozłączony · sparowanie zachowane"
-                            is ConnectionState.Failed -> "Komputer chwilowo nieosiągalny · sparowanie zachowane"
+                            is ConnectionState.Connected -> str(R.string.connected_to_pc)
+                            is ConnectionState.Disconnected -> str(R.string.pc_disconnected_kept)
+                            is ConnectionState.Failed -> str(R.string.pc_unreachable_kept)
                             else -> null
                         }
                         mutableUi.update { current -> current.copy(
@@ -106,7 +109,7 @@ class PairingViewModel(application: Application) : AndroidViewModel(application)
                 }
             } catch (error: Exception) {
                 if (error is CancellationException) throw error
-                mutableUi.update { it.copy(initialized = true, message = "Nie udało się odczytać tożsamości urządzenia. Uruchom aplikację ponownie.") }
+                mutableUi.update { it.copy(initialized = true, message = str(R.string.identity_failed)) }
             }
         }
     }
@@ -115,13 +118,13 @@ class PairingViewModel(application: Application) : AndroidViewModel(application)
     fun settings() { if (ui.value.screen == "home") mutableUi.update { it.copy(screen = "settings") } }
     /** The paired-computer list (WC-28). */
     fun devices() { if (ui.value.screen == "home" || ui.value.screen == "settings") mutableUi.update { it.copy(screen = "devices", message = "") } }
-    fun renameDevice(entry: PairedEntry, name: String) = deviceCall("Nie udało się zmienić nazwy.") { it.renamePaired(entry.publicKey, name) }
-    fun unpairDevice(entry: PairedEntry) = deviceCall("Nie udało się usunąć parowania. Spróbuj ponownie.") {
+    fun renameDevice(entry: PairedEntry, name: String) = deviceCall(str(R.string.rename_failed)) { it.renamePaired(entry.publicKey, name) }
+    fun unpairDevice(entry: PairedEntry) = deviceCall(str(R.string.unpair_failed)) {
         it.unpair(entry.publicKey)
-        mutableUi.update { ui -> ui.copy(message = "Usunięto parowanie z: ${computerLabel(entry.name)}. Komputer też je usunie.") }
+        mutableUi.update { ui -> ui.copy(message = str(R.string.unpaired_from, computerLabel(entry.name))) }
     }
     /** The person's own "Połącz": lifts a BUSY or refusal pause (WC-28). */
-    fun connectDevice(entry: PairedEntry) = deviceCall("Komputer jest poza zasięgiem albo połączony z innym telefonem.") {
+    fun connectDevice(entry: PairedEntry) = deviceCall(str(R.string.connect_unreachable)) {
         it.connectPaired(PeerInfo(entry.publicKey, entry.name, entry.fingerprint))
     }
     private fun deviceCall(failure: String, block: suspend (WindCore) -> Unit) {
@@ -133,7 +136,7 @@ class PairingViewModel(application: Application) : AndroidViewModel(application)
             }
         }
     }
-    fun cancel() { if (ui.value.screen != "pairing" && ui.value.screen != "sas-confirming") { clearOffer(); clearSas(); stopNearby(); mutableUi.update { it.copy(screen = "home", name = "", fingerprint = "", code = "", message = if (core?.state?.value is ConnectionState.Connected) "Połączono z komputerem" else "") } } }
+    fun cancel() { if (ui.value.screen != "pairing" && ui.value.screen != "sas-confirming") { clearOffer(); clearSas(); stopNearby(); mutableUi.update { it.copy(screen = "home", name = "", fingerprint = "", code = "", message = if (core?.state?.value is ConnectionState.Connected) str(R.string.connected_to_pc) else "") } } }
 
     // CCS/1 FLOW:"Paruj bez aparatu" -> nearby (TXT pair, untrusted hints) -> start_sas -> code on both screens -> both accept -> paired (WN-27)
     fun nearby() {
@@ -167,7 +170,7 @@ class PairingViewModel(application: Application) : AndroidViewModel(application)
             } catch (error: Exception) {
                 if (error is CancellationException) throw error
                 clearSas()
-                if (ui.value.screen == "sas-connecting") mutableUi.update { it.copy(screen = "error", code = "", message = "Nie udało się połączyć z komputerem. Na komputerze wybierz „Paruj bez aparatu” i spróbuj ponownie.") }
+                if (ui.value.screen == "sas-connecting") mutableUi.update { it.copy(screen = "error", code = "", message = str(R.string.sas_connect_failed)) }
             }
         }
     }
@@ -181,18 +184,18 @@ class PairingViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             try {
                 val peer = attempt.decide(same)
-                mutableUi.update { it.copy(screen = "paired", name = peer.name, computerName = peer.name, fingerprint = peer.fingerprint, code = "", hasPairedDevice = true, message = "Sparowano · Łączenie z komputerem…") }
+                mutableUi.update { it.copy(screen = "paired", name = peer.name, computerName = peer.name, fingerprint = peer.fingerprint, code = "", hasPairedDevice = true, message = str(R.string.paired_connecting)) }
                 try {
                     owner.connectPaired(peer)
-                    mutableUi.update { it.copy(message = "Połączono z komputerem") }
+                    mutableUi.update { it.copy(message = str(R.string.connected_to_pc)) }
                 } catch (error: Exception) {
                     if (error is CancellationException && error !is kotlinx.coroutines.TimeoutCancellationException) throw error
-                    mutableUi.update { it.copy(message = "Sparowano. Komputer jest chwilowo nieosiągalny — sprawdź wspólną sieć Wi-Fi.") }
+                    mutableUi.update { it.copy(message = str(R.string.paired_unreachable)) }
                 }
                 // WC-34: the background connection is the person's choice on the Gotowe screen.
             } catch (error: Exception) {
                 if (error is CancellationException) throw error
-                mutableUi.update { it.copy(screen = "error", code = "", message = if (same) "Parowanie nie zostało potwierdzone na komputerze. Spróbuj ponownie." else "Kody się różniły, więc urządzenia nie zostały sparowane. Spróbuj ponownie.") }
+                mutableUi.update { it.copy(screen = "error", code = "", message = if (same) str(R.string.sas_not_confirmed) else str(R.string.sas_mismatch)) }
             } finally { clearSas() }
         }
     }
@@ -208,7 +211,7 @@ class PairingViewModel(application: Application) : AndroidViewModel(application)
         copy = { core?.copyFromHistory(it) }, pin = { id, pinned -> core?.pinInHistory(id, pinned) },
         remove = { core?.removeFromHistory(it) }, clear = { core?.clearHistory() })
 
-    fun cameraError() { mutableUi.update { it.copy(screen = "error", message = "Nie udało się otworzyć aparatu. Zamknij inne aplikacje korzystające z aparatu i spróbuj ponownie.") } }
+    fun cameraError() { mutableUi.update { it.copy(screen = "error", message = str(R.string.camera_failed)) } }
 
     fun offerLink(link: String?) {
         // CCS/1 SEC:incoming intents cannot replace a pairing in progress; no networking before confirm().
@@ -222,7 +225,7 @@ class PairingViewModel(application: Application) : AndroidViewModel(application)
             mutableUi.update { it.copy(screen = "confirm", name = preview.name, fingerprint = preview.fingerprint, message = "") }
         } catch (_: Exception) {
             clearOffer()
-            mutableUi.update { it.copy(screen = "error", name = "", fingerprint = "", message = "To nie jest poprawny kod parowania WindConnect. Wyświetl nowy kod na komputerze.") }
+            mutableUi.update { it.copy(screen = "error", name = "", fingerprint = "", message = str(R.string.qr_invalid)) }
         }
     }
 
@@ -235,18 +238,18 @@ class PairingViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             try {
                 val peer = owner.pairQr(active)
-                mutableUi.update { it.copy(screen = "paired", name = peer.name, computerName = peer.name, fingerprint = peer.fingerprint, hasPairedDevice = true, message = "Sparowano · Łączenie z komputerem…") }
+                mutableUi.update { it.copy(screen = "paired", name = peer.name, computerName = peer.name, fingerprint = peer.fingerprint, hasPairedDevice = true, message = str(R.string.paired_connecting)) }
                 try {
                     owner.connectPaired(peer)
-                    mutableUi.update { it.copy(message = "Połączono z komputerem") }
+                    mutableUi.update { it.copy(message = str(R.string.connected_to_pc)) }
                 } catch (error: Exception) {
                     if (error is CancellationException && error !is kotlinx.coroutines.TimeoutCancellationException) throw error
-                    mutableUi.update { it.copy(message = "Sparowano. Komputer jest chwilowo nieosiągalny — sprawdź wspólną sieć Wi-Fi.") }
+                    mutableUi.update { it.copy(message = str(R.string.paired_unreachable)) }
                 }
                 // WC-34: the background connection is the person's choice on the Gotowe screen.
             } catch (error: Exception) {
                 if (error is CancellationException) throw error
-                mutableUi.update { it.copy(screen = "error", message = "Nie udało się sparować. Sprawdź wspólną sieć Wi-Fi i zeskanuj nowy kod na komputerze.") }
+                mutableUi.update { it.copy(screen = "error", message = str(R.string.pair_failed_network)) }
             } finally { active.destroy() }
         }
     }

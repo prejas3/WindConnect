@@ -39,8 +39,8 @@ pub fn tooltip(battery: Option<Battery>) -> String {
         Some(Battery {
             level,
             charging: true,
-        }) => format!(" · bateria {level}%, ładuje się"),
-        Some(Battery { level, .. }) => format!(" · bateria {level}%"),
+        }) => crate::i18n::trf("battery.tooltip_charging", &[("level", &level)]),
+        Some(Battery { level, .. }) => crate::i18n::trf("battery.tooltip", &[("level", &level)]),
         None => String::new(),
     }
 }
@@ -61,12 +61,12 @@ pub fn set(app: &tauri::AppHandle, battery: Option<Battery>) {
 pub fn alert_text(alert: Alert, phone: &str) -> (String, String) {
     match alert {
         Alert::Low(level) => (
-            format!("Bateria telefonu: {level}%"),
-            format!("{phone} · podłącz ładowarkę."),
+            crate::i18n::trf("battery.toast_title", &[("level", &level)]),
+            crate::i18n::trf("battery.low_text", &[("phone", &phone)]),
         ),
         Alert::Full => (
-            "Telefon naładowany".into(),
-            format!("{phone} · 100%, możesz odłączyć ładowarkę."),
+            crate::i18n::tr("battery.full_title").into(),
+            crate::i18n::trf("battery.full_text", &[("phone", &phone)]),
         ),
     }
 }

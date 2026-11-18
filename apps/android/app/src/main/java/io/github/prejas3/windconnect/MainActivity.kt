@@ -1,5 +1,6 @@
 package io.github.prejas3.windconnect
 
+import androidx.compose.ui.res.stringResource
 import android.os.Bundle
 import android.view.KeyEvent
 import androidx.compose.foundation.layout.Box
@@ -105,7 +106,7 @@ class MainActivity : ComponentActivity() {
 data class ConnectionUiState(
     val publicKey: String = "",
     val fingerprint: String = "",
-    val status: String = "Uruchamianie rdzenia…",
+    val status: String = str(R.string.diag_starting),
     val ready: Boolean = false,
     val busy: Boolean = false,
 )
@@ -126,7 +127,7 @@ class ConnectionViewModel(application: Application) : AndroidViewModel(applicati
                     mutableUi.value = ConnectionUiState(
                         publicKey = opened.identity.publicKey.joinToString("") { "%02x".format(it) },
                         fingerprint = opened.identity.displayFingerprint,
-                        status = "Gotowy", ready = true,
+                        status = str(R.string.diag_ready), ready = true,
                     )
                     owner.launch {
                         opened.state.collect { state ->
@@ -134,12 +135,12 @@ class ConnectionViewModel(application: Application) : AndroidViewModel(applicati
                                 current.copy(
                                     busy = state is ConnectionState.Connecting,
                                     status = when (state) {
-                                        ConnectionState.Ready -> "Gotowy"
-                                        ConnectionState.Connecting -> "Łączenie…"
-                                        is ConnectionState.Connected -> "Połączono: ${state.peerName}; ping ${state.roundTripMicros / 1000.0} ms"
-                                        is ConnectionState.Disconnected -> "Rozłączono: ${state.reason}"
-                                        is ConnectionState.Failed -> "Błąd: ${state.message}"
-                                        ConnectionState.Stopped -> "Zatrzymano"
+                                        ConnectionState.Ready -> str(R.string.diag_ready)
+                                        ConnectionState.Connecting -> str(R.string.connecting)
+                                        is ConnectionState.Connected -> str(R.string.diag_connected, state.peerName, (state.roundTripMicros / 1000.0).toString())
+                                        is ConnectionState.Disconnected -> str(R.string.diag_disconnected, state.reason)
+                                        is ConnectionState.Failed -> str(R.string.error_prefixed, endMessage(state) ?: state.message)
+                                        ConnectionState.Stopped -> str(R.string.diag_stopped)
                                     },
                                 )
                             }
@@ -147,7 +148,7 @@ class ConnectionViewModel(application: Application) : AndroidViewModel(applicati
                     }
                 } catch (error: Exception) {
                     if (error is CancellationException) throw error
-                    mutableUi.update { it.copy(status = "Błąd: ${error.message}") }
+                    mutableUi.update { it.copy(status = str(R.string.error_prefixed, error.message.orEmpty())) }
                 }
             }
         }
@@ -158,13 +159,13 @@ class ConnectionViewModel(application: Application) : AndroidViewModel(applicati
             gate.withLock {
                 try {
                     require(keyHex.length == 64 && keyHex.all { it in "0123456789abcdefABCDEF" }) {
-                        "Klucz PC musi mieć 64 znaki hex"
+                        str(R.string.diag_key_length)
                     }
                     val key = ByteArray(32) { keyHex.substring(it * 2, it * 2 + 2).toInt(16).toByte() }
                     core?.connect(address.trim(), key)
                 } catch (error: Exception) {
                     if (error is CancellationException) throw error
-                    mutableUi.update { it.copy(status = "Błąd: ${error.message}", busy = false) }
+                    mutableUi.update { it.copy(status = str(R.string.error_prefixed, error.message.orEmpty()), busy = false) }
                 }
             }
         }
@@ -190,23 +191,23 @@ private fun ConnectionScreen(model: ConnectionViewModel = viewModel()) {
         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Text("Test połączenia z PC", style = MaterialTheme.typography.titleLarge)
-        Text("Odcisk tego urządzenia")
+        Text(stringResource(R.string.home_diagnostics), style = MaterialTheme.typography.titleLarge)
+        Text(stringResource(R.string.diag_fingerprint))
         SelectionContainer { Text(ui.fingerprint) }
-        Text("Klucz publiczny Androida — przekaż go do narzędzia testowego na PC")
+        Text(stringResource(R.string.diag_public_key))
         SelectionContainer { Text(ui.publicKey, modifier = Modifier.testTag("localKey")) }
         WindField(
-            value = address, onValueChange = { address = it }, label = "Adres PC, np. 192.168.1.10:47820",
+            value = address, onValueChange = { address = it }, label = stringResource(R.string.diag_address),
             modifier = Modifier.fillMaxWidth().testTag("peerAddress"), singleLine = true,
         )
         WindField(
-            value = key, onValueChange = { key = it.trim() }, label = "Zweryfikowany klucz publiczny PC (64 hex)",
+            value = key, onValueChange = { key = it.trim() }, label = stringResource(R.string.diag_key_label),
             modifier = Modifier.fillMaxWidth().testTag("peerKey"),
         )
-        Text("Porównaj klucz z tym wyświetlonym na PC. To ręczny test zaufania przed wdrożeniem parowania.")
-        WindButton("Połącz z podanym kluczem", onClick = { model.connect(address, key) }, enabled = ui.ready && !ui.busy,
+        Text(stringResource(R.string.diag_compare))
+        WindButton(stringResource(R.string.diag_connect), onClick = { model.connect(address, key) }, enabled = ui.ready && !ui.busy,
             modifier = Modifier.testTag("connect"))
-        WindButton("Rozłącz", onClick = model::disconnect, enabled = ui.ready && !ui.busy, kind = ButtonKind.Secondary)
+        WindButton(stringResource(R.string.disconnect), onClick = model::disconnect, enabled = ui.ready && !ui.busy, kind = ButtonKind.Secondary)
         Text(ui.status, modifier = Modifier.testTag("connectionStatus"))
     }
 }

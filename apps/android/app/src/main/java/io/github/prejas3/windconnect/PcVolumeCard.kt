@@ -61,8 +61,8 @@ internal fun PcVolumeControls(volume: PcVolume, onLevel: (Int) -> Unit, onMute: 
         muted = volume.muted
     }
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-        Text("Głośność komputera", style = MaterialTheme.typography.titleSmall)
-        Text(if (muted) "Wyciszony" else "$level%", style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("pcVolumeValue"))
+        Text(str(R.string.pc_volume), style = MaterialTheme.typography.titleSmall)
+        Text(if (muted) str(R.string.muted) else "$level%", style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("pcVolumeValue"))
     }
     Slider(
         value = level / 100f,
@@ -75,11 +75,11 @@ internal fun PcVolumeControls(volume: PcVolume, onLevel: (Int) -> Unit, onMute: 
         onValueChangeFinished = { dragging = false; localAt = SystemClock.uptimeMillis() },
         steps = 19,
         modifier = Modifier.fillMaxWidth().testTag("pcVolumeSlider").semantics {
-            contentDescription = "Głośność komputera"
-            stateDescription = if (muted) "$level%, wyciszony" else "$level%"
+            contentDescription = str(R.string.pc_volume)
+            stateDescription = if (muted) str(R.string.volume_muted_state, "$level%") else "$level%"
         },
     )
-    WindButton(if (muted) "Włącz dźwięk komputera" else "Wycisz komputer", {
+    WindButton(if (muted) str(R.string.pc_unmute) else str(R.string.pc_mute), {
         localAt = SystemClock.uptimeMillis()
         muted = !muted
         onMute(muted)

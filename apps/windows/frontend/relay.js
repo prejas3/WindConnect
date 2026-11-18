@@ -1,3 +1,4 @@
+import { t } from './i18n.js';
 // CCS/1 FLOW:WN-92 main-window setting "Przekaźnik poza domem" -> set_relay(url | null) -> keepers in relay.rs. Off by default.
 const invoke = window.__TAURI__?.core.invoke;
 const section = document.querySelector('#relay-settings');
@@ -22,14 +23,14 @@ async function apply(url) {
   catch (e) {
     // Only a refused URL is "Nieprawidłowy adres"; still starting or a failed save say what they are (WN-139).
     const text = String(e);
-    fail(/^(WindConnect jeszcze|nie udało się zapisać)/.test(text) ? text : 'Nieprawidłowy adres: ' + text);
+    fail(/^(WindConnect jeszcze|nie udało się zapisać|WindConnect is still|couldn't save)/.test(text) ? text : t('relay.invalid', { error: text }));
     show(await invoke('relay_setting').catch(() => null));
   }
 }
 
 toggle?.addEventListener('click', () => {
   const on = toggle.getAttribute('aria-checked') !== 'true';
-  if (on && !field.value.trim()) { fail('Podaj adres przekaźnika'); field.focus(); return; }
+  if (on && !field.value.trim()) { fail(t('relay.address_needed')); field.focus(); return; }
   apply(on ? field.value.trim() : null);
 });
 field?.addEventListener('input', () => fail(''));

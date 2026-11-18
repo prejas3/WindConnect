@@ -24,22 +24,22 @@ internal object FileImport {
             Intent.ACTION_SEND_MULTIPLE -> (if (android.os.Build.VERSION.SDK_INT >= 33)
                 intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM, Uri::class.java) else intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM)) ?: emptyList()
             null -> return emptyList()
-            else -> error("Nieobsługiwana operacja udostępniania")
+            else -> error(str(R.string.import_unsupported))
         }
         val clips = intent.clipData?.let { clip ->
-            require(clip.itemCount <= MAX_FILES) { "Można wysłać najwyżej 100 plików" }
-            (0 until clip.itemCount).map { requireNotNull(clip.getItemAt(it).uri) { "Wybierz pliki, nie sam tekst" } }
+            require(clip.itemCount <= MAX_FILES) { str(R.string.import_max_files) }
+            (0 until clip.itemCount).map { requireNotNull(clip.getItemAt(it).uri) { str(R.string.import_not_text) } }
         } ?: emptyList()
-        return checkedUris(streams + clips).also { require(it.isNotEmpty()) { "Brak plików do wysłania" } }
+        return checkedUris(streams + clips).also { require(it.isNotEmpty()) { str(R.string.send_none) } }
     }
 
     fun checkedUris(uris: List<Uri>): List<Uri> {
-        require(uris.size <= MAX_FILES * 2) { "Za dużo plików" }
+        require(uris.size <= MAX_FILES * 2) { str(R.string.import_too_many) }
         val unique = uris.distinct()
-        require(unique.size <= MAX_FILES) { "Można wysłać najwyżej 100 plików" }
+        require(unique.size <= MAX_FILES) { str(R.string.import_max_files) }
         val lengths = unique.map { it.toString().toByteArray(Charsets.UTF_8).size }
-        require(lengths.all { it <= 4096 } && lengths.sum() <= 256 * 1024) { "Identyfikatory wybranych plików są za długie" }
-        require(unique.all { it.scheme == "content" && !it.authority.isNullOrBlank() }) { "Wybierz pliki przez udostępnianie lub systemowy wybór plików" }
+        require(lengths.all { it <= 4096 } && lengths.sum() <= 256 * 1024) { str(R.string.import_ids_long) }
+        require(unique.all { it.scheme == "content" && !it.authority.isNullOrBlank() }) { str(R.string.share_pick_how) }
         return unique
     }
 
@@ -50,7 +50,7 @@ internal object FileImport {
         val end = original.offsetByCodePoints(0, minOf(256, original.codePointCount(0, original.length)))
         var name = Normalizer.normalize(original.substring(0, end), Normalizer.Form.NFC)
             .filterNot { it.isISOControl() || it in '\u202a'..'\u202e' || it in '\u2066'..'\u2069' || it == '\u200e' || it == '\u200f' || it == '\u061c' }
-            .map { if (it in "/\\:*?\"<>|") '_' else it }.joinToString("").trim().trim('.').ifBlank { "Plik" }
+            .map { if (it in "/\\:*?\"<>|") '_' else it }.joinToString("").trim().trim('.').ifBlank { str(R.string.import_file) }
         if (name.substringBefore('.').trimEnd().uppercase(Locale.ROOT) in reserved) name = "_$name"
         if (!name.contains('.')) name += when (mime?.lowercase(Locale.ROOT)) {
             "image/jpeg" -> ".jpg"; "image/png" -> ".png"; "image/heic" -> ".heic"; "image/webp" -> ".webp"
@@ -73,7 +73,7 @@ internal object FileImport {
         checkedUris(listOf(uri))
         val resolver = context.contentResolver
         val mime = resolver.getType(uri)
-        require(mime != "vnd.android.document/directory") { "Wybierz pliki zamiast folderu" }
+        require(mime != "vnd.android.document/directory") { str(R.string.import_folder) }
         var name: String? = null
         var size: Long? = null
         resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE), null, null, null)?.use { cursor ->
@@ -91,10 +91,10 @@ internal object FileImport {
     suspend fun stage(context: Context, source: Source, batch: File, already: Long, progress: (Long) -> Unit): Pair<File, Long> {
         val job = currentCoroutineContext()
         return runInterruptible(Dispatchers.IO) {
-            require(batch.usableSpace > RESERVE + (source.size ?: 0)) { "Za mało miejsca na przygotowanie pliku" }
+            require(batch.usableSpace > RESERVE + (source.size ?: 0)) { str(R.string.import_no_space_prepare) }
             val temporary = File(batch, ".import-" + java.util.UUID.randomUUID())
             val target = File(batch, source.name)
-            check(!target.exists() && temporary.createNewFile()) { "Nie można przygotować pliku" }
+            check(!target.exists() && temporary.createNewFile()) { str(R.string.import_prepare_failed) }
             try {
                 var count = 0L
                 context.contentResolver.openInputStream(source.uri)?.use { input ->
@@ -106,16 +106,16 @@ internal object FileImport {
                             if (length < 0) break
                             if (length == 0) continue
                             count += length
-                            require(count <= MAX_FILE_BYTES && already + count <= MAX_BATCH_BYTES) { "Przekroczono limit 2 GiB na plik lub 4 GiB na wysyłkę" }
-                            require(batch.usableSpace > RESERVE + length) { "Za mało wolnego miejsca" }
+                            require(count <= MAX_FILE_BYTES && already + count <= MAX_BATCH_BYTES) { str(R.string.import_limit) }
+                            require(batch.usableSpace > RESERVE + length) { str(R.string.import_no_space) }
                             output.write(bytes, 0, length)
                             progress(count)
                         }
                         output.fd.sync()
                     }
-                } ?: error("Nie można odczytać udostępnionego pliku")
-                require(source.size == null || source.size == count) { "Rozmiar pliku zmienił się podczas odczytu" }
-                check(temporary.renameTo(target)) { "Nie można przygotować pliku" }
+                } ?: error(str(R.string.import_read_failed))
+                require(source.size == null || source.size == count) { str(R.string.import_size_changed) }
+                check(temporary.renameTo(target)) { str(R.string.import_prepare_failed) }
                 target to count
             } catch (error: Throwable) { temporary.delete(); target.delete(); throw error }
         }

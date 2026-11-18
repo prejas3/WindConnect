@@ -60,7 +60,7 @@ internal class QrCameraView(context: Context, private val onCode: (String) -> Un
     private var sensorOrientation = 90
     private val decoder = MultiFormatReader().apply { setHints(mapOf(DecodeHintType.POSSIBLE_FORMATS to listOf(BarcodeFormat.QR_CODE))) }
     private var lastFrame = 0L
-    init { surfaceTextureListener = this; contentDescription = "Podgląd skanera kodu QR" }
+    init { surfaceTextureListener = this; contentDescription = str(R.string.scan_preview) }
 
     fun resumeCamera() { active.set(true); if (isAvailable) worker.post { openCamera() } }
     fun pauseCamera() { active.set(false); worker.post { closeCamera() } }

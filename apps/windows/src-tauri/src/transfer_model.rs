@@ -48,27 +48,27 @@ fn state_name(state: &TransferState) -> (&'static str, Option<&'static str>) {
     match state {
         TransferState::Queued => ("queued", None),
         TransferState::Running => ("running", None),
-        TransferState::Waiting => ("waiting", Some("Czeka na połączenie")),
+        TransferState::Waiting => ("waiting", Some(crate::i18n::tr("transfer.waiting"))),
         TransferState::Done => ("done", None),
         TransferState::Cancelled { by_peer } => (
             "cancelled",
             Some(if *by_peer {
-                "Anulowano na telefonie"
+                crate::i18n::tr("transfer.cancelled_on_phone")
             } else {
-                "Anulowano"
+                crate::i18n::tr("transfer.cancelled")
             }),
         ),
         TransferState::Failed(reason) => (
             "failed",
             Some(match reason {
-                FailReason::NoSpace => "Brak miejsca u odbiorcy",
-                FailReason::SourceChanged => "Plik zmienił się podczas wysyłania",
+                FailReason::NoSpace => crate::i18n::tr("transfer.no_space"),
+                FailReason::SourceChanged => crate::i18n::tr("transfer.source_changed"),
                 FailReason::Refused(ErrorCode::CapabilityMissing) | FailReason::Withdrawn => {
-                    "Odbiorca nie przyjmuje teraz plików"
+                    crate::i18n::tr("transfer.not_accepting")
                 }
-                FailReason::Refused(_) => "Odbiorca odrzucił plik",
-                FailReason::Protocol(_) => "Błąd połączenia",
-                FailReason::Io(_) => "Nie można odczytać pliku",
+                FailReason::Refused(_) => crate::i18n::tr("transfer.refused"),
+                FailReason::Protocol(_) => crate::i18n::tr("transfer.connection_error"),
+                FailReason::Io(_) => crate::i18n::tr("transfer.read_failed"),
             }),
         ),
     }

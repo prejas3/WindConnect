@@ -43,7 +43,7 @@ const push = (page, v) => page.evaluate(v => window.__listeners['pairing-state']
   const browser = await chromium.launch({ headless: true });
   try {
     // The panel.
-    const page = await browser.newPage({ viewport: { width: 380, height: 760 } });
+    const page = await browser.newPage({ locale: 'pl-PL', viewport: { width: 380, height: 760 } });
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
     await page.addInitScript(stub, state({ level: 40, muted: false, controllable: true }));
@@ -99,7 +99,7 @@ const push = (page, v) => page.evaluate(v => window.__listeners['pairing-state']
     assert.equal(await page.locator('#phone-volume').isHidden(), true);
 
     // The main window's switches.
-    const main = await browser.newPage({ viewport: { width: 920, height: 900 } });
+    const main = await browser.newPage({ locale: 'pl-PL', viewport: { width: 920, height: 900 } });
     main.on('pageerror', e => errors.push(e.message));
     await main.addInitScript(stub, state(null));
     await main.goto(`http://127.0.0.1:${server.address().port}/index.html`);

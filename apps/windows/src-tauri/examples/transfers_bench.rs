@@ -13,6 +13,9 @@ use wind_core::{
     session::{LocalInfo, Router, Session},
     transport::{Connection, Endpoint, PinnedKeys},
 };
+#[allow(dead_code)]
+#[path = "../src/i18n.rs"]
+mod i18n;
 #[path = "../src/transfer_model.rs"]
 mod transfer_model;
 #[path = "../src/transfer_progress.rs"]

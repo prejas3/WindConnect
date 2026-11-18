@@ -6,6 +6,7 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class RemoteKeyboardDraftTest {
+    init { StringsForTests.usePolish() }
     @Test fun onlyExplicitCompleteAndBoundedTextCanBeSubmitted() {
         assertTrue(RemoteKeyboardDraft.canSend(TextFieldValue("Zażółć gęślą jaźń 😀")))
         assertFalse(RemoteKeyboardDraft.canSend(TextFieldValue("ą",composition=TextRange(0,1))))

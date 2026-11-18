@@ -51,7 +51,7 @@ const stub = () => {
   const url = `http://127.0.0.1:${server.address().port}/`;
   const browser = await chromium.launch({ headless: true });
   try {
-    const page = await browser.newPage({ viewport: { width: 1024, height: 1000 } });
+    const page = await browser.newPage({ locale: 'pl-PL', viewport: { width: 1024, height: 1000 } });
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
     await page.addInitScript(stub);

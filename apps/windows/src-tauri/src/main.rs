@@ -15,6 +15,7 @@ mod clipboard_native;
 mod files;
 mod gallery;
 mod hotkey;
+mod i18n;
 pub mod indicator;
 mod instance;
 mod laser;

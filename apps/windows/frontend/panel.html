@@ -1,20 +1,20 @@
 <!doctype html>
-<html lang="pl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light dark"><title>WindConnect — panel</title><link rel="stylesheet" href="tokens.css"><link rel="stylesheet" href="style.css"><link rel="stylesheet" href="panel.css"><link rel="stylesheet" href="transfers.css"><script type="module" src="panel.js"></script></head>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light dark"><title data-i18n="panel.windconnect_panel"></title><link rel="stylesheet" href="tokens.css"><link rel="stylesheet" href="style.css"><link rel="stylesheet" href="panel.css"><link rel="stylesheet" href="transfers.css"><script type="module" src="panel.js"></script></head>
 <body>
-  <main class="panel" aria-label="Panel WindConnect">
-    <header class="panel-heading"><div><h1><span class="state-dot" aria-hidden="true"></span><span id="phone-name">Twój telefon</span></h1><p id="connection-state" role="status">Brak połączenia</p></div><p id="phone-battery" class="phone-battery" role="img" hidden><svg viewBox="0 0 24 12" aria-hidden="true"><rect class="shell" x="0.75" y="0.75" width="19.5" height="10.5" rx="2.5"/><rect class="tip" x="21" y="4" width="2" height="4" rx="1"/><rect class="level" x="2.5" y="2.5" width="16" height="7" rx="1.25"/><path class="bolt" d="M11.5 1.5 7.5 6.6h3l-1 3.9 4-5.1h-3z"/></svg><span class="battery-text"></span></p><button class="button quiet small" id="dismiss" aria-label="Zamknij panel"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button></header>
-    <div id="quick-actions" class="quick-actions" aria-label="Szybkie akcje">
-      <button id="send-files" aria-label="Wyślij pliki na telefon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V3m-5 5 5-5 5 5M5 16v5h14v-5"/></svg>Wyślij</button>
-      <button data-clipboard-send aria-label="Wyślij schowek na telefon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="12" height="16" rx="2"/><rect x="9" y="2" width="6" height="5" rx="1"/><path d="M9 12h6m-6 4h6"/></svg>Schowek</button>
-      <button id="find-phone" disabled aria-pressed="false" aria-describedby="find-status"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 17h14l-2-3V9a5 5 0 0 0-10 0v5zm5 4h4"/></svg><span class="find-label">Dzwoń</span></button>
-      <button id="touchpad-toggle" aria-describedby="touchpad-status"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="m8 9 3 3 5-5M5 16h14m-7 0v5"/></svg>Touchpad i klawiatura</button>
+  <main class="panel" data-i18n-aria-label="panel.panel_windconnect">
+    <header class="panel-heading"><div><h1><span class="state-dot" aria-hidden="true"></span><span id="phone-name" data-i18n="panel.phone-name"></span></h1><p id="connection-state" role="status" data-i18n="panel.connection-state"></p></div><p id="phone-battery" class="phone-battery" role="img" hidden><svg viewBox="0 0 24 12" aria-hidden="true"><rect class="shell" x="0.75" y="0.75" width="19.5" height="10.5" rx="2.5"/><rect class="tip" x="21" y="4" width="2" height="4" rx="1"/><rect class="level" x="2.5" y="2.5" width="16" height="7" rx="1.25"/><path class="bolt" d="M11.5 1.5 7.5 6.6h3l-1 3.9 4-5.1h-3z"/></svg><span class="battery-text"></span></p><button class="button quiet small" id="dismiss" data-i18n-aria-label="panel.dismiss_label"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button></header>
+    <div id="quick-actions" class="quick-actions" data-i18n-aria-label="panel.quick-actions_label">
+      <button id="send-files" data-i18n-aria-label="panel.send-files_label" data-i18n="panel.send-files"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V3m-5 5 5-5 5 5M5 16v5h14v-5"/></svg></button>
+      <button data-clipboard-send data-i18n-aria-label="panel.wyslij_schowek_na_telefon" data-i18n="panel.schowek"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="12" height="16" rx="2"/><rect x="9" y="2" width="6" height="5" rx="1"/><path d="M9 12h6m-6 4h6"/></svg></button>
+      <button id="find-phone" disabled aria-pressed="false" aria-describedby="find-status"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 17h14l-2-3V9a5 5 0 0 0-10 0v5zm5 4h4"/></svg><span class="find-label" data-i18n="panel.dzwon"></span></button>
+      <button id="touchpad-toggle" aria-describedby="touchpad-status" data-i18n="panel.touchpad-toggle"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="m8 9 3 3 5-5M5 16h14m-7 0v5"/></svg></button>
     </div>
     <p id="find-status" class="find-status subtle" role="status"></p>
-    <form id="open-on-phone" class="open-on-phone" hidden><input id="phone-url" type="url" inputmode="url" placeholder="https://…" aria-label="Link do otwarcia na telefonie" autocomplete="off"><button class="button small" type="submit">Otwórz na telefonie</button></form>
+    <form id="open-on-phone" class="open-on-phone" hidden><input id="phone-url" type="url" inputmode="url" placeholder="https://…" data-i18n-aria-label="panel.phone-url_label" autocomplete="off"><button class="button small" type="submit" data-i18n="panel.otworz_na_telefonie"></button></form>
     <p id="open-on-phone-status" class="find-status subtle" role="status"></p>
-    <button id="open-sms" class="button small sms-open" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8m-8 3h5"/></svg>Wiadomości</button>
+    <button id="open-sms" class="button small sms-open" hidden data-i18n="panel.open-sms"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8m-8 3h5"/></svg></button>
     <section id="gallery" class="transfers gallery" aria-labelledby="gallery-title" hidden>
-      <div class="transfers-head"><h2 id="gallery-title">Ostatnie zdjęcia</h2><span class="subtle">przeciągnij na pulpit</span></div>
+      <div class="transfers-head"><h2 id="gallery-title" data-i18n="panel.gallery-title"></h2><span class="subtle" data-i18n="panel.przeciagnij_na_pulpit"></span></div>
       <ul id="gallery-list" class="gallery-list"></ul>
       <p id="gallery-status" class="find-status subtle" role="status"></p>
     </section>
@@ -24,58 +24,58 @@
         <p class="media-app subtle" id="media-app"></p>
         <h2 class="media-title" id="media-title"></h2>
         <p class="media-sub subtle" id="media-sub"></p>
-        <div id="media-progress" class="media-progress" role="slider" tabindex="0" aria-label="Pozycja utworu" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0"><span></span></div>
+        <div id="media-progress" class="media-progress" role="slider" tabindex="0" data-i18n-aria-label="panel.media-progress_label" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0"><span></span></div>
         <p class="media-time subtle"><span id="media-elapsed">0:00</span><span id="media-total"></span></p>
       </div>
       <div class="media-controls">
-        <button id="media-previous" class="button quiet small" aria-label="Poprzedni utwór"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5v14M18 6l-8 6 8 6z"/></svg></button>
-        <button id="media-toggle" class="button primary small" aria-label="Odtwórz"><svg class="play" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5l11 7-11 7z"/></svg><svg class="pause" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14M16 5v14"/></svg></button>
-        <button id="media-next" class="button quiet small" aria-label="Następny utwór"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17 5v14M6 6l8 6-8 6z"/></svg></button>
+        <button id="media-previous" class="button quiet small" data-i18n-aria-label="panel.media-previous_label"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5v14M18 6l-8 6 8 6z"/></svg></button>
+        <button id="media-toggle" class="button primary small" data-i18n-aria-label="panel.media-toggle_label"><svg class="play" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5l11 7-11 7z"/></svg><svg class="pause" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14M16 5v14"/></svg></button>
+        <button id="media-next" class="button quiet small" data-i18n-aria-label="panel.media-next_label"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17 5v14M6 6l8 6-8 6z"/></svg></button>
       </div>
     </section>
     <section id="phone-volume" class="transfers phone-volume" aria-labelledby="phone-volume-title" hidden>
-      <div class="transfers-head"><h2 id="phone-volume-title">Głośność telefonu</h2><span id="phone-volume-value" class="subtle"></span></div>
-      <div class="volume-row"><button id="phone-mute" class="button quiet small" aria-pressed="false" aria-label="Wycisz telefon"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="speaker" d="M4 9v6h4l5 4V5L8 9z"/><path class="waves" d="M16 9a4 4 0 0 1 0 6m2-9a8 8 0 0 1 0 12"/><path class="cross" d="m16 9 6 6m0-6-6 6"/></svg></button><div id="phone-volume-slider" class="volume-slider" role="slider" tabindex="0" aria-labelledby="phone-volume-title" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span class="fill"></span><span class="thumb"></span></div></div>
-      <p id="phone-volume-note" class="subtle" hidden>Zmiana głośności jest wyłączona w ustawieniach WindConnect na telefonie.</p>
+      <div class="transfers-head"><h2 id="phone-volume-title" data-i18n="panel.phone-volume-title"></h2><span id="phone-volume-value" class="subtle"></span></div>
+      <div class="volume-row"><button id="phone-mute" class="button quiet small" aria-pressed="false" data-i18n-aria-label="panel.phone-mute_label"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="speaker" d="M4 9v6h4l5 4V5L8 9z"/><path class="waves" d="M16 9a4 4 0 0 1 0 6m2-9a8 8 0 0 1 0 12"/><path class="cross" d="m16 9 6 6m0-6-6 6"/></svg></button><div id="phone-volume-slider" class="volume-slider" role="slider" tabindex="0" aria-labelledby="phone-volume-title" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span class="fill"></span><span class="thumb"></span></div></div>
+      <p id="phone-volume-note" class="subtle" hidden data-i18n="panel.phone-volume-note"></p>
     </section>
     <section id="missed-calls" class="transfers missed-calls" aria-labelledby="missed-title" hidden>
-      <div class="transfers-head"><h2 id="missed-title">Nieodebrane połączenia</h2></div>
+      <div class="transfers-head"><h2 id="missed-title" data-i18n="panel.missed-title"></h2></div>
       <ul id="missed-list" class="transfer-list"></ul>
     </section>
     <section id="notifications" class="transfers notifications" aria-labelledby="notifications-title" hidden>
-      <div class="transfers-head"><h2 id="notifications-title">Powiadomienia</h2></div>
-      <p class="subtle notifications-note">Odrzucenie tutaj albo zamknięcie wyskakującego powiadomienia (✕) usuwa je też z telefonu.</p>
+      <div class="transfers-head"><h2 id="notifications-title" data-i18n="panel.notifications-title"></h2></div>
+      <p class="subtle notifications-note" data-i18n="panel.odrzucenie_tutaj_albo_zamkniecie"></p>
       <ul id="notification-list" class="transfer-list notification-list"></ul>
     </section>
     <section id="transfers" class="transfers" aria-labelledby="transfers-title" hidden>
-      <div class="transfers-head"><h2 id="transfers-title">Wysyłanie</h2><button id="transfers-clear" class="button quiet small" hidden>Wyczyść</button></div>
+      <div class="transfers-head"><h2 id="transfers-title" data-i18n="panel.transfers-title"></h2><button id="transfers-clear" class="button quiet small" hidden data-i18n="panel.transfers-clear"></button></div>
       <p id="transfers-summary" class="subtle" role="status"></p>
-      <div id="transfers-total" class="progress" role="progressbar" aria-label="Postęp wysyłania" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span></span></div>
+      <div id="transfers-total" class="progress" role="progressbar" data-i18n-aria-label="panel.transfers-total_label" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span></span></div>
       <ul id="transfers-list" class="transfer-list"></ul>
     </section>
-    <section class="pairing-card" data-clipboard-controls hidden aria-label="Wspólny schowek">
-      <div class="control-row"><span id="clipboard-label">Automatyczny schowek</span><button class="switch" role="switch" aria-checked="true" aria-labelledby="clipboard-label" data-clipboard-toggle></button></div>
-      <div class="control-row"><span id="clipboard-limit-panel">Obrazy do</span><div class="segmented" role="group" aria-labelledby="clipboard-limit-panel" data-clipboard-limit><button data-limit="5" aria-pressed="false">5 MB</button><button data-limit="16" aria-pressed="true">16 MB</button><button data-limit="50" aria-pressed="false">50 MB</button></div></div><p data-clipboard-status role="status"></p><p class="subtle" data-clipboard-shortcut></p>
+    <section class="pairing-card" data-clipboard-controls hidden data-i18n-aria-label="panel.wspolny_schowek">
+      <div class="control-row"><span id="clipboard-label" data-i18n="panel.clipboard-label"></span><button class="switch" role="switch" aria-checked="true" aria-labelledby="clipboard-label" data-clipboard-toggle></button></div>
+      <div class="control-row"><span id="clipboard-limit-panel" data-i18n="panel.clipboard-limit-panel"></span><div class="segmented" role="group" aria-labelledby="clipboard-limit-panel" data-clipboard-limit><button data-limit="5" aria-pressed="false">5 MB</button><button data-limit="16" aria-pressed="true">16 MB</button><button data-limit="50" aria-pressed="false">50 MB</button></div></div><p data-clipboard-status role="status"></p><p class="subtle" data-clipboard-shortcut></p>
     </section>
-    <section class="history" data-clipboard-history hidden aria-labelledby="history-title-panel"><div class="transfers-head"><h2 id="history-title-panel">Historia schowka</h2><button class="button quiet small" data-history-clear>Wyczyść</button></div><p class="subtle" data-history-empty>Tu pojawią się ostatnio przesłane schowki. Treści oznaczone jako wrażliwe (np. hasła z menedżera) nigdy tu nie trafiają.</p><ul class="history-list" data-history-list></ul></section>
+    <section class="history" data-clipboard-history hidden aria-labelledby="history-title-panel"><div class="transfers-head"><h2 id="history-title-panel" data-i18n="panel.history-title-panel"></h2><button class="button quiet small" data-history-clear data-i18n="panel.wyczysc"></button></div><p class="subtle" data-history-empty data-i18n="panel.tu_pojawia_sie_ostatnio"></p><ul class="history-list" data-history-list></ul></section>
     <p id="files-notice" class="files-notice" role="status" hidden></p>
     <section id="devices" class="transfers devices" aria-labelledby="devices-title" hidden>
-      <div class="transfers-head"><h2 id="devices-title">Telefony</h2><button id="device-add" class="button quiet small">Dodaj telefon</button></div>
+      <div class="transfers-head"><h2 id="devices-title" data-i18n="panel.devices-title"></h2><button id="device-add" class="button quiet small" data-i18n="panel.device-add"></button></div>
       <ul id="device-list" class="transfer-list device-list"></ul>
     </section>
     <section class="pairing-card" aria-labelledby="pairing-title">
-      <h2 id="pairing-title">Połącz telefon</h2>
-      <canvas id="pairing-qr" role="img" aria-label="Jednorazowy kod QR do sparowania telefonu" hidden></canvas>
-      <p id="pairing-code" class="pairing-code" aria-label="Kod do porównania" hidden></p>
-      <p id="pairing-message" role="status">Przygotowywanie bezpiecznego połączenia…</p>
-      <p id="pairing-instructions" class="subtle" hidden>Otwórz skaner w WindConnect na telefonie. Kod jest jednorazowy i ważny przez 5 minut.</p>
-      <div class="button-row"><button id="pairing-accept" class="button primary small" hidden>Kody są takie same</button><button id="pairing-reject" class="button small" hidden>Kody się różnią</button><button id="pairing-refresh" class="button primary small" hidden>Wyświetl nowy kod</button><button id="pairing-sas" class="button small" hidden>Paruj bez aparatu</button><button id="pairing-cancel" class="button quiet small" hidden>Anuluj</button></div>
-      <p id="pairing-hint" class="subtle" hidden>Pozostałe akcje pojawią się w kolejnych etapach. Pliki możesz też przeciągnąć na ten panel albo wysłać z menu Eksploratora.</p>
+      <h2 id="pairing-title" data-i18n="panel.pairing-title"></h2>
+      <canvas id="pairing-qr" role="img" data-i18n-aria-label="panel.pairing-qr_label" hidden></canvas>
+      <p id="pairing-code" class="pairing-code" data-i18n-aria-label="panel.pairing-code_label" hidden></p>
+      <p id="pairing-message" role="status" data-i18n="panel.pairing-message"></p>
+      <p id="pairing-instructions" class="subtle" hidden data-i18n="panel.pairing-instructions"></p>
+      <div class="button-row"><button id="pairing-accept" class="button primary small" hidden data-i18n="panel.pairing-accept"></button><button id="pairing-reject" class="button small" hidden data-i18n="panel.pairing-reject"></button><button id="pairing-refresh" class="button primary small" hidden data-i18n="panel.pairing-refresh"></button><button id="pairing-sas" class="button small" hidden data-i18n="panel.pairing-sas"></button><button id="pairing-cancel" class="button quiet small" hidden data-i18n="panel.pairing-cancel"></button></div>
+      <p id="pairing-hint" class="subtle" hidden data-i18n="panel.pairing-hint"></p>
       <p id="pairing-warning" class="subtle" role="status" hidden></p>
     </section>
-    <footer><button id="settings" class="button quiet small">Otwórz aplikację</button><span id="shortcut" class="subtle">Win + Shift + W</span></footer>
-    <p id="shortcut-error" class="subtle" role="status" hidden>Win + Shift + W jest zajęty. Otwórz panel ikoną w zasobniku.</p>
-    <p id="panel-error" role="alert" hidden>Nie udało się wykonać akcji.</p>
-    <div id="drop-zone" class="drop-zone" aria-hidden="true" hidden><svg viewBox="0 0 24 24"><path d="M12 16V3m-5 5 5-5 5 5M5 16v5h14v-5"/></svg><strong id="drop-title">Upuść, aby wysłać na telefon</strong><span>Pliki i foldery</span></div>
+    <footer><button id="settings" class="button quiet small" data-i18n="panel.settings"></button><span id="shortcut" class="subtle">Win + Shift + W</span></footer>
+    <p id="shortcut-error" class="subtle" role="status" hidden data-i18n="panel.shortcut-error"></p>
+    <p id="panel-error" role="alert" hidden data-i18n="panel.panel-error"></p>
+    <div id="drop-zone" class="drop-zone" aria-hidden="true" hidden><svg viewBox="0 0 24 24"><path d="M12 16V3m-5 5 5-5 5 5M5 16v5h14v-5"/></svg><strong id="drop-title" data-i18n="panel.drop-title"></strong><span data-i18n="panel.pliki_i_foldery"></span></div>
   </main>
 </body></html>

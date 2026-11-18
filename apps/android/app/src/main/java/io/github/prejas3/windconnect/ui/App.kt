@@ -1,5 +1,7 @@
 package io.github.prejas3.windconnect.ui
 
+import io.github.prejas3.windconnect.R
+import androidx.compose.ui.res.stringResource
 import android.os.Build
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -30,11 +32,12 @@ fun WindApp(forceContent: Boolean = false, onSettings: (() -> Unit)? = null, con
     val mode = ThemeMode.entries.firstOrNull { it.name == modeName } ?: ThemeMode.System
     WindConnectTheme(mode, dynamic) {
         Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).safeDrawingPadding().imePadding()) {
+            val settingsLabel = stringResource(R.string.settings)
             Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                Text("WindConnect", modifier = Modifier.weight(1f).padding(end = 12.dp, top = 10.dp, bottom = 10.dp), style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                if (BuildConfig.DEBUG && !forceContent) WindButton(if (preview) "Połączenie" else "Podgląd", onClick = { preview = !preview }, modifier = Modifier.testTag("previewToggle"), kind = ButtonKind.Quiet)
+                Text(stringResource(R.string.app_name), modifier = Modifier.weight(1f).padding(end = 12.dp, top = 10.dp, bottom = 10.dp), style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (BuildConfig.DEBUG && !forceContent) WindButton(if (preview) stringResource(R.string.preview_connection) else stringResource(R.string.preview_toggle), onClick = { preview = !preview }, modifier = Modifier.testTag("previewToggle"), kind = ButtonKind.Quiet)
                 if (!forceContent && onSettings != null) Box(Modifier.size(48.dp).clip(RoundedCornerShape(12.dp)).clickable(role = Role.Button, onClick = onSettings)
-                    .semantics { contentDescription = "Ustawienia" }.testTag("openSettings"), contentAlignment = androidx.compose.ui.Alignment.Center) { WindIcon("gear") }
+                    .semantics { contentDescription = settingsLabel }.testTag("openSettings"), contentAlignment = androidx.compose.ui.Alignment.Center) { WindIcon("gear") }
             }
             Box(Modifier.weight(1f)) {
                 if (BuildConfig.DEBUG && preview && !forceContent) ComponentPreview(
@@ -52,50 +55,50 @@ private fun ComponentPreview(mode: ThemeMode, dynamic: Boolean, onMode: (ThemeMo
     var clipboard by rememberSaveable { mutableStateOf(true) }
     var name by rememberSaveable { mutableStateOf("") }
     var validated by rememberSaveable { mutableStateOf(false) }
-    var feedback by rememberSaveable { mutableStateOf("Wszystkie dane i akcje są przykładowe.") }
+    var feedback by rememberSaveable { mutableStateOf(R.string.preview_all_sample) }
     var complete by rememberSaveable { mutableStateOf(false) }
     val colors = MaterialTheme.colorScheme
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(18.dp).testTag("componentPreview"), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Text("Podgląd komponentów", style = MaterialTheme.typography.headlineSmall)
-        Text("DEV · dane demonstracyjne", color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+        Text(stringResource(R.string.preview_title), style = MaterialTheme.typography.headlineSmall)
+        Text(stringResource(R.string.preview_dev), color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            listOf(ThemeMode.System to "System", ThemeMode.Light to "Jasny", ThemeMode.Dark to "Ciemny").forEach { (item, label) ->
+            listOf(ThemeMode.System to stringResource(R.string.theme_system), ThemeMode.Light to stringResource(R.string.theme_light), ThemeMode.Dark to stringResource(R.string.theme_dark)).forEach { (item, label) ->
                 WindButton(label, { onMode(item) }, Modifier.weight(1f).testTag("theme-${item.name}").semantics { selected = item == mode }, kind = if (item == mode) ButtonKind.Primary else ButtonKind.Secondary)
             }
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            WindSwitch("Kolor z tapety", dynamic, onDynamic, Modifier.testTag("dynamicColor"))
-        } else Text("Android 10/11 · paleta WindConnect", color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
-        Text(if (dynamic && Build.VERSION.SDK_INT >= 31) "Material You · kolor systemowy" else "Paleta z makiet WN-20", modifier = Modifier.testTag("paletteSource"), style = MaterialTheme.typography.bodySmall)
+            WindSwitch(stringResource(R.string.preview_wallpaper_color), dynamic, onDynamic, Modifier.testTag("dynamicColor"))
+        } else Text(stringResource(R.string.preview_palette), color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+        Text(if (dynamic && Build.VERSION.SDK_INT >= 31) stringResource(R.string.preview_material_you) else stringResource(R.string.preview_mock_palette), modifier = Modifier.testTag("paletteSource"), style = MaterialTheme.typography.bodySmall)
         WindCard(Modifier.fillMaxWidth()) {
             Text("SZYMON-PC", style = MaterialTheme.typography.headlineSmall)
-            Text("Przykład · Połączono · Wi-Fi", color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+            Text(stringResource(R.string.preview_pc_state), color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                WindAction("Wyślij plik", "Do komputera", "send", { feedback = "Przykład: wyślij plik" }, Modifier.weight(1f).testTag("actionSend"))
-                WindAction("Schowek", "Wyślij tekst", "clipboard", { feedback = "Przykład: schowek" }, Modifier.weight(1f))
+                WindAction(stringResource(R.string.action_send_file), stringResource(R.string.preview_to_computer), "send", { feedback = R.string.preview_sample_send }, Modifier.weight(1f).testTag("actionSend"))
+                WindAction(stringResource(R.string.action_clipboard), stringResource(R.string.preview_send_text), "clipboard", { feedback = R.string.preview_sample_clipboard }, Modifier.weight(1f))
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                WindAction("Touchpad", "Steruj kursorem", "touch", { feedback = "Przykład: touchpad" }, Modifier.weight(1f))
-                WindAction("Zablokuj PC", "Zdalna blokada", "lock", { feedback = "Przykład: blokada" }, Modifier.weight(1f))
+                WindAction(stringResource(R.string.action_touchpad), stringResource(R.string.preview_cursor), "touch", { feedback = R.string.preview_sample_touchpad }, Modifier.weight(1f))
+                WindAction(stringResource(R.string.action_lock_pc), stringResource(R.string.preview_remote_lock), "lock", { feedback = R.string.preview_sample_lock }, Modifier.weight(1f))
             }
         }
         WindCard(Modifier.fillMaxWidth()) {
-            Text("Przykładowy transfer", style = MaterialTheme.typography.titleMedium)
-            Text(if (complete) "Wysłano · 240 MB" else "23 zdjęcia · 154 z 240 MB", style = MaterialTheme.typography.bodyMedium)
+            Text(stringResource(R.string.preview_transfer), style = MaterialTheme.typography.titleMedium)
+            Text(if (complete) stringResource(R.string.preview_sent) else stringResource(R.string.preview_progress), style = MaterialTheme.typography.bodyMedium)
             Box(Modifier.fillMaxWidth().height(5.dp).background(colors.surface).semantics { progressBarRangeInfo = ProgressBarRangeInfo(if (complete) 1f else .64f, 0f..1f) }) {
                 Box(Modifier.fillMaxWidth(if (complete) 1f else .64f).fillMaxHeight().background(colors.primary))
             }
-            WindButton(if (complete) "Resetuj przykład" else "Zakończ przykład", { complete = !complete }, kind = ButtonKind.Secondary)
+            WindButton(if (complete) stringResource(R.string.preview_reset) else stringResource(R.string.preview_finish), { complete = !complete }, kind = ButtonKind.Secondary)
         }
         WindCard(Modifier.fillMaxWidth()) {
-            Text("Pola i przełączniki", style = MaterialTheme.typography.titleMedium)
-            WindSwitch("Automatyczny schowek", clipboard, { clipboard = it }, Modifier.testTag("sampleSwitch"))
-            WindField(name, { name = it }, "Nazwa komputera", Modifier.testTag("sampleName"), errorText = if (validated && name.isBlank()) "Wpisz nazwę komputera." else null)
-            WindButton("Sprawdź nazwę", { validated = true; if (name.isNotBlank()) feedback = "Przykład: nazwa poprawna" }, Modifier.testTag("validateName"))
-            WindButton("Niedostępny", {}, enabled = false, kind = ButtonKind.Secondary)
+            Text(stringResource(R.string.preview_fields), style = MaterialTheme.typography.titleMedium)
+            WindSwitch(stringResource(R.string.preview_auto_clipboard), clipboard, { clipboard = it }, Modifier.testTag("sampleSwitch"))
+            WindField(name, { name = it }, stringResource(R.string.preview_pc_name), Modifier.testTag("sampleName"), errorText = if (validated && name.isBlank()) stringResource(R.string.preview_name_required) else null)
+            WindButton(stringResource(R.string.preview_check_name), { validated = true; if (name.isNotBlank()) feedback = R.string.preview_sample_name }, Modifier.testTag("validateName"))
+            WindButton(stringResource(R.string.unavailable_m), {}, enabled = false, kind = ButtonKind.Secondary)
         }
-        Text("Zażółć gęślą jaźń. 0123456789 · DM Sans", style = MaterialTheme.typography.bodyMedium)
-        Text(feedback, modifier = Modifier.testTag("previewFeedback").semantics { liveRegion = LiveRegionMode.Polite }, color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
-        Text("Podgląd nie łączy z komputerem i nie wysyła plików.", color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+        Text(stringResource(R.string.preview_font), style = MaterialTheme.typography.bodyMedium)
+        Text(stringResource(feedback), modifier = Modifier.testTag("previewFeedback").semantics { liveRegion = LiveRegionMode.Polite }, color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+        Text(stringResource(R.string.preview_note), color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
     }
 }

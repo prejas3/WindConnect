@@ -178,12 +178,10 @@ async fn keep(
 #[tauri::command]
 pub fn relay_setting(state: tauri::State<'_, Relay>) -> Result<Option<String>, String> {
     if state.path.lock().unwrap().is_none() {
-        return Err(STARTING.into());
+        return Err(crate::i18n::tr("relay.starting").into());
     }
     Ok(state.url.lock().unwrap().clone())
 }
-
-const STARTING: &str = "WindConnect jeszcze się uruchamia";
 
 /// Turns the relay on with `url` or off (null); saved for the next start. A refused URL returns its error.
 #[tauri::command]
@@ -210,9 +208,9 @@ pub fn set_relay(
                 }
             }),
         };
-        saved.map_err(|e| format!("nie udało się zapisać ustawienia: {e}"))?;
+        saved.map_err(|e| crate::i18n::trf("relay.save_failed", &[("error", &e)]))?;
     } else {
-        return Err(STARTING.into());
+        return Err(crate::i18n::tr("relay.starting").into());
     }
     *state.url.lock().unwrap() = url.clone();
     if url.is_none() {

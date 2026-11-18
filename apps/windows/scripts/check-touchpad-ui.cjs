@@ -18,7 +18,7 @@ const server = http.createServer(async (req, res) => {
     await fs.mkdir(out,{recursive:true});await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
     browser=await chromium.launch({headless:true});
     for(const theme of ['light','dark']) {
-      const page=await browser.newPage({viewport:{width:480,height:900}});
+      const page=await browser.newPage({ locale: 'pl-PL', viewport:{width:480,height:900}});
       const errors=[];page.on('pageerror',e=>errors.push(e.message));
       await page.addInitScript(({theme})=>{
         localStorage.setItem('windconnect-theme',theme);

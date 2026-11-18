@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- WN-63: every UI text of this module; English is the fallback (values), Polish in values-pl. -->
+<resources>
+    <!-- Clipboard (SystemClipboard) -->
+    <string name="clip_sync_auto">Synchronizacja automatyczna</string>
+    <string name="clip_sync_off">Synchronizacja wyłączona</string>
+    <string name="clip_sync_auto_off">Synchronizacja automatyczna wyłączona</string>
+    <string name="clip_image_from_pc">Obraz z komputera</string>
+    <string name="clip_image_from_history">Obraz z historii</string>
+    <string name="clip_received">Schowek odebrany z komputera</string>
+    <string name="clip_image_received">Obraz odebrany z komputera</string>
+    <string name="clip_copied_from_history">Skopiowano z historii</string>
+    <string name="clip_pin_full">Można przypiąć do %1$d pozycji</string>
+    <string name="clip_pin_too_large">Przypięte obrazy mogą zająć do 64 MB</string>
+    <string name="clip_pin_gone">Tej pozycji nie ma już w historii</string>
+    <string name="clip_image_size">Obraz %1$d×%2$d</string>
+    <string name="clip_image_sent">Obraz wysłany na komputer</string>
+    <string name="clip_image_too_large">Obraz przekracza limit %1$s MB z ustawień</string>
+    <string name="clip_image_peer_limit">Komputer przyjmuje obrazy do %1$s MB</string>
+    <string name="clip_image_unsupported">Komputer nie obsługuje obrazów — zaktualizuj aplikację</string>
+    <string name="clip_image_replaced">Nowszy schowek zastąpił obraz</string>
+    <string name="clip_image_unreadable">Nie udało się odczytać obrazu ze schowka</string>
+    <string name="clip_image_failed">Nie udało się przekazać obrazu na komputer</string>
+    <string name="clip_applied">Schowek dostarczony do komputera</string>
+    <string name="clip_sensitive">Treść oznaczona jako wrażliwa — nie wysłano</string>
+    <string name="clip_unchanged">Schowek jest już zsynchronizowany</string>
+    <string name="clip_refused">Komputer odrzucił schowek lub nowszą zmianę już zastosowano</string>
+    <string name="clip_invalid">Obsługiwany jest tekst do 256 KiB, bez znaku NUL</string>
+    <string name="clip_empty">Brak tekstu w schowku lub brak dostępu do niego</string>
+    <string name="clip_busy">Schowek jest zajęty — spróbuj ponownie</string>
+    <string name="clip_failed">Nie udało się zapisać schowka na komputerze</string>
+    <string name="clip_unavailable">Schowek niedostępny — sprawdź połączenie z komputerem</string>
+    <!-- Files -->
+    <string name="files_publish_failed">Nie udało się opublikować pliku w Pobranych</string>
+    <string name="files_create_failed">Nie można utworzyć pliku w Pobranych</string>
+    <string name="files_write_failed">Nie można zapisać pliku w Pobranych</string>
+    <string name="files_published_missing">Opublikowany plik nie jest dostępny</string>
+    <string name="files_no_connection">Brak połączenia z komputerem</string>
+    <string name="files_target_changed">Zmieniono komputer docelowy. Rozpocznij wysyłkę ponownie.</string>
+    <string name="files_not_accepted">Komputer nie przyjmuje plików</string>
+    <!-- Links, media, find -->
+    <string name="link_channel">Linki z komputera</string>
+    <string name="link_channel_description">Link, który komputer prosi otworzyć na telefonie</string>
+    <string name="link_open_title">Otwórz link z komputera</string>
+    <string name="media_untitled">Bez tytułu</string>
+    <string name="media_on_pc">na %1$s</string>
+    <string name="media_channel">Multimedia komputera</string>
+    <string name="media_channel_description">Odtwarzacz komputera: tytuł i sterowanie</string>
+    <string name="media_previous">Poprzedni</string>
+    <string name="media_pause">Wstrzymaj</string>
+    <string name="media_play">Odtwórz</string>
+    <string name="media_next">Następny</string>
+    <string name="find_channel">Znajdź telefon</string>
+    <string name="find_channel_description">Dzwonienie na prośbę komputera</string>
+    <string name="find_ringing_for">Dzwoni na prośbę: %1$s</string>
+    <string name="find_ringing">Dzwoni na prośbę komputera</string>
+    <string name="files_journal_large">Dziennik odbioru jest za duży</string>
+    <string name="files_previous_gone">Odebrany wcześniej plik został przeniesiony lub usunięty</string>
+    <string name="files_history_full">Historia odbioru jest pełna. Wyczyść historię w WindConnect.</string>
+    <string name="files_receive_cancelled">Anulowano odbiór</string>
+    <string name="find_stop_action">Zatrzymaj</string>
+    <string name="clip_image_sending">Wysyłanie obrazu…</string>
+    <string name="touchpad_target_changed">Zmieniono komputer</string>
+    <string name="clip_image_file_name">obraz.png</string>
+</resources>

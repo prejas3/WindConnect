@@ -75,32 +75,30 @@ fun SmsControls() {
         } else connections.setSmsAllowed(on)
     }
     WindCard {
-        Text("SMS na komputerze", style = MaterialTheme.typography.titleMedium)
-        Text("Komputer może czytać wątki SMS i MMS z tego telefonu w oknie „Wiadomości”. Treść idzie tylko bezpośrednio na " +
-            "sparowany komputer, szyfrowana, i nie jest tam zapisywana na dysku. Kontakty (opcjonalnie) dają nazwy i zdjęcia " +
-            "zamiast samych numerów.")
-        Text("Po włączeniu Android zapyta o dostęp do SMS i kontaktów. Odmowa niczego innego nie wyłącza.",
+        Text(str(R.string.sms_title), style = MaterialTheme.typography.titleMedium)
+        Text(str(R.string.sms_about))
+        Text(str(R.string.sms_permissions),
             style = MaterialTheme.typography.bodySmall)
-        WindSwitch("SMS na komputerze", allowed && access, turn, Modifier.testTag("smsAllowed"))
+        WindSwitch(str(R.string.sms_title), allowed && access, turn, Modifier.testTag("smsAllowed"))
         val state = when {
-            allowed && access && contacts -> "Komputer widzi wątki z nazwami kontaktów."
-            allowed && access -> "Komputer widzi wątki; bez dostępu do kontaktów pokaże same numery."
-            refused || (allowed && !access) -> "Brak dostępu do SMS. Możesz go przyznać w ustawieniach aplikacji."
-            else -> "Wyłączone."
+            allowed && access && contacts -> str(R.string.sms_with_contacts)
+            allowed && access -> str(R.string.sms_no_contacts)
+            refused || (allowed && !access) -> str(R.string.sms_no_access)
+            else -> str(R.string.off_sentence)
         }
         Text(state, style = MaterialTheme.typography.bodySmall,
             modifier = Modifier.testTag("smsState").semantics { liveRegion = LiveRegionMode.Polite })
         // WN-56: sending is a separate consent and needs reading on (the PC sends from the window that shows the threads).
         if (allowed && access) {
-            WindSwitch("Wysyłanie z komputera", sendAllowed && sendAccess, turnSend, Modifier.testTag("smsSendAllowed"))
+            WindSwitch(str(R.string.sms_send_title), sendAllowed && sendAccess, turnSend, Modifier.testTag("smsSendAllowed"))
             Text(when {
-                sendAllowed && sendAccess -> "Komputer może wysyłać SMS i MMS z tego telefonu (opłaty jak za zwykłe wiadomości). Najwyżej 10 na minutę."
-                sendRefused || (sendAllowed && !sendAccess) -> "Brak zgody na wysyłanie SMS. Możesz ją przyznać w ustawieniach aplikacji."
-                else -> "Po włączeniu Android zapyta o wysyłanie SMS i (opcjonalnie) o stan telefonu, by pokazać wybór karty SIM."
+                sendAllowed && sendAccess -> str(R.string.sms_send_about)
+                sendRefused || (sendAllowed && !sendAccess) -> str(R.string.sms_send_denied)
+                else -> str(R.string.sms_send_permissions)
             }, style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("smsSendState"))
         }
         if (refused || sendRefused || (allowed && !access) || (allowed && access && !contacts)) {
-            WindButton("Otwórz ustawienia aplikacji", {
+            WindButton(str(R.string.open_app_settings), {
                 val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null))
                 if (context !is Activity) intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 context.startActivity(intent)

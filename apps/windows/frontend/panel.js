@@ -1,3 +1,4 @@
+import { t, locale } from './i18n.js';
 import { createTransfers } from './transfers.js';
 import './touchpad.js';
 const invoke = window.__TAURI__?.core.invoke;
@@ -24,38 +25,38 @@ function deviceRow(row) {
   const text = document.createElement('div');
   const name = document.createElement('span'); name.className = 'name'; name.textContent = row.name; name.title = row.name;
   const detail = document.createElement('small');
-  const when = new Date(row.paired_at * 1000).toLocaleDateString('pl-PL');
-  detail.textContent = row.owed ? `Usunięto · telefon dowie się przy następnym połączeniu` : `${row.connected ? 'Połączony' : 'Niepołączony'} · sparowano ${when} · ${row.fingerprint}`;
+  const when = new Date(row.paired_at * 1000).toLocaleDateString(locale);
+  detail.textContent = row.owed ? t('devices.removed_pending') : t('devices.state_line', { state: t(row.connected ? 'devices.connected' : 'devices.disconnected'), when, fingerprint: row.fingerprint });
   detail.className = row.owed ? 'owed' : row.connected ? 'connected' : '';
   text.append(name, detail);
   const actions = document.createElement('div'); actions.className = 'device-actions';
-  const button = (label, kind, onClick, aria) => { const b = document.createElement('button'); b.className = `button ${kind} small`; b.textContent = label; b.setAttribute('aria-label', `${aria || label}: ${row.name}`); b.addEventListener('click', onClick); return b; };
+  const button = (label, kind, onClick, aria) => { const b = document.createElement('button'); b.className = `button ${kind} small`; b.textContent = label; b.setAttribute('aria-label', t('common.action_for', { action: aria || label, name: row.name })); b.addEventListener('click', onClick); return b; };
   const send = (action, extra = {}) => invoke?.('device_action', { action, key: row.key, ...extra }).catch(error);
   if (!row.owed) {
-    actions.append(button('Zmień nazwę', 'quiet', () => { editing = { key: row.key, mode: 'rename' }; renderDevices(lastDevices); }));
-    if (row.connected) actions.append(button('Rozłącz', 'quiet', () => send('disconnect')));
-    actions.append(button('Usuń', 'quiet', () => { editing = { key: row.key, mode: 'unpair' }; renderDevices(lastDevices); }, 'Usuń parowanie'));
+    actions.append(button(t('common.rename'), 'quiet', () => { editing = { key: row.key, mode: 'rename' }; renderDevices(lastDevices); }));
+    if (row.connected) actions.append(button(t('common.disconnect'), 'quiet', () => send('disconnect')));
+    actions.append(button(t('common.remove'), 'quiet', () => { editing = { key: row.key, mode: 'unpair' }; renderDevices(lastDevices); }, t('devices.unpair')));
   }
   head.append(text, actions);
   item.append(head);
   if (editing?.key === row.key && editing.mode === 'rename') {
     const label = document.createElement('label'); label.className = 'field';
-    const caption = document.createElement('span'); caption.textContent = 'Nazwa widoczna na tym komputerze';
+    const caption = document.createElement('span'); caption.textContent = t('devices.rename_label');
     const input = document.createElement('input'); input.value = editing.value ?? row.name; input.maxLength = 64;
     input.addEventListener('input', () => { editing.value = input.value; input.removeAttribute('aria-invalid'); });
     const buttons = document.createElement('div'); buttons.className = 'button-row';
     const save = () => { const value = input.value.trim(); if (!value) { input.setAttribute('aria-invalid', 'true'); return; } editing = null; send('rename', { name: value }); };
     input.addEventListener('keydown', e => { if (e.key === 'Enter') save(); if (e.key === 'Escape') { e.stopPropagation(); editing = null; renderDevices(lastDevices); } });
-    buttons.append(button('Zapisz', 'primary', save), button('Anuluj', 'quiet', () => { editing = null; renderDevices(lastDevices); }));
+    buttons.append(button(t('common.save'), 'primary', save), button(t('common.cancel'), 'quiet', () => { editing = null; renderDevices(lastDevices); }));
     label.append(caption, input, buttons);
     item.append(label);
     queueMicrotask(() => input.focus());
   } else if (editing?.key === row.key && editing.mode === 'unpair') {
     const confirm = document.createElement('div'); confirm.className = 'confirm'; confirm.setAttribute('role', 'group');
     const question = document.createElement('p');
-    question.textContent = `Usunąć parowanie z: ${row.name}? Telefon też je usunie${row.connected ? '' : ' przy następnym połączeniu'}. Ponowne połączenie wymaga nowego parowania.`;
+    question.textContent = t(row.connected ? 'devices.unpair_now' : 'devices.unpair_later', { name: row.name });
     const buttons = document.createElement('div'); buttons.className = 'button-row';
-    buttons.append(button('Usuń parowanie', 'danger', () => { editing = null; send('unpair'); }), button('Anuluj', 'quiet', () => { editing = null; renderDevices(lastDevices); }));
+    buttons.append(button(t('devices.unpair'), 'danger', () => { editing = null; send('unpair'); }), button(t('common.cancel'), 'quiet', () => { editing = null; renderDevices(lastDevices); }));
     confirm.append(question, buttons);
     item.append(confirm);
   }
@@ -80,7 +81,7 @@ function renderBattery(battery) {
   box.classList.toggle('low', !charging && level <= 15);
   box.querySelector('.level').setAttribute('width', String(Math.max(level > 0 ? 1.5 : 0, 16 * level / 100)));
   box.querySelector('.battery-text').textContent = `${level}%`;
-  box.setAttribute('aria-label', `Bateria telefonu ${level}%${charging ? ', ładuje się' : ''}`);
+  box.setAttribute('aria-label', t(charging ? 'battery.label_charging' : 'battery.label', { level: `${level}%` }));
 }
 
 // WN-46: the phone's player. Every text from it goes in with textContent only (it comes from other apps); the art only as a
@@ -113,8 +114,8 @@ function renderMedia(next) {
   card.hidden = !media;
   clearInterval(mediaTimer); mediaTimer = null;
   if (!media) return;
-  document.querySelector('#media-app').textContent = media.app ? `Na telefonie · ${media.app}` : 'Na telefonie';
-  document.querySelector('#media-title').textContent = media.title || 'Bez tytułu';
+  document.querySelector('#media-app').textContent = media.app ? t('media.on_phone_app', { app: media.app }) : t('media.on_phone');
+  document.querySelector('#media-title').textContent = media.title || t('media.untitled');
   document.querySelector('#media-sub').textContent = [media.artist, media.album].filter(Boolean).join(' · ');
   const art = document.querySelector('#media-art');
   const ok = typeof media.art === 'string' && /^data:image\/(jpeg|png);base64,[A-Za-z0-9+/=]+$/.test(media.art);
@@ -123,7 +124,7 @@ function renderMedia(next) {
   const can = bit => (media.actions & bit) !== 0;
   const toggle = document.querySelector('#media-toggle');
   toggle.classList.toggle('playing', media.playing);
-  toggle.setAttribute('aria-label', media.playing ? 'Wstrzymaj' : 'Odtwórz');
+  toggle.setAttribute('aria-label', media.playing ? t('media.pause') : t('panel.media-toggle_label'));
   toggle.disabled = !can(media.playing ? MEDIA.pause : MEDIA.play);
   document.querySelector('#media-next').disabled = !can(MEDIA.next);
   document.querySelector('#media-previous').disabled = !can(MEDIA.previous);
@@ -148,7 +149,7 @@ document.querySelector('#media-progress').addEventListener('keydown', event => {
 });
 
 // WN-57: the phone's missed calls (newest first, at most 10), as text only.
-const missedTime = new Intl.DateTimeFormat('pl-PL', { weekday: 'short', hour: '2-digit', minute: '2-digit' });
+const missedTime = new Intl.DateTimeFormat(locale, { weekday: 'short', hour: '2-digit', minute: '2-digit' });
 function renderMissed(items) {
   const section = document.querySelector('#missed-calls');
   section.hidden = !items.length;
@@ -163,17 +164,17 @@ function renderMissed(items) {
   }));
 }
 
-// WN-50: ring the phone; the tile turns into "Zatrzymaj" while it starts or rings. State comes pushed in pairing-state.
+// WN-50: ring the phone; the tile turns into t('find.stop') while it starts or rings. State comes pushed in pairing-state.
 function renderFind(find, connected) {
   const button = document.querySelector('#find-phone');
   const status = document.querySelector('#find-status');
   const active = !!find && (find.state === 'starting' || find.state === 'ringing');
   button.disabled = !connected || !find || (!find.available && !active);
   button.setAttribute('aria-pressed', String(active));
-  button.querySelector('.find-label').textContent = active ? 'Zatrzymaj' : 'Dzwoń';
-  button.setAttribute('aria-label', active ? 'Zatrzymaj dzwonienie telefonu' : 'Zadzwoń telefonem, by go znaleźć');
-  const line = !connected ? '' : active ? (find.state === 'ringing' ? 'Telefon dzwoni, także w trybie cichym' : 'Łączenie z telefonem…')
-    : find?.last || (find && !find.available ? 'Dzwonienie niedostępne: włącz je w ustawieniach WindConnect na telefonie' : '');
+  button.querySelector('.find-label').textContent = active ? t('find.stop') : t('panel.dzwon');
+  button.setAttribute('aria-label', active ? t('find.stop_label') : t('find.ring_label'));
+  const line = !connected ? '' : active ? (find.state === 'ringing' ? t('find.ringing') : t('find.connecting'))
+    : find?.last || (find && !find.available ? t('find.unavailable') : '');
   if (status.textContent !== line) status.textContent = line;
 }
 
@@ -193,9 +194,9 @@ function renderPairing(state) {
   const connected = state.phase === 'connected';
   const sas = state.phase.startsWith('sas-');
   const asking = state.phase === 'sas-code';
-  document.querySelector('#phone-name').textContent = state.phone || 'Twój telefon';
-  document.querySelector('#connection-state').textContent = ({ connected: 'Połączono · Wi-Fi', waiting: 'Oczekiwanie na telefon', 'sas-waiting': 'Oczekiwanie na telefon', 'sas-code': 'Porównaj kody', 'sas-confirming': 'Porównaj kody', connecting: 'Sparowano · Łączenie…', offline: 'Telefon rozłączony', loading: 'Uruchamianie…' })[state.phase] || 'Brak połączenia';
-  document.querySelector('#pairing-title').textContent = connected ? (state.phone || 'Telefon połączony') : waiting ? 'Połącz telefon' : sas ? 'Paruj bez aparatu' : state.phase === 'connecting' ? 'Kończenie połączenia…' : 'Parowanie telefonu';
+  document.querySelector('#phone-name').textContent = state.phone || t('panel.phone-name');
+  document.querySelector('#connection-state').textContent = ({ connected: t('panel.state.connected'), waiting: t('panel.state.waiting'), 'sas-waiting': t('panel.state.waiting'), 'sas-code': t('panel.state.compare'), 'sas-confirming': t('panel.state.compare'), connecting: t('panel.state.connecting'), offline: t('panel.state.offline'), loading: t('main.status') })[state.phase] || t('menu.tray-state');
+  document.querySelector('#pairing-title').textContent = connected ? (state.phone || t('panel.title.connected')) : waiting ? t('panel.pairing-title') : sas ? t('panel.pairing-sas') : state.phase === 'connecting' ? t('panel.title.finishing') : t('panel.title.pairing');
   // CCS/1 SEC:the code is shown only while a decision is pending; accept only after the person compares both screens (§12.6).
   const code = document.querySelector('#pairing-code');
   code.hidden = !asking || !state.code;
@@ -212,7 +213,7 @@ function renderPairing(state) {
   document.querySelector('#open-sms').hidden = !(state.connected || connected);
   // WN-100: links to the phone, when it takes them.
   document.querySelector('#open-on-phone').hidden = !((state.connected || connected) && state.open_on_phone);
-  document.querySelector('#open-sms').setAttribute('aria-description', state.sms ? 'SMS z telefonu' : 'Telefon nie udostępnia SMS');
+  document.querySelector('#open-sms').setAttribute('aria-description', state.sms ? t('panel.sms_title') : t('panel.sms_unavailable'));
   renderMedia(state.connected || connected ? state.media : null);
   renderNotifications(state.notifications, !!(state.connected || connected));
   renderMissed(state.call_toasts && (state.connected || connected) ? state.missed_calls || [] : []);
@@ -221,11 +222,11 @@ function renderPairing(state) {
   document.querySelector('#pairing-hint').hidden = !connected;
   const refresh = document.querySelector('#pairing-refresh');
   refresh.hidden = connected || asking || ['connecting','loading','failed','sas-confirming'].includes(state.phase);
-  refresh.textContent = sas ? 'Wróć do kodu QR' : 'Wyświetl nowy kod';
+  refresh.textContent = sas ? t('onboarding.back_to_qr') : t('panel.pairing-refresh');
   refresh.classList.toggle('primary', !sas);
   document.querySelector('#pairing-cancel').hidden = !(waiting || sas);
   document.querySelector('#pairing-warning').hidden = !state.skipped_records;
-  document.querySelector('#pairing-warning').textContent = state.skipped_records ? `Pominięto uszkodzone wpisy sparowania: ${state.skipped_records}.` : '';
+  document.querySelector('#pairing-warning').textContent = state.skipped_records ? t('pairing.skipped', { count: state.skipped_records }) : '';
   const canvas = document.querySelector('#pairing-qr');
   canvas.hidden = !waiting || !state.qr;
   if (!canvas.hidden) {
@@ -256,10 +257,10 @@ function renderNotice(notice) {
 }
 function renderDrag(over) {
   const phone = document.querySelector('#phone-name').textContent;
-  document.querySelector('#drop-title').textContent = `Upuść, aby wysłać na ${phone}`;
+  document.querySelector('#drop-title').textContent = t('panel.drop_to', { phone });
   document.querySelector('#drop-zone').hidden = !over;
 }
-const openStatus = { done: 'Otwarto na telefonie', refused: 'Telefon odrzucił: otwieranie linków z komputera jest wyłączone', 'bad-argument': 'To nie jest adres http(s)', failed: 'Nie udało się otworzyć linku', busy: 'Za dużo próśb, spróbuj za chwilę', unavailable: 'Telefon nie przyjmuje linków' };
+const openStatus = { done: t('open.done'), refused: t('open.refused'), 'bad-argument': t('open.bad_url'), failed: t('open.failed'), busy: t('open.busy'), unavailable: t('open.unavailable') };
 document.querySelector('#open-on-phone').addEventListener('submit', async event => {
   event.preventDefault();
   const input = document.querySelector('#phone-url');
@@ -267,7 +268,7 @@ document.querySelector('#open-on-phone').addEventListener('submit', async event 
   if (!input.value.trim()) return;
   try {
     const result = await invoke?.('open_on_phone', { url: input.value });
-    status.textContent = openStatus[result] || 'Nie udało się otworzyć linku';
+    status.textContent = openStatus[result] || t('open.failed');
     if (result === 'done') input.value = '';
   } catch (e) { error(e); }
 });
@@ -284,7 +285,7 @@ document.querySelectorAll(Object.keys(pairingActions).map(id => `#${id}`).join('
 async function refreshShortcut() {
   const state = await invoke('panel_snapshot');
   document.querySelector('#shortcut-error').hidden = !state.shortcut_error;
-  document.querySelector('#shortcut').textContent = state.shortcut_error ? 'Skrót niedostępny' : 'Win + Shift + W';
+  document.querySelector('#shortcut').textContent = state.shortcut_error ? t('panel.shortcut_unavailable') : 'Win + Shift + W';
 }
 async function start() {
   if (!invoke) return;

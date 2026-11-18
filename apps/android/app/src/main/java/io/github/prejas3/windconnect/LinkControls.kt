@@ -11,16 +11,15 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.prejas3.windconnect.ui.WindCard
 import io.github.prejas3.windconnect.ui.WindSwitch
 
-/** WN-100 Settings: "Otwieraj linki z komputera" (default on). Off, the PC's "Otwórz na telefonie" is refused. */
+/** WN-100 Settings: str(R.string.links_allow) (default on). Off, the PC's "Otwórz na telefonie" is refused. */
 @Composable
 fun LinkControls() {
     val connections = (LocalContext.current.applicationContext as WindApplication).connections
     val allowed by connections.openLinks.collectAsStateWithLifecycle()
     WindCard {
-        Text("Linki z komputera", style = MaterialTheme.typography.titleMedium)
-        WindSwitch("Otwieraj linki z komputera", allowed, connections::setOpenLinks, Modifier.testTag("openLinks"))
-        Text("Komputer może poprosić o otwarcie adresu http lub https. Gdy aplikacja jest na ekranie, link otwiera się od razu; " +
-            "w tle pojawia się powiadomienie do stuknięcia. Nic innego komputer na telefonie nie uruchamia.",
+        Text(str(R.string.link_channel), style = MaterialTheme.typography.titleMedium)
+        WindSwitch(str(R.string.links_allow), allowed, connections::setOpenLinks, Modifier.testTag("openLinks"))
+        Text(str(R.string.links_about),
             style = MaterialTheme.typography.bodySmall)
     }
 }

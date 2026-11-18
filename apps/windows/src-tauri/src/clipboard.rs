@@ -70,7 +70,7 @@ impl Shared {
             let _gate = shared.pins_gate.lock().unwrap();
             let plain = shared.history.lock().unwrap().encode_pins();
             if crate::clipboard_history::save_pins(&shared.pins, &plain).is_err() {
-                shared.status("Nie udało się zapisać przypiętych pozycji");
+                shared.status(crate::i18n::tr("clipboard.pins_save_failed"));
             }
         });
     }
@@ -85,7 +85,7 @@ impl Shared {
     async fn send(self: &Arc<Self>, capture: crate::clipboard_native::Capture, manual: bool) {
         if capture.sensitive {
             if manual {
-                self.status("Treść oznaczona jako wrażliwa — nie wysłano");
+                self.status(crate::i18n::tr("clipboard.sensitive"));
             }
             return;
         }
@@ -121,12 +121,12 @@ impl Shared {
         let image = match converted {
             Ok(Ok(image)) => image,
             Ok(Err(crate::clipboard_image::ImageError::TooBig)) => {
-                self.status("Obraz jest za duży (ponad 16384 px)");
+                self.status(crate::i18n::tr("clipboard.image_too_tall"));
                 return;
             }
             _ => {
                 if manual {
-                    self.status("Nieobsługiwany format obrazu");
+                    self.status(crate::i18n::tr("clipboard.image_format"));
                 }
                 return;
             }
@@ -141,7 +141,7 @@ impl Shared {
         let sending = self.clone();
         let status = active
             .send_image(image, false, manual, move || {
-                sending.status("Wysyłanie obrazu…")
+                sending.status(crate::i18n::tr("clipboard.image_sending"))
             })
             .await;
         if status == Status::Applied {
@@ -174,7 +174,7 @@ impl Sink for WindowsSink {
         let applied = shared.native.write_received(text);
         if applied {
             shared.record(|h| h.record_text(text, Direction::FromPhone, now_ms()));
-            shared.status("Schowek odebrany z telefonu");
+            shared.status(crate::i18n::tr("clipboard.received"));
         }
         applied
     }
@@ -215,7 +215,7 @@ impl Sink for WindowsSink {
                     shared.history_changed();
                 });
             }
-            shared.status("Obraz odebrany z telefonu");
+            shared.status(crate::i18n::tr("clipboard.image_received"));
         }
         applied
     }
@@ -268,9 +268,9 @@ pub fn init(app: &tauri::AppHandle, directory: &std::path::Path) -> std::io::Res
         state: Mutex::new(Snapshot {
             enabled,
             status: if enabled {
-                "Synchronizacja automatyczna"
+                crate::i18n::tr("clipboard.sync_auto")
             } else {
-                "Synchronizacja wyłączona"
+                crate::i18n::tr("clipboard.sync_off")
             }
             .into(),
             shortcut_error: false,
@@ -298,9 +298,9 @@ pub fn init(app: &tauri::AppHandle, directory: &std::path::Path) -> std::io::Res
     let ready = shared.clone();
     let _ = runtime.shared.set(shared);
     ready.status(if enabled {
-        "Synchronizacja automatyczna"
+        crate::i18n::tr("clipboard.sync_auto")
     } else {
-        "Synchronizacja wyłączona"
+        crate::i18n::tr("clipboard.sync_off")
     });
     *runtime.worker.lock().unwrap() = Some(tauri::async_runtime::spawn(async move {
         while input.changed().await.is_ok() {
@@ -350,8 +350,8 @@ pub fn send_manual(app: &tauri::AppHandle) {
         tauri::async_runtime::spawn(async move {
             match tokio::task::spawn_blocking(crate::clipboard_native::read).await {
                 Ok(Ok(Some(value))) => shared.send(value, true).await,
-                Ok(Ok(None)) => shared.status("Brak tekstu ani obrazu w schowku"),
-                _ => shared.status("Schowek zajęty — spróbuj ponownie"),
+                Ok(Ok(None)) => shared.status(crate::i18n::tr("clipboard.empty")),
+                _ => shared.status(crate::i18n::tr("clipboard.busy")),
             }
         });
     }
@@ -364,7 +364,7 @@ pub fn clipboard_snapshot(state: tauri::State<'_, Runtime>) -> Snapshot {
         .map(|s| s.state.lock().unwrap().clone())
         .unwrap_or(Snapshot {
             enabled: false,
-            status: "Schowek niedostępny".into(),
+            status: crate::i18n::tr("clipboard.unavailable_short").into(),
             shortcut_error: true,
             image_limit_mb: DEFAULT_IMAGE_LIMIT_MB,
         })
@@ -443,10 +443,10 @@ fn copy_from_history(shared: &Arc<Shared>, id: u64) -> Result<(), String> {
             }
         };
         if !written {
-            shared.status("Schowek zajęty — spróbuj ponownie");
+            shared.status(crate::i18n::tr("clipboard.busy"));
             return;
         }
-        shared.status("Skopiowano z historii");
+        shared.status(crate::i18n::tr("clipboard.copied_from_history"));
         if shared.hub.enabled() && shared.active.lock().unwrap().is_some() {
             shared.send(capture, false).await;
         }
@@ -485,9 +485,9 @@ pub fn clipboard_action(
                 }
                 Err(PinError::Missing) => return Err("history entry unavailable".into()),
                 Err(error) => shared.status(match error {
-                    PinError::Full => "Można przypiąć najwyżej 20 pozycji",
-                    PinError::TooLarge => "Przypięte obrazy mogą zająć najwyżej 64 MB",
-                    _ => "Obraz jeszcze dochodzi — przypnij go za chwilę",
+                    PinError::Full => crate::i18n::tr("clipboard.pin_full"),
+                    PinError::TooLarge => crate::i18n::tr("clipboard.pin_too_large"),
+                    _ => crate::i18n::tr("clipboard.pin_arriving"),
                 }),
             }
         }
@@ -535,9 +535,9 @@ pub fn clipboard_action(
                 shared.history_changed();
             }
             shared.status(if enabled {
-                "Synchronizacja automatyczna"
+                crate::i18n::tr("clipboard.sync_auto")
             } else {
-                "Synchronizacja wyłączona"
+                crate::i18n::tr("clipboard.sync_off")
             });
         }
         "image-limit" => {
@@ -562,19 +562,19 @@ pub fn clipboard_action(
 }
 fn status_text(status: Status) -> &'static str {
     match status {
-        Status::Applied => "Schowek dostarczony do telefonu",
-        Status::Refused => "Telefon odrzucił schowek lub ma nowszą zmianę",
-        Status::Sensitive => "Treść oznaczona jako wrażliwa — nie wysłano",
-        Status::Invalid => "Obsługiwany jest tekst do 256 KiB, bez NUL",
-        Status::Disabled => "Synchronizacja wyłączona",
-        Status::Unchanged => "Schowek jest już zsynchronizowany",
-        Status::Busy => "Schowek zajęty — spróbuj ponownie",
-        Status::Failed => "Nie udało się zapisać schowka na telefonie",
-        Status::Unavailable => "Schowek niedostępny — sprawdź połączenie z telefonem",
-        Status::TooLarge => "Obraz przekracza limit z ustawień",
-        Status::PeerLimit(_) => "Telefon nie przyjmuje tak dużych obrazów",
-        Status::Unsupported => "Telefon nie obsługuje obrazów — zaktualizuj aplikację",
-        Status::Replaced => "Nowszy schowek zastąpił obraz",
+        Status::Applied => crate::i18n::tr("clipboard.applied"),
+        Status::Refused => crate::i18n::tr("clipboard.refused"),
+        Status::Sensitive => crate::i18n::tr("clipboard.sensitive"),
+        Status::Invalid => crate::i18n::tr("clipboard.invalid"),
+        Status::Disabled => crate::i18n::tr("clipboard.sync_off"),
+        Status::Unchanged => crate::i18n::tr("clipboard.unchanged"),
+        Status::Busy => crate::i18n::tr("clipboard.busy"),
+        Status::Failed => crate::i18n::tr("clipboard.write_failed"),
+        Status::Unavailable => crate::i18n::tr("clipboard.unavailable"),
+        Status::TooLarge => crate::i18n::tr("clipboard.over_setting"),
+        Status::PeerLimit(_) => crate::i18n::tr("clipboard.peer_too_large"),
+        Status::Unsupported => crate::i18n::tr("clipboard.images_unsupported"),
+        Status::Replaced => crate::i18n::tr("clipboard.replaced"),
     }
 }
 fn megabytes(bytes: u64) -> String {
@@ -582,23 +582,28 @@ fn megabytes(bytes: u64) -> String {
     if tenths.is_multiple_of(10) {
         format!("{}", tenths / 10)
     } else {
-        format!("{},{}", tenths / 10, tenths % 10)
+        // The decimal separator of the UI language (WN-63).
+        let separator = if crate::i18n::lang() == crate::i18n::Lang::Pl {
+            ','
+        } else {
+            '.'
+        };
+        format!("{}{separator}{}", tenths / 10, tenths % 10)
     }
 }
 /// What the panel says after an image send.
 fn image_status_text(status: Status, size: u64, limit: u64) -> String {
     match status {
-        Status::Applied => "Obraz wysłany na telefon".into(),
-        Status::TooLarge => format!(
-            "Obraz za duży ({} MB, limit {} MB)",
-            megabytes(size),
-            megabytes(limit)
+        Status::Applied => crate::i18n::tr("clipboard.image_sent").into(),
+        Status::TooLarge => crate::i18n::trf(
+            "clipboard.image_over",
+            &[("size", &megabytes(size)), ("limit", &megabytes(limit))],
         ),
         Status::PeerLimit(limit) => {
-            format!("Telefon przyjmuje obrazy do {} MB", megabytes(limit))
+            crate::i18n::trf("clipboard.peer_limit", &[("limit", &megabytes(limit))])
         }
-        Status::Failed => "Nie udało się przekazać obrazu na telefon".into(),
-        Status::Invalid => "Nieobsługiwany format obrazu".into(),
+        Status::Failed => crate::i18n::tr("clipboard.image_failed").into(),
+        Status::Invalid => crate::i18n::tr("clipboard.image_format").into(),
         other => status_text(other).into(),
     }
 }

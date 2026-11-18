@@ -20,21 +20,21 @@ class SendClipboardActivity : ComponentActivity() {
     private var core: WindCore? = null
     private var sent = false
     private var focused = false
-    private val status = mutableStateOf("Przygotowywanie wysyłania schowka…")
+    private val status = mutableStateOf(str(R.string.clipboard_preparing))
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         (application as WindApplication).connections.clipboardFocus(false)
         enableEdgeToEdge()
         setContent { WindApp(forceContent = true) {
             Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
-                Text("Wyślij schowek", style = MaterialTheme.typography.headlineSmall)
+                Text(str(R.string.send_clipboard), style = MaterialTheme.typography.headlineSmall)
                 Text(status.value)
-                WindButton("Zamknij", { finish() }, kind = ButtonKind.Secondary)
+                WindButton(str(R.string.close), { finish() }, kind = ButtonKind.Secondary)
             }
         } }
         lifecycleScope.launch {
             try { core = (application as WindApplication).connections.acquire(); sendIfFocused() }
-            catch (_: Exception) { status.value = "Nie udało się otworzyć połączenia" }
+            catch (_: Exception) { status.value = str(R.string.touchpad_open_failed) }
         }
     }
     override fun onWindowFocusChanged(hasFocus: Boolean) { super.onWindowFocusChanged(hasFocus); focused = hasFocus; sendIfFocused() }
@@ -54,7 +54,7 @@ class SendClipboardActivity : ComponentActivity() {
                 val result = opened.sendCurrentClipboard()
                 status.value = opened.clipboardUi.value.status
                 if (result == "applied" || result == "unchanged") finish()
-            } catch (_: Exception) { status.value = "Nie udało się wysłać schowka" }
+            } catch (_: Exception) { status.value = str(R.string.clipboard_send_failed) }
         }
     }
     override fun onDestroy() {

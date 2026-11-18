@@ -12,13 +12,16 @@ android {
         applicationId = "io.github.prejas3.windconnect"
         minSdk = 29
         targetSdk = 35
-        versionCode = 87
-        versionName = "0.74.0"
+        versionCode = 88
+        versionName = "0.75.0"
         @Suppress("UNCHECKED_CAST")
         ndk { abiFilters += rootProject.extra["windAbis"] as List<String> }
 
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        testInstrumentationRunner = "io.github.prejas3.windconnect.PolishTestRunner"
     }
+
+    // WN-63: English (values) and Polish (values-pl) only; libraries' other languages would mix into the UI.
+    androidResources { localeFilters += listOf("en", "pl") }
 
     buildFeatures {
         compose = true

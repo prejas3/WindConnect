@@ -16,9 +16,9 @@ pub enum Phase {
 impl Phase {
     pub fn label(self) -> &'static str {
         match self {
-            Self::Connected => "Połączono",
-            Self::Searching => "Szukam urządzenia",
-            Self::Unavailable => "Brak połączenia",
+            Self::Connected => crate::i18n::tr("tray.connected"),
+            Self::Searching => crate::i18n::tr("tray.searching"),
+            Self::Unavailable => crate::i18n::tr("tray.unavailable"),
         }
     }
 }

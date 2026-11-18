@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="pl">
+<html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -12,90 +12,90 @@
 <body>
   <header class="titlebar" id="titlebar">
     <span class="brand"><span class="brand-mark" aria-hidden="true"></span>WindConnect</span>
-    <div class="window-actions" aria-label="Okno">
-      <button class="caption" data-window="minimize" aria-label="Minimalizuj"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 16h14"/></svg></button>
-      <button class="caption" data-window="maximize" aria-label="Maksymalizuj lub przywróć"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="1"/></svg></button>
-      <button class="caption close" data-window="close" aria-label="Zamknij"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
+    <div class="window-actions" data-i18n-aria-label="main.okno">
+      <button class="caption" data-window="minimize" data-i18n-aria-label="main.minimalizuj"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 16h14"/></svg></button>
+      <button class="caption" data-window="maximize" data-i18n-aria-label="main.maksymalizuj_lub_przywroc"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="1"/></svg></button>
+      <button class="caption close" data-window="close" data-i18n-aria-label="main.zamknij"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
     </div>
   </header>
   <main id="main">
-    <div class="page-heading"><div><p class="eyebrow">Windows ⇄ Android</p><h1>Twoje urządzenia</h1></div>
-      <div class="segmented" role="group" aria-label="Motyw">
-        <button data-theme-choice="system" aria-pressed="true">System</button><button data-theme-choice="light" aria-pressed="false">Jasny</button><button data-theme-choice="dark" aria-pressed="false">Ciemny</button>
+    <div class="page-heading"><div><p class="eyebrow">Windows ⇄ Android</p><h1 data-i18n="main.twoje_urzadzenia"></h1></div>
+      <div class="segmented" role="group" data-i18n-aria-label="main.motyw">
+        <button data-theme-choice="system" aria-pressed="true" data-i18n="main.system"></button><button data-theme-choice="light" aria-pressed="false" data-i18n="main.jasny"></button><button data-theme-choice="dark" aria-pressed="false" data-i18n="main.ciemny"></button>
       </div>
     </div>
     <section id="onboarding" class="surface onboarding" aria-labelledby="onboarding-title" hidden>
-      <h2 id="onboarding-title" tabindex="-1">Połącz telefon z tym komputerem</h2>
-      <p class="lead">Zajmie to mniej niż minutę. Połączenie działa w Twojej sieci, jest szyfrowane od końca do końca i nie wymaga konta.</p>
+      <h2 id="onboarding-title" tabindex="-1" data-i18n="main.onboarding-title"></h2>
+      <p class="lead" data-i18n="main.zajmie_to_mniej_niz"></p>
       <ol class="onboarding-steps">
-        <li data-step="1"><strong>Otwórz WindConnect na telefonie</strong><span>Nie masz aplikacji? Pobierz plik APK ze strony wydań projektu WindConnect (GitHub Releases).</span></li>
-        <li data-step="2"><strong id="onboarding-step-title">Zeskanuj ten kod telefonem</strong><span id="onboarding-hint">W aplikacji stuknij „Zeskanuj kod z komputera”.</span>
-          <canvas id="onboarding-qr" role="img" aria-label="Kod parowania" hidden></canvas>
-          <p id="onboarding-code" class="pairing-code" aria-label="Kod do porównania" hidden></p>
+        <li data-step="1"><strong data-i18n="main.otworz_windconnect_na_telefonie"></strong><span data-i18n="main.nie_masz_aplikacji_pobierz"></span></li>
+        <li data-step="2"><strong id="onboarding-step-title" data-i18n="main.onboarding-step-title"></strong><span id="onboarding-hint" data-i18n="main.onboarding-hint"></span>
+          <canvas id="onboarding-qr" role="img" data-i18n-aria-label="main.onboarding-qr_label" hidden></canvas>
+          <p id="onboarding-code" class="pairing-code" data-i18n-aria-label="main.onboarding-code_label" hidden></p>
           <p id="onboarding-message" role="status"></p>
           <div class="button-row">
-            <button id="onboarding-accept" class="button primary" hidden>Kody są takie same</button>
-            <button id="onboarding-reject" class="button" hidden>Kody się różnią</button>
-            <button id="onboarding-refresh" class="button" hidden>Wyświetl nowy kod</button>
-            <button id="onboarding-sas" class="button quiet" hidden>Paruj bez aparatu</button>
+            <button id="onboarding-accept" class="button primary" hidden data-i18n="main.onboarding-accept"></button>
+            <button id="onboarding-reject" class="button" hidden data-i18n="main.onboarding-reject"></button>
+            <button id="onboarding-refresh" class="button" hidden data-i18n="main.onboarding-refresh"></button>
+            <button id="onboarding-sas" class="button quiet" hidden data-i18n="main.onboarding-sas"></button>
           </div>
         </li>
-        <li data-step="3"><strong id="onboarding-done-title">Gotowe</strong><span id="onboarding-done-text">Po sparowaniu telefon łączy się sam, gdy oba urządzenia są w tej samej sieci.</span>
+        <li data-step="3"><strong id="onboarding-done-title" data-i18n="main.onboarding-done-title"></strong><span id="onboarding-done-text" data-i18n="main.onboarding-done-text"></span>
           <div id="onboarding-done" hidden>
-            <div class="control-row"><div><span id="onboarding-autostart-label">Uruchamiaj z Windows</span><small>Telefon połączy się po włączeniu komputera, bez otwierania aplikacji.</small></div><button id="onboarding-autostart" class="switch" role="switch" aria-checked="false" aria-labelledby="onboarding-autostart-label"></button></div>
-            <button id="onboarding-finish" class="button primary">Przejdź do aplikacji</button>
+            <div class="control-row"><div><span id="onboarding-autostart-label" data-i18n="main.onboarding-autostart-label"></span><small data-i18n="main.telefon_polaczy_sie_po"></small></div><button id="onboarding-autostart" class="switch" role="switch" aria-checked="false" aria-labelledby="onboarding-autostart-label"></button></div>
+            <button id="onboarding-finish" class="button primary" data-i18n="main.onboarding-finish"></button>
           </div>
         </li>
       </ol>
-      <p class="subtle">Instalator dodał już regułę zapory dla sieci prywatnej, więc nic więcej nie musisz zezwalać. WindConnect działa w zasobniku obok zegara; panel otworzysz skrótem Win + Shift + W.</p>
+      <p class="subtle" data-i18n="main.instalator_dodal_juz_regule"></p>
     </section>
     <section id="home" aria-labelledby="empty-title" class="surface empty-state">
       <span class="empty-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="6" y="2" width="12" height="20" rx="3"/><path d="M10 5h4M11 19h2"/></svg></span>
-      <h2 id="empty-title">Miejsce na Twój telefon</h2>
-      <p>Połącz urządzenia, aby mieć pliki, schowek i powiadomienia pod ręką.</p>
-      <button id="open-pairing" class="button primary">Otwórz panel telefonu</button>
+      <h2 id="empty-title" data-i18n="main.empty-title"></h2>
+      <p data-i18n="main.polacz_urzadzenia_aby_miec"></p>
+      <button id="open-pairing" class="button primary" data-i18n="main.open-pairing"></button>
     </section>
     <section id="actions" aria-labelledby="actions-title" class="surface settings" hidden>
-      <div class="settings-head"><div><h2 id="actions-title">Akcje zdalne</h2><p>Co sparowany telefon może zrobić na tym komputerze. Telefon wybiera akcję z tej listy, nigdy nie wysyła poleceń.</p></div></div>
+      <div class="settings-head"><div><h2 id="actions-title" data-i18n="main.actions-title"></h2><p data-i18n="main.co_sparowany_telefon_moze"></p></div></div>
       <p id="actions-error" class="notice danger" role="alert" hidden></p>
-      <div id="actions-builtins" role="group" aria-label="Akcje wbudowane"></div>
-      <h3 class="settings-sub">Własne akcje</h3>
-      <div id="actions-custom" role="group" aria-label="Własne akcje"></div>
-      <p id="actions-empty" class="subtle" hidden>Brak własnych akcji. Dodaj program .exe w pliku akcji: identyfikator „x-…”, nazwę, pełną ścieżkę i stałe argumenty.</p>
-      <div class="settings-foot"><span id="actions-last" class="subtle" role="status"></span><button id="actions-edit" class="button small">Edytuj własne akcje</button></div>
+      <div id="actions-builtins" role="group" data-i18n-aria-label="main.actions-builtins_label"></div>
+      <h3 class="settings-sub" data-i18n="main.wlasne_akcje"></h3>
+      <div id="actions-custom" role="group" data-i18n-aria-label="main.actions-custom_label"></div>
+      <p id="actions-empty" class="subtle" hidden data-i18n="main.actions-empty"></p>
+      <div class="settings-foot"><span id="actions-last" class="subtle" role="status"></span><button id="actions-edit" class="button small" data-i18n="main.actions-edit"></button></div>
     </section>
     <section class="surface settings" data-clipboard-controls hidden aria-labelledby="clipboard-title">
-      <h2 id="clipboard-title">Wspólny schowek</h2>
-      <div class="control-row"><div><span id="clipboard-sync-label">Synchronizacja automatyczna</span><small>Tekst, linki i obrazy. Treści oznaczone jako wrażliwe są pomijane. Odebrane treści nie trafiają do historii Windows ani schowka w chmurze. Wyłączenie czyści historię schowka poza przypiętymi.</small></div><button class="switch" role="switch" aria-checked="true" aria-labelledby="clipboard-sync-label" data-clipboard-toggle></button></div>
-      <div class="control-row"><div><span id="clipboard-limit-label">Maks. rozmiar obrazu</span><small>Większe obrazy nie są wysyłane ani przyjmowane.</small></div><div class="segmented" role="group" aria-labelledby="clipboard-limit-label" data-clipboard-limit><button data-limit="5" aria-pressed="false">5 MB</button><button data-limit="16" aria-pressed="true">16 MB</button><button data-limit="50" aria-pressed="false">50 MB</button></div></div><p data-clipboard-status role="status"></p><div class="settings-foot"><span class="subtle" data-clipboard-shortcut></span><button class="button small" data-clipboard-send>Wyślij schowek na telefon</button></div><section class="history" data-clipboard-history hidden aria-labelledby="history-title-settings"><div class="transfers-head"><h2 id="history-title-settings">Historia schowka</h2><button class="button quiet small" data-history-clear>Wyczyść</button></div><p class="subtle" data-history-empty>Tu pojawią się ostatnio przesłane schowki. Treści oznaczone jako wrażliwe (np. hasła z menedżera) nigdy tu nie trafiają.</p><ul class="history-list" data-history-list></ul></section>
-      <p class="subtle">PC → telefon automatycznie także w tle. Telefon → PC po otwarciu aplikacji lub akcji powiadomienia. Wyłączenie automatu zatrzymuje także automatyczny odbiór; ręczne wysłanie pozostaje dostępne.</p>
+      <h2 id="clipboard-title" data-i18n="main.clipboard-title"></h2>
+      <div class="control-row"><div><span id="clipboard-sync-label" data-i18n="main.clipboard-sync-label"></span><small data-i18n="main.tekst_linki_i_obrazy"></small></div><button class="switch" role="switch" aria-checked="true" aria-labelledby="clipboard-sync-label" data-clipboard-toggle></button></div>
+      <div class="control-row"><div><span id="clipboard-limit-label" data-i18n="main.clipboard-limit-label"></span><small data-i18n="main.wieksze_obrazy_nie_sa"></small></div><div class="segmented" role="group" aria-labelledby="clipboard-limit-label" data-clipboard-limit><button data-limit="5" aria-pressed="false">5 MB</button><button data-limit="16" aria-pressed="true">16 MB</button><button data-limit="50" aria-pressed="false">50 MB</button></div></div><p data-clipboard-status role="status"></p><div class="settings-foot"><span class="subtle" data-clipboard-shortcut></span><button class="button small" data-clipboard-send data-i18n="main.wyslij_schowek_na_telefon"></button></div><section class="history" data-clipboard-history hidden aria-labelledby="history-title-settings"><div class="transfers-head"><h2 id="history-title-settings" data-i18n="main.history-title-settings"></h2><button class="button quiet small" data-history-clear data-i18n="main.wyczysc"></button></div><p class="subtle" data-history-empty data-i18n="main.tu_pojawia_sie_ostatnio"></p><ul class="history-list" data-history-list></ul></section>
+      <p class="subtle" data-i18n="main.pc_telefon_automatycznie_takze"></p>
     </section>
     <section id="media-settings" class="surface settings" hidden aria-labelledby="media-settings-title">
-      <h2 id="media-settings-title">Multimedia</h2>
-      <div class="control-row"><div><span id="share-media-label">Udostępnij odtwarzanie telefonowi</span><small>Telefon pokazuje, co gra na komputerze (tytuł, okładkę, postęp), w aplikacji i w sterowaniu multimediami Androida, i może je wstrzymać lub przełączyć.</small></div><button id="share-media" class="switch" role="switch" aria-checked="true" aria-labelledby="share-media-label" disabled></button></div>
-      <div class="control-row"><div><span id="pause-on-call-label">Wstrzymaj odtwarzanie przy połączeniu</span><small>Gdy telefon dzwoni albo trwa rozmowa (także w komunikatorach), muzyka i filmy na komputerze się zatrzymują, a po rozmowie wracają, jeśli ich w międzyczasie nie zatrzymasz. Telefon wysyła tylko stan połączenia, bez numeru i nazwy. W trybie wibracji telefon może wymagać dostępu do powiadomień.</small></div><button id="pause-on-call" class="switch" role="switch" aria-checked="true" aria-labelledby="pause-on-call-label" disabled></button></div>
-      <div class="control-row"><div><span id="volume-remote-label">Głośność z telefonu</span><small>Telefon pokazuje i zmienia głośność komputera, a panel pokazuje i zmienia głośność telefonu.</small></div><button id="volume-remote" class="switch" role="switch" aria-checked="true" aria-labelledby="volume-remote-label" disabled></button></div>
-      <div class="control-row"><div><span id="call-toasts-label">Połączenia z telefonu</span><small>Powiadomienie o połączeniu przychodzącym z nazwą kontaktu lub numerem, z przyciskami „Wycisz” i „Odrzuć”, oraz nieodebrane połączenia w panelu. Telefon musi to udostępnić: „Połączenia na komputerze” w ustawieniach WindConnect na telefonie.</small></div><button id="call-toasts" class="switch" role="switch" aria-checked="true" aria-labelledby="call-toasts-label" disabled></button></div>
+      <h2 id="media-settings-title" data-i18n="main.media-settings-title"></h2>
+      <div class="control-row"><div><span id="share-media-label" data-i18n="main.share-media-label"></span><small data-i18n="main.telefon_pokazuje_co_gra"></small></div><button id="share-media" class="switch" role="switch" aria-checked="true" aria-labelledby="share-media-label" disabled></button></div>
+      <div class="control-row"><div><span id="pause-on-call-label" data-i18n="main.pause-on-call-label"></span><small data-i18n="main.gdy_telefon_dzwoni_albo"></small></div><button id="pause-on-call" class="switch" role="switch" aria-checked="true" aria-labelledby="pause-on-call-label" disabled></button></div>
+      <div class="control-row"><div><span id="volume-remote-label" data-i18n="main.volume-remote-label"></span><small data-i18n="main.telefon_pokazuje_i_zmienia"></small></div><button id="volume-remote" class="switch" role="switch" aria-checked="true" aria-labelledby="volume-remote-label" disabled></button></div>
+      <div class="control-row"><div><span id="call-toasts-label" data-i18n="main.call-toasts-label"></span><small data-i18n="main.powiadomienie_o_polaczeniu_przychodzacym"></small></div><button id="call-toasts" class="switch" role="switch" aria-checked="true" aria-labelledby="call-toasts-label" disabled></button></div>
     </section>
     <section id="relay-settings" class="surface settings" hidden aria-labelledby="relay-settings-title">
-      <h2 id="relay-settings-title">Przekaźnik poza domem</h2>
-      <div class="control-row"><div><span id="relay-enabled-label">Łącz przez przekaźnik, gdy telefon jest poza siecią</span><small>Połączenie jest szyfrowane od końca do końca. Operator przekaźnika widzi adresy IP obu urządzeń, ich klucze publiczne, czas połączeń oraz liczbę i rozmiar przesyłanych danych, ale nie ich treść ani nazwy urządzeń. Wyłączenie natychmiast przestaje używać przekaźnika.</small></div><button id="relay-enabled" class="switch" role="switch" aria-checked="false" aria-labelledby="relay-enabled-label" disabled></button></div>
-      <label class="field">Adres przekaźnika<input id="relay-url" type="url" spellcheck="false" autocomplete="off" placeholder="wss://windconnect-relay.&lt;subdomena&gt;.workers.dev" aria-describedby="relay-error"><span id="relay-error" class="field-hint field-error" role="alert"></span></label>
+      <h2 id="relay-settings-title" data-i18n="main.relay-settings-title"></h2>
+      <div class="control-row"><div><span id="relay-enabled-label" data-i18n="main.relay-enabled-label"></span><small data-i18n="main.polaczenie_jest_szyfrowane_od"></small></div><button id="relay-enabled" class="switch" role="switch" aria-checked="false" aria-labelledby="relay-enabled-label" disabled></button></div>
+      <label class="field" data-i18n="main.adres_przekaznika" data-i18n-pos="start"><input id="relay-url" type="url" spellcheck="false" autocomplete="off" data-i18n-placeholder="main.relay-url_placeholder" aria-describedby="relay-error"><span id="relay-error" class="field-hint field-error" role="alert"></span></label>
     </section>
     <section id="notify-settings" class="surface settings" hidden aria-labelledby="notify-settings-title">
-      <h2 id="notify-settings-title">Powiadomienia</h2>
-      <div class="control-row"><div><span id="phone-notifications-label">Powiadomienia z telefonu</span><small>Nowe powiadomienia z telefonu jako powiadomienia Windows, pogrupowane według aplikacji. Na telefonie trzeba je osobno włączyć. Windows przechowuje je w centrum powiadomień do 24 godzin; wyłączenie tej opcji albo usunięcie parowania usuwa je od razu. Na wiadomości można odpowiedzieć z powiadomienia albo panelu; zamknięcie powiadomienia (✕) usuwa je też z telefonu.</small></div><button id="phone-notifications" class="switch" role="switch" aria-checked="true" aria-labelledby="phone-notifications-label" disabled></button></div>
-      <div class="control-row"><div><span id="quiet-hours-label">Ciche godziny</span><small>W tych godzinach, a także w trybie „Nie przeszkadzać”, podczas prezentacji i gry na pełnym ekranie, powiadomienia z telefonu trafiają cicho do centrum powiadomień i panelu, bez wyskakiwania i dźwięku. Na telefonie w trybie „Nie przeszkadzać” jest tak samo.</small></div><button id="quiet-hours" class="switch" role="switch" aria-checked="false" aria-labelledby="quiet-hours-label" disabled></button></div>
-      <div class="control-row quiet-times" id="quiet-times" hidden><span id="quiet-from-label">Od</span><div class="time-stepper" data-quiet="from"><button class="button quiet small" data-step="-15" aria-label="Wcześniej o 15 minut (od)">−</button><span role="spinbutton" tabindex="0" aria-labelledby="quiet-from-label" aria-valuemin="0" aria-valuemax="1425"></span><button class="button quiet small" data-step="15" aria-label="Później o 15 minut (od)">+</button></div><span id="quiet-to-label">Do</span><div class="time-stepper" data-quiet="to"><button class="button quiet small" data-step="-15" aria-label="Wcześniej o 15 minut (do)">−</button><span role="spinbutton" tabindex="0" aria-labelledby="quiet-to-label" aria-valuemin="0" aria-valuemax="1425"></span><button class="button quiet small" data-step="15" aria-label="Później o 15 minut (do)">+</button></div></div>
+      <h2 id="notify-settings-title" data-i18n="main.notify-settings-title"></h2>
+      <div class="control-row"><div><span id="phone-notifications-label" data-i18n="main.phone-notifications-label"></span><small data-i18n="main.nowe_powiadomienia_z_telefonu"></small></div><button id="phone-notifications" class="switch" role="switch" aria-checked="true" aria-labelledby="phone-notifications-label" disabled></button></div>
+      <div class="control-row"><div><span id="quiet-hours-label" data-i18n="main.quiet-hours-label"></span><small data-i18n="main.w_tych_godzinach_a"></small></div><button id="quiet-hours" class="switch" role="switch" aria-checked="false" aria-labelledby="quiet-hours-label" disabled></button></div>
+      <div class="control-row quiet-times" id="quiet-times" hidden><span id="quiet-from-label" data-i18n="main.quiet-from-label"></span><div class="time-stepper" data-quiet="from"><button class="button quiet small" data-step="-15" data-i18n-aria-label="main.wczesniej_o_15_minut">−</button><span role="spinbutton" tabindex="0" aria-labelledby="quiet-from-label" aria-valuemin="0" aria-valuemax="1425"></span><button class="button quiet small" data-step="15" data-i18n-aria-label="main.pozniej_o_15_minut">+</button></div><span id="quiet-to-label" data-i18n="main.quiet-to-label"></span><div class="time-stepper" data-quiet="to"><button class="button quiet small" data-step="-15" data-i18n-aria-label="main.wczesniej_o_15_minut_2">−</button><span role="spinbutton" tabindex="0" aria-labelledby="quiet-to-label" aria-valuemin="0" aria-valuemax="1425"></span><button class="button quiet small" data-step="15" data-i18n-aria-label="main.pozniej_o_15_minut_2">+</button></div></div>
     </section>
     <section id="gallery" aria-labelledby="gallery-title" hidden></section>
-    <footer class="app-footer"><span id="status" role="status">Uruchamianie…</span><button id="gallery-toggle" class="button quiet small" aria-pressed="false" hidden>Galeria kontrolek</button><button id="tray-options" class="button quiet small">Opcje zasobnika</button><button id="quit-app" class="button quiet small">Zakończ aplikację</button><span class="subtle">Zamknięcie okna pozostawia WindConnect w zasobniku.</span></footer>
+    <footer class="app-footer"><span id="status" role="status" data-i18n="main.status"></span><button id="gallery-toggle" class="button quiet small" aria-pressed="false" hidden data-i18n="main.gallery-toggle"></button><button id="tray-options" class="button quiet small" data-i18n="main.tray-options"></button><button id="quit-app" class="button quiet small" data-i18n="main.quit-app"></button><span class="subtle" data-i18n="main.zamkniecie_okna_pozostawia_windconnect"></span></footer>
   </main>
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
   <div id="overlay" class="overlay" hidden>
     <section class="dialog surface" role="dialog" aria-modal="true" aria-labelledby="dialog-title" aria-describedby="dialog-description" tabindex="-1">
-      <h2 id="dialog-title">Przykład okna dialogowego</h2><p id="dialog-description">To podgląd kontrolki. Nie zmienia ustawień ani danych urządzenia.</p>
-      <div class="button-row"><button class="button" data-dismiss>Anuluj</button><button class="button primary" data-confirm>Potwierdź</button></div>
+      <h2 id="dialog-title" data-i18n="main.dialog-title"></h2><p id="dialog-description" data-i18n="main.dialog-description"></p>
+      <div class="button-row"><button class="button" data-dismiss data-i18n="main.anuluj"></button><button class="button primary" data-confirm data-i18n="main.potwierdz"></button></div>
     </section>
   </div>
 </body>

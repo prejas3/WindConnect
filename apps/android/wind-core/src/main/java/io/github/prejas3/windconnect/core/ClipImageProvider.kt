@@ -35,7 +35,7 @@ class ClipImageProvider : ContentProvider() {
         val columns = projection?.filter { it == OpenableColumns.DISPLAY_NAME || it == OpenableColumns.SIZE }?.toTypedArray()
             ?: arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE)
         return MatrixCursor(columns, 1).apply {
-            addRow(columns.map { if (it == OpenableColumns.SIZE) image.size().toLong() else "obraz.png" })
+            addRow(columns.map { if (it == OpenableColumns.SIZE) image.size().toLong() else context!!.getString(R.string.clip_image_file_name) })
         }
     }
 

@@ -20,7 +20,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 
-data class ClipboardUi(val enabled: Boolean = true, val status: String = "Synchronizacja automatyczna", val busy: Boolean = false, val delivered: Long = 0, val received: Long = 0, val imageLimitMb: Int = SystemClipboard.DEFAULT_IMAGE_LIMIT_MB)
+data class ClipboardUi(val enabled: Boolean = true, val status: String = "", val busy: Boolean = false, val delivered: Long = 0, val received: Long = 0, val imageLimitMb: Int = SystemClipboard.DEFAULT_IMAGE_LIMIT_MB)
 
 /** An image to send: its PNG, a thumbnail PNG and the pixel size (WN-36). */
 internal class OutgoingImage(val png: ByteArray, val thumbnail: ByteArray, val width: Long, val height: Long)
@@ -42,7 +42,7 @@ internal class SystemClipboard(
     private val manager = context.getSystemService(ClipboardManager::class.java)
     private val main = Handler(Looper.getMainLooper())
     private val mutable = MutableStateFlow(preferences.getBoolean("clipboard_enabled", true).let { enabled ->
-        ClipboardUi(enabled, if (enabled) "Synchronizacja automatyczna" else "Synchronizacja wyłączona",
+        ClipboardUi(enabled, syncText(enabled),
             imageLimitMb = preferences.getInt(IMAGE_LIMIT, DEFAULT_IMAGE_LIMIT_MB).takeIf { it in IMAGE_LIMITS_MB } ?: DEFAULT_IMAGE_LIMIT_MB)
     })
     val ui = mutable.asStateFlow()
@@ -69,7 +69,7 @@ internal class SystemClipboard(
     fun setEnabled(value: Boolean) {
         enabledChanged(value)
         preferences.edit().putBoolean("clipboard_enabled", value).apply()
-        mutable.update { it.copy(enabled = value, status = if (value) "Synchronizacja automatyczna" else "Synchronizacja wyłączona") }
+        mutable.update { it.copy(enabled = value, status = syncText(value)) }
         // CCS/1 RULE:sync off keeps nothing new and drops the unpinned entries; pins stay.
         if (!value) { synchronized(history) { history.clear() }; publishHistory() }
         main.post { updateListener() }
@@ -140,7 +140,7 @@ internal class SystemClipboard(
         try {
             val image = withContext(Dispatchers.IO) { readImage(uri, limit) }
             val result = when (image) {
-                is ImageRead.Ready -> publishImage(image.image, manual) { mutable.update { it.copy(status = "Wysyłanie obrazu…") } }
+                is ImageRead.Ready -> publishImage(image.image, manual) { mutable.update { it.copy(status = context.getString(R.string.clip_image_sending)) } }
                 is ImageRead.TooLarge -> "too-large" to null
                 ImageRead.Unreadable -> "unreadable" to null
             }
@@ -195,7 +195,7 @@ internal class SystemClipboard(
             val clip = ClipData.newPlainText("WindConnect", text)
             clip.description.extras = PersistableBundle().apply { putBoolean(SENSITIVE, true) }
             manager.setPrimaryClip(clip)
-            mutable.update { it.copy(status = "Schowek odebrany z komputera", received = it.received + 1) }
+            mutable.update { it.copy(status = context.getString(R.string.clip_received), received = it.received + 1) }
             record(ClipboardHistoryItem.Text(text, fromPc = true))
             true
         } catch (_: Exception) { false }
@@ -209,9 +209,9 @@ internal class SystemClipboard(
         if (closed || !mutable.value.enabled) return false
         return try {
             ClipImageProvider.publish(image)
-            val clip = ClipData(ClipDescription("Obraz z komputera", arrayOf(ClipImageProvider.PNG)), ClipData.Item(ClipImageProvider.uri(context, image)))
+            val clip = ClipData(ClipDescription(context.getString(R.string.clip_image_from_pc), arrayOf(ClipImageProvider.PNG)), ClipData.Item(ClipImageProvider.uri(context, image)))
             manager.setPrimaryClip(clip)
-            mutable.update { it.copy(status = "Obraz odebrany z komputera", received = it.received + 1) }
+            mutable.update { it.copy(status = context.getString(R.string.clip_image_received), received = it.received + 1) }
             recordWhenComplete(image)
             true
         } catch (_: Exception) { ClipImageProvider.publish(null); false }
@@ -240,7 +240,7 @@ internal class SystemClipboard(
             record(ClipboardHistoryItem.Image(png, thumbnail, image.width().toLong(), image.height().toLong(), fromPc = true))
         }
     }
-    private fun publishHistory() { historyViews.value = synchronized(history) { history.views() } }
+    private fun publishHistory() { historyViews.value = synchronized(history) { history.views { w, h -> context.getString(R.string.clip_image_size, w, h) } } }
     private fun savePins() {
         val store = pinStore ?: return
         scope.launch(pinWriter) {
@@ -271,10 +271,10 @@ internal class SystemClipboard(
                 is ClipboardHistoryItem.Image -> {
                     val stored = StoredClipImage(item)
                     ClipImageProvider.publish(stored)
-                    manager.setPrimaryClip(ClipData(ClipDescription("Obraz z historii", arrayOf(ClipImageProvider.PNG)), ClipData.Item(ClipImageProvider.uri(context, stored))))
+                    manager.setPrimaryClip(ClipData(ClipDescription(context.getString(R.string.clip_image_from_history), arrayOf(ClipImageProvider.PNG)), ClipData.Item(ClipImageProvider.uri(context, stored))))
                 }
             }
-            mutable.update { it.copy(status = "Skopiowano z historii") }
+            mutable.update { it.copy(status = context.getString(R.string.clip_copied_from_history)) }
             true
         } catch (_: Exception) { false }
     }
@@ -282,9 +282,9 @@ internal class SystemClipboard(
         val result = synchronized(history) { history.pin(id, pinned) }
         if (result == PinResult.Ok) { savePins(); publishHistory() }
         else mutable.update { it.copy(status = when (result) {
-            PinResult.Full -> "Można przypiąć do ${ClipboardHistory.MAX_PINNED} pozycji"
-            PinResult.TooLarge -> "Przypięte obrazy mogą zająć do 64 MB"
-            else -> "Tej pozycji nie ma już w historii"
+            PinResult.Full -> context.getString(R.string.clip_pin_full, ClipboardHistory.MAX_PINNED)
+            PinResult.TooLarge -> context.getString(R.string.clip_pin_too_large)
+            else -> context.getString(R.string.clip_pin_gone)
         }) }
         return result
     }
@@ -296,6 +296,34 @@ internal class SystemClipboard(
     /** Removes the unpinned entries. */
     fun historyClear() { synchronized(history) { history.clear() }; publishHistory() }
     private fun report(result: String) { mutable.update { it.copy(status = statusText(result)) } }
+    private fun syncText(enabled: Boolean) = context.getString(if (enabled) R.string.clip_sync_auto else R.string.clip_sync_off)
+    /** Megabytes with at most one decimal, in the phone's number format (WN-63). */
+    private fun mb(bytes: Long): String {
+        val tenths = (bytes + 99_999) / 100_000
+        return java.text.NumberFormat.getNumberInstance().apply { maximumFractionDigits = 1 }.format(tenths / 10.0)
+    }
+    private fun imageStatusText(value: String, peerLimit: Long?, limit: Long) = when (value) {
+        "applied" -> context.getString(R.string.clip_image_sent)
+        "too-large" -> context.getString(R.string.clip_image_too_large, mb(limit))
+        "peer-limit" -> context.getString(R.string.clip_image_peer_limit, mb(peerLimit ?: 0))
+        "unsupported" -> context.getString(R.string.clip_image_unsupported)
+        "replaced" -> context.getString(R.string.clip_image_replaced)
+        "unreadable" -> context.getString(R.string.clip_image_unreadable)
+        "failed" -> context.getString(R.string.clip_image_failed)
+        else -> statusText(value)
+    }
+    private fun statusText(value: String) = context.getString(when (value) {
+        "applied" -> R.string.clip_applied
+        "sensitive" -> R.string.clip_sensitive
+        "unchanged" -> R.string.clip_unchanged
+        "disabled" -> R.string.clip_sync_auto_off
+        "refused" -> R.string.clip_refused
+        "invalid" -> R.string.clip_invalid
+        "empty" -> R.string.clip_empty
+        "busy" -> R.string.clip_busy
+        "failed" -> R.string.clip_failed
+        else -> R.string.clip_unavailable
+    })
     fun close() { closed = true; main.post { sending?.cancel(); updateListener() } }
     companion object {
         const val SENSITIVE = "android.content.extra.IS_SENSITIVE"
@@ -323,32 +351,6 @@ internal class SystemClipboard(
                     side /= 2
                 }
             } finally { decoded.recycle() }
-        }
-        private fun mb(bytes: Long): String {
-            val tenths = (bytes + 99_999) / 100_000
-            return if (tenths % 10 == 0L) "${tenths / 10}" else "${tenths / 10},${tenths % 10}"
-        }
-        fun imageStatusText(value: String, peerLimit: Long?, limit: Long) = when (value) {
-            "applied" -> "Obraz wysłany na komputer"
-            "too-large" -> "Obraz przekracza limit ${mb(limit)} MB z ustawień"
-            "peer-limit" -> "Komputer przyjmuje obrazy do ${mb(peerLimit ?: 0)} MB"
-            "unsupported" -> "Komputer nie obsługuje obrazów — zaktualizuj aplikację"
-            "replaced" -> "Nowszy schowek zastąpił obraz"
-            "unreadable" -> "Nie udało się odczytać obrazu ze schowka"
-            "failed" -> "Nie udało się przekazać obrazu na komputer"
-            else -> statusText(value)
-        }
-        fun statusText(value: String) = when (value) {
-            "applied" -> "Schowek dostarczony do komputera"
-            "sensitive" -> "Treść oznaczona jako wrażliwa — nie wysłano"
-            "unchanged" -> "Schowek jest już zsynchronizowany"
-            "disabled" -> "Synchronizacja automatyczna wyłączona"
-            "refused" -> "Komputer odrzucił schowek lub nowszą zmianę już zastosowano"
-            "invalid" -> "Obsługiwany jest tekst do 256 KiB, bez znaku NUL"
-            "empty" -> "Brak tekstu w schowku lub brak dostępu do niego"
-            "busy" -> "Schowek jest zajęty — spróbuj ponownie"
-            "failed" -> "Nie udało się zapisać schowka na komputerze"
-            else -> "Schowek niedostępny — sprawdź połączenie z komputerem"
         }
     }
 }

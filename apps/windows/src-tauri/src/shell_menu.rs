@@ -10,7 +10,10 @@ pub const CLASSES: [&str; 2] = [
     r"Software\Classes\*\shell",
     r"Software\Classes\Directory\shell",
 ];
-pub const LABEL: &str = "Wyślij na telefon";
+/// The Explorer menu's label, in the UI language when it was registered (WN-63).
+pub fn label() -> &'static str {
+    crate::i18n::tr("files.send_to_phone")
+}
 
 /// The command Explorer runs for one selected item.
 pub fn command(executable: &std::path::Path) -> io::Result<String> {
@@ -60,7 +63,7 @@ mod platform {
         let path = executable.to_str().unwrap_or_default();
         for root in roots {
             let verb = format!(r"{root}\{VERB}");
-            set_value(&verb, Some("MUIVerb"), LABEL)?;
+            set_value(&verb, Some("MUIVerb"), label())?;
             set_value(&verb, Some("Icon"), &format!("\"{path}\",0"))?;
             // One launch per item even past 15 selected; each forwards to the running app.
             set_value(&verb, Some("MultiSelectModel"), "Player")?;

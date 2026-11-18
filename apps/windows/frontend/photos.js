@@ -1,3 +1,4 @@
+import { t, formatDate } from './i18n.js';
 // CCS/1 FLOW:WN-58 gallery-state (pushed on every change, never polled) -> "Ostatnie zdjęcia" tiles; press -> gallery_prefetch;
 // move past DRAG_PX -> gallery_drag (native drag of the original); click/Enter -> gallery_open; gallery-fetch -> tile progress.
 // SEC:names go in as text only; a thumbnail only as a data: URL of a JPEG (the core checked its magic bytes).
@@ -16,12 +17,12 @@ function say(text) {
   status.textContent = text;
   if (text) statusTimer = setTimeout(() => { status.textContent = ''; }, 6000);
 }
-const failed = value => say(String(value || 'Nie udało się.'));
+const failed = value => say(String(value || t('error.generic')));
 
 function label(photo) {
-  const kind = photo.screenshot ? 'Zrzut ekranu' : 'Zdjęcie';
-  const when = new Date(photo.date_ms).toLocaleString('pl-PL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-  return `${kind} ${photo.name}, ${when}. Przeciągnij na pulpit albo naciśnij Enter, aby otworzyć.`;
+  const kind = photo.screenshot ? t('photos.screenshot') : t('photos.photo');
+  const when = formatDate(photo.date_ms, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  return t('photos.label', { kind, name: photo.name, when });
 }
 
 function tile(photo) {
@@ -65,7 +66,7 @@ function wire(entry, id) {
     press.dragging = true;
     try {
       const result = await invoke?.('gallery_drag', { id });
-      if (result === 'released') say('Zdjęcie jest gotowe. Przeciągnij je jeszcze raz.');
+      if (result === 'released') say(t('photos.ready_drag_again'));
     } catch (value) { failed(value); }
   });
   // A drag ends with no click of its own; a plain press does.

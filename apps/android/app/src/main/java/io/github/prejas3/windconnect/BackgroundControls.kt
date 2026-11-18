@@ -53,9 +53,9 @@ fun BackgroundControls(hasPairedDevice: Boolean) {
         }
     }
     WindCard {
-        Text("Połączenie w tle", style = MaterialTheme.typography.titleMedium)
-        Text(if (enabled) "Włączone · stan komputera i szybkie akcje w powiadomieniu" else "Wyłączone", modifier = Modifier.testTag("backgroundStatus"))
-        WindButton(if (enabled) "Zatrzymaj połączenie w tle" else "Włącz połączenie w tle", {
+        Text(str(R.string.background_title), style = MaterialTheme.typography.titleMedium)
+        Text(if (enabled) str(R.string.background_on_state) else str(R.string.off), modifier = Modifier.testTag("backgroundStatus"))
+        WindButton(if (enabled) str(R.string.background_stop) else str(R.string.background_start), {
             if (enabled) ConnectionService.stop(context) else {
                 ConnectionService.start(context, enable = true)
                 if (Build.VERSION.SDK_INT >= 33 && !notifications) permission.launch(Manifest.permission.POST_NOTIFICATIONS)
@@ -63,17 +63,17 @@ fun BackgroundControls(hasPairedDevice: Boolean) {
             refresh()
         }, enabled = hasPairedDevice, modifier = Modifier.testTag("backgroundToggle"), kind = ButtonKind.Secondary)
         if (enabled && !notifications) {
-            Text("Powiadomienia są wyłączone. Włącz je, aby widzieć urządzenie i szybkie akcje.")
-            WindButton("Ustawienia powiadomień", {
+            Text(str(R.string.background_notifications_off))
+            WindButton(str(R.string.notification_settings), {
                 context.startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName))
             }, kind = ButtonKind.Quiet)
         }
         if (enabled) {
-            Text(if (battery) "Oszczędzanie baterii: aplikacja może utrzymywać połączenie przy wyłączonym ekranie." else "Aby utrzymać połączenie przez noc, wyłącz optymalizację baterii dla WindConnect. Utrzymywanie aktywnego połączenia zwiększa zużycie baterii.")
-            if (!battery) WindButton("Optymalizacja baterii", {
+            Text(if (battery) str(R.string.battery_unrestricted) else str(R.string.battery_optimized))
+            if (!battery) WindButton(str(R.string.battery_optimization), {
                 context.startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
             }, modifier = Modifier.testTag("batterySettings"), kind = ButtonKind.Quiet)
-            Text("Samsung One UI: dodaj WindConnect do aplikacji, które nigdy nie są usypiane, w Ustawienia → Bateria → Limity użycia w tle.", style = MaterialTheme.typography.bodySmall)
+            Text(str(R.string.battery_samsung), style = MaterialTheme.typography.bodySmall)
         }
         if (message.isNotEmpty()) Text(message)
     }

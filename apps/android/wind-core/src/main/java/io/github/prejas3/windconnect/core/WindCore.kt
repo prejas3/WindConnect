@@ -42,7 +42,8 @@ import kotlinx.coroutines.withContext
 const val END_UNPAIRED_HERE = "unpaired-here"
 /** The relay was turned off while the session ran over it (WN-92); a LAN connect follows. */
 const val RELAY_OFF = "relay-off"
-const val REFUSED = "Komputer odrzuca połączenie — sparuj ponownie"
+/** [ConnectionState.Failed]'s message when the computer refuses this phone's key; the UI shows its own text (WN-63). */
+const val REFUSED = "refused"
 
 sealed interface ConnectionState {
     data object Ready : ConnectionState
@@ -192,7 +193,7 @@ class WindCore private constructor(
     val touchpadAccepted = mutableTouchpadAccepted.asStateFlow()
     private var touchpadCaps: Job? = null
     suspend fun openTouchpad(target: String): io.github.prejas3.windconnect.bindings.TouchpadSession = withContext(Dispatchers.IO) {
-        gate.withLock { check(!stopped); val current=connection ?: error("Brak połączenia");check(current.peer().fingerprint==target){"Zmieniono komputer"};current.openTouchpad() }
+        gate.withLock { check(!stopped); val current=connection ?: error(appContext.getString(R.string.files_no_connection));check(current.peer().fingerprint==target){appContext.getString(R.string.touchpad_target_changed)};current.openTouchpad() }
     }
     private val mutableFilesAccepted = MutableStateFlow(false)
     val filesAccepted = mutableFilesAccepted.asStateFlow()
@@ -261,9 +262,9 @@ class WindCore private constructor(
 
     suspend fun queueStagedFile(file: java.io.File, target: String): String = withContext(Dispatchers.IO) {
         gate.withLock {
-            val active = connection ?: error("Brak połączenia z komputerem")
-            check(active.peer().fingerprint == target) { "Zmieniono komputer docelowy. Rozpocznij wysyłkę ponownie." }
-            check(active.filesAccepted()) { "Komputer nie przyjmuje plików" }
+            val active = connection ?: error(appContext.getString(R.string.files_no_connection))
+            check(active.peer().fingerprint == target) { appContext.getString(R.string.files_target_changed) }
+            check(active.filesAccepted()) { appContext.getString(R.string.files_not_accepted) }
             active.queueFiles(listOf(file.absolutePath)).single()
         }
     }

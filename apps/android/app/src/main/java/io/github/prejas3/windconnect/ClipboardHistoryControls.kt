@@ -35,12 +35,12 @@ class ClipboardHistoryActions(val copy: (Long) -> Unit, val pin: (Long, Boolean)
 fun ClipboardHistoryCard(entries: List<ClipboardHistoryView>, enabled: Boolean, actions: ClipboardHistoryActions) {
     WindCard(Modifier.fillMaxWidth().testTag("clipboardHistory")) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Historia schowka", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-            if (entries.any { !it.pinned }) TextButton({ actions.clear() }, Modifier.testTag("historyClear")) { Text("Wyczyść") }
+            Text(str(R.string.history_title), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+            if (entries.any { !it.pinned }) TextButton({ actions.clear() }, Modifier.testTag("historyClear")) { Text(str(R.string.clear)) }
         }
         if (entries.isEmpty()) Text(
-            if (enabled) "Tu pojawi się 20 ostatnich pozycji wysłanych na komputer i z niego odebranych. Przypięte zostają po ponownym uruchomieniu."
-            else "Synchronizacja jest wyłączona: nic nie trafia do historii.",
+            if (enabled) str(R.string.history_empty)
+            else str(R.string.history_sync_off),
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.testTag("historyEmpty"))
         entries.forEach { entry -> HistoryRow(entry, actions) }
     }
@@ -49,11 +49,11 @@ fun ClipboardHistoryCard(entries: List<ClipboardHistoryView>, enabled: Boolean, 
 @Composable
 private fun HistoryRow(entry: ClipboardHistoryView, actions: ClipboardHistoryActions) {
     val colors = MaterialTheme.colorScheme
-    val origin = if (entry.fromPc) "z komputera" else "z telefonu"
+    val origin = str(if (entry.fromPc) R.string.history_from_pc else R.string.history_from_phone)
     Column(Modifier.fillMaxWidth().testTag("historyEntry${entry.id}")) {
         Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
-            .clickable(role = Role.Button, onClickLabel = "Kopiuj do schowka") { actions.copy(entry.id) }
-            .semantics(mergeDescendants = true) { contentDescription = "${entry.preview}, $origin${if (entry.pinned) ", przypięte" else ""}" }
+            .clickable(role = Role.Button, onClickLabel = str(R.string.history_copy)) { actions.copy(entry.id) }
+            .semantics(mergeDescendants = true) { contentDescription = if (entry.pinned) str(R.string.history_entry_pinned, entry.preview, origin) else str(R.string.history_entry, entry.preview, origin) }
             .padding(vertical = 6.dp).testTag("historyCopy${entry.id}"), verticalAlignment = Alignment.CenterVertically) {
             val thumbnail = remember(entry.id) { entry.thumbnail?.let { BitmapFactory.decodeByteArray(it, 0, it.size)?.asImageBitmap() } }
             if (thumbnail != null) Image(thumbnail, null, Modifier.size(48.dp).clip(RoundedCornerShape(6.dp)), contentScale = ContentScale.Crop)
@@ -61,12 +61,12 @@ private fun HistoryRow(entry: ClipboardHistoryView, actions: ClipboardHistoryAct
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
                 Text(entry.preview, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium)
-                Text(if (entry.pinned) "Przypięte · $origin" else origin, style = MaterialTheme.typography.labelSmall, color = colors.onSurfaceVariant)
+                Text(if (entry.pinned) str(R.string.history_pinned_origin, origin) else origin, style = MaterialTheme.typography.labelSmall, color = colors.onSurfaceVariant)
             }
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-            TextButton({ actions.pin(entry.id, !entry.pinned) }, Modifier.testTag("historyPin${entry.id}")) { Text(if (entry.pinned) "Odepnij" else "Przypnij") }
-            TextButton({ actions.remove(entry.id) }, Modifier.testTag("historyRemove${entry.id}")) { Text("Usuń") }
+            TextButton({ actions.pin(entry.id, !entry.pinned) }, Modifier.testTag("historyPin${entry.id}")) { Text(if (entry.pinned) str(R.string.unpin) else str(R.string.pin)) }
+            TextButton({ actions.remove(entry.id) }, Modifier.testTag("historyRemove${entry.id}")) { Text(str(R.string.remove)) }
         }
     }
 }

@@ -6,6 +6,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PcActionTextTest {
+    init { StringsForTests.usePolish() }
     @Test fun findsTheFirstWebLink() {
         assertEquals("https://a.pl/x?y=1", PcActionText.link("Zobacz: https://a.pl/x?y=1."))
         assertEquals("http://b.com", PcActionText.link("(http://b.com) i https://c.com"))

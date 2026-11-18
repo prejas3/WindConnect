@@ -59,15 +59,13 @@ impl Default for Doc {
 /// Why a custom entry is left out, or None when it can run.
 fn invalid(entry: &DocCustom, earlier: &[DocCustom]) -> Option<&'static str> {
     if !is_custom_id(&entry.id) {
-        return Some(
-            "Identyfikator musi zaczynać się od „x-” i mieć tylko małe litery, cyfry i „-”.",
-        );
+        return Some(crate::i18n::tr("actions.bad_id"));
     }
     if earlier.iter().any(|e| e.id == entry.id) {
-        return Some("Ten identyfikator już jest na liście.");
+        return Some(crate::i18n::tr("actions.duplicate_id"));
     }
     if entry.label.trim().is_empty() {
-        return Some("Brak nazwy akcji.");
+        return Some(crate::i18n::tr("actions.no_name"));
     }
     let program = Path::new(&entry.program);
     if !program.is_absolute()
@@ -75,7 +73,7 @@ fn invalid(entry: &DocCustom, earlier: &[DocCustom]) -> Option<&'static str> {
             .extension()
             .is_some_and(|e| e.eq_ignore_ascii_case("exe"))
     {
-        return Some("Program musi być pełną ścieżką do pliku .exe.");
+        return Some(crate::i18n::tr("actions.bad_program"));
     }
     None
 }
@@ -331,13 +329,23 @@ fn snapshot_of(file: &Path, last: Option<LastAction>) -> Snapshot {
     };
     Snapshot {
         builtins: vec![
-            builtin(Builtin::Lock, LOCK, doc.lock, "Ekran blokady, jak Win+L"),
-            builtin(Builtin::Sleep, SLEEP, doc.sleep, "Uśpienie komputera"),
+            builtin(
+                Builtin::Lock,
+                LOCK,
+                doc.lock,
+                crate::i18n::tr("actions.lock_about"),
+            ),
+            builtin(
+                Builtin::Sleep,
+                SLEEP,
+                doc.sleep,
+                crate::i18n::tr("actions.sleep_about"),
+            ),
             builtin(
                 Builtin::OpenUrl,
                 OPEN_URL,
                 doc.open_url,
-                "Tylko adresy http i https, w domyślnej przeglądarce",
+                crate::i18n::tr("actions.open_url_about"),
             ),
         ],
         custom: doc
@@ -389,7 +397,7 @@ pub fn set_action_enabled(
     let mut doc = match read(&file) {
         Read::Missing => Doc::default(),
         Read::Ok(doc) => doc,
-        Read::Broken(_) => return Err("Plik akcji jest uszkodzony. Popraw go albo usuń.".into()),
+        Read::Broken(_) => return Err(crate::i18n::tr("actions.file_broken").into()),
     };
     match id {
         LOCK => doc.lock = enabled,

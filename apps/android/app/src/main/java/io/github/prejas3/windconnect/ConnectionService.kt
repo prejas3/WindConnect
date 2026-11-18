@@ -22,15 +22,15 @@ class ConnectionService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var core: WindCore? = null
     private var reconnect: Job? = null
-    private var peerName = "Sparowany komputer"
+    private var peerName = str(R.string.paired_computer)
     private var current: ConnectionState = ConnectionState.Ready
     private var filesAccepted = false
 
     override fun onCreate() {
         super.onCreate()
         getSystemService(NotificationManager::class.java).createNotificationChannel(
-            NotificationChannel(CHANNEL, "Połączenie z komputerem", NotificationManager.IMPORTANCE_LOW).apply {
-                description = "Urządzenie, stan połączenia i szybkie akcje WindConnect"
+            NotificationChannel(CHANNEL, str(R.string.conn_channel), NotificationManager.IMPORTANCE_LOW).apply {
+                description = str(R.string.conn_channel_description)
                 setShowBadge(false)
             },
         )
@@ -44,7 +44,7 @@ class ConnectionService : Service() {
                 if (peers.isEmpty() || !enabled(this@ConnectionService)) { stopSelf(); return@launch }
                 FileReceiving.addOwner(this@ConnectionService, opened, this@ConnectionService)
                 ReceiveFilesService.instance?.checkIdle()
-                peerName = peers.last().name.ifBlank { "Sparowany komputer" }
+                peerName = peers.last().name.ifBlank { str(R.string.paired_computer) }
                 launch {
                     combine(opened.state, opened.filesAccepted) { state, files -> state to files }
                         .distinctUntilChanged { old, new ->
@@ -94,7 +94,7 @@ class ConnectionService : Service() {
                 }
             } catch (error: Exception) {
                 if (error is CancellationException) throw error
-                preferences(this@ConnectionService).edit().putString("error", "Nie udało się uruchomić połączenia w tle. Otwórz aplikację i spróbuj ponownie.").apply()
+                preferences(this@ConnectionService).edit().putString("error", str(R.string.conn_bg_failed)).apply()
                 stopSelf()
             }
         }
@@ -120,9 +120,9 @@ class ConnectionService : Service() {
     private fun notification(): Notification {
         val connected = current is ConnectionState.Connected
         val text = when (current) {
-            is ConnectionState.Connected -> "Połączono · " + if ((current as ConnectionState.Connected).route == "relay") "przez przekaźnik (E2E)" else "Wi-Fi"
-            ConnectionState.Connecting -> "Łączenie…"
-            else -> "Brak połączenia · ponawianie w tle"
+            is ConnectionState.Connected -> str(R.string.conn_connected_via, if ((current as ConnectionState.Connected).route == "relay") str(R.string.home_via_relay) else "Wi-Fi")
+            ConnectionState.Connecting -> str(R.string.connecting)
+            else -> str(R.string.conn_retrying)
         }
         val open = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val clipboard = PendingIntent.getActivity(this, 3, Intent(this, SendClipboardActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
@@ -137,13 +137,13 @@ class ConnectionService : Service() {
             .setContentIntent(open).setOngoing(true).setOnlyAlertOnce(true)
             .setVisibility(Notification.VISIBILITY_PRIVATE).setCategory(Notification.CATEGORY_SERVICE)
             .setPublicVersion(Notification.Builder(this, CHANNEL).setSmallIcon(R.drawable.ic_connection)
-                .setContentTitle("WindConnect").setContentText("Odblokuj, aby zobaczyć połączenie")
+                .setContentTitle("WindConnect").setContentText(str(R.string.conn_unlock))
                 .setContentIntent(open).build())
-            .apply { if (!connected) addAction(Notification.Action.Builder(null, "Otwórz urządzenie", open).build()) }
-            .apply { if (!connected) addAction(Notification.Action.Builder(null, "Połącz ponownie", command(RETRY, 1)).build()) }
-            .apply { if (connected) addAction(Notification.Action.Builder(null, "Wyślij schowek", clipboard).apply { if (android.os.Build.VERSION.SDK_INT >= 31) setAuthenticationRequired(true) }.build()) }
-            .apply { if (connected && filesAccepted) addAction(Notification.Action.Builder(null, "Wyślij plik", file).apply { if (android.os.Build.VERSION.SDK_INT >= 31) setAuthenticationRequired(true) }.build()) }
-            .addAction(Notification.Action.Builder(null, "Zatrzymaj", command(STOP, 2)).build())
+            .apply { if (!connected) addAction(Notification.Action.Builder(null, str(R.string.conn_open_device), open).build()) }
+            .apply { if (!connected) addAction(Notification.Action.Builder(null, str(R.string.conn_reconnect), command(RETRY, 1)).build()) }
+            .apply { if (connected) addAction(Notification.Action.Builder(null, str(R.string.send_clipboard), clipboard).apply { if (android.os.Build.VERSION.SDK_INT >= 31) setAuthenticationRequired(true) }.build()) }
+            .apply { if (connected && filesAccepted) addAction(Notification.Action.Builder(null, str(R.string.action_send_file), file).apply { if (android.os.Build.VERSION.SDK_INT >= 31) setAuthenticationRequired(true) }.build()) }
+            .addAction(Notification.Action.Builder(null, str(R.string.stop), command(STOP, 2)).build())
             .build()
     }
 
@@ -186,7 +186,7 @@ class ConnectionService : Service() {
                 preferences(context).edit().remove("error").apply()
                 true
             } catch (_: IllegalStateException) {
-                preferences(context).edit().putString("error", "System wstrzymał start w tle. Otwórz WindConnect, aby wznowić połączenie.").apply()
+                preferences(context).edit().putString("error", str(R.string.conn_bg_blocked)).apply()
                 false
             }
         }

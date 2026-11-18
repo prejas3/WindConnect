@@ -5,6 +5,7 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class ReceiveAdmissionTest {
+    init { StringsForTests.usePolish() }
     private class Fixture(timeout: Long = 1_000) {
         var enabled = true
         var visible = true

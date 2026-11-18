@@ -106,7 +106,7 @@ impl Default for Snapshot {
             phase: "loading".into(),
             phone: None,
             qr: None,
-            message: "Przygotowywanie bezpiecznego połączenia…".into(),
+            message: crate::i18n::tr("pairing.preparing").into(),
             skipped_records: 0,
             pair_to_connected_ms: None,
             code: None,
@@ -157,13 +157,11 @@ impl Default for FindView {
 pub fn find_outcome(end: Option<wind_core::find::State>) -> &'static str {
     use wind_core::find::State;
     match end {
-        Some(State::StoppedHere) => "Zatrzymano na telefonie",
-        Some(State::StoppedByRequest) => "Zatrzymano",
-        Some(State::TimedOut) => "Telefon dzwonił 60 s",
-        Some(State::Unavailable) => "Telefon nie może teraz dzwonić",
-        Some(State::Ringing) | None => {
-            "Połączenie przerwane — telefon może nadal dzwonić (do 60 s)"
-        }
+        Some(State::StoppedHere) => crate::i18n::tr("find.stopped_on_phone"),
+        Some(State::StoppedByRequest) => crate::i18n::tr("find.stopped"),
+        Some(State::TimedOut) => crate::i18n::tr("find.timed_out"),
+        Some(State::Unavailable) => crate::i18n::tr("find.unavailable"),
+        Some(State::Ringing) | None => crate::i18n::tr("find.broken"),
     }
 }
 
@@ -311,7 +309,7 @@ fn open_window(
     listener.close_window();
     let addresses = addresses(listener.local_addr()?.port())?;
     if addresses.is_empty() {
-        return Err("Nie znaleziono adresu sieci Wi-Fi lub Ethernet. Połącz komputer z siecią i spróbuj ponownie.".into());
+        return Err(crate::i18n::tr("pairing.no_network").into());
     }
     let offer = listener.open_qr(addresses);
     let link = offer.to_link();
@@ -344,7 +342,15 @@ pub fn start(app: tauri::AppHandle, changes: Arc<NetworkChanges>) {
             .await
             .is_err()
         {
-            publish(&handle, &state, Snapshot { phase: "failed".into(), message: "Nie udało się uruchomić parowania. Sprawdź tożsamość i dostęp do sieci, a następnie uruchom aplikację ponownie.".into(), ..Default::default() });
+            publish(
+                &handle,
+                &state,
+                Snapshot {
+                    phase: "failed".into(),
+                    message: crate::i18n::tr("pairing.start_failed").into(),
+                    ..Default::default()
+                },
+            );
         }
     });
     *runtime.worker.lock().unwrap() = Some(worker);
@@ -396,7 +402,10 @@ fn device_rows(store: &PairedDevicesFile, connected: Option<&PublicKey>) -> Vec<
         .iter()
         .map(|d| DeviceRow {
             key: key_hex(&d.key),
-            name: d.name.clone().unwrap_or_else(|| "Telefon".into()),
+            name: d
+                .name
+                .clone()
+                .unwrap_or_else(|| crate::i18n::tr("common.phone_capital").into()),
             fingerprint: d.key.fingerprint().to_string(),
             paired_at: d.paired_at,
             connected: connected == Some(&d.key),
@@ -409,7 +418,7 @@ fn device_rows(store: &PairedDevicesFile, connected: Option<&PublicKey>) -> Vec<
             .filter(|(k, _)| owed.contains(k))
             .map(|(k, at)| DeviceRow {
                 key: key_hex(k),
-                name: "Usunięty telefon".into(),
+                name: crate::i18n::tr("pairing.removed_phone").into(),
                 fingerprint: k.fingerprint().to_string(),
                 paired_at: *at,
                 connected: false,
@@ -659,8 +668,8 @@ async fn run(
                     // CCS/1 FLOW:a removed phone came back: notice mode told it UNPAIRED; settle when acked (§12.10).
                     Ok(Err(error)) => {
                         if accept_unpairing.notice_result(&error).unwrap_or(false) {
-                            let _ = notice_sender
-                                .send("Usunięty telefon dostał informację o rozparowaniu.".into());
+                            let _ =
+                                notice_sender.send(crate::i18n::tr("pairing.removed_told").into());
                         }
                     }
                     Err(_) => {}
@@ -684,7 +693,7 @@ async fn run(
         skipped_records: loaded.skipped.len(),
         phone: loaded.devices.last().and_then(|p| p.name.clone()),
         phase: "offline".into(),
-        message: "Telefon sparowany · czekam na połączenie".into(),
+        message: crate::i18n::tr("pairing.paired_waiting").into(),
         ..Default::default()
     };
     let mut network = changes.subscribe();
@@ -748,13 +757,12 @@ async fn run(
                 Ok(qr) => {
                     snapshot.phase = "waiting".into();
                     snapshot.qr = Some(qr);
-                    snapshot.message = "Zeskanuj kod w WindConnect na telefonie".into();
+                    snapshot.message = crate::i18n::tr("pairing.scan").into();
                 }
                 Err(_) => {
                     snapshot.phase = "no-network".into();
                     snapshot.qr = None;
-                    snapshot.message =
-                        "Połącz komputer z Wi-Fi lub Ethernet i wyświetl nowy kod.".into();
+                    snapshot.message = crate::i18n::tr("pairing.connect_network").into();
                 }
             }
         }
@@ -826,7 +834,7 @@ async fn run(
         publish(&app, &state, snapshot.clone());
         tokio::select! {
             _ = async { if let Some(start) = paired_at.filter(|_| snapshot.phase == "connecting") { tokio::time::sleep_until(tokio::time::Instant::from_std(start + std::time::Duration::from_secs(10))).await; } else { std::future::pending().await } } => {
-                snapshot.phase = "offline".into(); snapshot.message = "Telefon sparowany, ale brak połączenia. Sprawdź wspólną sieć Wi-Fi.".into();
+                snapshot.phase = "offline".into(); snapshot.message = crate::i18n::tr("pairing.paired_offline").into();
             },
             command = commands.recv() => match command {
                 Some(Action::Touchpad(on)) => {
@@ -897,8 +905,8 @@ async fn run(
                         snapshot.find.ring_ms = None;
                         match tokio::time::timeout(std::time::Duration::from_secs(3), wind_core::find::ring(session)).await {
                             Ok(Ok(r)) => { snapshot.find.state = "starting"; ring = Some((r, Instant::now())); }
-                            Ok(Err(wind_core::session::SessionError::CapabilityMissing(_))) => { snapshot.find.last = Some("Telefon nie pozwala dzwonić z komputera".into()); }
-                            _ => { snapshot.find.last = Some("Nie udało się zadzwonić. Spróbuj ponownie.".into()); }
+                            Ok(Err(wind_core::session::SessionError::CapabilityMissing(_))) => { snapshot.find.last = Some(crate::i18n::tr("find.refused").into()); }
+                            _ => { snapshot.find.last = Some(crate::i18n::tr("find.failed").into()); }
                         }
                     }
                 }
@@ -908,39 +916,39 @@ async fn run(
                 Some(Action::Close) => {
                     if let Some(p) = prompt.take() { p.reject(); }
                     listener.close_window(); snapshot.qr = None; snapshot.code = None;
-                    if active.is_some() { snapshot.phase = "connected".into(); snapshot.message = "Połączono · Wi-Fi".into(); }
-                    else { snapshot.phase = "offline".into(); snapshot.message = "Parowanie anulowane".into(); }
+                    if active.is_some() { snapshot.phase = "connected".into(); snapshot.message = crate::i18n::tr("pairing.connected").into(); }
+                    else { snapshot.phase = "offline".into(); snapshot.message = crate::i18n::tr("pairing.cancelled").into(); }
                 }
                 Some(Action::Sas) => {
                     if let Some(p) = prompt.take() { p.reject(); }
                     listener.open_sas();
                     snapshot.qr = None; snapshot.code = None;
                     snapshot.phase = "sas-waiting".into();
-                    snapshot.message = format!("Na telefonie wybierz „Paruj bez aparatu”, a potem {name} z listy.");
+                    snapshot.message = crate::i18n::trf("pairing.sas_choose", &[("name", &name)]);
                 }
                 Some(Action::Decide(accept)) => {
                     if let Some(p) = prompt.take() {
                         if accept {
                             p.accept();
                             snapshot.phase = "sas-confirming".into();
-                            snapshot.message = "Czekam na potwierdzenie na telefonie…".into();
+                            snapshot.message = crate::i18n::tr("pairing.sas_waiting").into();
                         } else {
                             p.reject();
                             snapshot.code = None;
                             snapshot.phase = "sas-waiting".into();
-                            snapshot.message = "Kod odrzucony. Spróbuj ponownie z telefonu albo wróć do kodu QR.".into();
+                            snapshot.message = crate::i18n::tr("pairing.sas_rejected").into();
                         }
                     }
                 }
                 Some(Action::Rename(key, new_name)) => {
                     match store.rename(&key, &new_name) {
                         Ok(()) => { if active_key == Some(key) { snapshot.phone = clean_name(&new_name); } }
-                        Err(_) => { snapshot.message = "Nie udało się zmienić nazwy. Nazwa nie może być pusta.".into(); }
+                        Err(_) => { snapshot.message = crate::i18n::tr("pairing.rename_failed").into(); }
                     }
                 }
                 // CCS/1 FLOW:unpair -> `-` + revoke now; Goodbye UNPAIRED in the session or on its next connection (§12.10).
                 Some(Action::Unpair(key)) => {
-                    let gone = store.load().ok().and_then(|l| l.get(&key).and_then(|d| d.name.clone())).unwrap_or_else(|| "Telefon".into());
+                    let gone = store.load().ok().and_then(|l| l.get(&key).and_then(|d| d.name.clone())).unwrap_or_else(|| crate::i18n::tr("common.phone_capital").into());
                     let session = active.as_ref().filter(|(s, _)| s.peer().key == key).map(|(s, _)| s.clone());
                     match unpairing.unpair(key, session.as_ref()).await {
                         Ok(_) => {
@@ -950,7 +958,7 @@ async fn run(
                             crate::relay::rescan(&app); // its relay keeper ends now (WN-139)
                             let _ = toasts.send(crate::notify::Job::Clear);
                             if session.is_some() { crate::clipboard::detach(&app); crate::sms::detach(&app); crate::gallery::detach(&app); active = None; indicator.unavailable(); snapshot.phase = "offline".into(); }
-                            snapshot.message = format!("Usunięto parowanie z: {gone}.");
+                            snapshot.message = crate::i18n::trf("pairing.unpaired_from", &[("name", &gone)]);
                             let left = store.load().map(|l| l.devices).unwrap_or_default();
                             match left.last() {
                                 Some(d) => crate::files::set_target(&app, *d.key.fingerprint().as_bytes(), d.name.clone()),
@@ -958,7 +966,7 @@ async fn run(
                             }
                             if active.is_none() { snapshot.phone = left.last().and_then(|d| d.name.clone()); }
                         }
-                        Err(_) => { snapshot.message = "Nie udało się usunąć parowania. Spróbuj ponownie.".into(); }
+                        Err(_) => { snapshot.message = crate::i18n::tr("pairing.unpair_failed").into(); }
                     }
                 }
                 Some(Action::Disconnect(key)) => {
@@ -967,7 +975,7 @@ async fn run(
                         // GOING_AWAY: the phone doesn't come back on its own (§7.7), so another one can connect.
                         session.goodbye(ErrorCode::GoingAway, None).await;
                         crate::clipboard::detach(&app); crate::sms::detach(&app); crate::gallery::detach(&app); indicator.unavailable();
-                        snapshot.phase = "offline".into(); snapshot.message = "Telefon rozłączony".into();
+                        snapshot.phase = "offline".into(); snapshot.message = crate::i18n::tr("pairing.disconnected").into();
                     }
                 }
                 None => break,
@@ -986,19 +994,19 @@ async fn run(
                     snapshot.code = Some(shown.code_text());
                     snapshot.phone = shown.peer_name().map(String::from);
                     snapshot.phase = "sas-code".into();
-                    snapshot.message = format!("Czy {} pokazuje ten sam kod?", shown.peer_name().unwrap_or("telefon"));
+                    snapshot.message = crate::i18n::trf("pairing.same_code", &[("name", &shown.peer_name().unwrap_or(crate::i18n::tr("common.phone")))]);
                 }
                 Some(PairingEvent::Paired(device)) => {
                     prompt = None; snapshot.code = None;
                     preferred = Some((device.key, Instant::now()));
                     paired_at = Some(Instant::now()); snapshot.qr = None;
-                    if active.as_ref().is_none_or(|(session, _)| session.peer().key != device.key) { snapshot.phase = "connecting".into(); snapshot.phone = device.name; snapshot.message = "Sparowano · czekam na bezpieczne połączenie telefonu".into(); }
+                    if active.as_ref().is_none_or(|(session, _)| session.peer().key != device.key) { snapshot.phase = "connecting".into(); snapshot.phone = device.name; snapshot.message = crate::i18n::tr("pairing.paired_securing").into(); }
                 }
-                Some(PairingEvent::WindowClosed(WindowEnd::Expired | WindowEnd::TooManyAttempts)) if snapshot.phase == "waiting" || snapshot.phase.starts_with("sas-") => { prompt = None; snapshot.code = None; snapshot.phase = "expired".into(); snapshot.qr = None; snapshot.message = "Parowanie wygasło lub osiągnięto limit prób. Zacznij od nowa.".into(); }
+                Some(PairingEvent::WindowClosed(WindowEnd::Expired | WindowEnd::TooManyAttempts)) if snapshot.phase == "waiting" || snapshot.phase.starts_with("sas-") => { prompt = None; snapshot.code = None; snapshot.phase = "expired".into(); snapshot.qr = None; snapshot.message = crate::i18n::tr("pairing.expired").into(); }
                 Some(PairingEvent::AttemptFailed { failures, .. }) => {
                     prompt = None;
                     if snapshot.phase.starts_with("sas-") { snapshot.code = None; snapshot.phase = "sas-waiting".into(); }
-                    snapshot.message = format!("Próba parowania odrzucona ({failures}/3). Sprawdź kod i sieć.");
+                    snapshot.message = crate::i18n::trf("pairing.attempt_rejected", &[("failures", &failures)]);
                 }
                 _ => {},
             },
@@ -1015,7 +1023,7 @@ async fn run(
                         if turn_away(&session, &mut events).await == TurnedAway::Unpaired
                             && unpairing.unpaired_by(&session).is_ok()
                         {
-                            let _ = notices.send("Telefon usunął parowanie z tym komputerem.".into());
+                            let _ = notices.send(crate::i18n::tr("pairing.phone_unpaired").into());
                         }
                     });
                     continue;
@@ -1030,12 +1038,12 @@ async fn run(
                 crate::sms::attach(&app, session.clone());
                 crate::gallery::attach(&app, session.clone());
                 snapshot.phone = shown_name(&store, &session);
-                touchpad=Some(crate::touchpad::Control::start(session.clone(),session_touchpad,snapshot.phone.clone().unwrap_or_else(||"Telefon".into()),touchpad_allowed.load(std::sync::atomic::Ordering::SeqCst),caps_changed.clone()));
+                touchpad=Some(crate::touchpad::Control::start(session.clone(),session_touchpad,snapshot.phone.clone().unwrap_or_else(||crate::i18n::tr("common.phone_capital").into()),touchpad_allowed.load(std::sync::atomic::Ordering::SeqCst),caps_changed.clone()));
                 // Pairing another phone stays on screen while a known one reconnects.
                 let adding = (snapshot.phase == "waiting" || snapshot.phase.starts_with("sas-")) && !fresh;
                 if !adding {
                     snapshot.phase = "connected".into(); snapshot.qr = None;
-                    snapshot.message = "Połączono · Wi-Fi".into();
+                    snapshot.message = crate::i18n::tr("pairing.connected").into();
                     listener.close_window();
                 }
                 if fresh { snapshot.pair_to_connected_ms = paired_at.map(|t| t.elapsed().as_millis() as u64); preferred = None; }
@@ -1045,7 +1053,7 @@ async fn run(
                 media_commands = Some(session_commands);
                 notify_input = Some(session_notify);
                 let quiet = quiet_hours.clone();
-                notifications = Some(crate::notify::Notifications::new(toasts.clone(), snapshot.phone.as_deref().unwrap_or("Telefon"))
+                notifications = Some(crate::notify::Notifications::new(toasts.clone(), snapshot.phone.as_deref().unwrap_or(crate::i18n::tr("common.phone_capital")))
                     .silenced_by(move || crate::notify::silenced_now(&quiet.lock().unwrap())));
                 pc_media = None;
                 if share_media.load(std::sync::atomic::Ordering::SeqCst) {
@@ -1056,7 +1064,7 @@ async fn run(
                 snapshot.battery = None;
                 // WN-48: the call state (idle comes first: a pause from a dropped session is settled), both volumes.
                 call_input = Some(session_call);
-                calls = Some(crate::calls::Calls::new(toasts.clone(), snapshot.phone.as_deref().unwrap_or("Telefon")));
+                calls = Some(crate::calls::Calls::new(toasts.clone(), snapshot.phone.as_deref().unwrap_or(crate::i18n::tr("common.phone_capital"))));
                 snapshot.phone_volume = None;
                 tokio::spawn(crate::pc_volume::serve_phone(session_volume, pc_volume.clone(), phone_levels_tx.clone(), volume_remote.clone()));
                 let (tick, ticks) = watch::channel(0u64);
@@ -1158,7 +1166,7 @@ async fn run(
                     if let Some(status) = wind_core::battery::Status::decode(&message.message) {
                         snapshot.battery = Some(status.into());
                         if let Some(alert) = alerts.update(status) {
-                            crate::battery::notify(&app, alert, snapshot.phone.as_deref().unwrap_or("Telefon"));
+                            crate::battery::notify(&app, alert, snapshot.phone.as_deref().unwrap_or(crate::i18n::tr("common.phone_capital")));
                         }
                     }
                 }
@@ -1166,13 +1174,13 @@ async fn run(
             },
             end = async { match &active { Some((session, _)) => session.closed().await, None => std::future::pending().await } } => {
                 let (session, _) = active.take().expect("closed future implies a session");
-                crate::clipboard::detach(&app); crate::sms::detach(&app); crate::gallery::detach(&app); indicator.unavailable(); snapshot.phase = "offline".into(); snapshot.message = "Telefon rozłączony".into();
+                crate::clipboard::detach(&app); crate::sms::detach(&app); crate::gallery::detach(&app); indicator.unavailable(); snapshot.phase = "offline".into(); snapshot.message = crate::i18n::tr("pairing.disconnected").into();
                 // CCS/1 SEC:the phone removed the pairing: forget the key of this session's TLS peer only.
                 if close_code(&end) == Some(ErrorCode::Unpaired) && unpairing.unpaired_by(&session).is_ok() {
                     crate::sms::forget(&app, &session.peer().key);
                     crate::gallery::forget(&app, &session.peer().key);
                     let _ = toasts.send(crate::notify::Job::Clear);
-                    snapshot.message = format!("{} usunął parowanie z tym komputerem.", snapshot.phone.clone().unwrap_or_else(|| "Telefon".into()));
+                    snapshot.message = crate::i18n::trf("pairing.phone_unpaired_named", &[("name", &snapshot.phone.clone().unwrap_or_else(|| crate::i18n::tr("common.phone_capital").into()))]);
                     let left = store.load().map(|l| l.devices).unwrap_or_default();
                     snapshot.phone = left.last().and_then(|d| d.name.clone());
                     if let Some(d) = left.last() { crate::files::set_target(&app, *d.key.fingerprint().as_bytes(), d.name.clone()); }

@@ -56,24 +56,25 @@ class WindWidget : GlanceAppWidget() {
 private fun WidgetContent(context: Context, snapshot: WidgetSnapshot) {
     val data = snapshot.data
     val time = if (snapshot.updatedAt > 0) DateFormat.getTimeFormat(context).format(Date(snapshot.updatedAt)) else "—"
-    val status = if (data.connected) "Połączono · $time" else data.status
+    val status = if (data.connected) context.getString(R.string.widget_connected_at, time) else data.status
     Column(GlanceModifier.fillMaxSize().appWidgetBackground().background(GlanceTheme.colors.surface)
         .cornerRadius(24.dp).padding(8.dp)) {
         Text(data.name, style = TextStyle(color = GlanceTheme.colors.onSurface, fontSize = 16.sp, fontWeight = FontWeight.Bold), maxLines = 1)
         Text(status, style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant, fontSize = 12.sp), maxLines = 2)
         Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            val battery = "Telefon: ${data.battery?.let { "$it%" } ?: "—"}${if (data.charging) " ⚡" else ""}"
+            val battery = context.getString(R.string.widget_battery, data.battery?.let { "$it%" } ?: "—") + if (data.charging) " ⚡" else ""
             Text(battery, modifier = GlanceModifier.defaultWeight().semantics { contentDescription = data.batteryText },
                 style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant, fontSize = 11.sp), maxLines = 1)
-            Text("Akt. $time", modifier = GlanceModifier.semantics { contentDescription = "Aktualizacja: $time" },
+            val updated = context.getString(R.string.widget_updated, time)
+            Text(context.getString(R.string.widget_updated_short, time), modifier = GlanceModifier.semantics { contentDescription = updated },
                 style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant, fontSize = 10.sp), maxLines = 1)
         }
         Spacer(GlanceModifier.height(4.dp))
         Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            WidgetAction("Wyślij schowek", GlanceModifier.defaultWeight(), Intent(context, SendClipboardActivity::class.java)
+            WidgetAction(context.getString(R.string.send_clipboard), GlanceModifier.defaultWeight(), Intent(context, SendClipboardActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK))
             Spacer(GlanceModifier.width(8.dp))
-            WidgetAction("Otwórz", GlanceModifier.defaultWeight(), Intent(context, MainActivity::class.java)
+            WidgetAction(context.getString(R.string.open), GlanceModifier.defaultWeight(), Intent(context, MainActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP))
         }
     }

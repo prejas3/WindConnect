@@ -71,7 +71,7 @@ class ClipboardHistoryTest {
         val loaded = ClipboardHistory()
         assertTrue(loaded.loadPins(plain))
         val views = loaded.views()
-        assertEquals(listOf("Obraz 4×5", "from pc"), views.map { it.preview })
+        assertEquals(listOf("4×5", "from pc"), views.map { it.preview })
         assertTrue(views.all { it.pinned && it.fromPc })
         val png = (loaded.get(views[0].id) as ClipboardHistoryItem.Image)
         assertArrayEquals(byteArrayOf(1, 2, 3), png.png); assertArrayEquals(byteArrayOf(9), png.thumbnail)

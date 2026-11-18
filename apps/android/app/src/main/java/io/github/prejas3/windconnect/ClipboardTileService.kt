@@ -24,7 +24,7 @@ class ClipboardTileService : TileService() {
                     this.state = presentation.first
                     label = getString(R.string.tile_clipboard)
                     subtitle = presentation.second
-                    contentDescription = "$label. $subtitle. Stuknij, aby wysłać schowek. Przytrzymaj, aby otworzyć WindConnect."
+                    contentDescription = getString(R.string.tile_description, label, subtitle)
                     if (Build.VERSION.SDK_INT >= 30) stateDescription = subtitle
                     updateTile()
                 }
@@ -63,7 +63,7 @@ class ClipboardTileService : TileService() {
 
 // CCS/1 SEC:only connection status/name; never show clipboard contents or raw transport errors.
 internal fun clipboardTileState(state: ConnectionState): Pair<Int, String> = when (state) {
-    is ConnectionState.Connected -> Tile.STATE_ACTIVE to "Połączono · ${state.peerName.take(64)}"
-    ConnectionState.Connecting -> Tile.STATE_INACTIVE to "Łączenie…"
-    else -> Tile.STATE_INACTIVE to "Brak połączenia"
+    is ConnectionState.Connected -> Tile.STATE_ACTIVE to str(R.string.conn_connected_via, state.peerName.take(64))
+    ConnectionState.Connecting -> Tile.STATE_INACTIVE to str(R.string.connecting)
+    else -> Tile.STATE_INACTIVE to str(R.string.not_connected)
 }

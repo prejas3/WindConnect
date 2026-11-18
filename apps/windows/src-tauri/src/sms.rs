@@ -123,7 +123,7 @@ fn title(t: &sms::Thread) -> String {
         .map(|p| clean(p.name.as_deref().unwrap_or(&p.address)))
         .collect();
     if names.is_empty() {
-        "Nieznany nadawca".into()
+        crate::i18n::tr("sms.unknown_sender").into()
     } else {
         names.join(", ")
     }
@@ -278,20 +278,16 @@ fn session(app: &tauri::AppHandle) -> Result<Session, String> {
         .unwrap()
         .session
         .clone()
-        .ok_or_else(|| "Telefon nie jest połączony.".to_string())
+        .ok_or_else(|| crate::i18n::tr("sms.not_connected").to_string())
 }
 
 fn ask_error(e: AskError) -> String {
     match e {
         AskError::Session(wind_core::session::SessionError::CapabilityMissing(_))
-        | AskError::Status(Status::Denied) => {
-            "Telefon nie udostępnia SMS. Włącz „SMS na komputerze” w ustawieniach WindConnect na telefonie (wersja z Google Play nie ma SMS).".into()
-        }
-        AskError::Status(Status::NotFound) => "Tego wątku nie ma już na telefonie.".into(),
-        AskError::Status(Status::Busy) => {
-            "Telefon jest zajęty albo wysłano już 10 wiadomości w tej minucie. Spróbuj za chwilę.".into()
-        }
-        _ => "Nie udało się odczytać wiadomości z telefonu.".into(),
+        | AskError::Status(Status::Denied) => crate::i18n::tr("sms.unavailable").into(),
+        AskError::Status(Status::NotFound) => crate::i18n::tr("sms.thread_gone").into(),
+        AskError::Status(Status::Busy) => crate::i18n::tr("sms.busy").into(),
+        _ => crate::i18n::tr("sms.read_failed").into(),
     }
 }
 
@@ -371,7 +367,7 @@ pub async fn sms_thread(app: tauri::AppHandle, id: u64) -> Result<ThreadMessages
         return if state.messages.contains_key(&id) {
             Ok(view(&state, id, true))
         } else {
-            Err("Telefon nie jest połączony.".into())
+            Err(crate::i18n::tr("sms.not_connected").into())
         };
     };
     let got = sms::messages(&session, id, None, newest, sms::MAX_MESSAGES.min(PAGE * 2))
@@ -422,11 +418,9 @@ pub async fn sms_sims(app: tauri::AppHandle) -> Result<Vec<SimView>, String> {
                 default: s.default,
             })
             .collect()),
-        Err(AskError::Status(Status::Denied)) => Err(
-            "Wysyłanie jest wyłączone. Włącz „Wysyłanie z komputera” w ustawieniach WindConnect na telefonie.".into(),
-        ),
+        Err(AskError::Status(Status::Denied)) => Err(crate::i18n::tr("sms.send_off").into()),
         Err(AskError::Session(_)) | Err(AskError::Protocol) => {
-            Err("Telefon nie pozwala wysyłać z komputera (zaktualizuj WindConnect na telefonie).".into())
+            Err(crate::i18n::tr("sms.send_unsupported").into())
         }
         Err(e) => Err(ask_error(e)),
     }
@@ -445,9 +439,9 @@ pub async fn sms_send(
 ) -> Result<u64, String> {
     let image = match (image_mime, image) {
         (Some(mime), Some(data)) => {
-            let bytes = unbase64(&data).ok_or("Nieprawidłowy obraz.")?;
+            let bytes = unbase64(&data).ok_or(crate::i18n::tr("sms.bad_image"))?;
             if bytes.len() > sms::MAX_IMAGE || !sms::image_matches(&mime, &bytes) {
-                return Err("Obraz jest za duży albo ma nieobsługiwany format (JPEG, PNG).".into());
+                return Err(crate::i18n::tr("sms.image_too_large").into());
             }
             Some((mime, bytes))
         }
@@ -462,13 +456,13 @@ pub async fn sms_send(
         || to.len() > sms::MAX_RECIPIENTS
         || to.iter().any(|a| a.len() > sms::MAX_ADDRESS)
     {
-        return Err("Podaj od 1 do 20 odbiorców.".into());
+        return Err(crate::i18n::tr("sms.recipients").into());
     }
     if body.trim().is_empty() && image.is_none() {
-        return Err("Wiadomość jest pusta.".into());
+        return Err(crate::i18n::tr("sms.empty").into());
     }
     if body.len() > sms::MAX_BODY {
-        return Err("Wiadomość jest za długa.".into());
+        return Err(crate::i18n::tr("sms.too_long").into());
     }
     let session = session(&app)?;
     let message = sms::Outgoing {
@@ -541,7 +535,7 @@ pub async fn sms_part(app: tauri::AppHandle, message: u64, part: u64) -> Result<
         .await
         .map_err(ask_error)?;
     if !sms::image_matches(&mime, &bytes) {
-        return Err("Załącznik nie jest obrazem.".into());
+        return Err(crate::i18n::tr("sms.not_image").into());
     }
     let url = format!("data:{mime};base64,{}", base64(&bytes));
     app.state::<Sms>()
@@ -598,7 +592,7 @@ pub fn open(app: &tauri::AppHandle) -> tauri::Result<()> {
     }
     let window =
         tauri::WebviewWindowBuilder::new(app, WINDOW, tauri::WebviewUrl::App("sms.html".into()))
-            .title("WindConnect — Wiadomości")
+            .title(crate::i18n::tr("sms.window_title"))
             .inner_size(960.0, 680.0)
             .min_inner_size(560.0, 400.0)
             .build()?;

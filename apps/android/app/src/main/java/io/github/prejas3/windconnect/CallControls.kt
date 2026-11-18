@@ -62,21 +62,19 @@ fun CallControls() {
         else connections.setCallsAllowed(on)
     }
     WindCard {
-        Text("Połączenia na komputerze", style = MaterialTheme.typography.titleMedium)
-        Text("Przy połączeniu przychodzącym komputer pokaże powiadomienie z numerem i nazwą kontaktu, z przyciskami „Odrzuć” " +
-            "i „Wycisz”, oraz listę nieodebranych połączeń z ostatniego tygodnia. Dane idą tylko na sparowany komputer.")
-        Text("Po włączeniu Android zapyta o stan telefonu, rejestr połączeń, odbieranie połączeń (odrzucanie z komputera) " +
-            "i kontakty (nazwy). Bez tej funkcji komputer dalej wie tylko, że telefon dzwoni (wstrzymanie muzyki).",
+        Text(str(R.string.calls_title), style = MaterialTheme.typography.titleMedium)
+        Text(str(R.string.calls_about))
+        Text(str(R.string.calls_permissions),
             style = MaterialTheme.typography.bodySmall)
-        WindSwitch("Połączenia na komputerze", allowed && access, turn, Modifier.testTag("callsAllowed"))
+        WindSwitch(str(R.string.calls_title), allowed && access, turn, Modifier.testTag("callsAllowed"))
         Text(when {
-            allowed && access && reject -> "Komputer pokaże, kto dzwoni, i może odrzucić albo wyciszyć połączenie."
-            allowed && access -> "Komputer pokaże, kto dzwoni, i może wyciszyć dzwonek; bez zgody na odbieranie połączeń nie odrzuci."
-            refused || (allowed && !access) -> "Brak dostępu do stanu telefonu lub rejestru połączeń. Możesz go przyznać w ustawieniach aplikacji."
-            else -> "Wyłączone."
+            allowed && access && reject -> str(R.string.calls_full)
+            allowed && access -> str(R.string.calls_no_answer)
+            refused || (allowed && !access) -> str(R.string.calls_no_access)
+            else -> str(R.string.off_sentence)
         }, style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("callsState").semantics { liveRegion = LiveRegionMode.Polite })
         if (refused || (allowed && (!access || !reject))) {
-            WindButton("Otwórz ustawienia aplikacji", {
+            WindButton(str(R.string.open_app_settings), {
                 val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null))
                 if (context !is Activity) intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 context.startActivity(intent)

@@ -174,7 +174,9 @@ fn toast_xml_for(view: &ToastView, icon: Option<&Path>, release: bool) -> String
     if view.reply.is_some() {
         // WN-44: typed here, sent in the background (the app stays where it is).
         x.push_str(&format!(
-            r#"<actions><input id="{REPLY_INPUT}" type="text" placeHolderContent="Odpowiedz…"/><action content="Wyślij" arguments="{REPLY_ARGUMENT}" hint-inputId="{REPLY_INPUT}" activationType="background"/></actions>"#
+            r#"<actions><input id="{REPLY_INPUT}" type="text" placeHolderContent="{}"/><action content="{}" arguments="{REPLY_ARGUMENT}" hint-inputId="{REPLY_INPUT}" activationType="background"/></actions>"#,
+            escape(crate::i18n::tr("notify.reply_placeholder")),
+            escape(crate::i18n::tr("notify.send"))
         ));
     }
     if view.silent {

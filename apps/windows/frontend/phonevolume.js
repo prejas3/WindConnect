@@ -1,3 +1,4 @@
+import { t } from './i18n.js';
 // CCS/1 FLOW:WN-48 pairing-state.phone_volume -> "Głośność telefonu" in the panel; drag/keys/mute -> phone_volume(level?, muted?).
 // RULE:no bounce-back: while dragging, and for HOLD_MS after the last local change, a pushed level (often the echo of our own
 // Set) doesn't move the slider; after that the latest pushed level wins. Sends at most every 100 ms (the latest wins).
@@ -17,10 +18,10 @@ function paint() {
   if (!shown) return;
   slider.style.setProperty('--level', `${shown.level}%`);
   slider.setAttribute('aria-valuenow', String(shown.level));
-  slider.setAttribute('aria-valuetext', shown.muted ? `${shown.level}%, wyciszony` : `${shown.level}%`);
-  document.querySelector('#phone-volume-value').textContent = shown.muted ? 'Wyciszony' : `${shown.level}%`;
+  slider.setAttribute('aria-valuetext', shown.muted ? t('volume.muted_value', { level: `${shown.level}%` }) : `${shown.level}%`);
+  document.querySelector('#phone-volume-value').textContent = shown.muted ? t('volume.muted') : `${shown.level}%`;
   mute.setAttribute('aria-pressed', String(shown.muted));
-  mute.setAttribute('aria-label', shown.muted ? 'Wyłącz wyciszenie telefonu' : 'Wycisz telefon');
+  mute.setAttribute('aria-label', shown.muted ? t('volume.unmute_phone') : t('panel.phone-mute_label'));
   section.classList.toggle('muted', shown.muted);
 }
 

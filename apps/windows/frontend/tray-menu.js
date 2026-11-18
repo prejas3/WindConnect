@@ -1,9 +1,10 @@
+import { t } from './i18n.js';
 const invoke = window.__TAURI__?.core.invoke;
 const buttons = [...document.querySelectorAll('[role^="menuitem"]')];
 const system = matchMedia('(prefers-color-scheme: dark)');
-const labels = { connected: 'Połączono', searching: 'Szukam urządzenia', unavailable: 'Brak połączenia' };
+const labels = { connected: t('state.connected'), searching: t('state.searching'), unavailable: t('state.unavailable') };
 function theme() { let choice = 'system'; try { choice = localStorage.getItem('windconnect-theme') || choice; } catch {} document.documentElement.dataset.theme = choice === 'system' ? (system.matches ? 'dark' : 'light') : choice; }
-function error(value) { const element = document.querySelector('#menu-error'); element.hidden = false; element.textContent = 'Nie udało się wykonać akcji.'; console.error(value); }
+function error(value) { const element = document.querySelector('#menu-error'); element.hidden = false; element.textContent = t('error.action'); console.error(value); }
 async function refresh() {
   theme(); if (!invoke) return;
   try { const state = await invoke('tray_snapshot'); document.querySelector('#tray-state').textContent = labels[state.phase] || labels.unavailable; document.querySelector('#autostart').setAttribute('aria-checked', String(await invoke('autostart_enabled'))); document.querySelector('#autostart').disabled = false; document.querySelector('#menu-error').hidden = true; } catch (value) { document.querySelector('#autostart').disabled = true; error(value); }

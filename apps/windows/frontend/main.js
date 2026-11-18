@@ -1,3 +1,4 @@
+import { t, formatTime } from './i18n.js';
 const invoke = window.__TAURI__?.core.invoke;
 import './touchpad.js';
 const systemTheme = matchMedia('(prefers-color-scheme: dark)');
@@ -32,7 +33,7 @@ export function toast(message) {
 async function windowAction(action) {
   if (!invoke) return;
   try { await invoke('window_action', { action }); }
-  catch (error) { console.error(error); toast('Nie udało się zmienić okna.'); }
+  catch (error) { console.error(error); toast(t('main.window_failed')); }
 }
 document.querySelectorAll('[data-window]').forEach(button => button.addEventListener('click', () => windowAction(button.dataset.window)));
 document.querySelector('#titlebar').addEventListener('mousedown', event => {
@@ -47,9 +48,9 @@ async function start() {
     const devMode = invoke ? await invoke('ui_dev_mode') : localPreview;
     if (invoke) {
       const version = await invoke('core_version');
-      status.textContent = `wind-core ${version} · gotowy`;
+      status.textContent = t('main.core_ready', { version });
     } else {
-      status.textContent = 'Podgląd interfejsu · bez połączenia z wind-core';
+      status.textContent = t('main.preview');
     }
     if (devMode) {
       const { mountGallery } = await import('./gallery.js');
@@ -66,7 +67,7 @@ async function start() {
       if (new URLSearchParams(location.search).has('gallery')) toggle.click();
     }
   } catch (error) {
-    status.textContent = 'Nie udało się uruchomić wind-core.';
+    status.textContent = t('main.core_failed');
     console.error(error);
   }
 }
@@ -74,7 +75,7 @@ start();
 
 // CCS/1 FLOW:actions.json (Rust) -> snapshot -> switches; a switch writes back and redraws from the result.
 const actionsSection = document.querySelector('#actions');
-const statusText = { done: 'wykonano', refused: 'odrzucono, nie ma jej na liście', 'bad-argument': 'odrzucono, zły adres', failed: 'nie udało się', busy: 'odrzucono, za dużo próśb naraz' };
+const statusText = { done: t('actions.status.done'), refused: t('actions.status.refused'), 'bad-argument': t('actions.status.bad_argument'), failed: t('actions.status.failed'), busy: t('actions.status.busy') };
 function actionRow(item) {
   const row = document.createElement('div');
   row.className = 'control-row';
@@ -96,22 +97,22 @@ function actionRow(item) {
     const enabled = toggle.getAttribute('aria-checked') !== 'true';
     toggle.disabled = true;
     try { renderActions(await invoke('set_action_enabled', { id: item.id, enabled })); }
-    catch (error) { console.error(error); toast(typeof error === 'string' ? error : 'Nie udało się zapisać ustawienia.'); toggle.disabled = false; }
+    catch (error) { console.error(error); toast(typeof error === 'string' ? error : t('main.save_failed')); toggle.disabled = false; }
   });
   row.append(text, toggle);
   return row;
 }
 function renderLast(last) {
   const element = document.querySelector('#actions-last');
-  if (!last) { element.textContent = 'Telefon nie uruchomił jeszcze żadnej akcji.'; return; }
-  const time = new Date(last.atMs).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
-  element.textContent = `Ostatnio: ${last.peer || 'telefon'} · ${last.label} · ${statusText[last.status] || last.status} · ${time}`;
+  if (!last) { element.textContent = t('actions.none_yet'); return; }
+  const time = formatTime(last.atMs);
+  element.textContent = t('actions.last', { peer: last.peer || t('common.phone'), label: last.label, status: statusText[last.status] || last.status, time });
 }
 function renderActions(snapshot) {
   const error = document.querySelector('#actions-error');
   actionsSection.dataset.broken = snapshot.error ? 'true' : '';
   error.hidden = !snapshot.error;
-  error.textContent = snapshot.error ? 'Plik akcji jest uszkodzony, więc telefon nie może teraz uruchomić żadnej akcji. Popraw go w edytorze albo usuń.' : '';
+  error.textContent = snapshot.error ? t('actions.file_broken') : '';
   document.querySelector('#actions-builtins').replaceChildren(...snapshot.builtins.map(actionRow));
   document.querySelector('#actions-custom').replaceChildren(...snapshot.custom.map(actionRow));
   document.querySelector('#actions-empty').hidden = snapshot.custom.length > 0;
@@ -129,10 +130,10 @@ window.__TAURI__?.event?.listen('actions-handled', event => renderLast(event.pay
 // Files dropped on this window go to the phone (WN-39); the result shows as a toast.
 window.__TAURI__?.event?.listen('files-notice', event => toast(event.payload.message));
 window.__TAURI__?.event?.listen('files-drag', event => document.body.classList.toggle('dropping', event.payload));
-document.querySelector('#actions-edit').addEventListener('click', () => invoke?.('edit_custom_actions').catch(error => { console.error(error); toast('Nie udało się otworzyć pliku akcji.'); }));
-document.querySelector('#open-pairing').addEventListener('click', () => invoke?.('panel_action', { action: 'show' }).catch(error => { console.error(error); toast('Nie udało się otworzyć panelu telefonu.'); }));
-document.querySelector('#tray-options').addEventListener('click', () => invoke?.('tray_action', { action: 'menu' }).catch(error => { console.error(error); toast('Nie udało się otworzyć menu.'); }));
-document.querySelector('#quit-app').addEventListener('click', () => invoke?.('tray_action', { action: 'quit' }).catch(error => { console.error(error); toast('Nie udało się zakończyć aplikacji.'); }));
+document.querySelector('#actions-edit').addEventListener('click', () => invoke?.('edit_custom_actions').catch(error => { console.error(error); toast(t('actions.open_failed')); }));
+document.querySelector('#open-pairing').addEventListener('click', () => invoke?.('panel_action', { action: 'show' }).catch(error => { console.error(error); toast(t('main.panel_failed')); }));
+document.querySelector('#tray-options').addEventListener('click', () => invoke?.('tray_action', { action: 'menu' }).catch(error => { console.error(error); toast(t('main.menu_failed')); }));
+document.querySelector('#quit-app').addEventListener('click', () => invoke?.('tray_action', { action: 'quit' }).catch(error => { console.error(error); toast(t('main.quit_failed')); }));
 import './clipboard.js';
 import './onboarding.js';
 import './pcmedia.js';

@@ -1,3 +1,4 @@
+import { t, plural, locale } from './i18n.js';
 // CCS/1 M:WN-55 the "Wiadomości" window (PROTOCOL.md §9.11). FLOW:sms_status/sms-status -> threads (memory first, then the
 // phone) -> click -> sms_thread (memory + newer from the phone) -> render; `sms-changed` (the phone's watch) refreshes both.
 // SEC:every phone text goes in with textContent, never as HTML. PERF:one DocumentFragment per render; window.__smsOpenMs is
@@ -19,9 +20,9 @@ let threads = [];
 let selected = null;
 let opening = 0;
 const photos = new Map();
-const time = new Intl.DateTimeFormat('pl-PL', { hour: '2-digit', minute: '2-digit' });
-const day = new Intl.DateTimeFormat('pl-PL', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-const short = new Intl.DateTimeFormat('pl-PL', { day: 'numeric', month: 'short' });
+const time = new Intl.DateTimeFormat(locale, { hour: '2-digit', minute: '2-digit' });
+const day = new Intl.DateTimeFormat(locale, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+const short = new Intl.DateTimeFormat(locale, { day: 'numeric', month: 'short' });
 const sameDay = (a, b) => a.toDateString() === b.toDateString();
 function when(ms) {
   const d = new Date(ms), now = new Date();
@@ -48,29 +49,29 @@ function renderThreads() {
   const query = $('#search').value.trim().toLowerCase();
   const list = $('#thread-list');
   const fragment = document.createDocumentFragment();
-  for (const t of threads) {
-    if (query && !t.title.toLowerCase().includes(query) && !t.snippet.toLowerCase().includes(query)
-      && !t.people.some(p => p.address.includes(query))) continue;
+  for (const th of threads) {
+    if (query && !th.title.toLowerCase().includes(query) && !th.snippet.toLowerCase().includes(query)
+      && !th.people.some(p => p.address.includes(query))) continue;
     const li = document.createElement('li');
     const b = document.createElement('button');
-    b.className = 'thread' + (t.unread ? ' unread' : '');
+    b.className = 'thread' + (th.unread ? ' unread' : '');
     b.setAttribute('role', 'option');
-    b.setAttribute('aria-selected', String(t.id === selected));
-    b.dataset.id = t.id;
-    const a = document.createElement('span'); a.className = 'avatar'; a.setAttribute('aria-hidden', 'true'); avatar(a, t);
-    const title = document.createElement('span'); title.className = 'thread-title'; title.textContent = t.title;
-    const date = document.createElement('span'); date.className = 'thread-date'; date.textContent = when(t.date_ms);
-    const snippet = document.createElement('span'); snippet.className = 'thread-snippet'; snippet.textContent = t.snippet || 'Wiadomość multimedialna';
+    b.setAttribute('aria-selected', String(th.id === selected));
+    b.dataset.id = th.id;
+    const a = document.createElement('span'); a.className = 'avatar'; a.setAttribute('aria-hidden', 'true'); avatar(a, th);
+    const title = document.createElement('span'); title.className = 'thread-title'; title.textContent = th.title;
+    const date = document.createElement('span'); date.className = 'thread-date'; date.textContent = when(th.date_ms);
+    const snippet = document.createElement('span'); snippet.className = 'thread-snippet'; snippet.textContent = th.snippet || t('sms.mms');
     b.append(a, title, date, snippet);
-    if (t.unread) { const badge = document.createElement('span'); badge.className = 'badge'; badge.textContent = t.unread; badge.setAttribute('aria-label', `${t.unread} nieprzeczytane`); b.append(badge); }
-    b.addEventListener('click', () => open(t.id));
+    if (th.unread) { const badge = document.createElement('span'); badge.className = 'badge'; badge.textContent = th.unread; badge.setAttribute('aria-label', t('sms.unread', { count: th.unread })); b.append(badge); }
+    b.addEventListener('click', () => open(th.id));
     li.append(b);
     fragment.append(li);
   }
   list.replaceChildren(fragment);
-  say('#threads-status', !status.connected && !threads.length ? 'Telefon nie jest połączony.'
-    : status.connected && !status.available ? 'Telefon nie udostępnia SMS. Włącz „SMS na komputerze” w ustawieniach WindConnect na telefonie (wersja z Google Play nie ma SMS).'
-    : !threads.length ? 'Brak wątków.' : !status.connected ? 'Telefon rozłączony: widzisz to, co już było odczytane.' : '');
+  say('#threads-status', !status.connected && !threads.length ? t('sms.not_connected')
+    : status.connected && !status.available ? t('sms.unavailable')
+    : !threads.length ? t('sms.no_threads') : !status.connected ? t('sms.offline_cached') : '');
 }
 
 async function loadThreads(refresh) {
@@ -80,14 +81,14 @@ async function loadThreads(refresh) {
   } catch (e) { say('#threads-status', String(e)); }
 }
 
-const statusLabel = { sent: '', pending: ' · wysyłanie…', failed: ' · nie wysłano' };
-const deliveryLabel = { pending: ' · wysłano', delivered: ' · dostarczono', failed: ' · niedostarczono' };
+const statusLabel = { sent: '', pending: t('sms.status.sending'), failed: t('sms.status.not_sent') };
+const deliveryLabel = { pending: t('sms.status.sent'), delivered: t('sms.status.delivered'), failed: t('sms.status.not_delivered') };
 const pictures = new IntersectionObserver(entries => {
   for (const entry of entries) {
     if (!entry.isIntersecting) continue;
     const img = entry.target; pictures.unobserve(img);
     invoke('sms_part', { message: Number(img.dataset.message), part: Number(img.dataset.part) })
-      .then(url => { img.src = url; }).catch(() => { img.replaceWith(Object.assign(document.createElement('span'), { className: 'attachment', textContent: 'Nie udało się pobrać zdjęcia' })); });
+      .then(url => { img.src = url; }).catch(() => { img.replaceWith(Object.assign(document.createElement('span'), { className: 'attachment', textContent: t('sms.picture_failed') })); });
   }
 }, { rootMargin: '200px' });
 function renderMessages(thread, answer, keepBottom) {
@@ -109,11 +110,11 @@ function renderMessages(thread, answer, keepBottom) {
     if (m.body) li.append(document.createTextNode(m.body));
     // WN-56: MMS pictures load when scrolled into view; other parts stay a note.
     for (const part of m.parts || []) {
-      const img = document.createElement('img'); img.className = 'mms'; img.alt = 'Zdjęcie z MMS';
+      const img = document.createElement('img'); img.className = 'mms'; img.alt = t('sms.mms_photo');
       img.dataset.message = m.key.slice(1); img.dataset.part = part; pictures.observe(img); li.append(img);
     }
     const other = m.attachments - (m.parts?.length || 0);
-    if (other > 0) { const a = document.createElement('span'); a.className = 'attachment'; a.textContent = other === 1 ? 'Załącznik (np. dźwięk lub wizytówka)' : `Załączniki: ${other}`; li.append(a); }
+    if (other > 0) { const a = document.createElement('span'); a.className = 'attachment'; a.textContent = other === 1 ? t('sms.attachment') : t('sms.attachments', { count: other }); li.append(a); }
     const meta = document.createElement('span'); meta.className = 'meta';
     meta.textContent = time.format(d) + (statusLabel[m.folder] || '') + (m.folder === 'sent' && m.delivery ? deliveryLabel[m.delivery] : ''); li.append(meta);
     fragment.append(li);
@@ -128,7 +129,8 @@ function header(thread) {
   $('#conversation-head').hidden = false;
   say('#conversation-title', thread.title);
   const numbers = thread.people.map(p => p.address).join(', ');
-  say('#conversation-sub', numbers === thread.title ? `${thread.count} wiadomości` : `${numbers} · ${thread.count} wiadomości`);
+  const count = plural('sms.count', thread.count);
+  say('#conversation-sub', numbers === thread.title ? count : t('sms.numbers_count', { numbers, count }));
   avatar($('#conversation-avatar'), thread);
 }
 
@@ -137,16 +139,16 @@ async function open(id) {
   const ticket = ++opening;
   selected = id;
   composing = false; $('#new-to').hidden = true; renderComposer();
-  const thread = threads.find(t => t.id === id);
+  const thread = threads.find(th => th.id === id);
   renderThreads();
   if (thread) header(thread);
   $('#empty').hidden = true; $('#messages').hidden = false;
-  say('#conversation-status', 'Wczytywanie…');
+  say('#conversation-status', t('sms.loading'));
   try {
     const answer = await invoke('sms_thread', { id });
     if (ticket !== opening) return;
     renderMessages(thread, answer, true);
-    say('#conversation-status', answer.cached ? 'Telefon rozłączony: to, co już było odczytane.' : '');
+    say('#conversation-status', answer.cached ? t('sms.offline_thread') : '');
     requestAnimationFrame(() => requestAnimationFrame(() => {
       if (ticket === opening) window.__smsOpenMs = { id, ms: Math.round(performance.now() - started), count: answer.messages.length };
     }));
@@ -159,7 +161,7 @@ async function older() {
   $('#older').disabled = true;
   try {
     const answer = await invoke('sms_older', { id });
-    if (id === selected) renderMessages(threads.find(t => t.id === id), answer, false);
+    if (id === selected) renderMessages(threads.find(th => th.id === id), answer, false);
   } catch (e) { say('#conversation-status', String(e)); }
   finally { $('#older').disabled = false; }
 }
@@ -177,7 +179,7 @@ async function changed() {
         const box = $('#messages');
         const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
         const answer = await invoke('sms_thread', { id: selected }).catch(() => null);
-        const thread = threads.find(t => t.id === selected);
+        const thread = threads.find(th => th.id === selected);
         if (thread) header(thread);
         if (answer) renderMessages(thread, answer, atBottom);
       }
@@ -205,7 +207,7 @@ async function loadSims() {
 const canSend = () => status.available && !!sims?.length;
 function recipients() {
   if (composing) return $('#to').value.split(/[,;]/).map(a => a.trim()).filter(Boolean);
-  return threads.find(t => t.id === selected)?.people.map(p => p.address) || [];
+  return threads.find(th => th.id === selected)?.people.map(p => p.address) || [];
 }
 const GSM = /^[@£$¥èéùìòÇ\nØø\rÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ !"#¤%&'()*+,\-./0-9:;<=>?¡A-ZÄÖÑÜ§¿a-zäöñüà^{}\\\[~\]|€]*$/;
 function segments(text) {
@@ -213,7 +215,7 @@ function segments(text) {
   const gsm = GSM.test(text);
   const single = gsm ? 160 : 70, multi = gsm ? 153 : 67;
   const n = text.length <= single ? 1 : Math.ceil(text.length / multi);
-  return `${text.length} znaków · ${n} SMS${gsm ? '' : ' (znaki spoza GSM)'}`;
+  return t(gsm ? 'sms.segments' : 'sms.segments_unicode', { chars: text.length, count: n });
 }
 function renderComposer() {
   $('#new-message').hidden = !status.available;
@@ -227,17 +229,17 @@ function renderComposer() {
     select.dataset.ids = sims.map(s => s.id).join();
   }
   const mms = !!attachment || recipients().length > 1;
-  $('#body').placeholder = mms ? 'Wiadomość MMS' : 'Wiadomość SMS';
-  say('#composer-note', !ok ? simsNote : mms ? 'Wyślesz MMS' + (recipients().length > 1 ? ' do grupy' : '') + '.' : segments($('#body').value));
+  $('#body').placeholder = mms ? t('sms.mms_placeholder') : t('sms.body_placeholder');
+  say('#composer-note', !ok ? simsNote : mms ? t(recipients().length > 1 ? 'sms.will_send_group_mms' : 'sms.will_send_mms') : segments($('#body').value));
 }
 function localBubble(local) {
   const li = document.createElement('li');
   li.className = 'bubble out local' + (local.state === 'failed' || local.state === 'refused' ? ' failed' : '');
   li.dataset.local = local.id;
-  if (local.url) { const img = document.createElement('img'); img.className = 'mms'; img.alt = 'Wysyłane zdjęcie'; img.src = local.url; li.append(img); }
+  if (local.url) { const img = document.createElement('img'); img.className = 'mms'; img.alt = t('sms.sending_photo'); img.src = local.url; li.append(img); }
   if (local.body) li.append(document.createTextNode(local.body));
   const meta = document.createElement('span'); meta.className = 'meta';
-  meta.textContent = ({ queued: 'wysyłanie…', sent: 'wysłano', delivered: 'dostarczono', failed: 'nie wysłano', refused: local.message || 'nie wysłano' })[local.state];
+  meta.textContent = ({ queued: t('sms.local.sending'), sent: t('sms.local.sent'), delivered: t('sms.local.delivered'), failed: t('sms.local.not_sent'), refused: local.message || t('sms.local.not_sent') })[local.state];
   li.append(meta);
   return li;
 }
@@ -262,12 +264,12 @@ function readImage(file) {
       const ctx = canvas.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height); ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
       let quality = .85, data;
       do { data = canvas.toDataURL('image/jpeg', quality); quality -= .15; } while (data.length * .75 > 300 * 1024 && quality > .2);
-      if (data.length * .75 > 700 * 1024) return reject(Error('Obraz jest za duży.'));
+      if (data.length * .75 > 700 * 1024) return reject(Error(t('sms.image_too_large')));
       resolve({ mime: 'image/jpeg', url: data, data: data.slice(data.indexOf(',') + 1) });
     };
-    img.onerror = () => reject(Error('Nie udało się wczytać obrazu.'));
+    img.onerror = () => reject(Error(t('sms.image_failed')));
     reader.onload = () => { img.src = reader.result; };
-    reader.onerror = () => reject(Error('Nie udało się wczytać obrazu.'));
+    reader.onerror = () => reject(Error(t('sms.image_failed')));
     reader.readAsDataURL(file);
   });
 }
@@ -281,7 +283,7 @@ $('#attach-file').addEventListener('change', async event => {
 });
 $('#attachment-remove').addEventListener('click', () => { attachment = null; $('#attachment').hidden = true; renderComposer(); });
 $('#body').addEventListener('input', event => {
-  const t = event.currentTarget; t.style.height = 'auto'; t.style.height = Math.min(160, t.scrollHeight) + 'px'; renderComposer();
+  const th = event.currentTarget; th.style.height = 'auto'; th.style.height = Math.min(160, th.scrollHeight) + 'px'; renderComposer();
 });
 $('#body').addEventListener('keydown', event => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); $('#composer').requestSubmit(); } });
 $('#to').addEventListener('input', renderComposer);
@@ -312,16 +314,16 @@ async function sendEvent({ id, state, message, done }) {
   if (!local) return;
   local.state = state; local.message = message;
   showLocal(local);
-  if (state === 'refused') { say('#composer-note', message || 'Nie wysłano.'); return localSends.delete(id); }
+  if (state === 'refused') { say('#composer-note', message || t('sms.not_sent')); return localSends.delete(id); }
   // The phone recorded it (sent or failed): its own message takes over through the watch.
   if (state === 'sent' || state === 'delivered' || state === 'failed' || done) {
     localSends.delete(id);
-    if (state === 'failed') say('#composer-note', 'Nie wysłano wiadomości. Sprawdź zasięg i spróbuj ponownie.');
+    if (state === 'failed') say('#composer-note', t('sms.send_failed'));
     if (local.thread === null) {
       await loadThreads(true);
       const want = local.to.map(digits).sort().join();
-      const t = threads.find(t => t.people.map(p => digits(p.address)).sort().join() === want);
-      if (t) return open(t.id);
+      const th = threads.find(th => th.people.map(p => digits(p.address)).sort().join() === want);
+      if (th) return open(th.id);
     }
     changed();
   }
