@@ -1,12 +1,52 @@
 # WindConnect
 
-WindConnect łączy Windows 11 z Androidem 10+ (API 29+).
-Projekt jest na etapie fundamentów: Windows ma szkielet Tauri 2,
-a Android — Kotlin / Jetpack Compose. Protokół jest opisany w
-[PROTOCOL.md](PROTOCOL.md); `wind-core` ma już koder ramek
-(`wind_core::protocol`) i tożsamość urządzenia (`wind_core::identity`:
-klucz Ed25519, certyfikat TLS, odcisk; na Windows klucz chroni DPAPI,
-na Androidzie klucz z Android Keystore),
+WindConnect łączy komputer z Windows 11 z telefonem z Androidem 10+ w tej samej
+sieci Wi-Fi: wspólny schowek, pliki w obie strony, powiadomienia, SMS i połączenia
+na komputerze, sterowanie odtwarzaczem i głośnością, telefon jako touchpad.
+Bez konta i bez chmury: telefon i komputer łączą się bezpośrednio (QUIC z
+przypiętymi kluczami po parowaniu kodem QR); opcjonalny własny przekaźnik
+pozwala połączyć się spoza domu.
+
+> **Status: wersja testowa przed 1.0.** Aplikacje działają na co dzień, ale
+> wydania 0.x są do testów: mogą zawierać błędy, a format danych i protokół
+> mogą się jeszcze zmienić. APK jest podpisany kluczem testowym (właściwy klucz
+> wydań przyjdzie przed 1.0), MSI nie jest podpisany.
+
+## Co potrafi
+
+- **Schowek:** automatyczna synchronizacja tekstu, linków i obrazów, historia z przypinaniem.
+- **Pliki:** wysyłanie z telefonu na PC i z PC na telefon (także z menu Eksploratora), postęp i ponawianie.
+- **Powiadomienia telefonu na PC:** z odpowiadaniem i odrzucaniem; wybór aplikacji.
+- **SMS i połączenia na PC:** wątki SMS i wysyłanie, kto dzwoni, odrzucenie i wyciszenie (wersja GitHub).
+- **Multimedia:** odtwarzacz telefonu na PC i odtwarzacz PC na telefonie, głośność w obie strony.
+- **Sterowanie:** telefon jako touchpad i klawiatura, tryb prezentacji ze wskaźnikiem laserowym.
+- **Akcje:** zadzwoń na telefon (Znajdź telefon), zablokuj PC, otwórz link na drugim urządzeniu,
+  ostatnie zdjęcia telefonu w panelu PC, bateria telefonu w zasobniku.
+- **Na Androidzie:** widżet stanu PC, kafelek szybkich ustawień, skróty na ekranie głównym.
+- Interfejs po polsku i angielsku, jasny i ciemny motyw, dostępność (Narrator, TalkBack, duży tekst).
+
+## Instalacja
+
+Pliki są w [Releases](https://github.com/prejas3/WindConnect/releases). Sumy SHA-256 są w `SHA256SUMS.txt`.
+
+1. **Windows 11:** pobierz `WindConnect_<wersja>_x64_en-US.msi` i uruchom (raz poprosi o UAC).
+   Aktualizacja to instalacja nowszego MSI na starszy; parowanie i ustawienia zostają.
+   `WindConnect-<wersja>-portable.exe` uruchamia się bez instalacji (do szybkiego podglądu;
+   bez autostartu, menu Eksploratora i reguły zapory).
+2. **Android 10+:** pobierz `WindConnect-<wersja>.apk` na telefon i otwórz (zezwól na instalację
+   z tego źródła) albo `adb install -r WindConnect-<wersja>.apk`.
+3. **Parowanie:** otwórz panel WindConnect przy zegarze w Windows i zeskanuj kod QR aplikacją
+   na telefonie (albo „Paruj bez aparatu” i porównaj kod na obu ekranach). Telefon i komputer
+   muszą być w tej samej sieci; sieć Windows ustaw jako prywatną.
+
+Wersja z Google Play (bez SMS i rejestru połączeń) i F-Droid są planowane.
+
+## Dla deweloperów
+
+Protokół jest opisany w [PROTOCOL.md](PROTOCOL.md). Wspólny rdzeń w Rust
+`wind-core` ma koder ramek (`wind_core::protocol`) i tożsamość urządzenia
+(`wind_core::identity`: klucz Ed25519, certyfikat TLS, odcisk; na Windows klucz
+chroni DPAPI, na Androidzie klucz z Android Keystore),
 połączenie QUIC z przypiętymi kluczami, keep-alive, migracją ścieżki
 i wznawianiem 0-RTT (`wind_core::transport`)
 sesję protokołu ze strumieniami kanałów i routerem do modułów
@@ -92,9 +132,9 @@ Budowanie APK opisano w [apps/android/README.md](apps/android/README.md).
 ## Kierunek projektu
 
 - Własny protokół oparty na QUIC, bez zgodności z KDE Connect.
-- Planowana dystrybucja Androida: APK przez GitHub Releases oraz F-Droid.
-- Opcjonalny przekaźnik Cloudflare planowany na etap M3.
-- Docelowe publiczne repozytorium: `prejas3/WindConnect`.
+- Dystrybucja Androida: APK przez GitHub Releases, później F-Droid i Google Play.
+- Opcjonalny przekaźnik (Cloudflare Workers) do połączeń spoza domu: [relay/](relay/).
+- Repozytorium: [prejas3/WindConnect](https://github.com/prejas3/WindConnect).
 
 Kod udostępniany na licencji [MIT](LICENSE). Zasady zmian: [CONTRIBUTING.md](CONTRIBUTING.md).
 

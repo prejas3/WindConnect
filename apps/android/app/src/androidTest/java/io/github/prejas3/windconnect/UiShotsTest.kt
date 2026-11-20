@@ -69,7 +69,7 @@ class UiShotsTest {
         ClipboardHistoryView(5, true, "Obraz 321×220", image(0xFF5A2D4A.toInt(), 64, 44), fromPc = true, pinned = false),
         ClipboardHistoryView(4, false, "https://www.example.com/artykul/bardzo-dlugi-adres-ktory-sie-nie-miesci", null, fromPc = false, pinned = true),
         ClipboardHistoryView(3, true, "Obraz 221×160", image(0xFFB5531E.toInt(), 64, 46), fromPc = true, pinned = false),
-        ClipboardHistoryView(2, false, "C:\\Users\\SzymonJ\\Documents\\New project\\WindConnect\\dist\\test-0.79.1", null, fromPc = true, pinned = false),
+        ClipboardHistoryView(2, false, "C:\\Users\\Ola\\Documents\\Projekty\\Raport kwartalny\\wyniki-2026-Q3.xlsx", null, fromPc = true, pinned = false),
         ClipboardHistoryView(1, false, "Spotkanie o 15:00 w sali B, przynieś laptopa i ładowarkę", null, fromPc = false, pinned = false),
     )
 
