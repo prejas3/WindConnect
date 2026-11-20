@@ -23,6 +23,8 @@ box.append(status, button);
 const anchor = document.querySelector('#find-status') || document.querySelector('.page-heading');
 if (anchor) anchor.after(box); else (document.querySelector('main') || document.body).prepend(box);
 function render(state) {
+  // WN-151: no snapshot (not ready yet, or a stub) keeps the defaults, as notify/callvolume/pcmedia do.
+  if (!state) return;
   allowed = state.touchpad?.allowed ?? true;
   if (inPanel) box.hidden = !state.connected;
   status.textContent = state.touchpad?.message || (allowed ? t('touchpad.allowed') : t('touchpad.off'));
