@@ -1,6 +1,6 @@
 //! CCS/1 M:WN-47 the PC's player (Windows SMTC) for the phone (PROTOCOL.md §9.6): Now/Art/Gone out on `media`, Command in
 //! on `media-control`. RULE:event-driven (SMTC session events), only while a phone session is live and the setting
-//! "Udostępnij odtwarzanie telefonowi" is on; the first Playing session, else the system's current one.
+//! "Share playback with the phone" is on; the first Playing session, else the system's current one.
 //! SEC:debug builds honour WINDCONNECT_TEST_MEDIA_APP (one AUMID only) so a test never touches the person's own players.
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{mpsc, Arc};
@@ -136,7 +136,7 @@ impl PcMedia {
         Some(Self { tx, allowed })
     }
 
-    /// The phone changed what it accepts (e.g. "Pokaż odtwarzacz komputera" back on): resend.
+    /// The phone changed what it accepts (e.g. "Show the computer's player" back on): resend.
     pub fn resend(&self) {
         let _ = self.tx.send(Msg::Resend);
     }

@@ -1,4 +1,4 @@
-// CCS/1 PURPOSE:WN-45 main-window "Ciche godziny" with a stubbed IPC: the switch shows the times, steppers and keys move by
+// CCS/1 PURPOSE:WN-45 main-window "Quiet hours" with a stubbed IPC: the switch shows the times, steppers and keys move by
 // 15 min / 1 h and wrap at midnight, each change sends notify_quiet_hours, pushed state follows, Light/Dark
 // | DEP:external dev-only Playwright 1.61.1.
 const assert = require('node:assert/strict');

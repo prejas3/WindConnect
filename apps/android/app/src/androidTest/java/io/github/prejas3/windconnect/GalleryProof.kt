@@ -17,7 +17,7 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 
 /**
- * CCS/1 PURPOSE:WN-58 the phone side of check-gallery-android.cjs: "Zdjęcia na komputerze" on (photo access granted by the
+ * CCS/1 PURPOSE:WN-58 the phone side of check-gallery-android.cjs: "Photos on the computer" on (photo access granted by the
  * script), the session held while the PC shows the photos. Commands from cache/wn58-cmd: "photo <n>" saves a new 4000×3000
  * JPEG the way a camera does (pending, bytes, published) into Pictures/WindConnectTest and acks "<n> <id> <ms>" (the id, and
  * how long the insert itself took) in cache/wn58-ack; "screenshot <n>" the same into Pictures/Screenshots; "off", "on", "done".

@@ -1,5 +1,5 @@
-// CCS/1 FLOW:WN-48 main-window settings "Wstrzymaj odtwarzanie przy połączeniu" / "Głośność z telefonu" and WN-57 "Połączenia
-// z telefonu" -> call_volume_settings -> pairing-state.pause_on_call / volume_remote / call_toasts. All on by default.
+// CCS/1 FLOW:WN-48 main-window settings "Pause playback during calls" / "Volume from the phone" and WN-57 "Calls
+// from the phone" -> call_volume_settings -> pairing-state.pause_on_call / volume_remote / call_toasts. All on by default.
 const invoke = window.__TAURI__?.core.invoke;
 const switches = { pause_on_call: document.querySelector('#pause-on-call'), volume: document.querySelector('#volume-remote'), calls: document.querySelector('#call-toasts') };
 const field = { pause_on_call: 'pause_on_call', volume: 'volume_remote', calls: 'call_toasts' };

@@ -1,8 +1,8 @@
 // CCS/1 PURPOSE:WN-100 real PC app + Android emulator: remote actions both ways over a paired session. The PC's allowlist
 // (actions.json in the test data dir) has lock, sleep and open-url off and one harmless custom action (whoami.exe): from the
-// phone the list shows only it, lock and open-url are "refused", the custom one "done". From the panel's "Otwórz na
-// telefonie": a link opens at once with the app in front, `file:` is refused before it leaves the PC, in the background the
-// phone offers a notification, and with "Otwieraj linki z komputera" off the phone refuses. Nothing locks or sleeps the PC.
+// phone the list shows only it, lock and open-url are "refused", the custom one "done". From the panel's "Open on
+// the phone": a link opens at once with the app in front, `file:` is refused before it leaves the PC, in the background the
+// phone offers a notification, and with "Open links from the computer" off the phone refuses. Nothing locks or sleeps the PC.
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const { spawn, spawnSync } = require('node:child_process');
 const fs = require('node:fs/promises');
@@ -118,7 +118,7 @@ let app, instrument, browser, socket, timer, redirected = false, output = '';
     await panel.locator('#open-on-phone button').click();
     await until(async () => (await statusText()) === 'Otwarto na telefonie' || null, 'offered in the background');
     report.backgroundNotification = await until(() => /links_from_pc/.test(sh('dumpsys notification --noredact')) || null, 'link notification on the phone', 10000);
-    // 5. "Otwieraj linki z komputera" off: refused.
+    // 5. "Open links from the computer" off: refused.
     command('links-off');
     await delay(800);
     await field.fill('https://example.com/?wn100=off');

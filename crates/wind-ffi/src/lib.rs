@@ -442,13 +442,13 @@ pub struct CoreClient {
     /// WN-44: the PC's dismissals and replies, and whether the phone takes them (notifications on, access granted).
     notify_actions: std::sync::Mutex<Option<Arc<dyn NotifyActionSink>>>,
     notify_actions_enabled: std::sync::atomic::AtomicBool,
-    /// WN-48: the PC's volume and its requests for the phone's; whether the phone takes them ("Głośność z komputera").
+    /// WN-48: the PC's volume and its requests for the phone's; whether the phone takes them ("Volume from the computer").
     volume: std::sync::Mutex<Option<Arc<dyn VolumeSink>>>,
     volume_enabled: std::sync::atomic::AtomicBool,
-    /// WN-100: where the PC's links open, and "Otwieraj linki z komputera" (read for every request).
+    /// WN-100: where the PC's links open, and "Open links from the computer" (read for every request).
     url_opener: std::sync::Mutex<Option<Arc<dyn UrlOpener>>>,
     open_links: Arc<std::sync::atomic::AtomicBool>,
-    /// WN-57: the PC's Reject/Silence; whether the phone takes them ("Połączenia na komputerze").
+    /// WN-57: the PC's Reject/Silence; whether the phone takes them ("Calls on the computer").
     call_actions: std::sync::Mutex<Option<Arc<dyn CallActionSink>>>,
     call_actions_enabled: std::sync::atomic::AtomicBool,
     /// WN-55: one SMS server for the client (its watches end with each session).
@@ -633,7 +633,7 @@ impl CoreClient {
     pub fn set_url_opener(&self, opener: Box<dyn UrlOpener>) {
         *self.url_opener.lock().unwrap() = Some(Arc::from(opener));
     }
-    /// "Otwieraj linki z komputera": off, the PC's `open-url` is refused (status 1), read for every request.
+    /// "Open links from the computer": off, the PC's `open-url` is refused (status 1), read for every request.
     pub fn set_open_links(&self, allowed: bool) {
         self.open_links
             .store(allowed, std::sync::atomic::Ordering::SeqCst);
@@ -662,7 +662,7 @@ impl CoreClient {
     pub fn set_pc_media_sink(&self, sink: Box<dyn PcMediaSink>) {
         *self.pc_media.lock().unwrap() = Some(Arc::from(sink));
     }
-    /// Whether new sessions announce `media/1` ("Pokaż odtwarzacz komputera"); a live one changes
+    /// Whether new sessions announce `media/1` ("Show the computer's player"); a live one changes
     /// with [`CoreConnection::set_pc_media_accepted`].
     pub fn set_pc_media_enabled(&self, enabled: bool) {
         self.pc_media_enabled
@@ -1194,7 +1194,7 @@ impl CoreClient {
         }
         Some((sink, queue))
     }
-    /// WN-48: routes `volume` when there is a sink; withdrawn at the start unless "Głośność z komputera" is on.
+    /// WN-48: routes `volume` when there is a sink; withdrawn at the start unless "Volume from the computer" is on.
     fn route_volume(&self, router: &mut Router) -> Option<phone_extras::VolumeRoute> {
         let sink = self.volume.lock().unwrap().clone()?;
         let queue = wind_core::volume::route(router);
@@ -1256,7 +1256,7 @@ impl CoreClient {
             tokio::spawn(server.serve(streams));
         }
     }
-    /// WN-57: routes `call-action` when there is a sink; withdrawn at the start unless "Połączenia na komputerze" is on.
+    /// WN-57: routes `call-action` when there is a sink; withdrawn at the start unless "Calls on the computer" is on.
     fn route_call_actions(&self, router: &mut Router) -> Option<phone_extras::CallActionRoute> {
         let sink = self.call_actions.lock().unwrap().clone()?;
         let queue = wind_core::call::route_actions(router);
@@ -1770,7 +1770,7 @@ impl CoreConnection {
     pub fn send_volume_set(&self, level: Option<u8>, muted: Option<bool>) {
         self.extras.request(level, muted);
     }
-    /// WN-48: announce or withdraw `volume/1` on this session ("Głośność z komputera").
+    /// WN-48: announce or withdraw `volume/1` on this session ("Volume from the computer").
     pub async fn set_volume_accepted(&self, accept: bool) -> Result<bool, CoreError> {
         self.extras.set_enabled(accept);
         self.session
@@ -1848,7 +1848,7 @@ impl CoreConnection {
             .await
             .map_err(session_error)
     }
-    /// WN-55: announce or withdraw `sms/1` on this session (the setting "SMS na komputerze" with READ_SMS); true
+    /// WN-55: announce or withdraw `sms/1` on this session (the setting "SMS on the computer" with READ_SMS); true
     /// when it changed. Withdrawn, the PC's watch ends and new requests are refused.
     pub async fn set_sms_accepted(&self, accept: bool) -> Result<bool, CoreError> {
         self.session
@@ -1856,7 +1856,7 @@ impl CoreConnection {
             .await
             .map_err(session_error)
     }
-    /// WN-58: announce or withdraw `gallery/1` on this session (the setting "Zdjęcia na komputerze" with photo
+    /// WN-58: announce or withdraw `gallery/1` on this session (the setting "Photos on the computer" with photo
     /// access); true when it changed. Withdrawn, the PC's watch ends and new requests are refused.
     pub async fn set_gallery_accepted(&self, accept: bool) -> Result<bool, CoreError> {
         self.session
@@ -1865,7 +1865,7 @@ impl CoreConnection {
             .map_err(session_error)
     }
     /// WN-50: announce or withdraw `find/1` on this session (the setting
-    /// "Pozwól komputerowi dzwonić"); true when it changed. An error when the
+    /// "Let the computer ring the phone"); true when it changed. An error when the
     /// phone has no find sink.
     pub async fn set_find_accepted(&self, accept: bool) -> Result<bool, CoreError> {
         self.session

@@ -16,7 +16,7 @@ import io.github.prejas3.windconnect.bindings.UrlOpener
 /**
  * CCS/1 M:WN-100 a link from the PC (PROTOCOL.md §9.2 `open-url`), already checked by the core (absolute http/https, no user
  * info, printable ASCII). With WindConnect on screen it opens at once (ACTION_VIEW, the person's browser or app); otherwise
- * Android doesn't let a background app start an activity, so a notification "Otwórz link z komputera" offers it to tap.
+ * Android doesn't let a background app start an activity, so a notification "Open the link from the computer" offers it to tap.
  * RULE:only http(s) is ever opened (checked again here); nothing else from the PC reaches an Intent.
  */
 class LinkOpener(context: Context) : UrlOpener {

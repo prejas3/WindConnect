@@ -77,13 +77,13 @@ function native(action) {
     }
     await panel.emulateMedia({ reducedMotion: 'reduce' });
     assert.equal(await panel.locator('.panel').evaluate(element => getComputedStyle(element).animationName), 'none');
-    // WN-109: unpaired, the whole group is hidden (panel.js, WC-28), so Wyślij and Schowek can't be reached;
+    // WN-109: unpaired, the whole group is hidden (panel.js, WC-28), so Send and Clipboard can't be reached;
     // once connected they are live (their modules report failures). Only the not-yet-built ones stay disabled.
     // Debug builds start with an empty store (WINDCONNECT_TEST_DATA_DIR); a release build reads the real one,
     // so with a phone connected there the group is shown and only the disabled list is checked.
     if ((await invoke('pairing_snapshot')).phase !== 'connected') assert.equal(await panel.locator('#quick-actions').isHidden(), true, 'unpaired: no quick actions');
     assert.deepEqual(await panel.locator('.quick-actions button:disabled').allTextContents(), ['Dzwoń', 'Touchpad'], 'only unbuilt actions are disabled');
-    assert.equal(await panel.locator('.quick-actions button:not(:disabled)').count(), 2, 'Wyślij and Schowek are live once connected');
+    assert.equal(await panel.locator('.quick-actions button:not(:disabled)').count(), 2, 'Send and Clipboard are live once connected');
     assert.deepEqual(errors, []);
     const report = { executable, samplesUs: samples, maxUs: Math.max(...samples), preloaded: true, escape: true, shortcut: !shortcutError, shortcutError, blur: true, themes: true, reducedMotion: true, stderr };
     await fs.writeFile(path.join(artifacts,'run.json'), JSON.stringify(report,null,2));

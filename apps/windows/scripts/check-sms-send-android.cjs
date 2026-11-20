@@ -1,6 +1,6 @@
-// CCS/1 PURPOSE:WN-56 real PC app + Android emulator: sending from the "Wiadomości" window. Off by default (the composer
-// says so), "Wysyłanie z komputera" on (SmsProof send-on, SEND_SMS granted by the script): an SMS to the emulator's own
-// number is sent (Android records it as a non-default app), shows in its thread and its delivery report as "dostarczono"; a picture
+// CCS/1 PURPOSE:WN-56 real PC app + Android emulator: sending from the "Messages" window. Off by default (the composer
+// says so), "Sending from the computer" on (SmsProof send-on, SEND_SMS granted by the script): an SMS to the emulator's own
+// number is sent (Android records it as a non-default app), shows in its thread and its delivery report as "delivered"; a picture
 // goes as MMS (the emulator has no MMS centre: the outcome is recorded); off again disables the composer.
 // LIMIT:a real MMS and delivery reports need a phone on a network (the S25 check). No message text is printed.
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');

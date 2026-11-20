@@ -1,5 +1,5 @@
 //! CCS/1 M:sending files from Windows (WN-39) on the WN-38 engine
-//! FLOW:Explorer menu | drop on panel/main | "Wyślij" picker -> queue(paths) -> FileEngine::send(phone, path) -> attach(session)
+//! FLOW:Explorer menu | drop on panel/main | "Send" picker -> queue(paths) -> FileEngine::send(phone, path) -> attach(session)
 //! RULE:the phone is the connected one, else the last paired; transfers wait in the engine's queue until it connects.
 //! RULE:incoming files/1 uses the same engine, with local type folders (WN-40).
 use std::{

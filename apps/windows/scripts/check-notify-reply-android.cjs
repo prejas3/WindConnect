@@ -2,12 +2,12 @@
 // `adb emu sms send`): quick reply and dismissal sync both ways (PROTOCOL.md §9.7–9.8). Pairs by QR as check-notify-toasts-android
 // does, then PairingTest#notifyReplyProof holds the session with notifications on. Checks:
 //   - an incoming SMS -> a toast with a reply field (dev_notify_log.reply) and a row with a field in the panel;
-//   (a) a reply typed in the panel (Playwright, Enter) -> the SMS goes out (content://sms/sent) and the panel says "Wysłano";
+//   (a) a reply typed in the panel (Playwright, Enter) -> the SMS goes out (content://sms/sent) and the panel says "Sent";
 //   (b) a reply from the toast: dev_toast_activate calls the same function as the WinRT handler -> SMS sent;
 //   (c) ✕ in the panel -> the Messages notification is gone from the phone (dumpsys notification);
 //   (d) dismissed on the phone (snooze) -> the toast and the row are gone on the PC;
 //   (e) closing a popup (dev_toast_dismissed reason 0) -> gone on the phone; reason 2 (timed out) -> stays.
-// Reports PC -> phone reply latency (invoke -> "Wysłano" in the panel: the PendingIntent sent and Replied back).
+// Reports PC -> phone reply latency (invoke -> "Sent" in the panel: the PendingIntent sent and Replied back).
 // LIMIT:the real WinRT toast click/close path is not driven here (system UI): the short manual test on a real phone covers it.
 // The reply texts are test strings; nothing logs them. Restores the listener access and removes the phone toasts it made.
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
@@ -131,7 +131,7 @@ let app, browser, socket, timer, redirected = false, granted = false, invoke = n
     await field.fill('Tak, z panelu');
     const t0 = Date.now();
     await field.press('Enter');
-    // Replied ok: "Wysłano" (or Messages already took the notification away after the reply: the row is gone).
+    // Replied ok: "Sent" (or Messages already took the notification away after the reply: the row is gone).
     await until('Replied ok in the panel', async () => { const row = (await state()).notifications.find(n => n.tag === first.tag); return !row || row.status === 'sent'; });
     const panelLatency = Date.now() - t0;
     await until('the SMS from the panel went out', () => sentSms().some(r => r.includes('Tak, z panelu')), 20000);

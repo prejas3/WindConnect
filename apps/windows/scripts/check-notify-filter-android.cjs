@@ -4,7 +4,7 @@
 // Messages (`adb emu sms send`). Checks:
 //   (a) the shell blocked: 10 of its notifications hand nothing to the core (no NotifySend: nothing over the network), an SMS
 //       gets through; blocking removed the shell's notification already shown on the PC (it stays on the phone);
-//   (b) "Tylko wybrane" with nothing chosen: nothing at all;
+//   (b) "Chosen" with nothing chosen: nothing at all;
 //   (c) blocking an app removes exactly its notifications from this session on the PC (panel and Windows), others stay;
 //   (d) DND on the phone -> no popup on the PC, the notification stays on the phone; DND off -> popup again;
 //   (e) quiet hours on the PC: inside -> no popup (silent), outside -> popup; the silent one stays on the phone.
@@ -149,7 +149,7 @@ let app, browser, socket, timer, redirected = false, granted = false, invoke = n
     assert(onPhone('base'), 'blocking removes it from the PC only');
     report.blocked = { shellPosts: 10, shellSends: 0, smsThrough: true, removedOnBlock: 1 };
 
-    // (b) "Tylko wybrane" with nothing chosen: nothing at all.
+    // (b) "Chosen" with nothing chosen: nothing at all.
     const all = sends.length;
     const through = await rowWith(`Przechodzi ${run}`);
     await command('mode only');

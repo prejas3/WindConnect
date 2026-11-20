@@ -1,5 +1,5 @@
 import { t } from './i18n.js';
-// CCS/1 FLOW:WN-92 main-window setting "Przekaźnik poza domem" -> set_relay(url | null) -> keepers in relay.rs. Off by default.
+// CCS/1 FLOW:WN-92 main-window setting "Relay away from home" -> set_relay(url | null) -> keepers in relay.rs. Off by default.
 const invoke = window.__TAURI__?.core.invoke;
 const section = document.querySelector('#relay-settings');
 const toggle = document.querySelector('#relay-enabled');
@@ -21,7 +21,7 @@ async function apply(url) {
   toggle.disabled = true;
   try { show(await invoke('set_relay', { url })); fail(''); }
   catch (e) {
-    // Only a refused URL is "Nieprawidłowy adres"; still starting or a failed save say what they are (WN-139).
+    // Only a refused URL is "Invalid address"; still starting or a failed save say what they are (WN-139).
     const text = String(e);
     fail(/^(WindConnect jeszcze|nie udało się zapisać|WindConnect is still|couldn't save)/.test(text) ? text : t('relay.invalid', { error: text }));
     show(await invoke('relay_setting').catch(() => null));

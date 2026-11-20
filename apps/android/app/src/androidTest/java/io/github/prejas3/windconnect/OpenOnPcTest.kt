@@ -19,7 +19,7 @@ import java.util.Collections
 
 /**
  * WN-100 review: another app can start OpenOnPcActivity with an explicit intent; nothing may go to the PC until the person taps
- * "Otwórz na PC". Cancel sends nothing; the tap sends exactly the shared link.
+ * "Open on PC". Cancel sends nothing; the tap sends exactly the shared link.
  */
 @RunWith(AndroidJUnit4::class)
 class OpenOnPcTest {

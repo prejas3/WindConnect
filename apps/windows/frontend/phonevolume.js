@@ -1,5 +1,5 @@
 import { t } from './i18n.js';
-// CCS/1 FLOW:WN-48 pairing-state.phone_volume -> "Głośność telefonu" in the panel; drag/keys/mute -> phone_volume(level?, muted?).
+// CCS/1 FLOW:WN-48 pairing-state.phone_volume -> "Phone volume" in the panel; drag/keys/mute -> phone_volume(level?, muted?).
 // RULE:no bounce-back: while dragging, and for HOLD_MS after the last local change, a pushed level (often the echo of our own
 // Set) doesn't move the slider; after that the latest pushed level wins. Sends at most every 100 ms (the latest wins).
 const invoke = window.__TAURI__?.core.invoke;

@@ -1,4 +1,4 @@
-// CCS/1 FLOW:WN-47 main-window setting "Udostępnij odtwarzanie telefonowi" -> share_media -> pairing-state.share_media.
+// CCS/1 FLOW:WN-47 main-window setting "Share playback with the phone" -> share_media -> pairing-state.share_media.
 // The PC's player (Windows' media controls) on the phone, its controls from the phone; default on.
 const invoke = window.__TAURI__?.core.invoke;
 const toggle = document.querySelector('#share-media');

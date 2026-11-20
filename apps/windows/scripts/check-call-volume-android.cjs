@@ -3,7 +3,7 @@
 // and volume both ways (PROTOCOL.md §9.9-9.10). PairingTest#callProof holds the session and runs the script's commands. Checks:
 //   (a) 5 calls (`adb emu gsm call`): ring -> paused, p95 < 1 s (the second ring is ~6 s in); hang up -> resumed;
 //   (b) answered: stays paused until hung up; (c) stopped by hand during the call: not resumed;
-//   (d) "Wstrzymaj odtwarzanie przy połączeniu" off: a call pauses nothing;
+//   (d) "Pause playback during calls" off: a call pauses nothing;
 //   (g) vibrate mode: by the audio mode alone (reported) and with the call-notification signal (asserted);
 //   (e) the panel sets STREAM_MUSIC; a volume key on the phone moves the panel; mute, and a level alone never unmutes;
 //   (f) the phone sets the PC's volume (Core Audio); the person's level and mute are restored right after (and in `finally`).

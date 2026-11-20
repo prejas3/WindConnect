@@ -1,6 +1,6 @@
-// CCS/1 PURPOSE:WN-57 real PC app + Android emulator: calls on the PC. "Połączenia na komputerze" on (SmsProof calls-on, the
+// CCS/1 PURPOSE:WN-57 real PC app + Android emulator: calls on the PC. "Calls on the computer" on (SmsProof calls-on, the
 // phone and call-log permissions granted by the script); `adb emu gsm call` rings the phone: the PC's toast with the caller is
-// timed from the call (same host clock), "Wycisz" mutes the ring stream, "Odrzuć" ends the call, an old call's button leaves a
+// timed from the call (same host clock), "Silence" mutes the ring stream, "Reject" ends the call, an old call's button leaves a
 // new call alone, an unanswered call shows as a missed-call toast and in the panel, and with the setting off there is no toast.
 // LIMIT:the buttons are pressed through dev_toast_activate (as WinRT delivers them); a real S25 check covers the toast UI.
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
@@ -88,11 +88,11 @@ let app, instrument, browser, socket, timer, redirected = false, output = '';
     const first = await toast('call/call-', t1, 'incoming-call toast');
     report.callToToastMs = first.shown_ms - t1;
     const id = first.tag.split('call-').pop();
-    // 2. "Wycisz" from the toast: the phone's ring stream is muted, the call goes on.
+    // 2. "Silence" from the toast: the phone's ring stream is muted, the call goes on.
     await invoke('dev_toast_activate', { tag: first.tag.split('/')[1], arguments: `call-silence:${id}`, input: null });
     report.silenced = await until(async () => ringMuted() || null, 'ring muted on the phone', 5000).catch(() => false);
     assert.equal(callState(), 1, 'still ringing after silence');
-    // 3. "Odrzuć": the call ends on the phone.
+    // 3. "Reject": the call ends on the phone.
     const rejectAt = Date.now();
     await invoke('dev_toast_activate', { tag: first.tag.split('/')[1], arguments: `call-reject:${id}`, input: null });
     await until(async () => callState() === 0 || null, 'call rejected on the phone', 8000);
@@ -129,7 +129,7 @@ let app, instrument, browser, socket, timer, redirected = false, output = '';
     report.unmutedWhenTurnedOff = await until(async () => !ringMuted() || null, 'ring unmuted when the setting goes off mid-ring', 8000).then(() => true);
     device('emu', 'gsm', 'cancel', CALLER);
     await until(async () => callState() === 0 || null, 'fourth call over');
-    // 7. "Połączenia na komputerze" off: a call is only a state (no toast).
+    // 7. "Calls on the computer" off: a call is only a state (no toast).
     await delay(1500);
     const t3 = Date.now();
     device('emu', 'gsm', 'call', CALLER);

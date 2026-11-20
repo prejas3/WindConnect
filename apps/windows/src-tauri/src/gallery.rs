@@ -179,7 +179,7 @@ pub fn forget(app: &tauri::AppHandle, key: &PublicKey) {
     }
 }
 
-/// The phone changed what it accepts (its "Zdjęcia na komputerze" setting or photo access).
+/// The phone changed what it accepts (its "Photos on the computer" setting or photo access).
 pub fn capabilities_changed(app: &tauri::AppHandle) {
     restart(app);
 }

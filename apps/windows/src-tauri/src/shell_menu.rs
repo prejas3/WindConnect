@@ -1,4 +1,4 @@
-//! CCS/1 IO:Explorer context menu "Wyślij na telefon" (WN-39) -> HKCU\Software\Classes\{*,Directory}\shell
+//! CCS/1 IO:Explorer context menu "Send to phone" (WN-39) -> HKCU\Software\Classes\{*,Directory}\shell
 //! RULE:current user only, no administrator rights; rewritten at every start (the exe may move), removed on uninstall.
 //! SEC:the command is this exe with --send and the quoted item; no shell, no other arguments.
 use std::io;

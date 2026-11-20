@@ -15,7 +15,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.prejas3.windconnect.ui.WindCard
 import io.github.prejas3.windconnect.ui.WindSwitch
 
-/** WN-100 Settings: str(R.string.links_allow) (default on). Off, the PC's "Otwórz na telefonie" is refused. */
+/** WN-100 Settings: str(R.string.links_allow) (default on). Off, the PC's "Open on the phone" is refused. */
 @Composable
 fun LinkControls() {
     val connections = (LocalContext.current.applicationContext as WindApplication).connections

@@ -1,4 +1,4 @@
-// CCS/1 FLOW:WN-43 main-window setting "Powiadomienia z telefonu" -> phone_notifications -> pairing-state.phone_notifications.
+// CCS/1 FLOW:WN-43 main-window setting "Notifications from the phone" -> phone_notifications -> pairing-state.phone_notifications.
 // The phone's notifications as Windows toasts (notify/1); default on, the phone asks for its own consent (WN-42).
 const invoke = window.__TAURI__?.core.invoke;
 const toggle = document.querySelector('#phone-notifications');
@@ -27,7 +27,7 @@ async function start() {
 }
 start().catch(console.error);
 
-// CCS/1 FLOW:WN-45 "Ciche godziny" -> notify_quiet_hours(on, from, to) -> pairing-state.quiet_hours. Minutes after local
+// CCS/1 FLOW:WN-45 "Quiet hours" -> notify_quiet_hours(on, from, to) -> pairing-state.quiet_hours. Minutes after local
 // midnight, 15-minute steps; through midnight allowed; from == to means none.
 const quietToggle = document.querySelector('#quiet-hours');
 const times = document.querySelector('#quiet-times');

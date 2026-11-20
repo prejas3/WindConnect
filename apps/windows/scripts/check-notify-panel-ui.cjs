@@ -1,4 +1,4 @@
-// CCS/1 PURPOSE:WN-44 the panel's "Powiadomienia" with a stubbed IPC: rows from pairing-state (text only), Enter sends
+// CCS/1 PURPOSE:WN-44 the panel's "Notifications" with a stubbed IPC: rows from pairing-state (text only), Enter sends
 // notify_action reply, the field keeps its text and focus across pushes, clears only after Replied ok, keeps it after a failure,
 // blocks > 1024 bytes without trimming, a toast's too-long draft lands in the field, ✕ sends dismiss, Light/Dark
 // | DEP:external dev-only Playwright 1.61.1.

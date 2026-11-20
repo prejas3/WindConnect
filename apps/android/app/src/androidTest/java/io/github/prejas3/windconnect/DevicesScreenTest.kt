@@ -37,7 +37,7 @@ class DevicesScreenTest {
         } }
         compose.onNodeWithText("Połączony", substring = true).assertExists()
         compose.onNodeWithText("komputer dowie się", substring = true).assertExists()
-        // Connected computer: no "Połącz"; the other one has it.
+        // Connected computer: no "Connect"; the other one has it.
         compose.onAllNodesWithTag("deviceConnect").assertCountEquals(1)
         compose.onAllNodesWithTag("deviceConnect")[0].performScrollTo().performClick()
         assertEquals("connect Laptop", calls.last())

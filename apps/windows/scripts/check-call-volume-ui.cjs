@@ -1,4 +1,4 @@
-// CCS/1 PURPOSE:WN-48 with a stubbed IPC: the panel's "Głośność telefonu" (keys, mute, at most every 100 ms, no bounce-back from
+// CCS/1 PURPOSE:WN-48 with a stubbed IPC: the panel's "Phone volume" (keys, mute, at most every 100 ms, no bounce-back from
 // an echoed level while dragging or within 500 ms of a local change, then the pushed level wins; read-only when the phone doesn't
 // take volume/1) and the main window's two switches (call_volume_settings). Light/Dark | DEP:external dev-only Playwright 1.61.1.
 const assert = require('node:assert/strict');

@@ -1,5 +1,5 @@
 import { t, plural, locale } from './i18n.js';
-// CCS/1 M:WN-55 the "Wiadomości" window (PROTOCOL.md §9.11). FLOW:sms_status/sms-status -> threads (memory first, then the
+// CCS/1 M:WN-55 the "Messages" window (PROTOCOL.md §9.11). FLOW:sms_status/sms-status -> threads (memory first, then the
 // phone) -> click -> sms_thread (memory + newer from the phone) -> render; `sms-changed` (the phone's watch) refreshes both.
 // SEC:every phone text goes in with textContent, never as HTML. PERF:one DocumentFragment per render; window.__smsOpenMs is
 // the last click-to-painted time (check-sms-android.cjs reads it).

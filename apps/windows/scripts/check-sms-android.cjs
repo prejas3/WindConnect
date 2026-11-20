@@ -1,5 +1,5 @@
-// CCS/1 PURPOSE:WN-55 real PC app + Android emulator: 1000 SMS seeded in one thread (adb emu sms send), paired, "SMS na
-// komputerze" on (SmsProof). The panel's "Wiadomości" opens the window; opening the 1000-message thread is timed from click
+// CCS/1 PURPOSE:WN-55 real PC app + Android emulator: 1000 SMS seeded in one thread (adb emu sms send), paired, "SMS on
+// the computer" on (SmsProof). The panel's "Messages" opens the window; opening the 1000-message thread is timed from click
 // to painted (window.__smsOpenMs): cold (from the phone) and warm (memory + incremental `since`), budget < 300 ms. Then a
 // new SMS reaches the open thread through the watch, and the phone's setting off/on is shown in the window.
 // LIMIT:emulator NAT needs a UDP redirection for the public discovery hint; no trust or TLS bypass. Seeding is skipped for

@@ -27,7 +27,7 @@ data class NotifyAppsState(
 ) {
     fun allows(packageName: String) = AppFilter.allows(packageName, mode, blocked, chosen)
 
-    /** "Tylko wybrane" with nothing chosen: nothing goes to the PC (the UI says so). */
+    /** "Chosen" with nothing chosen: nothing goes to the PC (the UI says so). */
     val sendsNothing: Boolean get() = mode == NotifyAppMode.OnlyChosen && chosen.isEmpty()
 }
 
@@ -39,7 +39,7 @@ internal object AppFilter {
     }
 }
 
-/** The filter's settings, next to "Powiadomienia na komputerze"; read by the listener and the core's send loop. */
+/** The filter's settings, next to "Notifications on the computer"; read by the listener and the core's send loop. */
 internal object NotifyApps {
     const val MAX_SEEN = 300
     private const val MODE = "notify_app_mode"

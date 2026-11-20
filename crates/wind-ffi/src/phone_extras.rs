@@ -24,7 +24,7 @@ pub trait VolumeSink: Send + Sync {
 
 pub(crate) type VolumeRoute = (Arc<dyn VolumeSink>, mpsc::Receiver<ChannelMessage>);
 
-/// WN-57: who calls, with "Połączenia na komputerze" on. `actions`: 1 reject, 2 silence (bits).
+/// WN-57: who calls, with "Calls on the computer" on. `actions`: 1 reject, 2 silence (bits).
 #[derive(uniffi::Record, Clone, Debug)]
 pub struct CallerInfo {
     pub call: u64,

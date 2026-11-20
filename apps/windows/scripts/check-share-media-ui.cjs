@@ -1,4 +1,4 @@
-// CCS/1 PURPOSE:WN-47 main-window switch "Udostępnij odtwarzanie telefonowi" with a stubbed IPC: shown from pairing-state,
+// CCS/1 PURPOSE:WN-47 main-window switch "Share playback with the phone" with a stubbed IPC: shown from pairing-state,
 // reflects share_media, a click (and Space) sends share_media, pushed changes follow, Light/Dark | DEP:external dev-only Playwright 1.61.1.
 const assert = require('node:assert/strict');
 const http = require('node:http');

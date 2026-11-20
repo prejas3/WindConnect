@@ -12,7 +12,7 @@ import org.junit.Rule
 import org.junit.Test
 
 /**
- * WN-124 (decision D2): "SMS na komputerze" and "Połączenia na komputerze" are in Settings exactly
+ * WN-124 (decision D2): "SMS on the computer" and "Calls on the computer" are in Settings exactly
  * when the APK declares their permissions: the full (GitHub/F-Droid) build has both, the Play build
  * (`-PwindStore=play`) neither. Run on each build; `-e windStore github|play` also checks which one.
  */

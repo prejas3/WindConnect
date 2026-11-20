@@ -1,4 +1,4 @@
-// CCS/1 PURPOSE:WN-50 real PC app + Android emulator: pair, then three rings from the panel's "Dzwoń" tile. (1) screen off +
+// CCS/1 PURPOSE:WN-50 real PC app + Android emulator: pair, then three rings from the panel's "Ring" tile. (1) screen off +
 // ringer SILENT: PC request -> phone "ringing" (its sound already playing) < 500 ms, an alarm player started, alarm volume at
 // max; stop from the PC restores it. (2) stopped on the phone from the notification, or with FIND_NOTIFICATIONS=denied
 // (POST_NOTIFICATIONS refused for the run) from the app's bar. (3) stopped with a volume key. Phone side: FindProof.

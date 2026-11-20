@@ -123,7 +123,7 @@ class PairingViewModel(application: Application) : AndroidViewModel(application)
         it.unpair(entry.publicKey)
         mutableUi.update { ui -> ui.copy(message = str(R.string.unpaired_from, computerLabel(entry.name))) }
     }
-    /** The person's own "Połącz": lifts a BUSY or refusal pause (WC-28). */
+    /** The person's own "Connect": lifts a BUSY or refusal pause (WC-28). */
     fun connectDevice(entry: PairedEntry) = deviceCall(str(R.string.connect_unreachable)) {
         it.connectPaired(PeerInfo(entry.publicKey, entry.name, entry.fingerprint))
     }
@@ -138,7 +138,7 @@ class PairingViewModel(application: Application) : AndroidViewModel(application)
     }
     fun cancel() { if (ui.value.screen != "pairing" && ui.value.screen != "sas-confirming") { clearOffer(); clearSas(); stopNearby(); mutableUi.update { it.copy(screen = "home", name = "", fingerprint = "", code = "", message = if (core?.state?.value is ConnectionState.Connected) str(R.string.connected_to_pc) else "") } } }
 
-    // CCS/1 FLOW:"Paruj bez aparatu" -> nearby (TXT pair, untrusted hints) -> start_sas -> code on both screens -> both accept -> paired (WN-27)
+    // CCS/1 FLOW:"Pair without the camera" -> nearby (TXT pair, untrusted hints) -> start_sas -> code on both screens -> both accept -> paired (WN-27)
     fun nearby() {
         val owner = core ?: return
         if (ui.value.screen == "pairing") return

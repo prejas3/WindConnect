@@ -1,4 +1,4 @@
-/* CCS/1 M:WN-55 the "Wiadomości" window: threads on the left, the conversation on the right. Tokens only. */
+/* CCS/1 M:WN-55 the "Messages" window: threads on the left, the conversation on the right. Tokens only. */
 html, body { height: 100%; }
 body { min-height: 0; overflow: hidden; }
 .sms { display: grid; grid-template-columns: minmax(240px, 320px) 1fr; height: 100vh; }

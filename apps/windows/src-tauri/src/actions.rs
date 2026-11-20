@@ -481,7 +481,7 @@ mod tests {
     }
 }
 
-/// WN-100: "Otwórz na telefonie" in the panel: asks the phone to open `url` (§9.2 `open-url`). Checked here first with the
+/// WN-100: "Open on the phone" in the panel: asks the phone to open `url` (§9.2 `open-url`). Checked here first with the
 /// same rule the phone applies; the answer is a status for the panel: "done", "refused", "bad-argument", "failed", "busy",
 /// or "unavailable" (no phone, or it doesn't take links).
 #[tauri::command]

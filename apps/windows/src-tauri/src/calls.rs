@@ -1,8 +1,8 @@
 //! CCS/1 M:WN-57 the phone's calls on the PC (PROTOCOL.md §9.10, §9.12): an incoming call as a toast with the caller's
-//! name or number and "Wycisz"/"Odrzuć", a missed-call toast and the panel's list of missed calls.
+//! name or number and "Silence"/"Reject", a missed-call toast and the panel's list of missed calls.
 //! FLOW:call State (with its caller) -> one toast per call (pops once; a later caller update replaces it quietly) -> gone at
 //! offhook/idle. Missed list: the first in a session is the baseline; later new entries toast. Buttons -> call-action/1.
-//! RULE:only with the phone's "Połączenia na komputerze" (it sends the caller) and this PC's "Połączenia z telefonu".
+//! RULE:only with the phone's "Calls on the computer" (it sends the caller) and this PC's "Calls from the phone".
 use std::sync::mpsc;
 
 use serde::Serialize;
@@ -41,7 +41,7 @@ fn who(number: &Option<String>, name: &Option<String>) -> String {
         .unwrap_or_else(|| crate::i18n::tr("calls.unknown_number").into())
 }
 
-/// The incoming call's toast: who, the number under a name, "Połączenie · <phone>", the buttons it can use. Silent (the
+/// The incoming call's toast: who, the number under a name, "Call · <phone>", the buttons it can use. Silent (the
 /// phone rings) and `incomingCall`, so it stays up while the phone rings.
 pub fn ringing_xml(call: &Call, phone: &str) -> Option<String> {
     let c = call.caller.as_ref()?;
@@ -78,7 +78,7 @@ pub fn ringing_xml(call: &Call, phone: &str) -> Option<String> {
             c.call
         ));
     }
-    // incomingCall needs a button to stay up; "Zamknij" only closes the toast.
+    // incomingCall needs a button to stay up; "Close" only closes the toast.
     x.push_str(&format!(
         r#"<action content="{}" arguments="dismiss" activationType="system"/>"#,
         escape(crate::i18n::tr("calls.close"))

@@ -24,14 +24,14 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 /**
- * CCS/1 M:WN-57 who calls and the missed calls, for the PC (PROTOCOL.md §9.10, §9.12), with "Połączenia na komputerze".
+ * CCS/1 M:WN-57 who calls and the missed calls, for the PC (PROTOCOL.md §9.10, §9.12), with "Calls on the computer".
  * FLOW:PHONE_STATE broadcast (the number comes only with READ_CALL_LOG) -> caller (contact name with READ_CONTACTS) -> the
  * session's State; a ring that ends without offhook -> the call log's missed list again. The PC's Reject (TelecomManager.endCall,
  * ANSWER_PHONE_CALLS) and Silence (the ring stream muted, unmuted when the call ends) act only on the ringing call they name.
  * RULE:no number or name is logged; nothing is stored beyond what Android's call log already has.
  */
 /**
- * CCS/1 RULE:WN-57 review: the ring stream muted for the PC's "Wycisz" is restored even if the call's end is never seen (the
+ * CCS/1 RULE:WN-57 review: the ring stream muted for the PC's "Silence" is restored even if the call's end is never seen (the
  * process died, the setting went off mid-ring): the mute is recorded before it is made, undone at the call's end, when calls
  * stop being watched and at the next start while the phone isn't ringing. Only our own mute: a stream the person had muted
  * already is left alone and never recorded.
@@ -194,7 +194,7 @@ class PhoneCalls(context: Context) : CallActionSink {
 
     private var started = false
 
-    /** Watches calls while "Połączenia na komputerze" is on with its permissions. */
+    /** Watches calls while "Calls on the computer" is on with its permissions. */
     @Synchronized fun watch(on: Boolean) {
         if (on == started) { if (on) refreshMissed(); return }
         started = on

@@ -7,18 +7,18 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
-    <!-- WN-55: SMS read on the PC, asked only when the person turns "SMS na komputerze" on. Decision D2: this is the
+    <!-- WN-55: SMS read on the PC, asked only when the person turns "SMS on the computer" on. Decision D2: this is the
          GitHub/F-Droid build; a Google Play variant must leave these out (Play restricts SMS permissions). -->
     <uses-permission android:name="android.permission.READ_SMS" />
     <uses-permission android:name="android.permission.READ_CONTACTS" />
-    <!-- WN-56: sending from the PC ("Wysyłanie z komputera"), asked only when turned on; READ_PHONE_STATE only lists SIMs. -->
+    <!-- WN-56: sending from the PC ("Sending from the computer"), asked only when turned on; READ_PHONE_STATE only lists SIMs. -->
     <uses-permission android:name="android.permission.SEND_SMS" />
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
-    <!-- WN-57: "Połączenia na komputerze", asked only when turned on: the caller's number and missed calls (READ_CALL_LOG),
+    <!-- WN-57: "Calls on the computer", asked only when turned on: the caller's number and missed calls (READ_CALL_LOG),
          rejecting a call from the PC (ANSWER_PHONE_CALLS). -->
     <uses-permission android:name="android.permission.READ_CALL_LOG" />
     <uses-permission android:name="android.permission.ANSWER_PHONE_CALLS" />
-    <!-- WN-58: "Zdjęcia na komputerze", asked only when turned on: the newest photos and screenshots in the PC's panel. -->
+    <!-- WN-58: "Photos on the computer", asked only when turned on: the newest photos and screenshots in the PC's panel. -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
     <uses-feature android:name="android.hardware.camera.any" android:required="false" />
@@ -67,7 +67,7 @@
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
-        <!-- WN-100: "Otwórz na PC" in the share sheet for text with a link; no UI, a toast says how it went. -->
+        <!-- WN-100: "Open on PC" in the share sheet for text with a link; no UI, a toast says how it went. -->
         <activity android:name=".OpenOnPcActivity" android:exported="true" android:label="@string/open_on_pc"
             android:excludeFromRecents="true" android:taskAffinity="" android:noHistory="true"
             android:theme="@android:style/Theme.Translucent.NoTitleBar">

@@ -29,7 +29,7 @@ internal object RelaySetting {
         if (url != null && url.isBlank()) str(R.string.relay_address_needed) else { set(url); null }
     } catch (error: Exception) {
         val message = error.message?.takeIf { it.isNotBlank() }
-        // CCS/1 RULE:only a refused URL is "Nieprawidłowy adres"; a core still starting says just that (WN-139).
+        // CCS/1 RULE:only a refused URL is "Invalid address"; a core still starting says just that (WN-139).
         if (error is io.github.prejas3.windconnect.bindings.CoreException.InvalidInput || error is IllegalArgumentException)
             str(R.string.relay_invalid, message ?: str(R.string.relay_use_wss))
         else message ?: str(R.string.relay_change_failed)

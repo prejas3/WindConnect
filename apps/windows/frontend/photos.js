@@ -1,5 +1,5 @@
 import { t, formatDate } from './i18n.js';
-// CCS/1 FLOW:WN-58 gallery-state (pushed on every change, never polled) -> "Ostatnie zdjęcia" tiles; press -> gallery_prefetch;
+// CCS/1 FLOW:WN-58 gallery-state (pushed on every change, never polled) -> "Latest photos" tiles; press -> gallery_prefetch;
 // move past DRAG_PX -> gallery_drag (native drag of the original); click/Enter -> gallery_open; gallery-fetch -> tile progress.
 // SEC:names go in as text only; a thumbnail only as a data: URL of a JPEG (the core checked its magic bytes).
 const invoke = window.__TAURI__?.core.invoke;

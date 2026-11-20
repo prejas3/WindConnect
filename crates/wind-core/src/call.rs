@@ -1,7 +1,7 @@
 //! CCS/1 M:call/1, the phone's call state for the PC (§9.10, WN-48): the PC pauses its players while the phone rings or is in
 //! a call. IO:[0,{0:state 0 idle|1 ringing|2 offhook, 1?:call, 2?:number, 3?:name, 4?:actions}], [1,{0:[[number,name,date]]}]
 //! on uni channel 0c, phone -> PC only; `call-action` (0e, §9.12) PC -> phone: Reject [0,{0:call}], Silence [1,{0:call}].
-//! RULE:the caller (WN-57) only with the phone's "Połączenia na komputerze" and its permissions; without it, only the state.
+//! RULE:the caller (WN-57) only with the phone's "Calls on the computer" and its permissions; without it, only the state.
 //! Sent on every change and at the start of each session (idle too), so a PC that paused its players during a dropped session
 //! resumes them. Nothing persisted, no number logged.
 use crate::{
@@ -78,7 +78,7 @@ pub const CAN_REJECT: u8 = 1;
 /// [`Caller::actions`]: the phone can silence its ringer.
 pub const CAN_SILENCE: u8 = 2;
 
-/// Who calls (WN-57), with the phone's "Połączenia na komputerze" on.
+/// Who calls (WN-57), with the phone's "Calls on the computer" on.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Caller {
     /// The phone's number for this call; actions name it, so a click meant for an old call does nothing.
@@ -278,7 +278,7 @@ impl Action {
     }
 }
 
-/// Routes `call-action/1` (the phone, with "Połączenia na komputerze" on).
+/// Routes `call-action/1` (the phone, with "Calls on the computer" on).
 pub fn route_actions(router: &mut Router) -> mpsc::Receiver<ChannelMessage> {
     router.route(Channel::CallAction, 1, 8)
 }
@@ -301,7 +301,7 @@ pub async fn send_message(session: &Session, message: &Message) -> Result<bool, 
     }
 }
 
-/// Routes `call/1` (the PC, while "Wstrzymaj odtwarzanie przy połączeniu" is on).
+/// Routes `call/1` (the PC, while "Pause playback during calls" is on).
 pub fn route(router: &mut Router) -> mpsc::Receiver<ChannelMessage> {
     router.route(Channel::Call, 1, 8)
 }

@@ -1,4 +1,4 @@
-// CCS/1 PURPOSE:WN-50 "Dzwoń" tile with a stubbed IPC: disabled without find/1 or offline, ring -> starting -> ringing ->
+// CCS/1 PURPOSE:WN-50 "Ring" tile with a stubbed IPC: disabled without find/1 or offline, ring -> starting -> ringing ->
 // "Zatrzymaj" sends ring-stop, outcomes in the status line, keyboard, Light/Dark, 150% text | DEP:external dev-only Playwright 1.61.1.
 const assert = require('node:assert/strict');
 const http = require('node:http');
@@ -48,7 +48,7 @@ const stub = first => {
     const sent = () => page.evaluate(() => window.__calls.filter(([c]) => c === 'pairing_action').map(([, a]) => a.action));
     const look = async () => ({ disabled: await tile.isDisabled(), pressed: await tile.getAttribute('aria-pressed'), label: (await tile.textContent()).trim(), status: (await page.locator('#find-status').textContent()).trim() });
 
-    // 1. Available and idle: "Dzwoń", enabled; a click (and the keyboard) asks to ring.
+    // 1. Available and idle: "Ring", enabled; a click (and the keyboard) asks to ring.
     assert.deepEqual(await look(), { disabled: false, pressed: 'false', label: 'Dzwoń', status: '' });
     await tile.click();
     assert.deepEqual(await sent(), ['ring']);
@@ -60,7 +60,7 @@ const stub = first => {
     await page.screenshot({ path: path.join(out, 'panel-find-ringing.png'), clip: { x: 0, y: 0, width: 380, height: 200 } });
     await tile.focus(); await page.keyboard.press('Enter');
     assert.deepEqual(await sent(), ['ring', 'ring-stop']);
-    // 3. Outcomes in the status line, the tile back to "Dzwoń".
+    // 3. Outcomes in the status line, the tile back to "Ring".
     await emit(state({ last: 'Zatrzymano na telefonie' }));
     assert.deepEqual(await look(), { disabled: false, pressed: 'false', label: 'Dzwoń', status: 'Zatrzymano na telefonie' });
     await emit(state({ last: 'Połączenie przerwane — telefon może nadal dzwonić (do 60 s)' }));

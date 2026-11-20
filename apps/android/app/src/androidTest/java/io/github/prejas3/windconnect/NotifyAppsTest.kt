@@ -40,7 +40,7 @@ class NotifyAppsTest {
         compose.onNodeWithText("Bank").assertIsOff()
         compose.onNodeWithText("Bank").performClick()
         assertEquals("pl.bank true", calls.last())
-        // "Tylko wybrane" with nothing chosen: everything off, and the line says nothing goes.
+        // "Chosen" with nothing chosen: everything off, and the line says nothing goes.
         compose.onNodeWithTag("notifyAppMode${NotifyAppMode.OnlyChosen}").performClick()
         assertEquals("mode OnlyChosen", calls.last())
         compose.onNodeWithText("Signal").assertIsOff()

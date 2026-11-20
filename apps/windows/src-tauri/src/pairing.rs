@@ -71,22 +71,22 @@ pub struct Snapshot {
     pub battery: Option<crate::battery::Battery>,
     /// Find my phone (WN-50).
     pub find: FindView,
-    /// WN-55: the phone offers its SMS (sms/1): the panel's "Wiadomości" button.
+    /// WN-55: the phone offers its SMS (sms/1): the panel's "Messages" button.
     pub sms: bool,
-    /// WN-100: the phone takes links (actions/1): the panel's "Otwórz na telefonie".
+    /// WN-100: the phone takes links (actions/1): the panel's "Open on the phone".
     pub open_on_phone: bool,
     /// The phone's player (WN-46); None without a session, access or player.
     pub media: Option<crate::media::MediaView>,
-    /// WN-47: "Udostępnij odtwarzanie telefonowi" (the PC's player on the phone).
+    /// WN-47: "Share playback with the phone" (the PC's player on the phone).
     pub share_media: bool,
-    /// WN-43: "Powiadomienia z telefonu" (the phone's notifications as toasts; notify/1).
+    /// WN-43: "Notifications from the phone" (the phone's notifications as toasts; notify/1).
     pub phone_notifications: bool,
-    /// WN-45: "Ciche godziny" for the phone's notifications.
+    /// WN-45: "Quiet hours" for the phone's notifications.
     pub quiet_hours: crate::notify::QuietHours,
-    /// WN-48: "Wstrzymaj odtwarzanie przy połączeniu", "Głośność z telefonu", and the phone's volume (none without one).
+    /// WN-48: "Pause playback during calls", "Volume from the phone", and the phone's volume (none without one).
     pub pause_on_call: bool,
     pub volume_remote: bool,
-    /// WN-57: "Połączenia z telefonu", and the phone's missed calls for the panel (newest first).
+    /// WN-57: "Calls from the phone", and the phone's missed calls for the panel (newest first).
     pub call_toasts: bool,
     pub missed_calls: Vec<crate::calls::MissedView>,
     pub phone_volume: Option<crate::pc_volume::PhoneVolume>,
@@ -130,7 +130,7 @@ impl Default for Snapshot {
         }
     }
 }
-/// The "Dzwoń" tile (WN-50): whether the phone takes `find/1`, the ring now, and how the last one ended.
+/// The "Ring" tile (WN-50): whether the phone takes `find/1`, the ring now, and how the last one ended.
 #[derive(Clone, PartialEq, serde::Serialize)]
 pub struct FindView {
     pub available: bool,
@@ -552,7 +552,7 @@ async fn run(
         }
     };
     let accept_notify = phone_notifications.clone();
-    // WN-48: "Wstrzymaj odtwarzanie przy połączeniu" and "Głośność z telefonu" (both on by default).
+    // WN-48: "Pause playback during calls" and "Volume from the phone" (both on by default).
     let call_volume_path = key_store
         .path()
         .parent()
@@ -745,7 +745,7 @@ async fn run(
     let mut dismissed: Option<(PublicKey, Instant)> = None;
     let mut active: Option<(Session, ())> = None;
     let mut touchpad: Option<crate::touchpad::Control> = None;
-    // The active session's capability changes (e.g. "Pozwól komputerowi dzwonić", WN-50) wake the loop.
+    // The active session's capability changes (e.g. "Let the computer ring the phone", WN-50) wake the loop.
     let (caps_changed, mut caps_changes) = mpsc::unbounded_channel::<()>();
     // WN-48: pausing for calls (lives across sessions), the PC's volume (Core Audio) and the per-session volume tasks' ends.
     let pauser = crate::call_pause::CallPauser::start();
@@ -1154,7 +1154,7 @@ async fn run(
                     ring = None;
                 }
             },
-            // The phone changed what it accepts (e.g. "Pozwól komputerowi dzwonić", WN-50): the loop recomputes.
+            // The phone changed what it accepts (e.g. "Let the computer ring the phone", WN-50): the loop recomputes.
             Some(()) = caps_changes.recv() => { if let Some(m) = &pc_media { m.resend(); } crate::sms::capabilities_changed(&app); crate::gallery::capabilities_changed(&app); },
             // CCS/1 FLOW:phone Command -> PcMedia (dropped outside the PC player's actions) -> SMTC (WN-47).
             message = async { match media_commands.as_mut() { Some(rx) => rx.recv().await, None => std::future::pending().await } } => match message {
@@ -1177,7 +1177,7 @@ async fn run(
                 crate::notify::ToastEvent::Dismissed { tag } => {
                     notify_dismiss(active.as_ref().map(|(s, _)| s), notifications.as_mut(), &tag).await;
                 }
-                // CCS/1 FLOW:WN-57 call toast "Odrzuć"/"Wycisz" -> call-action/1 (the phone acts only on the call it names).
+                // CCS/1 FLOW:WN-57 call toast "Reject"/"Silence" -> call-action/1 (the phone acts only on the call it names).
                 crate::notify::ToastEvent::Call(action) => {
                     if let Some((session, _)) = &active { let _ = wind_core::call::act(session, action).await; }
                 }
@@ -1303,7 +1303,7 @@ pub fn device_action(
         .send(action)
         .map_err(|_| "pairing unavailable".into())
 }
-/// WN-47: "Udostępnij odtwarzanie telefonowi" on or off (main window settings).
+/// WN-47: "Share playback with the phone" on or off (main window settings).
 #[tauri::command]
 pub fn share_media(
     window: tauri::WebviewWindow,
@@ -1383,7 +1383,7 @@ pub fn notify_action(
         .send(action)
         .map_err(|_| "pairing unavailable".into())
 }
-/// WN-43: "Powiadomienia z telefonu" on or off (main window settings).
+/// WN-43: "Notifications from the phone" on or off (main window settings).
 #[tauri::command]
 pub fn phone_notifications(
     window: tauri::WebviewWindow,
@@ -1398,7 +1398,7 @@ pub fn phone_notifications(
         .send(Action::PhoneNotifications(enabled))
         .map_err(|_| "pairing unavailable".into())
 }
-/// WN-48: "Wstrzymaj odtwarzanie przy połączeniu" / "Głośność z telefonu" (main window); only what is given.
+/// WN-48: "Pause playback during calls" / "Volume from the phone" (main window); only what is given.
 #[tauri::command]
 pub fn call_volume_settings(
     window: tauri::WebviewWindow,
@@ -1438,7 +1438,7 @@ pub fn phone_volume(
         .send(Action::PhoneVolume(level, muted))
         .map_err(|_| "pairing unavailable".into())
 }
-/// WN-45: "Ciche godziny" (main window): on/off and from/to in minutes after local midnight, 15-minute steps.
+/// WN-45: "Quiet hours" (main window): on/off and from/to in minutes after local midnight, 15-minute steps.
 #[tauri::command]
 pub fn notify_quiet_hours(
     window: tauri::WebviewWindow,

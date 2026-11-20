@@ -1,5 +1,5 @@
 import { t } from './i18n.js';
-// CCS/1 FLOW:WN-44 pairing-state.notifications -> "Powiadomienia" in the panel; reply (Enter/Wyślij) and ✕ -> notify_action.
+// CCS/1 FLOW:WN-44 pairing-state.notifications -> "Notifications" in the panel; reply (Enter/Send) and ✕ -> notify_action.
 // SEC:texts come from other apps: textContent only. The reply text is never logged; it stays in the field until the phone says
 // it went out (Replied ok), and is kept after a failure so it isn't lost. Over 1024 UTF-8 bytes: blocked with a message, never
 // trimmed. Rows are reused by tag, so a push from the PC never wipes what is being typed.

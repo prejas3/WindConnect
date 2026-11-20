@@ -15,7 +15,7 @@
     </DirectoryRef>
     <!-- CCS/1 RULE:best-effort current-user cleanup; failures must not block uninstall; upgrades preserve Run. -->
     <CustomAction Id="WindConnectRemoveAutostart" FileKey="Path" ExeCommand="--remove-autostart" Execute="immediate" Return="ignore" />
-    <!-- CCS/1 RULE:the Explorer "Wyślij na telefon" verb (WN-39) is per user too; same best-effort cleanup. -->
+    <!-- CCS/1 RULE:the Explorer "Send to phone" verb (WN-39) is per user too; same best-effort cleanup. -->
     <CustomAction Id="WindConnectRemoveShellMenu" FileKey="Path" ExeCommand="--remove-shell-menu" Execute="immediate" Return="ignore" />
     <!-- CCS/1 RULE:the toast sender (AUMID, icon) and the windconnect-panel: scheme (WN-118) are per user too. -->
     <CustomAction Id="WindConnectRemoveToasts" FileKey="Path" ExeCommand="--remove-toasts" Execute="immediate" Return="ignore" />

@@ -1,6 +1,6 @@
 //! CCS/1 M:WN-100 the PC opens a link on the phone (actions/1, PROTOCOL.md §9.2). The phone hosts `actions` with the
-//! core's ActionHost: only `open-url` is supported (lock, sleep and custom actions never), allowed while "Otwieraj linki z
-//! komputera" is on (default on; off -> status 1 "refused"); the URL has passed `check_url` before Kotlin sees it.
+//! core's ActionHost: only `open-url` is supported (lock, sleep and custom actions never), allowed while "Open links from
+//! the computer" is on (default on; off -> status 1 "refused"); the URL has passed `check_url` before Kotlin sees it.
 //! SEC:no command, program or path ever reaches the phone; Kotlin only gets an http(s) URL to show (ACTION_VIEW).
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;

@@ -27,7 +27,7 @@ import io.github.prejas3.windconnect.ui.WindButton
 import io.github.prejas3.windconnect.ui.WindCard
 import io.github.prejas3.windconnect.ui.WindSwitch
 
-/** WN-50 Settings: str(R.string.find_allow) (default on). Off, the PC's "Dzwoń" tile is disabled. */
+/** WN-50 Settings: str(R.string.find_allow) (default on). Off, the PC's "Ring" tile is disabled. */
 @Composable
 fun FindControls() {
     val connections = (LocalContext.current.applicationContext as WindApplication).connections

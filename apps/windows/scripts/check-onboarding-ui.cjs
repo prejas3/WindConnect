@@ -1,5 +1,5 @@
 // CCS/1 PURPOSE:WC-34 first-run onboarding in the main window with a stubbed IPC: steps, QR rules (WN-94), SAS, expiry,
-// "Gotowe" with autostart, finish, focus order, Light/Dark, 150% text, no overflow | DEP:external dev-only Playwright 1.61.1.
+// "Done" with autostart, finish, focus order, Light/Dark, 150% text, no overflow | DEP:external dev-only Playwright 1.61.1.
 const assert = require('node:assert/strict');
 const http = require('node:http');
 const fs = require('node:fs/promises');
@@ -77,7 +77,7 @@ const phone = { key: 'a'.repeat(64), name: 'Galaxy S25 Ultra', fingerprint: 'K4T
     await page.keyboard.press('Enter');
     assert.deepEqual((await calls('pairing_action')).at(-1), ['pairing_action', { action: 'sas-accept' }]);
 
-    // 3. Expired: a message and "Wyświetl nowy kod", no new code on its own.
+    // 3. Expired: a message and "Show a new code", no new code on its own.
     const before = (await calls('pairing_action')).length;
     await emit({ ...base, phase: 'expired', message: 'Parowanie wygasło lub osiągnięto limit prób. Zacznij od nowa.' });
     assert.equal(await page.getByRole('button', { name: 'Wyświetl nowy kod' }).isVisible(), true);
@@ -86,7 +86,7 @@ const phone = { key: 'a'.repeat(64), name: 'Galaxy S25 Ultra', fingerprint: 'K4T
     await page.getByRole('button', { name: 'Wyświetl nowy kod' }).click();
     assert.deepEqual((await calls('pairing_action')).at(-1), ['pairing_action', { action: 'refresh' }]);
 
-    // 4. Paired here: "Gotowe" with the phone, autostart, focus on the finish button.
+    // 4. Paired here: "Done" with the phone, autostart, focus on the finish button.
     await emit({ ...base, phase: 'connected', phone: 'Galaxy S25 Ultra', connected: true, devices: [phone], paired: true });
     assert.match(await page.locator('#onboarding-done-title').textContent(), /Galaxy S25 Ultra połączony/);
     assert.equal(await page.evaluate(() => document.activeElement?.id), 'onboarding-finish');

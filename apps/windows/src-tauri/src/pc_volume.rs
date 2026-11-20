@@ -57,7 +57,7 @@ impl Clone for PcVolume {
     }
 }
 
-/// The phone's volume as the panel shows it; `controllable`: the phone takes `volume/1` (its "Głośność z komputera").
+/// The phone's volume as the panel shows it; `controllable`: the phone takes `volume/1` (its "Volume from the computer").
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 pub struct PhoneVolume {
     pub level: u8,
@@ -72,7 +72,7 @@ fn accepts_volume(session: &wind_core::session::Session) -> bool {
         .any(|c| c.name() == "volume" && c.version() == 1)
 }
 
-/// CCS/1 FLOW:WN-48 the PC's level -> the phone, while the phone takes `volume/1` and "Głośność z telefonu" is on; again when
+/// CCS/1 FLOW:WN-48 the PC's level -> the phone, while the phone takes `volume/1` and "Volume from the phone" is on; again when
 /// the phone starts taking it; at most every [`wind_core::volume::PERIOD`]. Ends with the session (`tick` closes).
 pub async fn send_levels(
     session: wind_core::session::Session,
@@ -109,7 +109,7 @@ pub async fn send_levels(
     }
 }
 
-/// The phone's `Level`s (to the panel) and `Set`s (to Core Audio while "Głośność z telefonu" is on): of what is queued, the
+/// The phone's `Level`s (to the panel) and `Set`s (to Core Audio while "Volume from the phone" is on): of what is queued, the
 /// latest of each kind; `Set`s at most every PERIOD.
 pub async fn serve_phone(
     mut queue: tokio::sync::mpsc::Receiver<wind_core::session::ChannelMessage>,

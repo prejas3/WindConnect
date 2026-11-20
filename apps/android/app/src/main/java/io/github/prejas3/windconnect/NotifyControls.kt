@@ -49,7 +49,7 @@ import io.github.prejas3.windconnect.ui.WindSegmented
 
 /**
  * WN-42 Settings: the phone's notifications on the PC. Its own consent (PROTOCOL.md §9.6 rule 6): a separate system access entry,
- * "WindConnect: powiadomienia na komputerze", and this switch, off by default. Says plainly what is read and where it goes.
+ * "WindConnect: notifications on the computer", and this switch, off by default. Says plainly what is read and where it goes.
  */
 @Composable
 fun NotifyControls() {

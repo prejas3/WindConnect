@@ -18,7 +18,7 @@ enum class CallState(val code: Int) { Idle(0), Ringing(1), Offhook(2) }
 /**
  * CCS/1 RULE:WN-48 the call state from what Android gives without a permission: the audio mode (API 31+), the telephony state
  * (API 29-30, no number), and a call notification seen by [NotifyListenerService] (for vibrate/silent, where some phones never
- * enter MODE_RINGTONE; only while "Powiadomienia na komputerze" has its access). Pure; the watcher feeds it.
+ * enter MODE_RINGTONE; only while "Notifications on the computer" has its access). Pure; the watcher feeds it.
  */
 internal object CallStates {
     fun fromMode(mode: Int): CallState = when (mode) {

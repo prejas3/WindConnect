@@ -204,7 +204,7 @@ internal class AppIcons(context: Context) {
 
 /**
  * CCS/1 RULE:reads notifications for the PC only with its own consent (§9.6 rule 6): Android's access to this component (its own entry,
- * not MediaListenerService's) and the setting "Powiadomienia na komputerze", off by default. Off, it unbinds itself and reads
+ * not MediaListenerService's) and the setting "Notifications on the computer", off by default. Off, it unbinds itself and reads
  * nothing. Notifications from before a session aren't sent (§9.7); only what comes while [sink] is set.
  */
 class NotifyListenerService : NotificationListenerService() {

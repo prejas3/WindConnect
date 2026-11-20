@@ -220,7 +220,7 @@ fn main() {
         }
         return;
     }
-    // CCS/1 FLOW:Explorer "Wyślij na telefon" runs `--send <item>`: a running app gets the paths over the pipe.
+    // CCS/1 FLOW:Explorer "Send to phone" runs `--send <item>`: a running app gets the paths over the pipe.
     let sending = sent_paths(std::env::args_os().skip(1));
     // CCS/1 FLOW:a battery toast clicked after its process ended runs `windconnect-panel:` (WN-118): the running app
     // shows its panel (over the pipe, not the main window), or this start does.

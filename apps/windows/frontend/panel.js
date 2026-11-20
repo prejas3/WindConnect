@@ -257,7 +257,7 @@ function renderFind(find, connected) {
 
 // WN-145: the panel kept its last scroll, so it could open mid-way (looking cut off at the top). Each opening starts at
 // the top, except while a pairing shows its QR or code: that card (near the bottom) is brought into view, also when the
-// QR appears with the panel open ("Dodaj telefon").
+// QR appears with the panel open ("Add a phone").
 let pairingShown = false;
 function pairingVisible() { return !document.querySelector('#pairing-qr').hidden || !document.querySelector('#pairing-code').hidden; }
 function showPairing() { document.querySelector('#pairing-qr').closest('section').scrollIntoView({ block: 'nearest' }); }
@@ -288,7 +288,7 @@ function renderPairing(state) {
   document.querySelector('#quick-actions').hidden = !(state.connected || connected);
   renderBattery(state.connected || connected ? state.battery : null);
   renderFind(state.find, !!(state.connected || connected));
-  // WN-55: the "Wiadomości" window; it explains itself when the phone doesn't share SMS.
+  // WN-55: the "Messages" window; it explains itself when the phone doesn't share SMS.
   document.querySelector('#open-sms').hidden = !(state.connected || connected);
   // WN-100: links to the phone, when it takes them.
   document.querySelector('#open-on-phone').hidden = !((state.connected || connected) && state.open_on_phone);

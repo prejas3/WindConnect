@@ -299,7 +299,7 @@ class WindCore private constructor(
     // WN-46: the phone's player for the PC. Only with notification-listener access and the person's setting.
     private val appContext = context.applicationContext
     private val mutableMediaAllowed = MutableStateFlow(settings.getBoolean(MEDIA_ALLOWED, true))
-    /** "Pokaż multimedia na komputerze" (default on). */
+    /** "Show media on the computer" (default on). */
     val mediaAllowed: StateFlow<Boolean> = mutableMediaAllowed.asStateFlow()
     private val mutableMediaAccess = MutableStateFlow(MediaListenerService.granted(appContext))
     /** Android's notification-listener access, which media sessions need (re-read by [refreshMedia]). */
@@ -312,7 +312,7 @@ class WindCore private constructor(
     private var mediaJob: Job? = null
     // WN-47: the PC's player shown here (app card + Android's media controls), and the person's setting.
     private val mutablePcMediaAllowed = MutableStateFlow(settings.getBoolean(PC_MEDIA_ALLOWED, true))
-    /** "Pokaż odtwarzacz komputera" (default on). */
+    /** "Show the computer's player" (default on). */
     val pcMediaAllowed: StateFlow<Boolean> = mutablePcMediaAllowed.asStateFlow()
     private val pcPlayer = PcPlayer(appContext, { (state.value as? ConnectionState.Connected)?.peerName }) { action, position ->
         scope.launch {
@@ -337,7 +337,7 @@ class WindCore private constructor(
     // WN-42: the phone's notifications for the PC. Their own consent (§9.6 rule 6): NotifyListenerService's access and this
     // setting, off by default; only notifications posted while a session runs (§9.7).
     private val mutableNotifyAllowed = MutableStateFlow(settings.getBoolean(NOTIFY_ALLOWED, false))
-    /** "Powiadomienia na komputerze" (default off). */
+    /** "Notifications on the computer" (default off). */
     val notifyAllowed: StateFlow<Boolean> = mutableNotifyAllowed.asStateFlow()
     private val mutableNotifyAccess = MutableStateFlow(NotifyListenerService.granted(appContext))
     /** Android's access for [NotifyListenerService] (re-read by [refreshNotify]). */
@@ -371,7 +371,7 @@ class WindCore private constructor(
     val ringing: StateFlow<Boolean> = ringer.ringing
     fun stopRinging() = client.stopRinging()
     private val mutableFindAllowed = MutableStateFlow(settings.getBoolean(FIND_ALLOWED, true))
-    /** "Pozwól komputerowi dzwonić": off, `find/1` isn't announced and the PC's tile is disabled. */
+    /** "Let the computer ring the phone": off, `find/1` isn't announced and the PC's tile is disabled. */
     val findAllowed: StateFlow<Boolean> = mutableFindAllowed.asStateFlow()
     suspend fun setFindAllowed(value: Boolean) = withContext(Dispatchers.IO) {
         settings.edit().putBoolean(FIND_ALLOWED, value).apply()
@@ -380,7 +380,7 @@ class WindCore private constructor(
         val live = gate.withLock { connection }
         try { live?.setFindAccepted(value) } catch (error: Exception) { if (error is CancellationException) throw error }
     }
-    // WN-100: links from the PC open here ("Otwieraj linki z komputera", default on; off -> the PC gets "refused").
+    // WN-100: links from the PC open here ("Open links from the computer", default on; off -> the PC gets "refused").
     private val linkOpener = LinkOpener(appContext).also { client.setUrlOpener(it) }
     private val mutableOpenLinks = MutableStateFlow(settings.getBoolean(OPEN_LINKS, true))
     val openLinks: StateFlow<Boolean> = mutableOpenLinks.asStateFlow()
@@ -417,7 +417,7 @@ class WindCore private constructor(
         sms.reportSend = { token, state -> client.smsSendState(token, state) }
         if (appContext.declaresPermission(android.Manifest.permission.READ_SMS)) client.setSmsSource(sms)
     }
-    // WN-56: "Wysyłanie z komputera" (default off; SEND_SMS, and READ_PHONE_STATE for the SIM list, asked when turned on).
+    // WN-56: "Sending from the computer" (default off; SEND_SMS, and READ_PHONE_STATE for the SIM list, asked when turned on).
     private val mutableSmsSendAllowed = MutableStateFlow(settings.getBoolean(SMS_SEND_ALLOWED, false))
     val smsSendAllowed: StateFlow<Boolean> = mutableSmsSendAllowed.asStateFlow()
     private val mutableSmsSendAccess = MutableStateFlow(phoneSms.canSend())
@@ -430,7 +430,7 @@ class WindCore private constructor(
         client.smsChanged()
     }
     private val mutableSmsAllowed = MutableStateFlow(settings.getBoolean(SMS_ALLOWED, false))
-    /** "SMS na komputerze" (default off). */
+    /** "SMS on the computer" (default off). */
     val smsAllowed: StateFlow<Boolean> = mutableSmsAllowed.asStateFlow()
     private val mutableSmsAccess = MutableStateFlow(phoneSms.canRead())
     /** READ_SMS granted (re-read by [refreshSms]). */
@@ -468,7 +468,7 @@ class WindCore private constructor(
     // asked only when the person turns it on.
     private val phoneGallery = PhoneGallery(appContext).also { client.setGallerySource(it) }
     private val mutableGalleryAllowed = MutableStateFlow(settings.getBoolean(GALLERY_ALLOWED, false))
-    /** "Zdjęcia na komputerze" (default off). */
+    /** "Photos on the computer" (default off). */
     val galleryAllowed: StateFlow<Boolean> = mutableGalleryAllowed.asStateFlow()
     private val mutableGalleryAccess = MutableStateFlow(phoneGallery.canRead())
     /** Photo access granted (re-read by [refreshGallery]). */
@@ -951,11 +951,11 @@ class WindCore private constructor(
     // WN-48: the call state for the PC (it pauses its players) and both volumes.
     private var callWatcher: CallWatcher? = null
     private var callNotifications: Job? = null
-    // WN-57: who calls, missed calls, Reject/Silence from the PC: "Połączenia na komputerze" (default off; READ_PHONE_STATE,
+    // WN-57: who calls, missed calls, Reject/Silence from the PC: "Calls on the computer" (default off; READ_PHONE_STATE,
     // READ_CALL_LOG, ANSWER_PHONE_CALLS and optionally READ_CONTACTS asked when turned on).
     private val phoneCalls = PhoneCalls(appContext).also { client.setCallActionSink(it) }
     private val mutableCallsAllowed = MutableStateFlow(settings.getBoolean(CALLS_ALLOWED, false))
-    /** "Połączenia na komputerze" (default off). */
+    /** "Calls on the computer" (default off). */
     val callsAllowed: StateFlow<Boolean> = mutableCallsAllowed.asStateFlow()
     private val mutableCallsAccess = MutableStateFlow(phoneCalls.canRead())
     /** READ_PHONE_STATE and READ_CALL_LOG granted (re-read by [refreshCalls]). */
@@ -991,7 +991,7 @@ class WindCore private constructor(
     }
     private var phoneVolume: PhoneVolume? = null
     private val mutableVolumeAllowed = MutableStateFlow(settings.getBoolean(VOLUME_ALLOWED, true))
-    /** "Głośność z komputera" (default on): the PC shows and changes STREAM_MUSIC, and this shows the PC's. */
+    /** "Volume from the computer" (default on): the PC shows and changes STREAM_MUSIC, and this shows the PC's. */
     val volumeAllowed: StateFlow<Boolean> = mutableVolumeAllowed.asStateFlow()
     private val mutablePcVolume = MutableStateFlow<PcVolume?>(null)
     /** The PC's output volume, or null without one. */
@@ -1058,7 +1058,7 @@ class WindCore private constructor(
     /** WN-160: an app's icon (64 px PNG) for the filter's list; null when it can't be loaded. */
     fun appIcon(packageName: String): ByteArray? = icons.icon(packageName)
 
-    /** WN-45: "Wszystkie oprócz wyłączonych" or "Tylko wybrane"; blocked apps' notifications go away on the PC. */
+    /** WN-45: "All" or "Chosen"; blocked apps' notifications go away on the PC. */
     fun setNotifyAppMode(mode: NotifyAppMode) {
         NotifyApps.setMode(appContext, mode)
         notifyEvents?.trySend(NotificationEvent.FilterChanged)

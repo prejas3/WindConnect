@@ -40,7 +40,7 @@ pub fn refresh_icon(app: &tauri::AppHandle) {
         }
     }
 }
-/// "WindConnect · Połączono", plus the phone's battery while connected (WN-49).
+/// "WindConnect · Connected", plus the phone's battery while connected (WN-49).
 pub fn tooltip(phase: Phase) -> String {
     let battery = match phase {
         Phase::Connected => crate::battery::tooltip(crate::battery::current()),

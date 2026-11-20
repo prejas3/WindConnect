@@ -33,7 +33,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * WN-100: str(R.string.action_open_on_pc) in the share sheet. SEC:the activity is exported (any app can start it with an explicit intent), so
- * nothing goes to the PC without the person's tap: it asks "Otworzyć na <PC>?" with the address's host and a shortened link,
+ * nothing goes to the PC without the person's tap: it asks "Open on <PC>?" with the address's host and a shortened link,
  * and only str(R.string.action_open_on_pc) sends `open-url` (§9.2). Cancel, back or closing sends nothing; no "don't ask again". Without a link
  * or a connection it says so and does nothing.
  */

@@ -20,7 +20,7 @@ import org.junit.Test
 /**
  * WN-60: on mobile data only (Wi-Fi off), with the relay turned on, the phone reaches the PC
  * through the relay when the PC's home address does not answer; the setting is off by default
- * and survives a restart. Needs `windctl serve --relay` and the relay (README "Przekaźnik").
+ * and survives a restart. Needs `windctl serve --relay` and the relay (README "Relay outside the home").
  */
 class RelayRouteTest {
     private val instrumentation = InstrumentationRegistry.getInstrumentation()

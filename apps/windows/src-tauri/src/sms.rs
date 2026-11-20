@@ -1,4 +1,4 @@
-//! CCS/1 M:WN-55 the phone's SMS in the "Wiadomości" window (sms/1, PROTOCOL.md §9.11).
+//! CCS/1 M:WN-55 the phone's SMS in the "Messages" window (sms/1, PROTOCOL.md §9.11).
 //! FLOW:session attach -> watch (when the phone offers sms/1) -> `sms-changed` to the window -> it refreshes the threads
 //! and the open thread with `since` = its newest message (incremental); a thread opens from this memory cache at once.
 //! SEC:texts only in memory (dropped with another phone or unpairing), never written or logged; the page shows them as
@@ -240,7 +240,7 @@ pub fn forget(app: &tauri::AppHandle, key: &PublicKey) {
     *state = State::default();
 }
 
-/// The phone changed what it accepts (its "SMS na komputerze" setting or READ_SMS).
+/// The phone changed what it accepts (its "SMS on the computer" setting or READ_SMS).
 pub fn capabilities_changed(app: &tauri::AppHandle) {
     restart_watch(app);
     emit_status(app);
@@ -575,7 +575,7 @@ pub async fn sms_photo(app: tauri::AppHandle, address: String) -> Result<Option<
     Ok(url)
 }
 
-/// Opens (or brings up) the "Wiadomości" window. Async: building a window in a sync command deadlocks on Windows.
+/// Opens (or brings up) the "Messages" window. Async: building a window in a sync command deadlocks on Windows.
 #[tauri::command]
 pub async fn sms_open(app: tauri::AppHandle) -> Result<(), String> {
     open(&app).map_err(|e| e.to_string())

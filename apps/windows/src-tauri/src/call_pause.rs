@@ -67,14 +67,14 @@ impl CallPause {
     }
 }
 
-/// `call-volume.json`: "Wstrzymaj odtwarzanie przy połączeniu" and "Głośność z telefonu", both on by default.
+/// `call-volume.json`: "Pause playback during calls" and "Volume from the phone", both on by default.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct CallVolumeSettings {
     #[serde(default = "on")]
     pub pause_on_call: bool,
     #[serde(default = "on")]
     pub volume: bool,
-    /// WN-57: "Połączenia z telefonu": the incoming-call toast and missed calls (when the phone shares them).
+    /// WN-57: "Calls from the phone": the incoming-call toast and missed calls (when the phone shares them).
     #[serde(default = "on")]
     pub calls: bool,
 }

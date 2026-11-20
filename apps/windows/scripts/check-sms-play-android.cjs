@@ -1,6 +1,6 @@
 // CCS/1 PURPOSE:WN-124 (decision D2) the Google Play build on a phone: real PC app + Android emulator with the Play APK
 // (-PwindStore=play), paired by real QR. The phone never offers sms/1 (no READ_SMS in its manifest, no source), and the
-// PC's "Wiadomości" window says the phone doesn't share SMS. Also runs StoreVariantTest on the phone (no SMS/calls
+// PC's "Messages" window says the phone doesn't share SMS. Also runs StoreVariantTest on the phone (no SMS/calls
 // settings in the Play build).
 // LIMIT:emulator NAT needs a UDP redirection for the public discovery hint; no trust or TLS bypass. Disposable emulator.
 // Needs: cargo build -p windconnect-windows; in apps/android: ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest

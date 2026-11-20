@@ -348,7 +348,7 @@ pub struct PanelItem {
 /// The panel keeps the newest this many.
 pub const PANEL_ITEMS: usize = 20;
 
-/// WN-45: "Ciche godziny", in minutes after local midnight (a time of day, not a timestamp: a DST change can't shift it).
+/// WN-45: "Quiet hours", in minutes after local midnight (a time of day, not a timestamp: a DST change can't shift it).
 /// Through midnight when `from` > `to`; `from` == `to` is none.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct QuietHours {
@@ -388,7 +388,7 @@ impl QuietHours {
     }
 }
 
-/// `notify.json`: "Powiadomienia z telefonu" and the quiet hours (WN-45). WN-43 wrote a bare `true`/`false`.
+/// `notify.json`: "Notifications from the phone" and the quiet hours (WN-45). WN-43 wrote a bare `true`/`false`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct NotifySettings {
     pub enabled: bool,

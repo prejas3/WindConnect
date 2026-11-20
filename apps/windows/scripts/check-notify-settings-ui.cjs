@@ -1,4 +1,4 @@
-// CCS/1 PURPOSE:WN-43 main-window switch "Powiadomienia z telefonu" with a stubbed IPC: shown from pairing-state,
+// CCS/1 PURPOSE:WN-43 main-window switch "Notifications from the phone" with a stubbed IPC: shown from pairing-state,
 // reflects phone_notifications, a click (and Space) sends phone_notifications, pushed changes follow, Light/Dark | DEP:external dev-only Playwright 1.61.1.
 const assert = require('node:assert/strict');
 const http = require('node:http');

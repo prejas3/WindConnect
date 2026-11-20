@@ -1,4 +1,4 @@
-// CCS/1 PURPOSE:WN-58 real PC app + Android emulator: paired over QR, "Zdjęcia na komputerze" on (GalleryProof). Three new
+// CCS/1 PURPOSE:WN-58 real PC app + Android emulator: paired over QR, "Photos on the computer" on (GalleryProof). Three new
 // 4000×3000 JPEGs are saved on the phone the way a camera does (pending -> bytes -> published); each is timed from the
 // script's command to its thumbnail painted in the panel (a MutationObserver in the page), budget < 1000 ms. Then a
 // screenshot is marked as one, the original of a photo is fetched (as a press does) and compared by SHA-256 with the file on

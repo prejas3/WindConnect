@@ -63,7 +63,7 @@ const stub = state => {
     await open(connected);
     assert.equal(await top(), 0, 'opens at the top');
     await page.screenshot({ path: path.join(out, 'panel-opened-top.png') });
-    // "Dodaj telefon" with the panel open: the QR appears and is brought into view.
+    // "Add a phone" with the panel open: the QR appears and is brought into view.
     await page.evaluate(s => window.__listeners['pairing-state']({ payload: s }), waiting);
     await page.waitForTimeout(150);
     assert.equal(await page.locator('#pairing-qr').isHidden(), false, 'QR shown');
