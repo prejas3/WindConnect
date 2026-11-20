@@ -62,4 +62,6 @@
     <string name="clip_image_sending">Sending the image…</string>
     <string name="touchpad_target_changed">The computer changed</string>
     <string name="clip_image_file_name">image.png</string>
+    <string name="peer_unnamed">Computer</string>
+    <string name="notify_reply_default">Reply</string>
 </resources>

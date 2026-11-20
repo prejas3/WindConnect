@@ -84,7 +84,7 @@ internal object FileImport {
                 if (sizeIndex >= 0 && !cursor.isNull(sizeIndex)) size = cursor.getLong(sizeIndex).takeIf { it >= 0 }
             }
         }
-        require(size == null || size!! <= MAX_FILE_BYTES) { "Plik przekracza limit 2 GiB" }
+        require(size == null || size!! <= MAX_FILE_BYTES) { str(R.string.import_limit) }
         return Source(uri, safeName(name, mime, used), size)
     }
 

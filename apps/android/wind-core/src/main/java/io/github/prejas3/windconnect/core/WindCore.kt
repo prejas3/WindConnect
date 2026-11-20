@@ -723,7 +723,8 @@ class WindCore private constructor(
             catch (error: Exception) { if (error is CancellationException) throw error }
             finally { touchpadWatch.destroy(); mutableTouchpadAccepted.value = false }
         }
-        mutableState.value = ConnectionState.Connected(peer.name, peer.fingerprint, rtt, opened.route())
+        // WN-165: a computer without a name is "Computer" in the phone's language (the core no longer picks a word).
+        mutableState.value = ConnectionState.Connected(peer.name.ifBlank { appContext.getString(R.string.peer_unnamed) }, peer.fingerprint, rtt, opened.route())
         startBattery(opened)
         startMedia(opened)
         startNotify(opened)

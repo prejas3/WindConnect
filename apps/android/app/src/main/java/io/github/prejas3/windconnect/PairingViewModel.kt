@@ -88,7 +88,7 @@ class PairingViewModel(application: Application) : AndroidViewModel(application)
                         application.getSharedPreferences("widget_presentation", android.content.Context.MODE_PRIVATE)
                             .edit().putString("peer_name", kept.lastOrNull()?.name).apply()
                         mutableUi.update { it.copy(devices = list, hasPairedDevice = kept.isNotEmpty() || it.connection is ConnectionState.Connected,
-                            computerName = (it.connection as? ConnectionState.Connected)?.peerName ?: kept.lastOrNull()?.name) }
+                            computerName = (it.connection as? ConnectionState.Connected)?.peerName ?: kept.lastOrNull()?.name?.let(::computerLabel)) }
                     }
                 }
                 opened.refreshPaired()
@@ -166,7 +166,7 @@ class PairingViewModel(application: Application) : AndroidViewModel(application)
                 val attempt = owner.startSas(device)
                 sas = attempt
                 val shown = attempt.code()
-                mutableUi.update { it.copy(screen = "sas-code", name = shown.peerName, code = shown.code) }
+                mutableUi.update { it.copy(screen = "sas-code", name = computerLabel(shown.peerName), code = shown.code) }
             } catch (error: Exception) {
                 if (error is CancellationException) throw error
                 clearSas()
@@ -184,7 +184,7 @@ class PairingViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             try {
                 val peer = attempt.decide(same)
-                mutableUi.update { it.copy(screen = "paired", name = peer.name, computerName = peer.name, fingerprint = peer.fingerprint, code = "", hasPairedDevice = true, message = str(R.string.paired_connecting)) }
+                mutableUi.update { it.copy(screen = "paired", name = computerLabel(peer.name), computerName = computerLabel(peer.name), fingerprint = peer.fingerprint, code = "", hasPairedDevice = true, message = str(R.string.paired_connecting)) }
                 try {
                     owner.connectPaired(peer)
                     mutableUi.update { it.copy(message = str(R.string.connected_to_pc)) }
@@ -238,7 +238,7 @@ class PairingViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             try {
                 val peer = owner.pairQr(active)
-                mutableUi.update { it.copy(screen = "paired", name = peer.name, computerName = peer.name, fingerprint = peer.fingerprint, hasPairedDevice = true, message = str(R.string.paired_connecting)) }
+                mutableUi.update { it.copy(screen = "paired", name = computerLabel(peer.name), computerName = computerLabel(peer.name), fingerprint = peer.fingerprint, hasPairedDevice = true, message = str(R.string.paired_connecting)) }
                 try {
                     owner.connectPaired(peer)
                     mutableUi.update { it.copy(message = str(R.string.connected_to_pc)) }

@@ -10,8 +10,8 @@ use tauri::{Emitter, Manager};
 use tokio::sync::mpsc;
 use wind_core::{
     actions::{
-        builtin_label, is_custom_id, Action, ActionHost, Builtin, CustomAction, Executor, Policy,
-        PolicySource, Status, LOCK, OPEN_URL, SLEEP,
+        is_custom_id, Action, ActionHost, Builtin, CustomAction, Executor, Policy, PolicySource,
+        Status, LOCK, OPEN_URL, SLEEP,
     },
     session::{ActionStream, Session},
     transport::PinnedKeys,
@@ -285,9 +285,9 @@ pub fn serve(
     tokio::spawn(async move {
         while let Some(h) = handled.recv().await {
             let label = match h.action.as_str() {
-                LOCK => builtin_label(Builtin::Lock).to_string(),
-                SLEEP => builtin_label(Builtin::Sleep).to_string(),
-                OPEN_URL => builtin_label(Builtin::OpenUrl).to_string(),
+                LOCK => local_label(Builtin::Lock).to_string(),
+                SLEEP => local_label(Builtin::Sleep).to_string(),
+                OPEN_URL => local_label(Builtin::OpenUrl).to_string(),
                 id => match read(&file) {
                     Read::Ok(doc) => doc
                         .custom
@@ -313,6 +313,15 @@ pub fn serve(
     });
 }
 
+/// A built-in's name in this PC's language (WN-165); the phone gets `builtin_label`'s English fallback with the id.
+fn local_label(builtin: Builtin) -> &'static str {
+    crate::i18n::tr(match builtin {
+        Builtin::Lock => "actions.lock",
+        Builtin::Sleep => "actions.sleep",
+        Builtin::OpenUrl => "actions.open_url",
+    })
+}
+
 fn snapshot_of(file: &Path, last: Option<LastAction>) -> Snapshot {
     let (doc, error) = match read(file) {
         Read::Missing => (Doc::default(), None),
@@ -322,7 +331,7 @@ fn snapshot_of(file: &Path, last: Option<LastAction>) -> Snapshot {
     let broken = error.is_some();
     let builtin = |b: Builtin, id: &str, on: bool, detail: &str| Item {
         id: id.into(),
-        label: builtin_label(b).into(),
+        label: local_label(b).into(),
         detail: detail.into(),
         enabled: on && !broken,
         problem: None,

@@ -215,11 +215,13 @@ pub fn check_url(url: &str) -> bool {
 }
 
 /// Labels of the built-ins, as offered in `Actions`.
+/// CCS/1 RULE:WN-165 a fallback in English for a receiver that doesn't know the id: apps show a built-in by its
+/// id (`lock`, `sleep`, `open-url`) in the person's language, from their own translations (PROTOCOL.md §9.2).
 pub fn builtin_label(builtin: Builtin) -> &'static str {
     match builtin {
-        Builtin::Lock => "Zablokuj",
-        Builtin::Sleep => "Uśpij",
-        Builtin::OpenUrl => "Otwórz link",
+        Builtin::Lock => "Lock",
+        Builtin::Sleep => "Sleep",
+        Builtin::OpenUrl => "Open link",
     }
 }
 
@@ -694,7 +696,7 @@ mod tests {
         assert_eq!(
             ids,
             vec![
-                ("open-url".to_string(), "Otwórz link".to_string()),
+                ("open-url".to_string(), "Open link".to_string()),
                 ("x-a".to_string(), "Kopia".to_string())
             ]
         );

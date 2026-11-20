@@ -71,8 +71,8 @@ internal object NotificationRules {
 
     private const val PERSISTENT = Notification.FLAG_ONGOING_EVENT or Notification.FLAG_FOREGROUND_SERVICE or Notification.FLAG_NO_CLEAR
 
-    /** Null: not for the PC. */
-    fun content(parts: NotificationParts, ownPackage: String): NotificationContent? {
+    /** Null: not for the PC. [replyDefault]: the reply button's label when the app gives none, in the phone's language (WN-165). */
+    fun content(parts: NotificationParts, ownPackage: String, replyDefault: String = "Reply"): NotificationContent? {
         if (parts.packageName == ownPackage) return null
         if (parts.flags and PERSISTENT != 0) return null
         if (parts.flags and Notification.FLAG_GROUP_SUMMARY != 0) return null
@@ -89,7 +89,7 @@ internal object NotificationRules {
         if (title == null && text == null) return null
         val progress = parts.progressMax > 0 || parts.progressIndeterminate || parts.category == Notification.CATEGORY_PROGRESS
         val replyIndex = replyAction(parts.actions)
-        val reply = replyIndex?.let { clean(parts.actions[it].label, MAX_REPLY_LABEL) ?: "Odpowiedz" }
+        val reply = replyIndex?.let { clean(parts.actions[it].label, MAX_REPLY_LABEL) ?: replyDefault }
         return NotificationContent(title, text, progress, reply, replyIndex)
     }
 
@@ -234,7 +234,7 @@ class NotifyListenerService : NotificationListenerService() {
         if (sbn.notification.category == Notification.CATEGORY_CALL) CallNotifications.posted(sbn.key)
         else CallNotifications.removed(sbn.key)
         val deliver = sink ?: return
-        val content = NotificationRules.content(sbn.parts(), packageName) ?: return
+        val content = NotificationRules.content(sbn.parts(), packageName, getString(R.string.notify_reply_default)) ?: return
         // WN-45: listed for the app filter (package name only), then filtered before anything is kept or sent.
         NotifyApps.saw(this, sbn.packageName)
         // WN-159: the app's name from the info the notification carries (package visibility hides most apps).

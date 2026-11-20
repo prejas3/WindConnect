@@ -90,7 +90,7 @@ pub fn app_name(aumid: &str) -> String {
         name.pop();
     }
     if name.is_empty() {
-        "Komputer".into()
+        crate::i18n::tr("device.computer").into()
     } else {
         name
     }

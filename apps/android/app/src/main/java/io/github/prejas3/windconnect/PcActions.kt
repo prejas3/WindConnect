@@ -42,6 +42,17 @@ object PcActionText {
         else -> str(R.string.pc_action_failed, label)
     }
 
+    /**
+     * WN-165: a PC action's name in the phone's language, by its id (PROTOCOL.md §9.2): the PC's label is only a
+     * fallback, for a custom action's own name and for a built-in this version doesn't know.
+     */
+    fun label(id: String, sent: String): String = when (id) {
+        "lock" -> str(R.string.action_lock_pc)
+        "sleep" -> str(R.string.action_sleep_pc)
+        "open-url" -> str(R.string.action_open_on_pc)
+        else -> sent.trim().ifEmpty { id }
+    }
+
     /** The first http(s) link in shared or copied text, or null. */
     fun link(text: String?): String? = text?.let { Regex("""https?://[^\s<>"]+""", RegexOption.IGNORE_CASE).find(it)?.value?.trimEnd('.', ',', ')', ';') }
 }
@@ -68,7 +79,19 @@ class PcActionsState(private val context: Context, private val scope: CoroutineS
     }
 
     fun refresh() {
-        scope.launch { custom.value = connections.pcActions().filter { it.id.startsWith("x-") } }
+        // Lock and Open on PC have their own buttons on the home screen; the rest (sleep, custom, newer) go here.
+        scope.launch { custom.value = connections.pcActions().filter { it.id !in OWN_BUTTONS } }
+    }
+}
+
+private val OWN_BUTTONS = setOf("lock", "open-url")
+
+/** The PC's actions listed for the phone, each named in the phone's language where its id is known (WN-165). */
+@Composable
+fun PcActionButtons(actions: List<RemoteAction>, onRun: (id: String, label: String) -> Unit) {
+    for (action in actions) {
+        val label = PcActionText.label(action.id, action.label)
+        WindButton(label, { onRun(action.id, label) }, Modifier.fillMaxWidth().testTag("pcAction:${action.id}"), kind = ButtonKind.Secondary)
     }
 }
 
@@ -101,9 +124,7 @@ fun PcActionsCard(state: PcActionsState, connected: Boolean) {
                 WindButton(str(R.string.cancel), { state.asking.value = false }, kind = ButtonKind.Quiet)
             }
         }
-        for (action in custom) {
-            WindButton(action.label, { state.run(action.id, action.label) }, Modifier.fillMaxWidth().testTag("pcAction:${action.id}"), kind = ButtonKind.Secondary)
-        }
+        PcActionButtons(custom) { id, label -> state.run(id, label) }
         status?.let {
             Text(it, style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("pcActionStatus").semantics { liveRegion = LiveRegionMode.Polite })
         }

@@ -610,8 +610,11 @@ async fn run(
     let unpairing = Unpairing::new((*store).clone(), trust.clone(), endpoint.clone());
     let mut discovery =
         NetworkDiscovery::start(identity.public_key(), endpoint.clone(), changes.clone())?;
-    let name = clean_name(&std::env::var("COMPUTERNAME").unwrap_or_else(|_| "Komputer".into()))
-        .unwrap_or_else(|| "Komputer".into());
+    // WN-165: without a usable COMPUTERNAME, "Computer" in this PC's language (the phone shows it as given).
+    let name = std::env::var("COMPUTERNAME")
+        .ok()
+        .and_then(|n| clean_name(&n))
+        .unwrap_or_else(|| crate::i18n::tr("device.computer").into());
     let local = LocalInfo {
         name: name.clone(),
         kind: DeviceKind::Computer,

@@ -25,6 +25,7 @@
     <string name="preview_cursor">Steruj kursorem</string>
     <string name="preview_sample_touchpad">Przykład: touchpad</string>
     <string name="action_lock_pc">Zablokuj PC</string>
+    <string name="action_sleep_pc">Uśpij PC</string>
     <string name="preview_remote_lock">Zdalna blokada</string>
     <string name="preview_sample_lock">Przykład: blokada</string>
     <string name="preview_transfer">Przykładowy transfer</string>

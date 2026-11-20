@@ -1301,6 +1301,13 @@ From the executor:
 (a phone doesn't put a computer to sleep) doesn't offer it in `Actions` and
 answers `Run` with status `1`.
 
+**Labels (WN-165).** The receiver shows a built-in action by its identifier,
+in its own user's language; the `label` is only a fallback, for an identifier
+the receiver doesn't know. The executor sends built-ins with English labels
+(`Lock`, `Sleep`, `Open link`); versions up to 0.81.0 sent Polish ones, which
+a receiver that knows the identifier never shows. A custom action's `label`
+is the name its owner gave it and is shown as it is.
+
 | `status` | meaning |
 |---|---|
 | 0 | done (for `sleep`: sleep scheduled, the answer goes out before it) |

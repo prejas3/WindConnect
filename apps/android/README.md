@@ -891,7 +891,8 @@ Test: `apps/windows/scripts/check-calls-android.cjs`.
 ## Remote actions (WN-100)
 
 Phone -> PC: "Lock PC" and "Open on PC" on the home screen, and the computer's
-custom actions ("x-…", from `list_actions`) in the card "Actions on the computer";
+other actions from `list_actions` ("Sleep PC" when the PC allows it, custom "x-…"
+ones, and any a newer PC adds) in the card "Actions on the computer";
 each status has a message (done, refused, bad address, busy, failed,
 no connection). "Open on PC" takes the link from the clipboard, and without
 one asks for an address; shared text with a link goes there through "Open on
@@ -901,7 +902,12 @@ connection only). PC -> phone: the core hosts `actions/1` with `ActionHost`
 at once when the app is on screen, and in the background shows the notification
 "Open the link from the computer". The setting "Open links from the computer"
 (on by default); turned off -> the computer gets "refused".
-Test: `apps/windows/scripts/check-actions-android.cjs`, `PcActionTextTest`.
+RULE (WN-165): built-ins are named by their id in the phone's language
+(`PcActionText.label`); the PC's label is shown only for a custom action and for an
+id this version doesn't know. Likewise a computer without a name is "Computer" in the
+phone's language: the core returns an empty name and the app fills it in.
+Test: `apps/windows/scripts/check-actions-android.cjs`, `PcActionTextTest`,
+`PcActionNamesTest`.
 
 ## Pairing after an update (WN-126)
 

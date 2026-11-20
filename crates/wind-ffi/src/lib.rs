@@ -387,6 +387,7 @@ pub struct IdentityInfo {
 #[derive(uniffi::Record, Clone, Debug)]
 pub struct PeerInfo {
     pub public_key: Vec<u8>,
+    /// Empty when the computer gave no name (WN-165): the app shows its own word for "computer".
     pub name: String,
     pub fingerprint: String,
 }
@@ -395,7 +396,7 @@ pub struct PeerInfo {
 #[derive(uniffi::Record, Clone, Debug)]
 pub struct PairedEntry {
     pub public_key: Vec<u8>,
-    /// The local name (alias), or the name it gave when pairing.
+    /// The local name (alias), or the name it gave when pairing; empty without either (WN-165).
     pub name: String,
     pub fingerprint: String,
     /// Seconds since the Unix epoch: when paired, or (when `owed`) removed.
@@ -718,7 +719,7 @@ impl CoreClient {
         Ok(PeerInfo {
             public_key: device.key.as_bytes().to_vec(),
             fingerprint: device.key.fingerprint().to_hex(),
-            name: device.name.unwrap_or_else(|| "Komputer".into()),
+            name: device.name.unwrap_or_default(),
         })
     }
 
@@ -796,7 +797,7 @@ impl CoreClient {
             .map(|device| PairedEntry {
                 public_key: device.key.as_bytes().to_vec(),
                 fingerprint: device.key.fingerprint().to_hex(),
-                name: device.name.clone().unwrap_or_else(|| "Komputer".into()),
+                name: device.name.clone().unwrap_or_default(),
                 paired_at: device.paired_at,
                 owed: false,
             })
@@ -808,7 +809,7 @@ impl CoreClient {
                 .map(|(key, at)| PairedEntry {
                     public_key: key.as_bytes().to_vec(),
                     fingerprint: key.fingerprint().to_hex(),
-                    name: "Komputer".into(),
+                    name: String::new(),
                     paired_at: *at,
                     owed: true,
                 }),
@@ -919,7 +920,7 @@ impl CoreClient {
             .map(|device| PeerInfo {
                 public_key: device.key.as_bytes().to_vec(),
                 fingerprint: device.key.fingerprint().to_hex(),
-                name: device.name.unwrap_or_else(|| "Komputer".into()),
+                name: device.name.unwrap_or_default(),
             })
             .collect();
         Ok(PairedLoadResult {
@@ -1386,6 +1387,7 @@ impl CoreClient {
 pub struct SasCode {
     /// Six digits in two groups: `042 917`.
     pub code: String,
+    /// Empty when the computer gave no name (WN-165): the app shows its own word for "computer".
     pub peer_name: String,
 }
 
@@ -1435,7 +1437,7 @@ impl SasPairing {
             Ok(prompt) => {
                 let code = SasCode {
                     code: prompt.code_text(),
-                    peer_name: prompt.peer_name().unwrap_or("Komputer").to_string(),
+                    peer_name: prompt.peer_name().unwrap_or_default().to_string(),
                 };
                 *self.pending.lock().unwrap() = Some(prompt);
                 Ok(code)
@@ -1465,7 +1467,7 @@ impl SasPairing {
         Ok(PeerInfo {
             public_key: device.key.as_bytes().to_vec(),
             fingerprint: device.key.fingerprint().to_hex(),
-            name: device.name.unwrap_or_else(|| "Komputer".into()),
+            name: device.name.unwrap_or_default(),
         })
     }
 
@@ -1530,7 +1532,7 @@ pub fn inspect_qr_link(link: String) -> Result<Arc<QrOffer>, CoreError> {
     let info = PeerInfo {
         public_key: offer.key.as_bytes().to_vec(),
         fingerprint: offer.key.fingerprint().to_hex(),
-        name: offer.name.clone().unwrap_or_else(|| "Komputer".into()),
+        name: offer.name.clone().unwrap_or_default(),
     };
     Ok(Arc::new(QrOffer {
         offer: std::sync::Mutex::new(Some(offer)),

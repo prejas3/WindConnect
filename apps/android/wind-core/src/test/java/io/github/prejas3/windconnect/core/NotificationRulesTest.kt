@@ -102,7 +102,10 @@ class NotificationRulesTest {
         assertEquals("Odpowiedz", withReply.reply)
         assertEquals(1, withReply.replyIndex)
         val blank = NotificationRules.content(parts().copy(actions = listOf(ActionParts(null, reply, false, listOf(true)))), own)!!
-        assertEquals("Odpowiedz", blank.reply)
+        assertEquals("Reply", blank.reply)
+        // WN-165: the listener passes the label in the phone's language.
+        val blankPl = NotificationRules.content(parts().copy(actions = listOf(ActionParts(null, reply, false, listOf(true)))), own, "Odpowiedz")!!
+        assertEquals("Odpowiedz", blankPl.reply)
         assertNull(NotificationRules.content(parts(), own)!!.reply)
     }
 

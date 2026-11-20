@@ -27,6 +27,7 @@
     <string name="preview_cursor">Move the cursor</string>
     <string name="preview_sample_touchpad">Sample: touchpad</string>
     <string name="action_lock_pc">Lock PC</string>
+    <string name="action_sleep_pc">Sleep PC</string>
     <string name="preview_remote_lock">Remote lock</string>
     <string name="preview_sample_lock">Sample: lock</string>
     <string name="preview_transfer">Sample transfer</string>
