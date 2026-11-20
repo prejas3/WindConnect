@@ -88,6 +88,7 @@ const stub = rows => {
     assert.equal(await focusedText(), 'Szczegóły');
     await page.keyboard.press('ArrowUp'); await page.keyboard.press('ArrowUp');
     assert.equal(await focusedText(), 'Usuń parowanie');
+    await page.waitForTimeout(300); // after the menu's fade-in
     await page.locator('#devices').screenshot({ path: path.join(out, 'panel-devices-menu.png') });
     const panelCalls = () => page.evaluate(() => window.__calls.filter(([c]) => c === 'panel_action').length);
     const hides = await panelCalls();
