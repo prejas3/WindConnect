@@ -157,21 +157,29 @@ class ClipboardHistory {
             return ByteArray(size).also { data.readFully(it) }
         }
 
-        /** One line, ≤ 120 characters; control, bidi and zero-width characters become a space (as on the PC). */
+        /**
+         * One line, ≤ 120 characters; control, bidi and zero-width characters become a space (as on the PC).
+         * WN-160: leading blanks are skipped and runs of blanks become one space, so text starting with empty lines
+         * still shows its words (it showed "…" alone). Text with nothing visible gives "".
+         */
         fun preview(text: String): String {
             val out = StringBuilder()
             var count = 0
             var index = 0
+            var space = false
             while (index < text.length && count < PREVIEW_CHARS) {
                 val code = text.codePointAt(index)
                 index += Character.charCount(code)
                 val hidden = Character.isISOControl(code) || code in 0x202A..0x202E || code in 0x2066..0x2069 || code in 0x200B..0x200F ||
                     code == 0xFEFF || code == 0x2028 || code == 0x2029
-                out.appendCodePoint(if (hidden) ' '.code else code)
+                if (hidden || Character.isWhitespace(code) || Character.isSpaceChar(code)) { space = out.isNotEmpty(); continue }
+                if (space) { out.append(' '); count++; space = false; if (count >= PREVIEW_CHARS) break }
+                out.appendCodePoint(code)
                 count++
             }
-            val line = out.toString().trim()
-            return if (index < text.length) "$line…" else line
+            val line = out.toString()
+            val more = (index until text.length).any { !Character.isWhitespace(text[it]) && !Character.isISOControl(text[it]) }
+            return if (more && line.isNotEmpty()) "$line…" else line
         }
     }
 }

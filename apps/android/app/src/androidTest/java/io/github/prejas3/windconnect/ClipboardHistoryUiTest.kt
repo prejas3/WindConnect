@@ -62,12 +62,20 @@ class ClipboardHistoryUiTest {
             .map { it.config[androidx.compose.ui.semantics.SemanticsProperties.TestTag] }
         assertEquals(listOf("historyCopy3", "historyCopy2", "historyCopy1"), order)
         compose.onNodeWithTag("historyCopy2").performClick()
-        compose.onNodeWithTag("historyPin3").assertTextEquals("Odepnij").performClick()
-        compose.onNodeWithTag("historyPin1").assertTextEquals("Przypnij").performClick()
+        // WN-160: pin and remove are icons on the entry's row, named for TalkBack.
+        compose.onNodeWithTag("historyPin3").assertContentDescriptionEquals("Odepnij").performClick()
+        compose.onNodeWithTag("historyPin1").assertContentDescriptionEquals("Przypnij").performClick()
+        compose.onNodeWithTag("historyRemove1").assertContentDescriptionEquals("Usuń")
         compose.onNodeWithTag("historyRemove1").performClick()
         compose.onNodeWithTag("historyClear").performClick()
         compose.runOnIdle { assertEquals(listOf("copy 2", "pin 3 false", "pin 1 true", "remove 1", "clear"), calls) }
 
+        // WN-160: an entry with nothing visible says so instead of an empty line; text has no monitor icon, same column as images.
+        compose.runOnIdle { list.value = listOf(ClipboardHistoryView(9, false, "", null, fromPc = true, pinned = false)) + entries }
+        compose.onNodeWithText("Pusty tekst (same spacje)").assertIsDisplayed()
+        val textLeft = compose.onNodeWithText("https://example.com/a", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot.left
+        val imageLeft = compose.onNodeWithText("Obraz 32×20", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot.left
+        assertEquals("text and image previews start in one column", imageLeft, textLeft, 0.5f)
         // Only pins left: no Clear; empty: the explanation.
         compose.runOnIdle { list.value = entries.take(1) }
         compose.onNodeWithTag("historyClear").assertDoesNotExist()

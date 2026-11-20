@@ -77,6 +77,8 @@ class ConnectionOwner(private val application: Application) {
     fun setNotifyAppMode(mode: io.github.prejas3.windconnect.core.NotifyAppMode) { core?.setNotifyAppMode(mode) }
     fun setNotifyApp(packageName: String, on: Boolean) { core?.setNotifyApp(packageName, on) }
     fun appLabel(packageName: String): String = core?.appLabel(packageName) ?: WindCore.appLabel(application, packageName)
+    /** WN-160: the app's icon (PNG) beside its name in the list; null before the core is open or when it can't load. */
+    fun appIcon(packageName: String): ByteArray? = core?.appIcon(packageName)
     // WN-48: the PC's volume, and whether the PC may show/change STREAM_MUSIC (and this shows the PC's).
     private val mutablePcVolume = MutableStateFlow<io.github.prejas3.windconnect.core.PcVolume?>(null)
     val pcVolume = mutablePcVolume.asStateFlow()

@@ -37,7 +37,7 @@ class HomeScreenTest {
         compose.setContent { WindConnectTheme(ThemeMode.Light, false) {
             Column(Modifier.verticalScroll(rememberScrollState())) { HomeScreen(ui.value, {}, {}, onSendFile = { clicked = true }) }
         } }
-        compose.onNodeWithTag("homeSend").assertIsNotEnabled().assertTextContains("Niedostępne")
+        compose.onNodeWithTag("homeSend").assertIsNotEnabled().assert(SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.StateDescription, "Niedostępne"))
         compose.runOnIdle { ui.value = ui.value.copy(filesAccepted = true) }
         compose.onNodeWithTag("homeSend").assertIsEnabled().performScrollTo().performClick()
         assertTrue(clicked)
@@ -55,7 +55,10 @@ class HomeScreenTest {
         compose.onNodeWithTag("computerName").assertTextEquals("Twój komputer")
         compose.onNodeWithTag("pairingStatus").assertTextEquals("Brak sparowanego komputera")
         for (tag in listOf("homeSend", "homeTouchpad", "homeLock", "homeLink"))
-            compose.onNodeWithTag(tag).assertIsNotEnabled().assertTextContains("Niedostępne")
+            compose.onNodeWithTag(tag).assertIsNotEnabled().assert(SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.StateDescription, "Niedostępne"))
+        // WN-160: the reason once on the card, not on each tile.
+        compose.onNodeWithTag("actionsOffline").assertTextEquals("Sparuj komputer, aby korzystać z akcji.")
+        compose.onAllNodesWithText("Niedostępne", useUnmergedTree = true).assertCountEquals(0)
         // WN-130: no received-files card before pairing, and no placeholder transfers.
         compose.onNodeWithTag("receiveFilesControls").assertDoesNotExist()
         compose.onNodeWithTag("scanQr").performScrollTo().performClick()
@@ -73,6 +76,7 @@ class HomeScreenTest {
         compose.runOnIdle { state.value = state.value.copy(connection = ConnectionState.Disconnected("test")) }
         compose.onNodeWithTag("computerName").assertTextEquals("Mój PC")
         compose.onNodeWithTag("pairingStatus").assertTextEquals("Komputer poza zasięgiem")
+        compose.onNodeWithTag("actionsOffline").assertTextEquals("Akcje będą dostępne, gdy komputer się połączy.")
     }
 
     @Test fun unavailableActionAtLargeFontDoesNotRunAndBecomesNormalWhenAvailable() {
@@ -95,7 +99,7 @@ class HomeScreenTest {
         }
         for (theme in listOf(ThemeMode.Light, ThemeMode.Dark)) {
             compose.runOnIdle { mode.value = theme }
-            compose.onNodeWithTag("unavailableAction").assertIsNotEnabled().assertTextContains("Niedostępne")
+            compose.onNodeWithTag("unavailableAction").assertIsNotEnabled().assert(SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.StateDescription, "Niedostępne"))
                 .performTouchInput { click() }
             compose.runOnIdle { assertEquals(0, calls) }
             compose.onNodeWithTag("availableAction").assertIsEnabled()
@@ -104,16 +108,16 @@ class HomeScreenTest {
             java.io.File(context.cacheDir, "wn102-${theme.name}-150.png").outputStream().use {
                 image.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
             }
-            compose.onNodeWithText("Niedostępne", useUnmergedTree = true).assertIsDisplayed()
+            compose.onNodeWithText("i klawiatura", useUnmergedTree = true).assertIsDisplayed()
                 .performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.GetTextLayoutResult) { action ->
                     val layouts = mutableListOf<androidx.compose.ui.text.TextLayoutResult>()
                     action(layouts)
-                    assertTrue("disabled label must fit at150%: ${layouts.map { "${it.size}/${it.lineCount}/width=${it.didOverflowWidth}/height=${it.didOverflowHeight}" }}", layouts.none { it.hasVisualOverflow })
+                    assertTrue("dimmed tile text must fit at150%: ${layouts.map { "${it.size}/${it.lineCount}/width=${it.didOverflowWidth}/height=${it.didOverflowHeight}" }}", layouts.none { it.hasVisualOverflow })
                 }
         }
         compose.runOnIdle { available.value = true }
         compose.onNodeWithTag("unavailableAction").assertIsEnabled().performClick()
-        compose.onNodeWithText("Niedostępne", useUnmergedTree = true).assertDoesNotExist()
+        compose.onNodeWithTag("unavailableAction").assert(SemanticsMatcher.keyNotDefined(androidx.compose.ui.semantics.SemanticsProperties.StateDescription))
         compose.runOnIdle { assertEquals(1, calls) }
     }
 }

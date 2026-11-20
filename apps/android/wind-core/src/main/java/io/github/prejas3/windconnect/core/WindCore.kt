@@ -1055,6 +1055,9 @@ class WindCore private constructor(
     /** WN-45: an app's label for the filter's list. */
     fun appLabel(packageName: String): String = icons.label(packageName)
 
+    /** WN-160: an app's icon (64 px PNG) for the filter's list; null when it can't be loaded. */
+    fun appIcon(packageName: String): ByteArray? = icons.icon(packageName)
+
     /** WN-45: "Wszystkie oprócz wyłączonych" or "Tylko wybrane"; blocked apps' notifications go away on the PC. */
     fun setNotifyAppMode(mode: NotifyAppMode) {
         NotifyApps.setMode(appContext, mode)

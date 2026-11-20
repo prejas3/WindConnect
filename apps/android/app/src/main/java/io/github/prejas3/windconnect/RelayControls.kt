@@ -56,8 +56,9 @@ internal fun RelayCard(relay: String?, set: (String?) -> Unit) {
             if (error != null) wanted = relay != null
         },
         actions = {
-            WindField(draft, { draft = it; error = null }, str(R.string.relay_address) + " (" + RelaySetting.HINT + ")", Modifier.testTag("relayUrl"),
-                keyboardType = KeyboardType.Uri)
+            // WN-160: a short label; the address's form is the field's hint.
+            WindField(draft, { draft = it; error = null }, str(R.string.relay_address), Modifier.testTag("relayUrl"),
+                keyboardType = KeyboardType.Uri, placeholder = RelaySetting.HINT)
             error?.let { Text(it, Modifier.testTag("relayError"), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
             if (relay != null && draft.trim() != relay) WindButton(str(R.string.relay_save), {
                 error = RelaySetting.apply(set, draft.trim())

@@ -72,8 +72,8 @@ fun PairingScreen(model: PairingViewModel, diagnostic: @Composable () -> Unit) {
                             switchTag = "openDevices", onClick = model::devices)
                         WindDivider()
                     }
-                    WindSettingRow("plus", stringResource(R.string.pair_another), stringResource(R.string.sum_pair), switchTag = "scanQr", onClick = model::scan, enabled = state.ready,
-                        actions = { WindButton(stringResource(R.string.pair_without_camera), model::nearby, Modifier.testTag("pairNearby"), enabled = state.ready, kind = ButtonKind.Quiet) })
+                    // WN-160: one way in; the QR screen itself offers pairing without the camera.
+                    WindSettingRow("plus", stringResource(R.string.pair_another), stringResource(R.string.sum_pair), switchTag = "scanQr", onClick = model::scan, enabled = state.ready)
                 }
                 WindSection(stringResource(R.string.group_phone_on_pc)) {
                     NotifyControls()
@@ -118,7 +118,8 @@ fun PairingScreen(model: PairingViewModel, diagnostic: @Composable () -> Unit) {
                     WindButton(stringResource(R.string.camera_allow), { permission.launch(Manifest.permission.CAMERA) }, Modifier.testTag("cameraPermission"))
                     if (denied) WindButton(stringResource(R.string.permission_settings), { context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}"))) }, kind = ButtonKind.Secondary)
                 }
-                WindButton(stringResource(R.string.cancel), model::cancel, Modifier.testTag("cancelPairing"), kind = ButtonKind.Secondary)
+                WindButton(stringResource(R.string.pair_without_camera), model::nearby, Modifier.fillMaxWidth().testTag("pairNearby"), enabled = state.ready, kind = ButtonKind.Secondary)
+                WindButton(stringResource(R.string.cancel), model::cancel, Modifier.fillMaxWidth().testTag("cancelPairing"), kind = ButtonKind.Quiet)
             }
             "confirm", "pairing" -> {
                 Text(stringResource(R.string.confirm_title), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.semantics { heading() })

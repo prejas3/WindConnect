@@ -97,7 +97,7 @@ class WidgetHostTest {
                     addView(view, FrameLayout.LayoutParams((320*density).toInt(), (220*density).toInt(), android.view.Gravity.CENTER))
                 })
             }
-            waitFor("phone battery visible") { textExists(view, "Telefon: 77%") }
+            waitFor("phone battery visible") { textExists(view, "77%") }
             waitFor("background-off label visible") { textExists(view, "Połączenie w tle wyłączone") }
             for (mode in listOf("Light", "Dark")) {
                 appearance.edit().putString("theme", mode).commit()
@@ -114,12 +114,14 @@ class WidgetHostTest {
                 }
                 waitFor("all widget actions laid out") {
                     var ready = false
-                    instrumentation.runOnMainSync { ready = texts(view).filter { it.text.toString() in listOf("Wyślij schowek", "Otwórz") }.size == 2 }
+                    // WN-160: laid out means a layout and a width, not only present (the labels now sit in a responsive layout).
+                    instrumentation.runOnMainSync { ready = !view.isLayoutRequested && texts(view).filter { it.text.toString() in listOf("Wyślij schowek", "Otwórz aplikację") }
+                        .let { labels -> labels.size == 2 && labels.all { it.layout != null && it.width > 0 } } }
                     ready
                 }
                 var bounds = android.graphics.Rect()
                 instrumentation.runOnMainSync {
-                    texts(view).filter { it.text.toString() in listOf("Wyślij schowek", "Otwórz") }.forEach {
+                    texts(view).filter { it.text.toString() in listOf("Wyślij schowek", "Otwórz aplikację") }.forEach {
                         assertNotNull(it.layout)
                         for (line in 0 until it.layout.lineCount) assertEquals("action clipped at150%: ${it.text}", 0, it.layout.getEllipsisCount(line))
                         assertTrue("text taller than its view", it.layout.height <= it.height)
@@ -146,7 +148,7 @@ class WidgetHostTest {
             }
             waitFor("resized widget laid out") {
                 var ready = false
-                instrumentation.runOnMainSync { ready = !view.isLayoutRequested && texts(view).any { it.text.toString() == "Otwórz" && it.width > 0 } }
+                instrumentation.runOnMainSync { ready = !view.isLayoutRequested && texts(view).any { it.text.toString() == "Otwórz aplikację" && it.width > 0 } }
                 ready
             }
             instrumentation.runOnMainSync {
@@ -158,12 +160,12 @@ class WidgetHostTest {
                 }
             }
             preferences.edit().putBoolean("enabled", true).commit()
-            waitFor("background enabled becomes offline") { textExists(view, "Brak połączenia") }
+            waitFor("background enabled becomes offline") { textExists(view, "Brak sparowanego komputera") }
             assertTrue("fixture explicitly uses AC power", WidgetUpdates.snapshot.value.data.charging)
             view.events.clear()
             val batteryBefore = view.count.get()
             shell("dumpsys battery set level 78")
-            waitFor("battery percentage event redraws") { textExists(view, "Telefon: 78%") }
+            waitFor("battery percentage event redraws") { textExists(view, "78%") }
             assertNotNull("one RemoteViews for the changed percentage", view.events.poll(30, TimeUnit.SECONDS))
             assertEquals("one change on AC must produce one RemoteViews", batteryBefore + 1, view.count.get())
             // CCS/1 CHECK:observe absence of RemoteViews events for125s, as required by review; not an arbitrary startup sleep.
@@ -207,7 +209,7 @@ class WidgetHostTest {
             try {
                 opened.close()
                 instrumentation.runOnMainSync {
-                    var clickable: View = texts(view).first { it.text.toString() == "Otwórz" }
+                    var clickable: View = texts(view).first { it.text.toString() == "Otwórz aplikację" }
                     while (!clickable.isClickable && clickable.parent is View) clickable = clickable.parent as View
                     assertTrue(clickable.performClick())
                 }

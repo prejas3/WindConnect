@@ -33,11 +33,12 @@ fun WindApp(forceContent: Boolean = false, onSettings: (() -> Unit)? = null, con
     WindConnectTheme(mode, dynamic) {
         Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).safeDrawingPadding().imePadding()) {
             val settingsLabel = stringResource(R.string.settings)
-            Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                Text(stringResource(R.string.app_name), modifier = Modifier.weight(1f).padding(end = 12.dp, top = 10.dp, bottom = 10.dp), style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                if (BuildConfig.DEBUG && !forceContent) WindButton(if (preview) stringResource(R.string.preview_connection) else stringResource(R.string.preview_toggle), onClick = { preview = !preview }, modifier = Modifier.testTag("previewToggle"), kind = ButtonKind.Quiet)
-                if (!forceContent && onSettings != null) Box(Modifier.size(48.dp).clip(RoundedCornerShape(12.dp)).clickable(role = Role.Button, onClick = onSettings)
-                    .semantics { contentDescription = settingsLabel }.testTag("openSettings"), contentAlignment = androidx.compose.ui.Alignment.Center) { WindIcon("gear") }
+            // WN-160: the app's name is the home screen's header only; Settings and the other screens have their own
+            // (one header per screen). The settings button is a neutral icon like the text, 48 dp to touch.
+            if (!forceContent) Row(Modifier.fillMaxWidth().padding(start = 24.dp, end = 12.dp, top = 8.dp, bottom = 4.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                Text(stringResource(R.string.app_name), modifier = Modifier.weight(1f).padding(end = 12.dp, top = 10.dp, bottom = 10.dp).semantics { heading() }, style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (BuildConfig.DEBUG) WindButton(if (preview) stringResource(R.string.preview_connection) else stringResource(R.string.preview_toggle), onClick = { preview = !preview }, modifier = Modifier.testTag("previewToggle"), kind = ButtonKind.Quiet)
+                if (onSettings != null) WindIconButton("gear", settingsLabel, onSettings, Modifier.testTag("openSettings"), tint = MaterialTheme.colorScheme.onSurface)
             }
             Box(Modifier.weight(1f)) {
                 if (BuildConfig.DEBUG && preview && !forceContent) ComponentPreview(

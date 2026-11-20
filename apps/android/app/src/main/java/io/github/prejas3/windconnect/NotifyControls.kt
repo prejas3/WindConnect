@@ -23,6 +23,14 @@ import io.github.prejas3.windconnect.core.NotifyAppMode
 import io.github.prejas3.windconnect.core.NotifyAppsState
 import io.github.prejas3.windconnect.core.NotifyListenerService
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -84,12 +92,13 @@ fun NotifyControls() {
 private fun NotifyApps(connections: ConnectionOwner) {
     val apps by connections.notifyApps.collectAsStateWithLifecycle()
     val state = apps ?: return
-    NotifyAppsList(state, connections::appLabel, connections::setNotifyAppMode, connections::setNotifyApp)
+    NotifyAppsList(state, connections::appLabel, connections::setNotifyAppMode, connections::setNotifyApp, icon = connections::appIcon)
 }
 
 /** The list itself, stateless (instrumentation-tested). */
 @Composable
-internal fun NotifyAppsList(state: NotifyAppsState, label: (String) -> String, onMode: (NotifyAppMode) -> Unit, onApp: (String, Boolean) -> Unit) {
+internal fun NotifyAppsList(state: NotifyAppsState, label: (String) -> String, onMode: (NotifyAppMode) -> Unit, onApp: (String, Boolean) -> Unit,
+                            icon: (String) -> ByteArray? = { null }) {
     var query by rememberSaveable { mutableStateOf("") }
     Text(str(R.string.notify_apps), style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 8.dp))
     val modes = listOf(NotifyAppMode.AllExcept to str(R.string.notify_all_but_off), NotifyAppMode.OnlyChosen to str(R.string.notify_only_chosen))
@@ -107,6 +116,13 @@ internal fun NotifyAppsList(state: NotifyAppsState, label: (String) -> String, o
     }
     if (labelled.size > 12) WindField(query, { query = it }, str(R.string.notify_search), Modifier.testTag("notifyAppSearch"))
     labelled.filter { query.isBlank() || it.second.contains(query.trim(), ignoreCase = true) }.forEach { (pkg, label) ->
-        WindSwitch(label, state.allows(pkg), { on -> onApp(pkg, on) }, Modifier.testTag("notifyApp:$pkg"))
+        // WN-160: the app's own icon beside its name (a neutral mark when it can't load).
+        val image = remember(pkg) { icon(pkg)?.let { android.graphics.BitmapFactory.decodeByteArray(it, 0, it.size)?.asImageBitmap() } }
+        WindSwitch(label, state.allows(pkg), { on -> onApp(pkg, on) }, Modifier.testTag("notifyApp:$pkg"), leading = {
+            if (image != null) Image(image, null, Modifier.size(28.dp).clip(RoundedCornerShape(7.dp)))
+            else Box(Modifier.size(28.dp).clip(RoundedCornerShape(7.dp)).background(MaterialTheme.colorScheme.surface), contentAlignment = Alignment.Center) {
+                Text(label.take(1).uppercase(), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        })
     }
 }

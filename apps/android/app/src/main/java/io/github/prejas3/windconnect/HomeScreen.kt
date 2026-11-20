@@ -62,17 +62,20 @@ fun HomeScreen(state: PairingUi, onScan: () -> Unit, onDiagnostics: () -> Unit, 
             Column(Modifier.weight(1f)) {
                 Text(name, modifier = Modifier.testTag("computerName"), style = MaterialTheme.typography.titleLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Box(Modifier.size(7.dp).clip(RoundedCornerShape(4.dp)).background(if (connected != null) colors.primary else colors.onSurfaceVariant))
+                    Box(Modifier.size(8.dp).clip(RoundedCornerShape(4.dp)).background(if (connected != null) colors.primary else colors.onSurfaceVariant))
                     val latency = connected?.let { String.format(Locale.getDefault(), "%.1f ms", it.roundTripMicros / 1000.0) }
                     val route = stringResource(if (connected?.route == "relay") R.string.home_via_relay else R.string.home_local_network)
                     val latencyDescription = if (latency != null) stringResource(R.string.home_latency_desc, latency) else status
-                    Text(status, style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant, modifier = Modifier.testTag("pairingStatus"))
+                    Text(status, style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant, modifier = Modifier.testTag("pairingStatus"))
                     if (connected != null) Text("· " + stringResource(R.string.home_latency_line, latency.orEmpty(), route),
                         style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant,
                         modifier = Modifier.testTag("computerLatency").semantics { contentDescription = latencyDescription })
                 }
             }
         }
+        // WN-160: one line says why the actions are off (the tiles are only dimmed), instead of "Unavailable" on each.
+        if (connected == null && state.initialized) Text(stringResource(if (known) R.string.home_actions_offline else R.string.home_actions_unpaired),
+            style = MaterialTheme.typography.bodyMedium, color = colors.onSurface, modifier = Modifier.testTag("actionsOffline"))
         // CCS/1 RULE:actions are disabled until their real channel integrations exist; no simulated send/lock/link result.
         Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             WindAction(stringResource(R.string.action_send_file), stringResource(R.string.home_send_sub), "send", onSendFile?.takeIf { connected != null && state.filesAccepted }, Modifier.weight(1f).fillMaxHeight().testTag("homeSend"))
@@ -105,18 +108,25 @@ fun HomeScreen(state: PairingUi, onScan: () -> Unit, onDiagnostics: () -> Unit, 
 @Composable
 fun ClipboardControls(state: PairingUi, onSend: () -> Unit, onEnabled: (Boolean) -> Unit, onHistory: (() -> Unit)? = null) {
     // WN-130 home: the switch, what happened since, and one action; the explanation and image limit are in Settings.
+    // WN-160: compact: the switch carries what it covers, the last event is a state with its time, then the button.
+    val context = LocalContext.current
     WindCard(Modifier.fillMaxWidth().testTag("clipboardCard")) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text(stringResource(R.string.clipboard_shared), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f).semantics { heading() })
-            if (onHistory != null) WindButton(stringResource(R.string.clipboard_history_link), onHistory, Modifier.testTag("clipboardHistoryLink"), kind = ButtonKind.Quiet)
+            if (onHistory != null) WindHeaderAction(stringResource(R.string.clipboard_history_link), onHistory, Modifier.testTag("clipboardHistoryLink"))
         }
-        Column {
-            WindSwitch(stringResource(R.string.clip_sync_auto_label), state.clipboard.enabled, onEnabled, Modifier.testTag("clipboardEnabled"))
-            Text(stringResource(R.string.sum_clip_sync), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
+        WindSwitch(stringResource(R.string.clip_sync_auto_label), state.clipboard.enabled, onEnabled, Modifier.testTag("clipboardEnabled"),
+            description = stringResource(R.string.sum_clip_sync))
         // WN-65: the switch already says whether sync is on; the line only shows what happened since.
         // WN-153: by a coded flag, not by comparing text, so a language change can't bring the line back.
-        state.clipboard.eventStatus?.let { Text(it, style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("clipboardStatus")) }
+        state.clipboard.eventStatus?.let { event ->
+            val at = state.clipboard.statusAt
+            val line = if (at > 0) stringResource(R.string.clipboard_last, event, android.text.format.DateFormat.getTimeFormat(context).format(java.util.Date(at))) else event
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                WindIcon("clipboard", Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(line, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.testTag("clipboardStatus"))
+            }
+        }
         WindButton(stringResource(R.string.send_clipboard_now), onSend, Modifier.fillMaxWidth().testTag("sendClipboard"),
             enabled = state.connection is ConnectionState.Connected && !state.clipboard.busy, kind = ButtonKind.Secondary)
     }

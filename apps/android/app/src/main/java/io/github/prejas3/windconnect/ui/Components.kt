@@ -35,6 +35,10 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.setProgress
 import androidx.compose.ui.semantics.disabled
@@ -52,6 +56,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
  */
 enum class ButtonKind { Primary, Secondary, Quiet }
 
+/** WN-160: inside a setting row's actions, Primary and Secondary buttons take the text column's width (one width, one edge). */
+val LocalButtonFill = androidx.compose.runtime.staticCompositionLocalOf { false }
+
 @Composable
 fun WindButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true, kind: ButtonKind = ButtonKind.Primary, dense: Boolean = false) {
     val colors = MaterialTheme.colorScheme
@@ -59,7 +66,8 @@ fun WindButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier,
     val background = if (kind == ButtonKind.Primary) (if (enabled) colors.primary else colors.onSurface.copy(alpha = .12f)) else Color.Transparent
     val foreground = when { !enabled -> colors.onSurfaceVariant; kind == ButtonKind.Primary -> colors.onPrimary; kind == ButtonKind.Secondary -> colors.onSurface; else -> colors.primary }
     val outline = if (kind == ButtonKind.Secondary) Modifier.border(1.dp, if (enabled) colors.onSurfaceVariant else colors.outline, shape) else Modifier
-    Box(modifier.defaultMinSize(minHeight = 48.dp).clip(shape).background(background).then(outline)
+    val fill = if (LocalButtonFill.current && kind != ButtonKind.Quiet) Modifier.fillMaxWidth() else Modifier
+    Box(modifier.then(fill).defaultMinSize(minHeight = 48.dp).clip(shape).background(background).then(outline)
         .clickable(enabled = enabled, role = Role.Button, onClick = onClick).padding(horizontal = if (dense) 4.dp else if (kind == ButtonKind.Quiet) 12.dp else 20.dp, vertical = 12.dp), contentAlignment = Alignment.Center) {
         Text(text, color = foreground, style = MaterialTheme.typography.labelLarge)
     }
@@ -111,7 +119,8 @@ fun <T> WindSegmented(options: List<T>, selected: T, label: @Composable (T) -> S
             Box(Modifier.weight(1f).defaultMinSize(minHeight = 48.dp).background(if (on) colors.primaryContainer else Color.Transparent)
                 .selectable(selected = on, role = Role.RadioButton, onClick = { onSelect(option) })
                 .then(if (tag(option).isNotEmpty()) Modifier.testTag(tag(option)) else Modifier).padding(horizontal = 8.dp, vertical = 10.dp), contentAlignment = Alignment.Center) {
-                Text(if (on) "✓ " + label(option) else label(option), color = if (on) colors.onPrimaryContainer else colors.onSurface, style = MaterialTheme.typography.labelLarge)
+                Text(label(option), color = if (on) colors.onPrimaryContainer else colors.onSurface, style = MaterialTheme.typography.labelLarge,
+                    maxLines = 2, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
             }
         }
     }
@@ -127,30 +136,45 @@ fun WindCard(modifier: Modifier = Modifier, content: @Composable ColumnScope.() 
 
 @Composable
 fun WindField(value: String, onValueChange: (String) -> Unit, label: String, modifier: Modifier = Modifier, errorText: String? = null, singleLine: Boolean = true,
-              keyboardType: androidx.compose.ui.text.input.KeyboardType = androidx.compose.ui.text.input.KeyboardType.Text) {
+              keyboardType: androidx.compose.ui.text.input.KeyboardType = androidx.compose.ui.text.input.KeyboardType.Text, placeholder: String? = null) {
     val colors = MaterialTheme.colorScheme
+    var focused by remember { mutableStateOf(false) }
+    // WN-160: the card's own colour with a visible edge (accent while typing), and a hint while empty.
+    val edge = when { errorText != null -> colors.error; focused -> colors.primary; else -> colors.onSurfaceVariant }
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text(label, style = MaterialTheme.typography.labelMedium)
+        Text(label, style = MaterialTheme.typography.labelMedium, color = colors.onSurface)
         BasicTextField(value, onValueChange, modifier = modifier.fillMaxWidth().defaultMinSize(minHeight = 52.dp)
-            .clip(RoundedCornerShape(12.dp)).background(colors.surface)
-            .border(1.dp, if (errorText == null) colors.outline else colors.error, RoundedCornerShape(12.dp))
-            .semantics { if (errorText != null) error(errorText) }.padding(12.dp),
+            .onFocusChanged { focused = it.isFocused }
+            .clip(RoundedCornerShape(12.dp)).background(colors.surfaceVariant)
+            .border(if (focused) 2.dp else 1.dp, edge, RoundedCornerShape(12.dp))
+            .semantics { if (errorText != null) error(errorText) },
             textStyle = MaterialTheme.typography.bodyMedium.copy(color = colors.onSurface),
             cursorBrush = SolidColor(colors.primary), singleLine = singleLine,
-            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = keyboardType))
+            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = keyboardType),
+            decorationBox = { inner ->
+                Box(Modifier.padding(horizontal = 14.dp, vertical = 14.dp), contentAlignment = Alignment.CenterStart) {
+                    if (value.isEmpty() && placeholder != null) Text(placeholder, style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant, maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                    inner()
+                }
+            })
         if (errorText != null) Text(errorText, color = colors.error, style = MaterialTheme.typography.bodySmall)
     }
 }
 
 @Composable
-fun WindSwitch(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit, modifier: Modifier = Modifier) {
+fun WindSwitch(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit, modifier: Modifier = Modifier, description: String? = null,
+               leading: (@Composable () -> Unit)? = null) {
     val colors = MaterialTheme.colorScheme
-    Row(modifier.fillMaxWidth().heightIn(min = 48.dp).toggleable(value = checked, role = Role.Switch, onValueChange = onCheckedChange), verticalAlignment = Alignment.CenterVertically) {
-        Text(label, modifier = Modifier.weight(1f).padding(end = 12.dp), style = MaterialTheme.typography.bodyMedium)
-        Canvas(Modifier.size(40.dp, 24.dp)) {
-            drawRoundRect(if (checked) colors.primary else colors.outline, cornerRadius = androidx.compose.ui.geometry.CornerRadius(size.height / 2))
-            drawCircle(if (checked) colors.onPrimary else colors.surface, radius = 8.dp.toPx(), center = Offset(if (checked) size.width - 12.dp.toPx() else 12.dp.toPx(), size.height / 2))
+    // WN-160: the same switch drawing as the settings rows; an optional line under the label says what it covers.
+    Row(modifier.fillMaxWidth().heightIn(min = 48.dp).toggleable(value = checked, role = Role.Switch, onValueChange = onCheckedChange),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        leading?.invoke()
+        Column(Modifier.weight(1f)) {
+            Text(label, style = MaterialTheme.typography.bodyLarge, color = colors.onSurface)
+            if (description != null) Text(description, style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
         }
+        WindSwitchMark(checked)
     }
 }
 
@@ -166,7 +190,14 @@ fun WindIcon(name: String, modifier: Modifier = Modifier, tint: Color? = null) {
         "phone" -> "M6 2h12v20H6zM10 5h4M11 19h2"
         "external" -> "M14 3h7v7M10 14L21 3M21 14v7H3V3h7"
         "file" -> "M14 2H4v20h16V8zM14 2v6h6M8 13h8M8 17h5"
-        "gear" -> "M12 9a3 3 0 1 0 0 6a3 3 0 0 0 0-6M9 3h6l1 3 3 1 2 5-2 5-3 1-1 3H9l-1-3-3-1-2-5 2-5 3-1z"
+        // WN-160: an even eight-tooth gear (the old one was lopsided).
+        "gear" -> "M12 9a3 3 0 1 0 0 6a3 3 0 0 0 0-6M19.11 9.96L21.42 10.17L21.42 13.83L19.11 14.04L18.47 15.59L19.96 17.37L17.37 19.96L15.59 18.47L14.04 19.11L13.83 21.42L10.17 21.42L9.96 19.11L8.41 18.47L6.63 19.96L4.04 17.37L5.53 15.59L4.89 14.04L2.58 13.83L2.58 10.17L4.89 9.96L5.53 8.41L4.04 6.63L6.63 4.04L8.41 5.53L9.96 4.89L10.17 2.58L13.83 2.58L14.04 4.89L15.59 5.53L17.37 4.04L19.96 6.63L18.47 8.41z"
+        "info" -> "M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18M12 11v6M12 7.5v.01"
+        "warning" -> "M12 3L2 20h20zM12 10v4M12 17v.01"
+        "pin" -> "M9 3h6l-1 6 4 4H6l4-4zM12 13v8"
+        "close" -> "M6 6l12 12M18 6L6 18"
+        "text" -> "M5 6h14M5 10h14M5 14h14M5 18h9"
+        "app" -> "M4 4h16v16H4zM4 9h16"
         // WN-130: settings rows and media controls.
         "bell" -> "M6 16V11a6 6 0 0 1 12 0v5l2 2H4zM10 21h4"
         "message" -> "M4 5h16v11H9l-5 4z"
@@ -198,16 +229,19 @@ fun WindAction(title: String, subtitle: String, icon: String, onClick: (() -> Un
     val colors = MaterialTheme.colorScheme
     val enabled = onClick != null
     val shape = RoundedCornerShape(13.dp)
-    // CCS/1 RULE:disabled is neutral + labelled, not global alpha (keep text readable at large font).
-    val surface = if (enabled) colors.surface else colors.surfaceVariant
-    val foreground = if (enabled) colors.onSurface else colors.onSurfaceVariant
-    val outline = if (enabled) Modifier else Modifier.border(1.dp, colors.outline, shape)
-    Column(modifier.heightIn(min = 96.dp).clip(shape).background(surface).then(outline)
-        .clickable(enabled = enabled, role = Role.Button, onClick = { onClick?.invoke() }).padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        WindIcon(icon, tint = if (enabled) colors.primary else colors.onSurfaceVariant)
-        Text(title, color = foreground, style = MaterialTheme.typography.labelLarge)
-        Text(subtitle, color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
-        if (!enabled) Text(stringResource(R.string.unavailable), modifier = Modifier.fillMaxWidth(), color = foreground, style = MaterialTheme.typography.labelSmall)
+    // WN-160: unavailable = clearly dimmed (no fill, faint edge and ink); the reason is said once on the computer's card,
+    // not "Unavailable" on every tile. TalkBack still hears it as the tile's state.
+    val unavailable = stringResource(R.string.unavailable)
+    val surface = if (enabled) colors.surface else Color.Transparent
+    val ink = if (enabled) colors.onSurface else colors.onSurface.copy(alpha = .42f)
+    val outline = if (enabled) Modifier else Modifier.border(1.dp, colors.outline.copy(alpha = .6f), shape)
+    Column(modifier.heightIn(min = 88.dp).clip(shape).background(surface).then(outline)
+        .clickable(enabled = enabled, role = Role.Button, onClick = { onClick?.invoke() })
+        .semantics { if (!enabled) stateDescription = unavailable }.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        WindIcon(icon, tint = if (enabled) colors.primary else ink)
+        Spacer(Modifier.height(2.dp))
+        Text(title, color = ink, style = MaterialTheme.typography.titleSmall, modifier = Modifier.fillMaxWidth())
+        Text(subtitle, color = if (enabled) colors.onSurfaceVariant else ink, style = MaterialTheme.typography.bodySmall, modifier = Modifier.fillMaxWidth())
     }
 }
 
@@ -240,10 +274,10 @@ fun WindSection(title: String, modifier: Modifier = Modifier, content: @Composab
 fun WindDivider() { Box(Modifier.fillMaxWidth().height(1.dp).background(MaterialTheme.colorScheme.outline)) }
 
 /**
- * WN-130: one setting. Icon, name, one-line summary and (optionally) its switch on one line; the whole line toggles.
- * Below it, aligned with the text: the state line ([status], in the error colour when [warning]), what is always needed
- * ([actions], such as "Grant access"), and the long explanation folded under "More" ([more]). [onClick] instead of a
- * switch makes it a link row with a chevron.
+ * WN-130/WN-160: one setting. Icon, name, one-line summary and (optionally) its switch on one line; the whole line toggles.
+ * Below it, aligned with the text: the state line ([status]; a banner when [warning]), what is always needed ([actions],
+ * such as "Grant access"; their buttons take the column's width) and the long explanation ([more]), opened by the (i)
+ * button beside the name. [onClick] instead of a switch makes it a link row with a chevron.
  */
 @Composable
 fun WindSettingRow(
@@ -254,35 +288,65 @@ fun WindSettingRow(
 ) {
     val colors = MaterialTheme.colorScheme
     var open by rememberSaveable(title) { mutableStateOf(false) }
-    Column(modifier.fillMaxWidth().padding(vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Column(modifier.fillMaxWidth().padding(vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         val line = when {
             checked != null && onCheckedChange != null -> Modifier.toggleable(value = checked, enabled = enabled, role = Role.Switch, onValueChange = onCheckedChange)
             onClick != null -> Modifier.clickable(enabled = enabled, role = Role.Button, onClick = onClick)
             else -> Modifier
         }
-        Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).clip(RoundedCornerShape(12.dp)).then(line).then(if (switchTag.isNotEmpty()) Modifier.testTag(switchTag) else Modifier),
-            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Box(Modifier.size(32.dp).clip(RoundedCornerShape(10.dp)).background(colors.surface), contentAlignment = Alignment.Center) { WindIcon(icon, Modifier.size(18.dp)) }
+        Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).clip(RoundedCornerShape(12.dp)).then(line).then(if (switchTag.isNotEmpty()) Modifier.testTag(switchTag) else Modifier),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(ROW_GAP)) {
+            Box(Modifier.size(ROW_ICON).clip(RoundedCornerShape(10.dp)).background(colors.surface), contentAlignment = Alignment.Center) { WindIcon(icon, Modifier.size(20.dp)) }
             Column(Modifier.weight(1f)) {
                 Text(title, style = MaterialTheme.typography.titleSmall, color = if (enabled) colors.onSurface else colors.onSurfaceVariant)
                 if (summary != null) Text(summary, style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
             }
-            if (checked != null) WindSwitchMark(checked, enabled)
-            else if (onClick != null) WindIcon("chevron", Modifier.size(18.dp), tint = colors.onSurfaceVariant)
-        }
-        if (status != null || actions != null || more != null) Column(Modifier.fillMaxWidth().padding(start = 44.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            if (status != null) Text(status, style = MaterialTheme.typography.bodySmall, color = if (warning) colors.error else colors.onSurfaceVariant,
-                modifier = (if (statusTag.isNotEmpty()) Modifier.testTag(statusTag) else Modifier).semantics { liveRegion = LiveRegionMode.Polite })
-            actions?.invoke(this)
-            if (more != null) {
-                if (open) androidx.compose.material3.ProvideTextStyle(MaterialTheme.typography.bodySmall.copy(color = colors.onSurfaceVariant)) { more(this) }
-                val label = stringResource(if (open) R.string.less else R.string.more)
-                Text(label, color = colors.primary, style = MaterialTheme.typography.labelLarge,
-                    modifier = Modifier.heightIn(min = 48.dp).clip(RoundedCornerShape(8.dp)).clickable(role = Role.Button) { open = !open }
-                        .wrapContentHeight(Alignment.CenterVertically).padding(end = 8.dp).semantics { contentDescription = "$label: $title" })
+            // WN-160: the details open from an (i) beside the switch, not a "More" link under every row. The (i) and
+            // the switch sit together (no gap between them), so the name keeps one line on a phone's width.
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (more != null) {
+                    val label = stringResource(if (open) R.string.less else R.string.more)
+                    WindIconButton("info", "$label: $title", { open = !open }, Modifier.testTag("more:$title").semantics { selected = open },
+                        tint = if (open) colors.primary else colors.onSurfaceVariant)
+                }
+                if (checked != null) WindSwitchMark(checked, enabled)
+                else if (onClick != null) WindIcon("chevron", Modifier.size(18.dp), tint = colors.onSurfaceVariant)
             }
         }
+        if (status != null || actions != null || (more != null && open)) Column(Modifier.fillMaxWidth().padding(start = ROW_TEXT_START), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (more != null && open) Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(colors.surface).padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                androidx.compose.material3.ProvideTextStyle(MaterialTheme.typography.bodySmall.copy(color = colors.onSurface)) { more(this) }
+            }
+            if (status != null) {
+                val tagged = (if (statusTag.isNotEmpty()) Modifier.testTag(statusTag) else Modifier).semantics { liveRegion = LiveRegionMode.Polite }
+                if (warning) WindNotice(status, tagged) else Text(status, style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant, modifier = tagged)
+            }
+            if (actions != null) CompositionLocalProvider(LocalButtonFill provides true) { actions(this) }
+        }
     }
+}
+
+/** WN-160: settings rows' grid: icon box, gap, text column (status, actions and details start at the text). */
+val ROW_ICON = 36.dp
+val ROW_GAP = 12.dp
+val ROW_TEXT_START = ROW_ICON + ROW_GAP
+
+/** WN-160: a warning as a readable banner (icon, text on the error container), not loose red text. */
+@Composable
+fun WindNotice(text: String, modifier: Modifier = Modifier) {
+    val colors = MaterialTheme.colorScheme
+    Row(modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(colors.errorContainer).padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        WindIcon("warning", Modifier.size(20.dp), tint = colors.onErrorContainer)
+        Text(text, style = MaterialTheme.typography.bodySmall, color = colors.onErrorContainer, modifier = Modifier.weight(1f))
+    }
+}
+
+/** WN-160: a card header's text action ("History", "Clear"): its text ends on the card's edge, as the title starts on it. */
+@Composable
+fun WindHeaderAction(text: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    WindButton(text, onClick, modifier.offset(x = 12.dp), kind = ButtonKind.Quiet)
 }
 
 /** The switch's drawing alone, for rows whose whole line is the toggle. */

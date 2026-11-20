@@ -338,8 +338,8 @@
     <string name="access_change">Change access in settings</string>
     <string name="access_grant">Grant access in settings</string>
     <string name="notify_apps">Apps</string>
-    <string name="notify_all_but_off">All except those turned off</string>
-    <string name="notify_only_chosen">Only chosen ones</string>
+    <string name="notify_all_but_off">All</string>
+    <string name="notify_only_chosen">Chosen</string>
     <string name="notify_none_sent">You\'re not sending any notifications. Choose apps below.</string>
     <string name="notify_only_on">Only apps turned on go to the computer; new ones are off.</string>
     <string name="notify_all_on">All apps except those turned off go to the computer; new ones are on.</string>
@@ -514,4 +514,12 @@
     <string name="received_tap_opens">Tap a file to open it. Clearing the list keeps the files.</string>
     <string name="devices_summary_one">%1$s · connected</string>
     <string name="devices_summary_count">%1$d paired</string>
+    <!-- WN-160 -->
+    <string name="home_actions_offline">Actions become available once the computer connects.</string>
+    <string name="home_actions_unpaired">Pair a computer to use the actions.</string>
+    <string name="clipboard_last">%1$s · %2$s</string>
+    <string name="history_blank">Empty text (spaces only)</string>
+    <string name="widget_open_app">Open the app</string>
+    <string name="widget_short_clipboard">Clipboard</string>
+    <string name="widget_short_app">App</string>
 </resources>

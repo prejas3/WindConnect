@@ -21,10 +21,11 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 
 /** [statusMirrorsSwitch]: the status only repeats the sync switch (WN-153), so the screen leaves it out without comparing text. */
-data class ClipboardUi(val enabled: Boolean = true, val status: String = "", val busy: Boolean = false, val delivered: Long = 0, val received: Long = 0, val imageLimitMb: Int = SystemClipboard.DEFAULT_IMAGE_LIMIT_MB, val statusMirrorsSwitch: Boolean = false) {
+data class ClipboardUi(val enabled: Boolean = true, val status: String = "", val busy: Boolean = false, val delivered: Long = 0, val received: Long = 0, val imageLimitMb: Int = SystemClipboard.DEFAULT_IMAGE_LIMIT_MB, val statusMirrorsSwitch: Boolean = false, val statusAt: Long = 0) {
     /** What happened since, or null when there is nothing beyond what the switch says. */
     val eventStatus: String? get() = status.takeIf { it.isNotEmpty() && !statusMirrorsSwitch }
-    fun withEvent(text: String) = copy(status = text, statusMirrorsSwitch = false)
+    /** WN-160: with the event's time, so the card can say when it happened. */
+    fun withEvent(text: String, at: Long = System.currentTimeMillis()) = copy(status = text, statusMirrorsSwitch = false, statusAt = at)
     fun withSwitch(value: Boolean, text: String) = copy(enabled = value, status = text, statusMirrorsSwitch = true)
 }
 

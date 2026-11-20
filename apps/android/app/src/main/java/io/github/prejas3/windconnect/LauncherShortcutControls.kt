@@ -18,11 +18,9 @@ fun LauncherShortcutControls() {
     var message by remember { mutableStateOf("") }
     WindSettingRow("plus", str(R.string.shortcuts_title), str(R.string.sum_shortcuts), status = message.ifEmpty { null }, statusTag = "shortcutPinStatus",
         actions = {
-            androidx.compose.foundation.layout.FlowRow(horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp),
-                verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)) {
-                LauncherAction.entries.forEach { action ->
-                    WindButton(action.title, { message = LauncherShortcuts.pin(context, action) }, Modifier.testTag("pin_${action.id}"), kind = ButtonKind.Secondary)
-                }
+            // WN-160: one button per shortcut, the same width as every settings button.
+            LauncherAction.entries.forEach { action ->
+                WindButton(action.title, { message = LauncherShortcuts.pin(context, action) }, Modifier.testTag("pin_${action.id}"), kind = ButtonKind.Secondary)
             }
         },
         more = { Text(str(R.string.shortcuts_about)) })

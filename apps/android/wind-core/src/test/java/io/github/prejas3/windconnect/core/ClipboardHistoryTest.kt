@@ -86,5 +86,9 @@ class ClipboardHistoryTest {
         assertEquals("x y", ClipboardHistory.preview("x​y"))
         val long = ClipboardHistory.preview("z".repeat(500))
         assertEquals(121, long.length); assertTrue(long.endsWith("…"))
+        // WN-160: blank lines first used up the 120 characters and the preview was "…".
+        assertEquals("tekst po pustych liniach", ClipboardHistory.preview("\n\n  \n" + " ".repeat(300) + "tekst  po\t\tpustych\nliniach\n\n"))
+        assertEquals("", ClipboardHistory.preview(" \n\t "))
+        assertEquals("a b", ClipboardHistory.preview("a​​   b"))
     }
 }

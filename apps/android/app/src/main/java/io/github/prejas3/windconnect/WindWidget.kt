@@ -23,12 +23,15 @@ import androidx.glance.semantics.semantics
 import androidx.glance.text.*
 import io.github.prejas3.windconnect.ui.BrandDark
 import io.github.prejas3.windconnect.ui.BrandLight
+import io.github.prejas3.windconnect.ui.readable
+import androidx.compose.ui.unit.DpSize
 import android.text.format.DateFormat
 import java.util.Date
 import java.util.concurrent.atomic.AtomicInteger
 
 class WindWidget : GlanceAppWidget() {
-    override val sizeMode = SizeMode.Single
+    // WN-160: laid out for the size it is given (small: one line of actions; large: four), no empty half.
+    override val sizeMode = SizeMode.Responsive(setOf(WIDGET_SMALL, WIDGET_MEDIUM, WIDGET_LARGE))
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         WidgetUpdates.start(context.applicationContext as WindApplication)
         val initial = WidgetUpdates.current(context.applicationContext as WindApplication)
@@ -40,8 +43,10 @@ class WindWidget : GlanceAppWidget() {
                 if (latest.updatedAt == 0L || !WidgetUpdates.installed(context)) initial else latest
             }
             val data = snapshot.data
-            val light = if (data.dynamic && Build.VERSION.SDK_INT >= 31) dynamicLightColorScheme(context) else BrandLight
-            val dark = if (data.dynamic && Build.VERSION.SDK_INT >= 31) dynamicDarkColorScheme(context) else BrandDark
+            // WN-160: the app's readable scheme (secondary text and accents at a sure contrast) on the widget too.
+            val dynamic = data.dynamic && Build.VERSION.SDK_INT >= 31
+            val light = readable(if (dynamic) dynamicLightColorScheme(context) else BrandLight, dynamic)
+            val dark = readable(if (dynamic) dynamicDarkColorScheme(context) else BrandDark, dynamic)
             val colors = when (data.theme) {
                 "Light" -> ColorProviders(light, light)
                 "Dark" -> ColorProviders(dark, dark)
@@ -52,39 +57,92 @@ class WindWidget : GlanceAppWidget() {
     }
 }
 
+// The host subtracts its own padding from the size it was given: steps by height, widths well under the 250 dp minimum.
+internal val WIDGET_SMALL = DpSize(180.dp, 100.dp)
+internal val WIDGET_MEDIUM = DpSize(180.dp, 150.dp)
+internal val WIDGET_LARGE = DpSize(240.dp, 250.dp)
+
+/** [short]: the one-word label for the medium size at a large font (the full [label] stays the button's description). */
+private class WidgetAction(val label: String, val icon: Int, val intent: Intent, val short: String = label)
+
 @Composable
 private fun WidgetContent(context: Context, snapshot: WidgetSnapshot) {
     val data = snapshot.data
+    val size = LocalSize.current
+    val small = size.height < WIDGET_MEDIUM.height
+    val large = size.height >= WIDGET_LARGE.height
+    val colors = GlanceTheme.colors
+    // A large system font (the launcher uses it too) leaves no room for an icon above a two-line label in the medium size.
+    val bigFont = context.resources.configuration.fontScale >= 1.3f
     val time = if (snapshot.updatedAt > 0) DateFormat.getTimeFormat(context).format(Date(snapshot.updatedAt)) else "—"
     val status = if (data.connected) context.getString(R.string.widget_connected_at, time) else data.status
-    Column(GlanceModifier.fillMaxSize().appWidgetBackground().background(GlanceTheme.colors.surface)
-        .cornerRadius(24.dp).padding(8.dp)) {
-        Text(data.name, style = TextStyle(color = GlanceTheme.colors.onSurface, fontSize = 16.sp, fontWeight = FontWeight.Bold), maxLines = 1)
-        Text(status, style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant, fontSize = 12.sp), maxLines = 2)
-        Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            val battery = context.getString(R.string.widget_battery, data.battery?.let { "$it%" } ?: "—") + if (data.charging) " ⚡" else ""
-            Text(battery, modifier = GlanceModifier.defaultWeight().semantics { contentDescription = data.batteryText },
-                style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant, fontSize = 11.sp), maxLines = 1)
-            val updated = context.getString(R.string.widget_updated, time)
-            Text(context.getString(R.string.widget_updated_short, time), modifier = GlanceModifier.semantics { contentDescription = updated },
-                style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant, fontSize = 10.sp), maxLines = 1)
+    Column(GlanceModifier.fillMaxSize().appWidgetBackground().background(colors.surface)
+        .cornerRadius(24.dp).padding(horizontal = 14.dp, vertical = if (large) 14.dp else 10.dp)) {
+        val openIntent = Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        // Header: state dot, the computer's name, the phone's battery; tapping it opens the app (at every size).
+        Column(GlanceModifier.fillMaxWidth().clickable(actionStartActivity(openIntent))) {
+        // Medium (the default 4×2): the battery has its own short line, so the name keeps the full width even at a large font.
+        val battery = @Composable {
+            Row(GlanceModifier.semantics { contentDescription = data.batteryText }, verticalAlignment = Alignment.CenterVertically) {
+                Image(ImageProvider(if (data.charging) R.drawable.ic_widget_charging else R.drawable.ic_widget_battery), null,
+                    GlanceModifier.size(16.dp), colorFilter = ColorFilter.tint(colors.onSurfaceVariant))
+                Spacer(GlanceModifier.width(4.dp))
+                Text(data.battery?.let { "$it%" } ?: "—", style = TextStyle(color = colors.onSurface, fontSize = 12.sp, fontWeight = FontWeight.Medium), maxLines = 1)
+            }
         }
-        Spacer(GlanceModifier.height(4.dp))
         Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            WidgetAction(context.getString(R.string.send_clipboard), GlanceModifier.defaultWeight(), Intent(context, SendClipboardActivity::class.java)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK))
+            val dot = when { data.connected -> colors.primary; data.connecting -> colors.tertiary; else -> colors.outline }
+            Box(GlanceModifier.size(10.dp).cornerRadius(5.dp).background(dot)) {}
             Spacer(GlanceModifier.width(8.dp))
-            WidgetAction(context.getString(R.string.open), GlanceModifier.defaultWeight(), Intent(context, MainActivity::class.java)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP))
+            Text(data.name, modifier = GlanceModifier.defaultWeight(), style = TextStyle(color = colors.onSurface, fontSize = 16.sp, fontWeight = FontWeight.Bold), maxLines = 1)
+            if (small || large) { Spacer(GlanceModifier.width(8.dp)); battery() }
+        }
+        Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(status, modifier = GlanceModifier.defaultWeight().padding(start = 18.dp), style = TextStyle(color = colors.onSurfaceVariant, fontSize = 13.sp), maxLines = if (small) 1 else 2)
+            if (large && !data.connected) {
+                val updated = context.getString(R.string.widget_updated, time)
+                Text(context.getString(R.string.widget_updated_short, time), modifier = GlanceModifier.semantics { contentDescription = updated },
+                    style = TextStyle(color = colors.onSurfaceVariant, fontSize = 11.sp), maxLines = 1)
+            }
+        }
+        if (!small && !large) Row(GlanceModifier.fillMaxWidth().padding(start = 18.dp)) { battery() }
+        }
+        Spacer(GlanceModifier.height(if (large) 10.dp else 6.dp))
+        val clipboard = WidgetAction(context.getString(R.string.send_clipboard), R.drawable.ic_widget_clipboard, LauncherShortcuts.target(context, LauncherAction.Clipboard),
+            context.getString(R.string.widget_short_clipboard))
+        val open = WidgetAction(context.getString(R.string.widget_open_app), R.drawable.ic_widget_app, openIntent, context.getString(R.string.widget_short_app))
+        // The actions take the rest of the height: small, the clipboard alone (the header opens the app); medium, one row;
+        // large, a 2×2 grid.
+        val rows = if (large) listOf(
+            listOf(clipboard, WidgetAction(context.getString(R.string.shortcut_file), R.drawable.ic_widget_file, LauncherShortcuts.target(context, LauncherAction.File))),
+            listOf(WidgetAction(context.getString(R.string.shortcut_touchpad), R.drawable.ic_widget_touch, LauncherShortcuts.target(context, LauncherAction.Touchpad)), open),
+        ) else if (small) listOf(listOf(clipboard)) else listOf(listOf(clipboard, open))
+        rows.forEachIndexed { index, row ->
+            if (index > 0) Spacer(GlanceModifier.height(8.dp))
+            Row(GlanceModifier.fillMaxWidth().defaultWeight()) {
+                row.forEachIndexed { i, action ->
+                    if (i > 0) Spacer(GlanceModifier.width(8.dp))
+                    WidgetButton(action, GlanceModifier.defaultWeight().fillMaxHeight(), small, icon = large || small || !bigFont)
+                }
+            }
         }
     }
 }
 
+/** Small: icon beside the label on one wide button. Otherwise the icon above the label, so the label keeps the button's width. */
 @Composable
-private fun WidgetAction(label: String, modifier: GlanceModifier, intent: Intent) {
-    Box(modifier.height(48.dp).background(GlanceTheme.colors.primaryContainer).cornerRadius(12.dp)
-        .clickable(actionStartActivity(intent)).semantics { contentDescription = label }, contentAlignment = Alignment.Center) {
-        Text(label, style = TextStyle(color = GlanceTheme.colors.onPrimaryContainer, fontSize = 12.sp, fontWeight = FontWeight.Medium), maxLines = 2)
+private fun WidgetButton(action: WidgetAction, modifier: GlanceModifier, small: Boolean, icon: Boolean = true) {
+    val colors = GlanceTheme.colors
+    val base = modifier.background(colors.primaryContainer).cornerRadius(16.dp).padding(horizontal = 8.dp, vertical = 2.dp)
+        .clickable(actionStartActivity(action.intent)).semantics { contentDescription = action.label }
+    val label = TextStyle(color = colors.onPrimaryContainer, fontSize = 13.sp, fontWeight = FontWeight.Medium, textAlign = TextAlign.Center)
+    if (small) Row(base, verticalAlignment = Alignment.CenterVertically, horizontalAlignment = Alignment.CenterHorizontally) {
+        Image(ImageProvider(action.icon), null, GlanceModifier.size(18.dp), colorFilter = ColorFilter.tint(colors.onPrimaryContainer))
+        Spacer(GlanceModifier.width(8.dp))
+        Text(action.label, style = label, maxLines = 1)
+    } else Column(base, verticalAlignment = Alignment.CenterVertically, horizontalAlignment = Alignment.CenterHorizontally) {
+        if (icon) Image(ImageProvider(action.icon), null, GlanceModifier.size(18.dp), colorFilter = ColorFilter.tint(colors.onPrimaryContainer))
+        Text(if (icon) action.label else action.short, style = label, maxLines = 2)
     }
 }
 

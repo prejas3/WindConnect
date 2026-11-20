@@ -340,8 +340,8 @@
     <string name="access_change">Zmień dostęp w ustawieniach</string>
     <string name="access_grant">Przyznaj dostęp w ustawieniach</string>
     <string name="notify_apps">Aplikacje</string>
-    <string name="notify_all_but_off">Wszystkie oprócz wyłączonych</string>
-    <string name="notify_only_chosen">Tylko wybrane</string>
+    <string name="notify_all_but_off">Wszystkie</string>
+    <string name="notify_only_chosen">Wybrane</string>
     <string name="notify_none_sent">Nie wysyłasz żadnych powiadomień. Wybierz aplikacje poniżej.</string>
     <string name="notify_only_on">Na komputer trafiają tylko włączone aplikacje; nowe są wyłączone.</string>
     <string name="notify_all_on">Na komputer trafiają wszystkie aplikacje poza wyłączonymi; nowe są włączone.</string>
@@ -516,4 +516,12 @@
     <string name="received_tap_opens">Stuknięcie w plik otwiera go. Wyczyszczenie listy nie usuwa plików.</string>
     <string name="devices_summary_one">%1$s · połączony</string>
     <string name="devices_summary_count">Sparowane: %1$d</string>
+    <!-- WN-160 -->
+    <string name="home_actions_offline">Akcje będą dostępne, gdy komputer się połączy.</string>
+    <string name="home_actions_unpaired">Sparuj komputer, aby korzystać z akcji.</string>
+    <string name="clipboard_last">%1$s · %2$s</string>
+    <string name="history_blank">Pusty tekst (same spacje)</string>
+    <string name="widget_open_app">Otwórz aplikację</string>
+    <string name="widget_short_clipboard">Schowek</string>
+    <string name="widget_short_app">Aplikacja</string>
 </resources>

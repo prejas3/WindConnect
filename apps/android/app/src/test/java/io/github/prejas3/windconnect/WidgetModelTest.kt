@@ -15,7 +15,11 @@ class WidgetModelTest {
         val offline = widgetData(ConnectionState.Stopped, true, 80, false, pairedName = "SZYMON")
         assertEquals("SZYMON", offline.name)
         assertFalse(offline.connected)
-        assertEquals("Brak połączenia", offline.status)
+        // WN-160: the app's words: a paired computer that isn't connected is out of reach; none paired says so.
+        assertEquals("Komputer poza zasięgiem", offline.status)
+        assertEquals("Brak sparowanego komputera", widgetData(ConnectionState.Stopped, true, 80, false).status)
+        assertTrue(widgetData(ConnectionState.Connecting, true, 80, false, pairedName = "SZYMON").connecting)
+        assertFalse(widgetData(ConnectionState.Connecting, false, 80, false, pairedName = "SZYMON").connecting)
     }
 
     @Test fun presentationIgnoresRttAndPrivateTransportDetails() {
