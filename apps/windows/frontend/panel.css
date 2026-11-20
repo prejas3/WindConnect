@@ -76,13 +76,6 @@ body { min-height: 100vh; overflow: auto; }
 .pairing-code { font-family: var(--font-ui); font-size: 40px; font-weight: 700; letter-spacing: 6px; font-variant-numeric: tabular-nums; color: var(--text); margin: 6px 0; }
 .pairing-card .button-row { flex-wrap: wrap; }
 /* WC-28: paired phones; one row, actions inline (no browser dialogs). */
-.device-list li { grid-template-columns: minmax(0,1fr); }
-.device-list li + li { border-top: 1px solid var(--border); padding-top: 8px; }
-.device-list .device-head { display: grid; grid-template-columns: minmax(0,1fr); gap: 4px; }
-.device-list .device-actions { display: flex; flex-wrap: wrap; gap: 4px; margin-left: -10px; }
-.device-list .connected { color: var(--accent-text); }.device-list .owed { color: var(--warning); }
-.device-list .field { margin: 6px 0 0; }.device-list .confirm { margin-top: 6px; font-size: 12px; }
-.device-list .confirm .button-row, .device-list .field .button-row { display: flex; gap: 4px; justify-content: flex-end; margin-top: 6px; }
 /* WN-44: the phone's notifications; texts from other apps go in as text only (notifications.js). */
 .notifications-note { font-size: 11px; margin: -4px 0 0; }
 .notification-list li { grid-template-columns: minmax(0,1fr); gap: 6px; }
@@ -135,13 +128,6 @@ body { min-height: 100vh; overflow: auto; }
 .media-progress span::after { content: ""; position: absolute; right: -8px; top: -6px; width: 16px; height: 16px; border-radius: 50%; background: var(--accent); box-shadow: 0 1px 3px #0003; }
 .media-progress[aria-disabled="true"] span::after { background: var(--sub); }
 /* WN-129: a phone in "Phones": name, a neutral state line with a dot, the fingerprint as a small separate line. */
-.device-list .name { font-weight: 650; }
-.device-list .device-state { display: flex; align-items: center; gap: 6px; color: var(--sub); }
-.device-list .device-state::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--sub); flex: none; }
-.device-list .device-state.connected::before { background: var(--success); }
-.device-list .device-state.connected { color: var(--sub); }
-.device-list .device-fingerprint { color: var(--sub); font-size: 11px; letter-spacing: .02em; }
-.device-list .device-actions { margin-left: 0; gap: 6px; margin-top: 4px; }
 /* WN-129: transfers as compact rows; the folder is an icon at the row's end; the newest few, then "Show all". */
 #transfers-list { max-height: none; }
 .panel #transfers-list li { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: 8px; padding: 6px 0; }
@@ -152,3 +138,46 @@ body { min-height: 100vh; overflow: auto; }
 /* WN-129: the touchpad permission as one line under the tiles, not a card. */
 .panel .touchpad-card { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 2px; background: none; margin-top: -10px; }
 .panel .touchpad-card p { font-size: 12px; }
+/* WN-161: a phone row on the section's grid: 36 px icon, name and state, one main action, the "…" menu. The menu, the
+   details and the in-place forms start under the name; the section's 12 px padding is the edge for everything. */
+.device-list { gap: 0; }
+.device-list li.device { position: relative; display: grid; grid-template-columns: minmax(0,1fr); gap: 8px; padding: 10px 0; }
+.device-list li.device + li.device { border-top: 1px solid var(--border); }
+.device-list li.device:first-child { padding-top: 2px; }
+/* Flex, not a fixed grid: at 200% text the actions wrap under the name instead of pushing the panel wider. */
+.device-list .device-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
+.device-list .device-head > .device-icon, .device-list .device-head > .button { flex: none; }
+.device-list .device-text { flex: 1 1 120px; }
+.device-list .device-icon { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; background: var(--sink); color: var(--sub); }
+.device-list .device-icon.connected { background: var(--accent-bg); color: var(--accent-ink); }
+.device-list .device-icon svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.device-list .device-text { display: grid; min-width: 0; gap: 1px; }
+.device-list .name { font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.device-list .device-state { display: flex; align-items: center; gap: 6px; color: var(--sub); font-size: var(--text-caption); }
+.device-list .device-state::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--sub); flex: none; }
+.device-list .device-state.connected::before { background: var(--success); }
+.device-list .owed { color: var(--warning); font-size: var(--text-caption); }
+.device-list .device-more { width: 32px; min-width: 32px; padding: 0; color: var(--text); }
+.device-list .device-more svg { width: 20px; height: 20px; stroke: currentColor; stroke-width: 3; stroke-linecap: round; fill: none; }
+.device-list .device-more[aria-expanded="true"] { background: var(--sink); }
+.device-list .device-menu { position: absolute; right: 0; top: 46px; z-index: 5; min-width: 190px; display: grid; padding: 4px; background: var(--surface);
+  border: 1px solid var(--border); border-radius: var(--radius-tile); box-shadow: var(--shadow); animation: reveal var(--duration-enter) var(--ease-enter); }
+.device-list .menu-item { text-align: left; padding: 8px 12px; border-radius: var(--radius-small); font-size: var(--text-body); color: var(--text); background: transparent; border: 0; }
+.device-list .menu-item:hover, .device-list .menu-item:focus-visible { background: var(--tile); }
+.device-list .menu-item.danger { color: var(--danger); }
+.device-list .menu-item + .menu-item.danger { margin-top: 4px; box-shadow: 0 -1px 0 var(--border); border-radius: 0 0 var(--radius-small) var(--radius-small); }
+.device-list .device-details, .device-list .field, .device-list .confirm { margin-left: 46px; }
+.device-list .device-details { display: grid; gap: 2px; padding: 8px 10px; border-radius: var(--radius-control); background: var(--sink); color: var(--sub); }
+.device-list .device-details small { font-size: var(--text-caption); overflow-wrap: anywhere; }
+.device-list .device-fingerprint { letter-spacing: .02em; }
+.device-list .field { display: grid; gap: 6px; }
+.device-list .confirm { font-size: var(--text-label); padding: 8px 10px; border-radius: var(--radius-control); background: var(--sink); box-shadow: inset 3px 0 0 var(--danger); }
+.device-list .confirm p { margin: 0; color: var(--text); }
+.device-list .confirm .button-row, .device-list .field .button-row { display: flex; gap: 6px; justify-content: flex-end; margin-top: 6px; }
+.devices .transfers-head { flex-wrap: wrap; }
+.devices .device-add svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+@media(forced-colors:active) { .device-list .device-menu { border: 1px solid CanvasText; } .device-list .device-state::before { background: CanvasText; } }
+/* The main window's device picker shares the class: in the panel the section is the only box (no box in a box). */
+.devices .device-list { padding: 0; background: none; border: 0; border-radius: 0; }
+.devices .device-list .button.small { min-height: 30px; padding: 5px 12px; }
+.devices .device-list .button.small.device-more { padding: 0; }

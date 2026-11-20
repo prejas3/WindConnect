@@ -370,6 +370,38 @@ pub struct DeviceRow {
     pub connected: bool,
     /// Removed here; the phone learns it on its next connection (§12.10).
     pub owed: bool,
+    /// WN-160/161: the model code it was paired under ("SM-S938B") when `name` is now its friendlier device name;
+    /// shown under "Details" only.
+    pub model: Option<String>,
+}
+
+/// A name that is only a model code ("SM-S938B", "Pixel_9" is not): no spaces or lower-case letters, a digit, at most
+/// 20 characters. Phones paired before they announced their device name (WN-159) are stored under one.
+fn looks_like_model(name: &str) -> bool {
+    !name.is_empty()
+        && name.len() <= 20
+        && name.chars().any(|c| c.is_ascii_digit())
+        && name
+            .chars()
+            .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '-' || c == '_')
+}
+
+/// What to call a phone: its stored name (an alias the person gave wins), unless that is only a model code and the
+/// phone now says a real name in its session `Hello`; then that name, with the code kept apart.
+fn friendly_name(
+    stored: Option<&str>,
+    announced: Option<&str>,
+) -> (Option<String>, Option<String>) {
+    let announced = announced
+        .and_then(clean_name)
+        .filter(|n| !looks_like_model(n));
+    match (stored, announced) {
+        (Some(code), Some(name)) if looks_like_model(code) && name != code => {
+            (Some(name), Some(code.to_string()))
+        }
+        (Some(stored), _) => (Some(stored.to_string()), None),
+        (None, name) => (name, None),
+    }
 }
 
 fn key_hex(key: &PublicKey) -> String {
@@ -388,7 +420,11 @@ fn parse_key(hex: &str) -> Option<PublicKey> {
 }
 
 /// The list the panel shows: paired phones, then those still owed a notice.
-fn device_rows(store: &PairedDevicesFile, connected: Option<&PublicKey>) -> Vec<DeviceRow> {
+fn device_rows(
+    store: &PairedDevicesFile,
+    connected: Option<&PublicKey>,
+    announced: Option<&str>,
+) -> Vec<DeviceRow> {
     let Ok(list) = store.load() else {
         return Vec::new();
     };
@@ -400,16 +436,19 @@ fn device_rows(store: &PairedDevicesFile, connected: Option<&PublicKey>) -> Vec<
     let mut rows: Vec<DeviceRow> = list
         .devices
         .iter()
-        .map(|d| DeviceRow {
-            key: key_hex(&d.key),
-            name: d
-                .name
-                .clone()
-                .unwrap_or_else(|| crate::i18n::tr("common.phone_capital").into()),
-            fingerprint: d.key.fingerprint().to_string(),
-            paired_at: d.paired_at,
-            connected: connected == Some(&d.key),
-            owed: false,
+        .map(|d| {
+            let is_connected = connected == Some(&d.key);
+            let (name, model) =
+                friendly_name(d.name.as_deref(), announced.filter(|_| is_connected));
+            DeviceRow {
+                key: key_hex(&d.key),
+                name: name.unwrap_or_else(|| crate::i18n::tr("common.phone_capital").into()),
+                fingerprint: d.key.fingerprint().to_string(),
+                paired_at: d.paired_at,
+                connected: is_connected,
+                owed: false,
+                model,
+            }
         })
         .collect();
     rows.extend(
@@ -423,18 +462,20 @@ fn device_rows(store: &PairedDevicesFile, connected: Option<&PublicKey>) -> Vec<
                 paired_at: *at,
                 connected: false,
                 owed: true,
+                model: None,
             }),
     );
     rows
 }
 
-/// The local name of `key` (its alias), else what it said in `Hello`.
+/// The local name of `key` (its alias), else what it said in `Hello`; a stored model code gives way to the
+/// announced device name (WN-161).
 fn shown_name(store: &PairedDevicesFile, session: &Session) -> Option<String> {
-    store
+    let stored = store
         .load()
         .ok()
-        .and_then(|l| l.get(&session.peer().key).and_then(|d| d.name.clone()))
-        .or_else(|| clean_name(&session.peer().hello.name))
+        .and_then(|l| l.get(&session.peer().key).and_then(|d| d.name.clone()));
+    friendly_name(stored.as_deref(), Some(&session.peer().hello.name)).0
 }
 
 /// How long a freshly paired phone may take over the session from the
@@ -829,7 +870,10 @@ async fn run(
                 .iter()
                 .any(|c| c.name() == "actions" && c.version() == 1)
         });
-        snapshot.devices = device_rows(&store, active_key.as_ref());
+        let announced = active
+            .as_ref()
+            .map(|(s, _): &(Session, _)| s.peer().hello.name.clone());
+        snapshot.devices = device_rows(&store, active_key.as_ref(), announced.as_deref());
         snapshot.paired = has_paired_in(&store);
         publish(&app, &state, snapshot.clone());
         tokio::select! {
@@ -1451,6 +1495,43 @@ pub fn dev_pairing_address(state: tauri::State<'_, Runtime>) -> Result<String, S
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_model_code_gives_way_to_the_announced_device_name() {
+        use super::{friendly_name, looks_like_model};
+        assert!(looks_like_model("SM-S938B"));
+        assert!(!looks_like_model("Galaxy S25 Ultra"));
+        assert!(!looks_like_model("Pixel"));
+        assert!(
+            !looks_like_model("TELEFON"),
+            "a word without a digit is a name"
+        );
+        assert_eq!(
+            friendly_name(Some("SM-S938B"), Some("Galaxy S25 Ultra")),
+            (Some("Galaxy S25 Ultra".into()), Some("SM-S938B".into()))
+        );
+        // An alias the person gave wins; so does the stored name when the phone says nothing better.
+        assert_eq!(
+            friendly_name(Some("Telefon Oli"), Some("Galaxy S25 Ultra")),
+            (Some("Telefon Oli".into()), None)
+        );
+        assert_eq!(
+            friendly_name(Some("SM-S938B"), None),
+            (Some("SM-S938B".into()), None)
+        );
+        assert_eq!(
+            friendly_name(Some("SM-S938B"), Some("SM-S938B")),
+            (Some("SM-S938B".into()), None)
+        );
+        assert_eq!(
+            friendly_name(Some("SM-S938B"), Some("SM-A556B")),
+            (Some("SM-S938B".into()), None)
+        );
+        assert_eq!(
+            friendly_name(None, Some("Pixel 9")),
+            (Some("Pixel 9".into()), None)
+        );
+    }
+
     use super::*;
 
     fn code() -> qrcode::QrCode {
@@ -1513,7 +1594,7 @@ mod tests {
             .unwrap();
         assert!(has_paired_in(&store));
         store.remove(&key).unwrap();
-        let rows = device_rows(&store, None);
+        let rows = device_rows(&store, None, None);
         assert_eq!(rows.len(), 1);
         assert!(rows[0].owed, "the removed phone is listed as owed");
         assert!(!has_paired_in(&store), "an owed phone isn't paired");

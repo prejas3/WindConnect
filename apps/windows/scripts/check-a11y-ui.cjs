@@ -136,7 +136,10 @@ async function walk(page, label) {
       for (const must of ['#send-files', '#find-phone', '#touchpad-toggle', '#media-toggle', '#phone-volume-slider', '#device-add', '#settings'])
         assert.ok(ids.includes(must), `panel ${theme}: ${must} reachable by Tab (order: ${ids})`);
       // Enter/Space work on the reached controls: the device menu opens and Escape closes it, focus stays on the panel.
-      await page.locator('button[aria-label^="Zmień nazwę"]').first().focus();
+      // WN-161: rename is in the row's "…" menu: Enter opens it with the first entry focused, Enter on it opens rename.
+      await page.locator('button[aria-label^="Więcej działań"]').first().focus();
+      await page.keyboard.press('Enter');
+      assert.equal(await page.evaluate(() => document.activeElement.getAttribute('role')), 'menuitem', 'menu opened by keyboard');
       await page.keyboard.press('Enter');
       assert.ok(await page.locator('#device-list input').isVisible(), 'rename opened by keyboard');
       await page.keyboard.press('Escape');

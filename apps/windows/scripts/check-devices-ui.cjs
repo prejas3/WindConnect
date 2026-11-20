@@ -16,7 +16,7 @@ const server = http.createServer(async (req, res) => {
 });
 const KEY_A = 'a'.repeat(64), KEY_B = 'b'.repeat(64), KEY_C = 'c'.repeat(64);
 const devices = [
-  { key: KEY_A, name: 'Galaxy S25 Ultra', fingerprint: 'K4TQ-9WZM-2HXP', paired_at: 1794300000, connected: true, owed: false },
+  { key: KEY_A, name: 'Galaxy S25 Ultra', fingerprint: 'K4TQ-9WZM-2HXP', paired_at: 1794300000, connected: true, owed: false, model: 'SM-S938B' },
   { key: KEY_B, name: 'Pixel 9 służbowy z bardzo długą nazwą urządzenia', fingerprint: 'M7RC-1QDN-8LVA', paired_at: 1794390000, connected: false, owed: false },
   { key: KEY_C, name: 'Usunięty telefon', fingerprint: 'Z2PE-6YHT-4KUB', paired_at: 1794400000, connected: false, owed: true },
 ];
@@ -26,7 +26,7 @@ const stub = rows => {
   window.__TAURI__ = {
     core: { invoke: async (cmd, args) => {
       window.__calls.push([cmd, args]);
-      if (cmd === 'pairing_snapshot') return { phase: 'connected', phone: 'Galaxy S25 Ultra', qr: null, message: 'Połączono · Wi-Fi', skipped_records: 0, code: null, connected: true, devices: structuredClone(rows) };
+      if (cmd === 'pairing_snapshot') return { phase: 'connected', phone: 'Galaxy S25 Ultra', qr: null, message: 'Połączono · Wi-Fi', skipped_records: 0, code: null, connected: true, battery: { level: 68, charging: false }, devices: structuredClone(rows) };
       if (cmd === 'files_snapshot') return { phone: null, rows: [], active: 0, activeSize: 0, activeDone: 0 };
       if (cmd === 'panel_snapshot') return { shortcut_error: null };
       return null;
@@ -53,47 +53,98 @@ const stub = rows => {
     assert.match(await rows.nth(2).textContent(), /dowie się przy następnym połączeniu/);
     assert.equal(await rows.nth(2).locator('button').count(), 0, 'an owed row has no actions');
     assert.equal(await rows.nth(1).getByRole('button', { name: /^Rozłącz/ }).count(), 0, 'disconnect only for the connected phone');
-    // WN-156: the state line has no fingerprint; the fingerprint is its own line; Disconnect is the outlined button.
-    assert.doesNotMatch(await rows.nth(0).locator('.device-state').textContent(), /K4TQ/);
-    assert.match(await rows.nth(0).locator('.device-state').textContent(), /Połączony/);
+    // WN-161: name, state with its dot and the battery; the fingerprint, date and model only under "Details".
+    assert.equal(await rows.nth(0).locator('.device-state').textContent(), 'Połączony · bateria 68%');
     assert.equal(await rows.nth(0).locator('.device-state.connected').count(), 1);
-    assert.equal(await rows.nth(0).locator('.device-fingerprint').textContent(), 'Odcisk: K4TQ-9WZM-2HXP');
-    assert.equal(await rows.nth(2).locator('.device-fingerprint').count(), 0, 'an owed row shows no fingerprint');
-    assert.doesNotMatch(await rows.nth(0).getByRole('button', { name: /^Rozłącz/ }).evaluate(b => b.className), /quiet|primary/);
+    assert.equal(await rows.nth(1).locator('.device-state').textContent(), 'Niepołączony');
+    assert.equal(await page.locator('#device-list .device-fingerprint').count(), 0, 'no fingerprint in the main view');
+    assert.equal(/K4TQ|sparowano/i.test(await page.locator('#device-list').textContent()), false);
+    // One main action as a button (outlined, not a text link); the rest in the "…" menu.
+    const disconnect = rows.nth(0).getByRole('button', { name: /^Rozłącz/ });
+    assert.doesNotMatch(await disconnect.evaluate(b => b.className), /quiet|primary|danger/);
+    assert.equal(await rows.nth(0).getByRole('button', { name: /^Zmień nazwę|^Usuń/ }).count(), 0, 'rename and remove are in the menu');
+    // "Add a phone" is a proper (outlined) button with an icon, on the title's line.
+    const add = page.getByRole('button', { name: 'Dodaj telefon' });
+    assert.doesNotMatch(await add.evaluate(b => b.className), /quiet/);
+    const addBox = await add.boundingBox(), titleBox = await page.locator('#devices-title').boundingBox();
+    assert.ok(Math.abs((addBox.y + addBox.height / 2) - (titleBox.y + titleBox.height / 2)) < 3, 'add is centred on the title line');
+    for (const theme of ['light', 'dark']) {
+      await page.evaluate(t => { document.documentElement.dataset.theme = t; }, theme);
+      await page.waitForTimeout(400);
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, 'overflow ' + theme);
+      await page.locator('#devices').screenshot({ path: path.join(out, 'panel-devices-' + theme + '.png') });
+    }
 
-    // Rename: Enter saves the trimmed name; an empty name is refused in place.
-    await rows.nth(1).getByRole('button', { name: /^Zmień nazwę/ }).click();
+    // The menu: own control, opened from "…", keyboard (arrows, Escape back to its button), closes on a click outside.
+    const more = rows.nth(0).getByRole('button', { name: 'Więcej działań: Galaxy S25 Ultra' });
+    assert.equal(await more.getAttribute('aria-haspopup'), 'menu');
+    await more.click();
+    assert.equal(await more.getAttribute('aria-expanded'), 'true');
+    const menu = rows.nth(0).getByRole('menu');
+    assert.deepEqual(await menu.getByRole('menuitem').allTextContents(), ['Zmień nazwę', 'Szczegóły', 'Usuń parowanie']);
+    const focusedText = () => page.evaluate(() => document.activeElement.textContent);
+    assert.equal(await focusedText(), 'Zmień nazwę');
+    await page.keyboard.press('ArrowDown');
+    assert.equal(await focusedText(), 'Szczegóły');
+    await page.keyboard.press('ArrowUp'); await page.keyboard.press('ArrowUp');
+    assert.equal(await focusedText(), 'Usuń parowanie');
+    await page.locator('#devices').screenshot({ path: path.join(out, 'panel-devices-menu.png') });
+    const panelCalls = () => page.evaluate(() => window.__calls.filter(([c]) => c === 'panel_action').length);
+    const hides = await panelCalls();
+    await page.keyboard.press('Escape');
+    assert.equal(await panelCalls(), hides, 'Escape in the menu closes the menu, not the panel');
+    assert.equal(await rows.nth(0).getByRole('menu').count(), 0);
+    assert.equal(await page.evaluate(() => document.activeElement.getAttribute('aria-label')), 'Więcej działań: Galaxy S25 Ultra');
+    await more.click();
+    await page.locator('#devices-title').click();
+    assert.equal(await rows.nth(0).getByRole('menu').count(), 0, 'a click outside closes the menu');
+    // A state update while the menu is open keeps it and its focus.
+    await more.click(); await page.keyboard.press('ArrowDown');
+    await page.evaluate(v => window.__listeners['pairing-state']({ payload: { phase: 'connected', phone: 'Galaxy S25 Ultra', qr: null, message: '', skipped_records: 0, code: null, connected: true, battery: { level: 67, charging: false }, devices: v } }), devices);
+    assert.equal(await focusedText(), 'Szczegóły');
+    await page.keyboard.press('Enter');
+    const details = rows.nth(0).locator('.device-details');
+    assert.equal(await details.locator('.device-fingerprint').textContent(), 'Odcisk: K4TQ-9WZM-2HXP');
+    assert.match(await details.textContent(), /Sparowano .*2026/);
+    assert.match(await details.textContent(), /Model: SM-S938B/);
+    await page.locator('#devices').screenshot({ path: path.join(out, 'panel-devices-details.png') });
+    await more.click();
+    assert.equal(await rows.nth(0).getByRole('menuitem', { name: 'Ukryj szczegóły' }).count(), 1);
+    await page.keyboard.press('Escape');
+
+    // Rename (from the menu): Enter saves the trimmed name; an empty name is refused in place.
+    await rows.nth(1).getByRole('button', { name: /^Więcej działań/ }).click();
+    await rows.nth(1).getByRole('menuitem', { name: 'Zmień nazwę' }).click();
     const input = rows.nth(1).locator('input');
     await input.fill('   ');
     await input.press('Enter');
     assert.equal(await input.getAttribute('aria-invalid'), 'true');
     await input.fill('  Telefon Oli ');
-    // A state update while typing keeps what was typed.
+    // A state update while typing keeps what was typed (and the focus).
     await page.evaluate(v => window.__listeners['pairing-state']({ payload: { phase: 'connected', phone: 'Galaxy S25 Ultra', qr: null, message: '', skipped_records: 0, code: null, connected: true, devices: v } }), devices);
     assert.equal(await rows.nth(1).locator('input').inputValue(), '  Telefon Oli ');
+    assert.equal(await page.evaluate(() => document.activeElement.tagName), 'INPUT');
     await rows.nth(1).locator('input').press('Enter');
     assert.deepEqual((await calls()).at(-1), ['device_action', { action: 'rename', key: KEY_B, name: 'Telefon Oli' }]);
 
-    // Unpair asks inline first; Cancel sends nothing.
-    await rows.nth(0).getByRole('button', { name: /^Usuń parowanie/ }).click();
+    // Remove pairing is the dangerous entry: it asks in place first; Cancel sends nothing.
+    await more.click();
+    assert.match(await rows.nth(0).getByRole('menuitem', { name: 'Usuń parowanie' }).evaluate(b => b.className), /danger/);
+    await rows.nth(0).getByRole('menuitem', { name: 'Usuń parowanie' }).click();
     assert.match(await rows.nth(0).locator('.confirm').textContent(), /Telefon też je usunie\./);
-    for (const theme of ['light', 'dark']) {
-      await page.evaluate(t => { document.documentElement.dataset.theme = t; }, theme);
-      await page.waitForTimeout(400);
-      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, `overflow ${theme}`);
-      await page.screenshot({ path: path.join(out, `panel-devices-${theme}.png`), fullPage: true });
-    }
+    await page.locator('#devices').screenshot({ path: path.join(out, 'panel-devices-confirm.png') });
     const before = (await calls()).length;
     await rows.nth(0).getByRole('button', { name: /^Anuluj/ }).click();
     assert.equal((await calls()).length, before);
-    await rows.nth(1).getByRole('button', { name: /^Usuń parowanie/ }).click();
+    await rows.nth(1).getByRole('button', { name: /^Więcej działań/ }).click();
+    await rows.nth(1).getByRole('menuitem', { name: 'Usuń parowanie' }).click();
     assert.match(await rows.nth(1).locator('.confirm').textContent(), /przy następnym połączeniu/);
-    await rows.nth(1).getByRole('button', { name: /^Usuń parowanie: / }).last().click();
+    await rows.nth(1).getByRole('button', { name: /^Usuń parowanie: / }).click();
     assert.deepEqual((await calls()).at(-1), ['device_action', { action: 'unpair', key: KEY_B }]);
 
-    await rows.nth(0).getByRole('button', { name: /^Rozłącz/ }).click();
+    await disconnect.click();
     assert.deepEqual((await calls()).at(-1), ['device_action', { action: 'disconnect', key: KEY_A }]);
-    await page.getByRole('button', { name: 'Dodaj telefon' }).click();
+    await add.click();
     assert.deepEqual((await calls()).at(-1), ['pairing_action', { action: 'refresh' }]);
     // While another phone is being paired, the connected one keeps its quick actions.
     await page.evaluate(v => window.__listeners['pairing-state']({ payload: { phase: 'waiting', phone: 'Galaxy S25 Ultra', qr: { width: 21, dark: Array(441).fill(false) }, message: 'Zeskanuj kod', skipped_records: 0, code: null, connected: true, devices: v } }), devices);

@@ -18,31 +18,95 @@ document.addEventListener('contextmenu', event => event.preventDefault());
 window.addEventListener('storage', theme); system.addEventListener('change', theme);
 theme();
 // CCS/1 FLOW:device list (WC-28) -> device_action(rename|unpair|disconnect, key) -> the pairing actor; one row edits at a time.
+// WN-161: a row is the phone (icon, name, state with its dot and battery), one main action as a button and the rest in an
+// own "…" menu (rename, details, remove pairing: the dangerous one last, confirmed in place). The key's fingerprint, the
+// pairing date and a model code are under "Details", not in the main view.
 let editing = null;
+let menuFor = null;
+const detailsFor = new Set();
+let lastBattery = null;
+const SVG = 'http://www.w3.org/2000/svg';
+function icon(paths, cls) {
+  const svg = document.createElementNS(SVG, 'svg'); svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('aria-hidden', 'true');
+  if (cls) svg.setAttribute('class', cls);
+  for (const d of paths) { const p = document.createElementNS(SVG, 'path'); p.setAttribute('d', d); svg.append(p); }
+  return svg;
+}
+const PHONE = ['M7 2h10a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z', 'M10 5h4M11 19h2'];
+const MORE = ['M5 12h.01M12 12h.01M19 12h.01'];
+function closeMenu(focusToggle) {
+  if (menuFor === null) return;
+  const key = menuFor; menuFor = null; renderDevices(lastDevices);
+  if (focusToggle) document.querySelector(`[data-focus="${key}:more"]`)?.focus();
+}
 function deviceRow(row) {
-  const item = document.createElement('li');
+  const item = document.createElement('li'); item.className = 'device';
   const head = document.createElement('div'); head.className = 'device-head';
-  const text = document.createElement('div');
+  const badge = document.createElement('span'); badge.className = row.connected ? 'device-icon connected' : 'device-icon'; badge.append(icon(PHONE));
+  const text = document.createElement('div'); text.className = 'device-text';
   const name = document.createElement('span'); name.className = 'name'; name.textContent = row.name; name.title = row.name;
-  // WN-129: the state on its own neutral line (dot shows connected); the fingerprint is a small line of its own.
   const detail = document.createElement('small');
-  const when = new Date(row.paired_at * 1000).toLocaleDateString(locale);
-  detail.textContent = row.owed ? t('devices.removed_pending') : t('devices.status_line', { state: t(row.connected ? 'devices.connected' : 'devices.disconnected'), when });
+  const state = t(row.connected ? 'devices.connected' : 'devices.disconnected');
+  const level = row.connected && lastBattery ? `${Math.max(0, Math.min(100, Number(lastBattery.level) || 0))}%` : null;
+  detail.textContent = row.owed ? t('devices.removed_pending') : level ? t('devices.state_battery', { state, level }) : state;
   detail.className = row.owed ? 'owed' : row.connected ? 'device-state connected' : 'device-state';
-  const print = document.createElement('small'); print.className = 'device-fingerprint';
-  print.textContent = t('devices.fingerprint_line', { fingerprint: row.fingerprint });
   text.append(name, detail);
-  if (!row.owed) text.append(print);
-  const actions = document.createElement('div'); actions.className = 'device-actions';
-  const button = (label, kind, onClick, aria) => { const b = document.createElement('button'); b.className = `button ${kind} small`; b.textContent = label; b.setAttribute('aria-label', t('common.action_for', { action: aria || label, name: row.name })); b.addEventListener('click', onClick); return b; };
+  head.append(badge, text);
+  const button = (label, kind, onClick, aria, focus) => {
+    const b = document.createElement('button'); b.className = `button ${kind} small`.replace('  ', ' '); b.textContent = label;
+    b.setAttribute('aria-label', t('common.action_for', { action: aria || label, name: row.name }));
+    if (focus) b.dataset.focus = `${row.key}:${focus}`;
+    b.addEventListener('click', onClick); return b;
+  };
   const send = (action, extra = {}) => invoke?.('device_action', { action, key: row.key, ...extra }).catch(error);
   if (!row.owed) {
-    if (row.connected) actions.append(button(t('common.disconnect'), '', () => send('disconnect')));
-    actions.append(button(t('common.rename'), 'quiet', () => { editing = { key: row.key, mode: 'rename' }; renderDevices(lastDevices); }));
-    actions.append(button(t('common.remove'), 'quiet', () => { editing = { key: row.key, mode: 'unpair' }; renderDevices(lastDevices); }, t('devices.unpair')));
+    if (row.connected) head.append(button(t('common.disconnect'), '', () => send('disconnect'), null, 'disconnect'));
+    const more = document.createElement('button'); more.className = 'button quiet small icon device-more';
+    more.dataset.focus = `${row.key}:more`;
+    more.setAttribute('aria-label', t('devices.more_label', { name: row.name }));
+    more.setAttribute('aria-haspopup', 'menu'); more.setAttribute('aria-expanded', String(menuFor === row.key));
+    more.append(icon(MORE));
+    more.addEventListener('click', event => { event.stopPropagation(); if (menuFor === row.key) closeMenu(true); else { menuFor = row.key; renderDevices(lastDevices); document.querySelector(`[data-focus="${row.key}:menu-0"]`)?.focus(); } });
+    head.append(more);
   }
-  head.append(text, actions);
   item.append(head);
+  if (menuFor === row.key && !row.owed) {
+    const menu = document.createElement('div'); menu.className = 'device-menu'; menu.setAttribute('role', 'menu');
+    menu.setAttribute('aria-label', t('devices.more_label', { name: row.name }));
+    const entries = [
+      [t('common.rename'), '', () => { menuFor = null; editing = { key: row.key, mode: 'rename' }; renderDevices(lastDevices); }],
+      [t(detailsFor.has(row.key) ? 'devices.hide_details' : 'devices.details'), '', () => {
+        if (detailsFor.has(row.key)) detailsFor.delete(row.key); else detailsFor.add(row.key);
+        closeMenu(true);
+      }],
+      [t('devices.unpair'), 'danger', () => { menuFor = null; editing = { key: row.key, mode: 'unpair' }; renderDevices(lastDevices); }],
+    ];
+    entries.forEach(([label, kind, run], index) => {
+      const entry = document.createElement('button'); entry.className = `menu-item ${kind}`.trim(); entry.textContent = label;
+      entry.setAttribute('role', 'menuitem'); entry.tabIndex = -1; entry.dataset.focus = `${row.key}:menu-${index}`;
+      entry.addEventListener('click', event => { event.stopPropagation(); run(); });
+      menu.append(entry);
+    });
+    menu.addEventListener('keydown', event => {
+      const items = [...menu.querySelectorAll('[role="menuitem"]')];
+      const at = items.indexOf(document.activeElement);
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault();
+        items[(at + (event.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length].focus();
+      } else if (event.key === 'Home' || event.key === 'End') { event.preventDefault(); items[event.key === 'Home' ? 0 : items.length - 1].focus(); }
+      else if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); closeMenu(true); }
+      else if (event.key === 'Tab') { menuFor = null; queueMicrotask(() => renderDevices(lastDevices)); }
+    });
+    item.append(menu);
+  }
+  if (detailsFor.has(row.key) && !row.owed) {
+    const details = document.createElement('div'); details.className = 'device-details';
+    const line = (cls, value) => { const s = document.createElement('small'); if (cls) s.className = cls; s.textContent = value; details.append(s); };
+    line('device-fingerprint', t('devices.fingerprint_line', { fingerprint: row.fingerprint }));
+    line('', t('devices.paired_on', { when: new Date(row.paired_at * 1000).toLocaleDateString(locale) }));
+    if (row.model) line('', t('devices.model_line', { model: row.model }));
+    item.append(details);
+  }
   if (editing?.key === row.key && editing.mode === 'rename') {
     const label = document.createElement('label'); label.className = 'field';
     const caption = document.createElement('span'); caption.textContent = t('devices.rename_label');
@@ -51,28 +115,37 @@ function deviceRow(row) {
     const buttons = document.createElement('div'); buttons.className = 'button-row';
     const save = () => { const value = input.value.trim(); if (!value) { input.setAttribute('aria-invalid', 'true'); return; } editing = null; send('rename', { name: value }); };
     input.addEventListener('keydown', e => { if (e.key === 'Enter') save(); if (e.key === 'Escape') { e.stopPropagation(); editing = null; renderDevices(lastDevices); } });
-    buttons.append(button(t('common.save'), 'primary', save), button(t('common.cancel'), 'quiet', () => { editing = null; renderDevices(lastDevices); }));
+    buttons.append(button(t('common.cancel'), 'quiet', () => { editing = null; renderDevices(lastDevices); }), button(t('common.save'), 'primary', save));
     label.append(caption, input, buttons);
     item.append(label);
-    queueMicrotask(() => input.focus());
+    if (!label.isConnected) queueMicrotask(() => { if (document.activeElement?.tagName !== 'INPUT') input.focus(); });
   } else if (editing?.key === row.key && editing.mode === 'unpair') {
     const confirm = document.createElement('div'); confirm.className = 'confirm'; confirm.setAttribute('role', 'group');
     const question = document.createElement('p');
     question.textContent = t(row.connected ? 'devices.unpair_now' : 'devices.unpair_later', { name: row.name });
     const buttons = document.createElement('div'); buttons.className = 'button-row';
-    buttons.append(button(t('devices.unpair'), 'danger', () => { editing = null; send('unpair'); }), button(t('common.cancel'), 'quiet', () => { editing = null; renderDevices(lastDevices); }));
+    buttons.append(button(t('common.cancel'), 'quiet', () => { editing = null; renderDevices(lastDevices); }), button(t('devices.unpair'), 'danger', () => { editing = null; send('unpair'); }));
     confirm.append(question, buttons);
     item.append(confirm);
   }
   return item;
 }
 let lastDevices = [];
-function renderDevices(rows) {
+function renderDevices(rows, battery) {
+  if (battery !== undefined) lastBattery = battery;
   lastDevices = rows || [];
   if (editing && !lastDevices.some(r => r.key === editing.key)) editing = null;
+  if (menuFor && !lastDevices.some(r => r.key === menuFor && !r.owed)) menuFor = null;
+  // A state update rebuilds the rows: keep the focus (and a field's caret) where it was.
+  const focused = document.activeElement?.dataset?.focus;
+  const typing = document.activeElement?.closest?.('#device-list .field') ? document.activeElement : null;
+  const caret = typing ? [typing.selectionStart, typing.selectionEnd] : null;
   document.querySelector('#devices').hidden = lastDevices.length === 0;
   document.querySelector('#device-list').replaceChildren(...lastDevices.map(deviceRow));
+  if (focused) document.querySelector(`[data-focus="${focused}"]`)?.focus();
+  if (caret) { const input = document.querySelector('#device-list .field input'); if (input) { input.focus(); input.setSelectionRange(...caret); } }
 }
+document.addEventListener('pointerdown', event => { if (menuFor !== null && !event.target.closest?.('.device-menu, .device-more')) closeMenu(false); });
 document.querySelector('#device-add').addEventListener('click', () => invoke?.('pairing_action', { action: 'refresh' }).catch(error));
 // WN-49: level and charging from the phone (pushed in pairing-state, never polled). Not a live region: a label only.
 function renderBattery(battery) {
@@ -193,7 +266,7 @@ function scrollForOpening() {
   else { document.scrollingElement.scrollTop = 0; document.body.scrollTop = 0; }
 }
 function renderPairing(state) {
-  renderDevices(state.devices);
+  renderDevices(state.devices, (state.connected || state.phase === 'connected') ? state.battery : null);
   const waiting = state.phase === 'waiting';
   const connected = state.phase === 'connected';
   const sas = state.phase.startsWith('sas-');
