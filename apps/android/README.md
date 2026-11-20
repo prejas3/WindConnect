@@ -1,194 +1,194 @@
 # Android
 
-## Dostępność: TalkBack i duża czcionka (WN-64)
+## Accessibility: TalkBack and large font (WN-64)
 
 CCS/1
-RULE:tytuły ekranów i kart ustawień są nagłówkami (nawigacja TalkBack po nagłówkach), ikony i akcje mają opisy, cele dotyku co najmniej 48 dp, kontrast tekstu i obrazów zgodny z Accessibility Test Framework. Ekrany przewijają się, więc największy rozmiar czcionki niczego nie ucina.
-CHECK:`AccessibilityTest` (instrumentacyjny): Google Accessibility Test Framework przez `tryPerformAccessibilityChecks` na ekranie głównym (bez i z komputerem), liście komputerów, ustawieniach, ekranie „Gotowe” i odbiorze plików, kawałek po kawałku podczas przewijania, w jasnym i ciemnym motywie oraz przy skali czcionki 2; kontrola negatywna sprawdza, że test wykrywa nieopisany przycisk 10 dp.
+RULE:the titles of screens and settings cards are headings (TalkBack heading navigation), icons and actions have descriptions, touch targets are at least 48 dp, the contrast of text and images meets the Accessibility Test Framework. Screens scroll, so the largest font size cuts nothing off.
+CHECK:`AccessibilityTest` (instrumented): Google's Accessibility Test Framework through `tryPerformAccessibilityChecks` on the home screen (without and with a computer), the list of computers, settings, the "Done" screen and receiving files, piece by piece while scrolling, in the light and dark theme and at font scale 2; a negative control checks that the test detects an undescribed 10 dp button.
 
-## Języki: polski i angielski (WN-63)
-
-CCS/1
-RULE:każdy tekst UI jest w zasobach: `values/strings.xml` (angielski, język zapasowy) i `values-pl/strings.xml` (polski), osobno w `app` i `wind-core`. Polski telefon widzi polski, każdy inny język angielski; Android 13+ pozwala wybrać język aplikacji w ustawieniach (`res/xml/locales_config.xml`). `localeFilters` zostawia w APK tylko en i pl. Kod poza Compose bierze tekst przez `str()`/`plural()` (`Strings.kt`), Compose przez `stringResource`. Liczby mnogie: `<plurals>` (polskie one/few/many/other). Daty i liczby formatuje locale telefonu.
-CHECK:`TranslationParityTest` (JVM): te same nazwy i placeholdery w obu językach obu modułów. Testy JVM czytają polskie teksty z `values-pl` (`StringsForTests`). Testy instrumentacyjne uruchamia `PolishTestRunner` (aplikacja po polsku niezależnie od języka emulatora); `LocalizationTest` sprawdza na urządzeniu, że każdy tekst istnieje po angielsku i po polsku.
-
-## Odbiór do publicznych Pobranych (WN-120)
+## Languages: Polish and English (WN-63)
 
 CCS/1
-FLOW:sparowana, dopuszczona sesja -> admission z właścicielem FGS -> checksum chunków FileEngine -> prywatny zweryfikowany plik -> MediaStore.Downloads IS_PENDING -> fsync + dziennik -> publiczne Download/WindConnect/<podfoldery> -> dopiero wire Complete. Domyślne hooki silnika None; Windows zachowuje swój zapis. Android nie wymaga READ/WRITE_EXTERNAL_STORAGE ani MANAGE_EXTERNAL_STORAGE. Router próby/standby ma files/1 wyłączone; tylko adopted session i gotowy sink udostępniają odbiór.
-LIFECYCLE:WN-127 wybiera wariant (a): domyślny przełącznik odbioru ON; widoczna Activity utrzymuje lease i reklamuje files/1 bez usługi ani bieżącego powiadomienia odbioru. Dopiero rzeczywisty Offer uruchamia ReceiveFilesService z widocznej Activity i czeka na startForeground oraz lease; zanim to nastąpi, nie ma Partial::open, zapisu ani Accept. Wyjątek/odmowa/timeout startu daje BUSY bez zmiany plików częściowych. Każda próba ma osobny token; spóźniona gotowość nie wznawia starej próby ani nie zwalnia nowszej. Permit obejmuje cały transfer i publikację. Tymczasowy FGS kończy się po ostatnim aktywnym/pending odbiorze, również przy nadal otwartej Activity. Aktywny przyjęty odbiór może przeżyć jej zamknięcie. Bez właściciela FGS oferta w tle jest odrzucana; zamknięcie ostatniej Activity cofa samą gotowość UI. ConnectionService po startForeground nadal utrzymuje odbiór przy świadomie włączonym połączeniu w tle. Wyłączenie odbioru cofa capability i anuluje przyjęte transfery. Nie stosujemy IMPORTANCE_MIN do ukrywania FGS (Android może podnieść jego ważność).
-STORAGE:limit2GiB/plik,4GiB aktywnych transferów (rezerwacja obejmuje publikację), preflight2×rozmiar+64MiB na prywatną i publiczną kopię. MediaStore wybiera wolną nazwę bez nadpisywania; dziennik i UI odczytują rzeczywiste DISPLAY_NAME/RELATIVE_PATH. Nazwy NFC bez kontroli/bidi, do16segmentów,240bajtów/segment i4096bajtów wejścia; MIME z ostatniego rozszerzenia, fallback octet-stream. To klasyfikacja, nie ocena bezpieczeństwa pliku.
-RECOVERY:AtomicFile, pełny peer-fingerprint:id, ścieżka/rozmiar/SHA256 i fazy pending/ready/published. Restart usuwa wyłącznie własne pending rows/prywatne kopie; ready już widoczne zostaje published, a ponowienie tego tokenu nie tworzy duplikatu. Dziennik do512receipts/4MiB; brak miejsca w historii odmawia odbioru. Jawne „Wyczyść historię” zachowuje pliki publiczne, ale zapomina idempotencję starych tokenów. Nie usuwamy plików widocznych po późnym anulowaniu/błędzie; po publikacji użytkownik zarządza nimi w Pobranych.
-UI:ekran główny i powiadomienie prowadzą do odbioru/historii; Anuluj identyfikuje incoming przez peer+id, wysyłanie przez outbound id. Powiadomienie max1/s podczas transferu + natychmiastowe zakończenie; nazwy ukryte na ekranie blokady. Otwórz wymaga osobnego stuknięcia, content URI z czasowym read grant i systemowego wyboru aplikacji. „Pokaż w Pobranych” uruchamia systemową listę pobrań. Brak auto-open/uruchamiania APK.
-CHECK:IncomingFilesTest na rzeczywistym MediaStore (rozszerzenia json/tar.gz/brak/apk, kolizje, checksum, idempotencja, ENOSPC/cancel, sześć punktów przerwania). scripts/check-android-receive-recovery.cjs dodatkowo force-stopuje rzeczywisty proces w każdej fazie i sprawdza brak pending/duplikatów po ponowieniu. scripts/check-android-receive-files.cjs: prawdziwe QR/TLS Windows -> Android,7plików z folderem i1GiB, niezależne SHA256 i Complete nadawcy. Wymaga zbudowanych debug APK/androidTest, cargo build --locked -p windconnect-windows --example files_peer oraz jawnego ANDROID_SERIAL jednorazowego emulatora, JAVA_HOME/ANDROID_HOME. Dane/logi w TEMP; nie uruchamiać na telefonie użytkownika. Krótki test S25: pliki+folder w Moje pliki/Pobrane/WindConnect, ręczne otwarcie, anulowanie bez pliku częściowego. Długie Wi-Fi/bateria pozostają na końcu lane.
+RULE:every UI text is in the resources: `values/strings.xml` (English, the fallback language) and `values-pl/strings.xml` (Polish), separately in `app` and `wind-core`. A Polish phone sees Polish, any other language English; Android 13+ lets you choose the app's language in the settings (`res/xml/locales_config.xml`). `localeFilters` keeps only en and pl in the APK. Code outside Compose takes text through `str()`/`plural()` (`Strings.kt`), Compose through `stringResource`. Plurals: `<plurals>` (Polish one/few/many/other). Dates and numbers are formatted by the phone's locale.
+CHECK:`TranslationParityTest` (JVM): the same names and placeholders in both languages of both modules. JVM tests read the Polish texts from `values-pl` (`StringsForTests`). Instrumented tests are run by `PolishTestRunner` (the app in Polish regardless of the emulator's language); `LocalizationTest` checks on the device that every text exists in English and in Polish.
 
-## Postęp i ponawianie plików (WN-41)
+## Receiving into the public Downloads (WN-120)
 
 CCS/1
-RULE:własne ekrany korzystają ze zdarzeń silnika (postęp co100ms, bez odpytywania/timera idle); systemowe powiadomienie ma pasek postępu i bajty/prędkość najwyżej raz/s oraz natychmiastowy stan końcowy/Anuluj. Nie obiecujemy odświeżania SystemUI co100ms. Prędkość: monotoniczne delty, okno1s + EMA; przed pełnym oknem i podczas oczekiwania „—”. Podczas importowania źródeł łączny rozmiar nie jest jeszcze znany: pasek nieokreślony, bez wymyślonego procentu. Po przygotowaniu wszystkich źródeł: rzeczywiste bajty potwierdzone przez odbiornik / rozmiar.
-FLOW:po błędzie lub anulowaniu „Ponów niewysłane” -> lekki openFileDescriptor/close każdego pozostałego URI -> ponowne potwierdzenie tego samego, nadal sparowanego PC -> nowy import/transfer. Pliki potwierdzone jako odebrane nie są ponawiane. Utrata grantu wymaga ponownego wyboru źródeł. Potwierdzenie i limity WN-40 pozostają; żadnego automatycznego wysyłania z akcji powiadomienia, utrwalania grantów ani przechowywania nieudanych kopii GiB.
-LIMIT:wybór do ponowienia żyje tylko w procesie; po jego zakończeniu wybierz pliki ponownie. Długie pomiary fizycznego Wi-Fi/baterii są odłożone. „Otwórz folder” dotyczy PC; publiczny odbiór Androida opisuje WN-120 powyżej. TalkBack dostaje semantyczny postęp, nie komunikat live co100ms.
-CHECK:`scripts/check-android-transfer-progress.cjs`: prawdziwe źródła z osobnego UID i receiver TEMP;5plików,2potwierdzone, kontrolowany błąd odczytu, Ponów wysyła tylko3; brak grantu blokuje potwierdzenie; indeterminate w Activity/powiadomieniu. Wymaga debug APK/androidTest, files_peer i jawnego ANDROID_SERIAL jednorazowego emulatora, JAVA_HOME/ANDROID_HOME. Nie uruchamiać na telefonie użytkownika.
+FLOW:a paired, admitted session -> admission with the FGS owner -> FileEngine chunk checksums -> a private verified file -> MediaStore.Downloads IS_PENDING -> fsync + journal -> public Download/WindConnect/<subfolders> -> only then the wire Complete. The engine's default hooks are None; Windows keeps its own writing. Android needs neither READ/WRITE_EXTERNAL_STORAGE nor MANAGE_EXTERNAL_STORAGE. The attempt/standby router has files/1 off; only an adopted session and a ready sink offer receiving.
+LIFECYCLE:WN-127 chooses variant (a): the receiving switch is ON by default; a visible Activity holds a lease and advertises files/1 without a service or an ongoing receiving notification. Only a real Offer starts ReceiveFilesService from the visible Activity and waits for startForeground and the lease; before that there is no Partial::open, no write and no Accept. An exception/refusal/timeout of the start gives BUSY without changing partial files. Each attempt has its own token; late readiness doesn't resume an old attempt or release a newer one. The permit covers the whole transfer and publishing. The temporary FGS ends after the last active/pending receive, also with the Activity still open. An active accepted receive may outlive its closing. Without an FGS owner an offer in the background is rejected; closing the last Activity withdraws only the UI's readiness. ConnectionService after startForeground still keeps receiving with the background connection deliberately on. Turning receiving off withdraws the capability and cancels accepted transfers. We don't use IMPORTANCE_MIN to hide the FGS (Android may raise its importance).
+STORAGE:limit 2 GiB/file, 4 GiB of active transfers (the reservation covers publishing), preflight 2×size+64 MiB for the private and the public copy. MediaStore picks a free name without overwriting; the journal and the UI read the real DISPLAY_NAME/RELATIVE_PATH. NFC names without control/bidi characters, up to 16 segments, 240 bytes/segment and 4096 bytes of input; MIME from the last extension, fallback octet-stream. This is a classification, not a security assessment of the file.
+RECOVERY:AtomicFile, the full peer-fingerprint:id, path/size/SHA256 and the phases pending/ready/published. A restart removes only its own pending rows/private copies; an already visible ready one becomes published, and a retry of that token creates no duplicate. Journal up to 512 receipts/4 MiB; no space in the history refuses receiving. The explicit "Clear history" keeps the public files, but forgets the idempotency of old tokens. We don't delete files that are visible after a late cancel/error; after publishing the user manages them in Downloads.
+UI:the home screen and the notification lead to receiving/history; Cancel identifies incoming transfers by peer+id, sending by outbound id. The notification at most 1/s during a transfer + an immediate end; names hidden on the lock screen. Open needs a separate tap, a content URI with a temporary read grant and the system's app chooser. "Show in Downloads" starts the system's downloads list. No auto-open/running of APKs.
+CHECK:IncomingFilesTest on the real MediaStore (extensions json/tar.gz/none/apk, collisions, checksum, idempotency, ENOSPC/cancel, six interruption points). scripts/check-android-receive-recovery.cjs additionally force-stops the real process in each phase and checks there are no pending rows/duplicates after a retry. scripts/check-android-receive-files.cjs: real QR/TLS Windows -> Android, 7 files with a folder and 1 GiB, independent SHA256 and the sender's Complete. Needs built debug APK/androidTest, cargo build --locked -p windconnect-windows --example files_peer and an explicit ANDROID_SERIAL of a disposable emulator, JAVA_HOME/ANDROID_HOME. Data/logs in TEMP; don't run on the user's phone. A short S25 test: files+folder in My Files/Download/WindConnect, opening by hand, cancelling without a partial file. Long Wi-Fi/battery runs stay for the end of the lane.
 
-## Szybkie akcje powiadomienia (WN-97)
-
-CCS/1
-FLOW:stałe powiadomienie połączenia: przy połączeniu „Wyślij schowek”, „Wyślij plik” (tylko gdy PC przyjmuje files/1), „Zatrzymaj”. Dotknięcie treści otwiera urządzenie. Bez połączenia: „Otwórz urządzenie”, „Połącz ponownie”, „Zatrzymaj”. Zmiana możliwości odbiornika aktualizuje akcje; same pomiary RTT nie przebudowują powiadomienia.
-SEC:obie akcje uruchamiają bezpośrednio Activity przez jawny, immutable PendingIntent. API31+ wymaga uwierzytelnienia; publiczna wersja powiadomienia nie ma akcji wysyłania ani nazwy urządzenia. Activity sprawdza Keyguard i prosi o odblokowanie przed odczytem schowka/automatycznym pickerem, także na API29–30. Schowek czytany dopiero przy focus; plik wybierany w DocumentsUI, potem własne potwierdzenie WN-40. Anulowanie wyboru niczego nie wysyła. Ponowne kliknięcia wracają do jednego ekranu; zachowują wybór lub status/Anuluj aktywnej wysyłki i nie otwierają kolejnych pickerów.
-LIMIT:POST_NOTIFICATIONS musi być przyznane, a stałe połączenie włączone, aby akcje były widoczne. Wygląd systemowego powiadomienia/pickera określa Android/One UI; ekrany aplikacji używają WindApp/WindButton. Test S25 obu akcji pozostaje wymagany.
-CHECK:`cw-progress --title "WN-97 akcje powiadomienia" -- node scripts/check-android-connection-notification.cjs`, z jawnym ANDROID_SERIAL jednorazowego emulatora i JAVA_HOME/ANDROID_HOME, po debug APK/androidTest oraz build example files_peer. Fixture używa efemerycznego parowania i folderu TEMP; sprawdza tekst, hash pliku, kategorie, wycofanie files/1 i brak akcji po rozłączeniu. Nigdy nie uruchamiać na telefonie użytkownika.
-
-## Wysyłanie plików na PC (WN-40)
+## File progress and retry (WN-41)
 
 CCS/1
-FLOW:Galeria/pliki -> Udostępnij -> „Wyślij na komputer · WindConnect”, albo Home -> „Wyślij plik” -> systemowy wybór wielu dokumentów. Własny ekran pokazuje nazwy, liczbę i sparowany komputer; dopiero jawne „Wyślij” rozpoczyna odczyt danych i transfer. Home wymaga aktywnej sesji i przyjętego files/1; wycofanie możliwości przywraca stan niedostępny. Skrót launchera „Wyślij plik” otwiera ten sam wybór plików (WN-116), akcja powiadomienia połączenia jest WN-97.
-SEC:tylko content:// z rzeczywistym grantem od dostawcy; bez szerokiej zgody na pamięć i bez utrwalania grantów. Zewnętrzne extras nie wybierają komputera/klucza/ścieżki docelowej. Nazwa/MIME/rozmiar to niezaufane metadane: nazwy są sprowadzane do przenośnych basename, kolizje rozróżniane, faktycznie odczytane bajty limitowane. Tekst bez URI nie jest plikiem. Limit100 plików,2GiB/plik,4GiB/partię i64MiB rezerwy wolnego miejsca. Rozmiar nieznany jest dozwolony; zadeklarowany rozmiar różny od odczytanego przerywa dany import.
-FLOW:tymczasowa nieeksportowana SendFilesService typu connectedDevice, uruchomiona tylko jawną akcją z widocznej Activity -> własny lease ConnectionOwner -> prywatny outbox -> istniejący FileEngine. Pipeline wysyła gotowy plik podczas importowania następnego; najwyżej3 niepotwierdzone kopie, usuwane po ACK odbiorcy. Każdy plik sprawdza miejsce. FFI przyjmuje wyłącznie kanoniczne zwykłe pliki z ustalonego outboxu i sesję adoptowanego, nadal przypiętego PC. Zmiana komputera nie przekierowuje reszty partii.
-STATE:usługa nie włącza preferencji stałego połączenia. UI może zostać zamknięte; ekran po ponownym otwarciu pokazuje bieżący stan usługi i Anuluj. Przy utracie sesji usługa ponawia tylko wybrany sparowany cel z backoff, a silnik wznawia pliki; brak postępu/połączenia przez120s kończy oczekiwanie. Zakończenie/anulowanie sprząta kopie i zwalnia lease; brak sticky replay. Stan transferów jest w pamięci procesu: po zabiciu procesu nie deklarujemy automatycznego wznowienia; następne wysłanie usuwa porzucone katalogi własnych partii, użytkownik wybiera pliki ponownie.
-PERF:obserwacja transferów/capabilities przez await-next-change, bez odpytywania. Publikator FileEngine czeka na dirty progress, najwyżej raz/100ms podczas zmian; bez stałego timera w idle. Powiadomienie systemowe najwyżej raz/s, ekran ma bieżący postęp. Nie jest to dowód budżetu baterii WN-30.
-LIMIT:bez POST_NOTIFICATIONS powiadomienie FGS jest ukryte przez Androida; postęp i Anuluj są dostępne w ekranie wysyłania po jego otwarciu. Nie zmieniamy zgody ani ustawień oszczędzania. Odbiór do publicznego Pobrane na Androidzie to WN-120; ten klient nie ogłasza odbioru files/1.
-IO:PC przyjmuje pliki do Pobrane/WindConnect, w stałych podfolderach Obrazy/Wideo/Audio/Dokumenty/Inne według ostatniego rozszerzenia (lista wyłącznie w wind-core files::incoming_folder). Typ jest organizacją, nie oceną bezpieczeństwa; brak automatycznego otwierania. WN-41 rozszerzy postęp/prędkość/retry/open-folder UI.
-CHECK:cargo tests files + FFI bridge; FileImportTest, Home capability/disabled semantics i FileImportValidationTest. Rzeczywisty test z osobnym UID źródła: `cw-progress --title "WN-40 transfery" -- node scripts/check-android-files.cjs`, z JAVA_HOME/ANDROID_HOME i jawnym ANDROID_SERIAL=emulator-…. Wymaga debug APK + androidTest i `cargo build --locked -p windconnect-windows --example files_peer`. Czyści tylko WindConnect na zweryfikowanym jednorazowym emulatorze. Osobny Java-only dostawca/Activity jest wyłącznie w APK testów; generuje20 różnych JPEG, zestaw mieszany, potoki/nieznany rozmiar i błędne granty. Odbiornik PC ma efemeryczne parowanie i TEMP jako root. Skrypt kontroluje hashe, kategorie, MOTW, zerwanie sesji, anulowanie i prawdziwy DocumentsUI picker; przywraca font/ustawienia emulatora i kończy własne helpery. Artefakty: TEMP/windconnect-wn40-*; nie uruchamiać na telefonie użytkownika. Test S25:20 zdjęć z Galerii do właściwego folderu i porównanie liczby/plików, osobno anulowanie oraz zamknięcie ekranu podczas wysyłki.
+RULE:our own screens use the engine's events (progress every 100 ms, no polling/idle timer); the system notification has a progress bar and bytes/speed at most once a second, and an immediate final state/Cancel. We don't promise SystemUI refreshing every 100 ms. Speed: monotonic deltas, a 1 s window + EMA; "—" before a full window and while waiting. While the sources are being imported the total size isn't known yet: an indeterminate bar, no made-up percentage. After all sources are prepared: the real bytes confirmed by the receiver / the size.
+FLOW:after an error or cancelling, "Retry unsent" -> a light openFileDescriptor/close of each remaining URI -> confirming again the same, still paired PC -> a new import/transfer. Files confirmed as received are not retried. A lost grant requires choosing the sources again. The WN-40 confirmation and limits stay; no automatic sending from a notification action, no persisting of grants and no keeping of failed GiB copies.
+LIMIT:the selection to retry lives only in the process; after it ends, choose the files again. Long measurements of physical Wi-Fi/battery are postponed. "Open folder" concerns the PC; Android's public receiving is described in WN-120 above. TalkBack gets semantic progress, not a live message every 100 ms.
+CHECK:`scripts/check-android-transfer-progress.cjs`: real sources from a separate UID and a receiver in TEMP; 5 files, 2 confirmed, a controlled read error, Retry sends only 3; a missing grant blocks the confirmation; indeterminate in the Activity/notification. Needs debug APK/androidTest, files_peer and an explicit ANDROID_SERIAL of a disposable emulator, JAVA_HOME/ANDROID_HOME. Don't run on the user's phone.
 
-## Widżet stanu PC (WN-33)
+## Quick notification actions (WN-97)
 
 CCS/1
-FLOW:Ustawienia -> „Dodaj widżet” -> potwierdzenie launchera; alternatywnie lista widżetów -> „WindConnect — stan PC”. Domyślnie4×2 (bazowa wysokość110dp do wyliczenia siatki launchera), zmiana szerokości/wysokości z minimum250×190dp. Treść i akcje tworzą zwartą grupę ze stałym odstępem4dp, bez rozpychania na całą przydzieloną wysokość. Własne powierzchnie akcji Glance, MaterialYou/paleta WN-22 i wybór jasny/ciemny aplikacji; minimum48dp dla akcji. „Wyślij schowek” otwiera istniejący focused sender, „Otwórz” aplikację. Przyjęcie prośby przez launcher nie jest przedstawiane jako potwierdzone dodanie.
-STATE:procent baterii dotyczy telefonu (WN-20), ⚡ oznacza ładowanie; pełny opis jest dostępny dla TalkBack. „Połączono · godzina” zawsze podaje czas snapshotu. Przy wyłączonym połączeniu w tle widżet mówi „Połączenie w tle wyłączone”, nawet jeżeli otwarta Activity chwilowo posiada połączenie. „Otwórz” pozwala przejść do konfiguracji. Zegar respektuje ustawienie12/24h telefonu.
-RULE:updatePeriodMillis=0. Bez app timerów, cyklicznego WorkRequest, alarmu ani minutowego odpytywania. Obserwator działa tylko z zainstalowanym widżetem; nie otwiera WindCore/połączenia. Zmiana znormalizowanego stanu, procentu/ładowania lub motywu -> snapshot w pamięci -> Glance.updateAll. RTT, surowe błędy, temperatura/napięcie nie zmieniają prezentacji. Glance używa własnych jednorazowych sesji WorkManager. Odbiornik nie ponawia sesji dla już żądanych ID przy powtarzającym się APPWIDGET_UPDATE (ochrona przed PACKAGE_CHANGED po zmianach komponentów WorkManager); nowe ID i resize nadal działają. Usunięcie ostatniego widżetu usuwa obserwatora i receiver baterii.
-SEC:widżet/receiver/worker nie czyta ani nie przechowuje schowka. PendingIntent prowadzi do istniejącej prywatnej SendClipboardActivity, która wymaga fokusu/odblokowania i zachowuje sensitive/limity. Provider jest exported=false. Z istniejącej listy parowań otwartej aplikacji zachowujemy wyłącznie nazwę ostatniego nieusuniętego PC w widget_presentation; zmiana/usunięcie parowania aktualizuje etykietę także offline. Nie otwieramy rdzenia dla samej nazwy. Nie utrwalamy Connected na dysku; ponowny proces odczytuje bieżący ConnectionOwner, bez odtwarzania starego połączenia.
-LIMIT:Android może zachować ostatni RemoteViews po force-stop lub nieoczekiwanym zabiciu procesu, dopóki nie nastąpi dozwolone zdarzenie. Dlatego widoczna jest godzina snapshotu; nie obiecujemy aktualizacji po force-stop. Przy działającej usłudze połączenia zmiany dochodzą bez otwierania Activity. Tekst Glance jest renderowany przez RemoteViews/systemową rodzinę fontu; geometria/kolory/rozmiary są własne, nie używamy domyślnych przycisków systemu.
-CHECK:WidgetModelTest (off, prywatność, RTT, unknown battery); scripts/check-android-widget.cjs na jawnie wskazanym jednorazowym emulatorze (realny AppWidgetHost, procent/temperatura, min resize250×190 przy150% fontu, dwa motywy, obie akcje,125s bez aktualizacji). Test ustawia tylko baterię emulatora i własne preferencje/host ID, a następnie je przywraca. Nie uruchamiać widgetFixture na telefonie użytkownika. Pełny run Androida osobno; test S25 Ultra/One UI wymagany przed zgłoszeniem.
+FLOW:the persistent connection notification: when connected, "Send clipboard", "Send file" (only when the PC accepts files/1), "Stop". Touching the content opens the device. Without a connection: "Open device", "Reconnect", "Stop". A change of the receiver's capabilities updates the actions; RTT measurements alone don't rebuild the notification.
+SEC:both actions start the Activity directly through an explicit, immutable PendingIntent. API 31+ requires authentication; the public version of the notification has no sending actions and no device name. The Activity checks the Keyguard and asks to unlock before reading the clipboard/the automatic picker, also on API 29–30. The clipboard is read only on focus; the file is chosen in DocumentsUI, then our own WN-40 confirmation. Cancelling the choice sends nothing. Repeated clicks return to one screen; they keep the selection or the status/Cancel of an active send and don't open further pickers.
+LIMIT:POST_NOTIFICATIONS must be granted and the persistent connection turned on for the actions to be visible. The look of the system notification/picker is decided by Android/One UI; the app's screens use WindApp/WindButton. An S25 test of both actions is still required.
+CHECK:`cw-progress --title "WN-97 notification actions" -- node scripts/check-android-connection-notification.cjs`, with an explicit ANDROID_SERIAL of a disposable emulator and JAVA_HOME/ANDROID_HOME, after the debug APK/androidTest and building the example files_peer. The fixture uses an ephemeral pairing and a TEMP folder; it checks the text, the file's hash, the categories, withdrawing files/1 and no actions after disconnecting. Never run on the user's phone.
 
-### Audyt przyrostu bibliotek widżetu
+## Sending files to the PC (WN-40)
 
 CCS/1
-SOURCE:rzeczywiste AAR/JAR i POM w cache Gradle, licencje META-INF Glance oraz nagłówki opublikowanych sources.jar pozostałych modułów. Porównanie debugRuntimeClasspath przed/po:20 nowych artefaktów, bez podniesienia wersji wcześniej obecnych bibliotek. Pełna lista/hashe/source headers: run record karty.
-DEP:Glance1.2.0 stabilne, compileSdk35; runtime WorkManager/Room/DataStore to zależności Glance. Wersje poniżej są rzeczywiście rozwiązane przez Gradle, nie rekomendacje nowych wersji. Brak nowego binarnego kodu natywnego. WorkManager dodaje normalne WAKE_LOCK i standardowe komponenty schedulera; ACCESS_NETWORK_STATE było już wymagane przez wind-core. Nie dodano nowej zgody runtime.
+FLOW:Gallery/files -> Share -> "Send to computer · WindConnect", or Home -> "Send a file" -> the system's multi-document picker. Our own screen shows the names, the count and the paired computer; only the explicit "Send" starts reading the data and the transfer. Home requires an active session and accepted files/1; withdrawing the capability restores the unavailable state. The launcher shortcut "Send a file" opens the same file picker (WN-116), the connection notification's action is WN-97.
+SEC:only content:// with a real grant from the provider; no broad storage permission and no persisting of grants. External extras don't choose the computer/key/target path. Name/MIME/size are untrusted metadata: names are reduced to portable basenames, collisions are told apart, the bytes actually read are limited. Text without a URI is not a file. Limit 100 files, 2 GiB/file, 4 GiB/batch and a 64 MiB free-space reserve. An unknown size is allowed; a declared size different from what was read stops that import.
+FLOW:a temporary non-exported SendFilesService of type connectedDevice, started only by an explicit action from a visible Activity -> its own ConnectionOwner lease -> a private outbox -> the existing FileEngine. The pipeline sends a ready file while importing the next one; at most 3 unconfirmed copies, deleted after the receiver's ACK. Each file checks the space. The FFI accepts only canonical regular files from the fixed outbox and the session of an adopted, still pinned PC. A change of computer doesn't redirect the rest of the batch.
+STATE:the service doesn't turn on the persistent-connection preference. The UI may be closed; the screen, when reopened, shows the service's current state and Cancel. When the session is lost, the service retries only the chosen paired target with backoff, and the engine resumes the files; no progress/connection for 120 s ends the wait. Finishing/cancelling cleans up the copies and releases the lease; no sticky replay. The transfers' state is in the process's memory: after the process is killed we don't claim automatic resumption; the next send removes abandoned folders of our own batches, the user chooses the files again.
+PERF:observing transfers/capabilities through await-next-change, without polling. The FileEngine publisher waits for dirty progress, at most once/100 ms during changes; no constant timer when idle. The system notification at most once/s, the screen has the current progress. This is not proof of the WN-30 battery budget.
+LIMIT:without POST_NOTIFICATIONS the FGS notification is hidden by Android; progress and Cancel are available in the sending screen once it is opened. We don't change the permission or the battery-saving settings. Receiving into the public Downloads on Android is WN-120; this client doesn't announce receiving files/1.
+IO:the PC accepts files into Downloads/WindConnect, in the fixed subfolders Images/Video/Audio/Documents/Other by the last extension (the list only in wind-core files::incoming_folder). The type is organization, not a security assessment; no automatic opening. WN-41 extends the progress/speed/retry/open-folder UI.
+CHECK:cargo tests files + the FFI bridge; FileImportTest, Home capability/disabled semantics and FileImportValidationTest. A real test with a separate source UID: `cw-progress --title "WN-40 transfers" -- node scripts/check-android-files.cjs`, with JAVA_HOME/ANDROID_HOME and an explicit ANDROID_SERIAL=emulator-…. Needs the debug APK + androidTest and `cargo build --locked -p windconnect-windows --example files_peer`. It clears only WindConnect on a verified disposable emulator. A separate Java-only provider/Activity exists only in the test APK; it generates 20 different JPEGs, a mixed set, pipes/an unknown size and bad grants. The PC receiver has an ephemeral pairing and TEMP as its root. The script checks hashes, categories, MOTW, a broken session, cancelling and the real DocumentsUI picker; it restores the emulator's font/settings and ends its own helpers. Artifacts: TEMP/windconnect-wn40-*; don't run on the user's phone. S25 test: 20 photos from the Gallery into the right folder and comparing the count/files, separately cancelling and closing the screen during sending.
 
-| Komponent | Wersja | Licencja — plik/źródło | Co trafia do APK | Ocena |
+## PC status widget (WN-33, WN-160)
+
+CCS/1
+FLOW:Settings -> "Add widget" -> the launcher's confirmation; alternatively the widget list -> "WindConnect — PC status". 4×2 by default (a base height of 110 dp for the launcher's grid computation), resizable down to 180×100 dp. WN-160: Glance responsive sizes chosen by height: small (the clipboard button; tapping the header opens the app), medium (two buttons, the battery on its own line), large (2×2: clipboard, file, touchpad, the app); no empty area. A status dot, a battery icon, buttons with icons, "Open the app"; with a large system font the medium size uses one-word labels without icons. Own Glance action surfaces, Material You/the WN-22 palette and the app's light/dark choice through the same readable scheme as the app; at least 48 dp for actions. "Send clipboard" opens the existing focused sender. The launcher accepting the request is not presented as a confirmed addition.
+STATE:the battery percentage is the phone's (WN-20), the charging icon marks charging; the full description is available to TalkBack. "Connected · time" always gives the snapshot's time. The state uses the app's words ("Computer out of range", "No paired computer"). With the background connection off the widget says "Background connection off", even if an open Activity holds the connection for a moment. The clock follows the phone's 12/24 h setting.
+RULE:updatePeriodMillis=0. No app timers, periodic WorkRequest, alarm or polling every minute. The observer runs only with an installed widget; it doesn't open WindCore/the connection. A change of the normalized state, percentage/charging or theme -> a snapshot in memory -> Glance.updateAll. RTT, raw errors, temperature/voltage don't change the presentation. Glance uses its own one-time WorkManager sessions. The receiver doesn't repeat sessions for already requested IDs on repeated APPWIDGET_UPDATE (protection against PACKAGE_CHANGED after WorkManager component changes); new IDs and resizing still work. Removing the last widget removes the observer and the battery receiver.
+SEC:the widget/receiver/worker doesn't read or keep the clipboard. The PendingIntent leads to the existing private SendClipboardActivity, which requires focus/unlocking and keeps sensitive/limits. The provider is exported=false. From the open app's existing pairing list we keep only the name of the last non-removed PC in widget_presentation; a change/removal of a pairing updates the label also offline. We don't open the core just for the name. We don't persist Connected on disk; a new process reads the current ConnectionOwner, without restoring an old connection.
+LIMIT:Android may keep the last RemoteViews after a force-stop or an unexpected kill of the process until an allowed event comes. That is why the snapshot's time is visible; we don't promise updates after a force-stop. With the connection service running, changes arrive without opening the Activity. Glance text is rendered by RemoteViews/the system font family; geometry/colours/sizes are our own, we don't use the system's default buttons.
+CHECK:WidgetModelTest (off, privacy, RTT, unknown battery, the app's status words); scripts/check-android-widget.cjs and WidgetHostTest on an explicitly chosen disposable emulator (a real AppWidgetHost, percentage/temperature, the minimum resize 250×190 at 150% font, two themes, both actions, 125 s without updates). The test sets only the emulator's battery and its own preferences/host ID, and then restores them. Don't run widgetFixture on the user's phone. UiWidgetShotsTest takes screenshots of the sizes on demand (`-e uiShots true`). A full Android run separately; an S25 Ultra/One UI test is required before reporting.
+
+### Incremental audit of the widget's libraries
+
+CCS/1
+SOURCE:the real AARs/JARs and POMs in the Gradle cache, Glance's META-INF licenses and the headers of the published sources.jar of the other modules. Comparing debugRuntimeClasspath before/after: 20 new artifacts, without raising the version of previously present libraries. The full list/hashes/source headers: the card's run record.
+DEP:Glance 1.2.0 stable, compileSdk 35; the runtime WorkManager/Room/DataStore are Glance's dependencies. The versions below are those actually resolved by Gradle, not recommendations of new versions. No new native binary code. WorkManager adds the normal WAKE_LOCK and the standard scheduler components; ACCESS_NETWORK_STATE was already required by wind-core. No new runtime permission was added.
+
+| Component | Version | License — file/source | What goes into the APK | Assessment |
 | --- | --- | --- | --- | --- |
-| glance-appwidget, glance, glance-material3, glance-appwidget-proto | 1.2.0 | Apache-2.0, własne META-INF/LICENSE.txt; `assets/AndroidX-APACHE-2.0.txt` | DEX/zasoby Glance | Permisywne, pełny tekst dołączony. |
-| core-remoteviews | 1.1.0 | Apache-2.0, sources.jar nagłówki AOSP + wspólny tekst powyżej | DEX | Permisywna. |
-| lifecycle-livedata, lifecycle-service, lifecycle-livedata-core-ktx | 2.8.7 | Apache-2.0, sources.jar/POM AOSP (core-ktx pusty artefakt zgodności) | DEX/metadane | Permisywna. |
-| datastore, datastore-core, datastore-preferences, datastore-preferences-core | 1.0.0 | Apache-2.0, nagłówki sources.jar AOSP; protobuf poniżej osobno | DEX | Permisywna; vendored kod sprawdzony osobno. |
-| concurrent-futures-ktx | 1.1.0 | Apache-2.0, sources.jar AOSP | DEX | Permisywna. |
-| work-runtime, work-runtime-ktx | 2.7.1 | Apache-2.0, sources.jar AOSP | DEX/manifest schedulera | Permisywna. |
-| room-runtime, room-common | 2.2.5 | Apache-2.0, sources.jar AOSP | DEX | Permisywna. |
-| sqlite, sqlite-framework | 2.1.0 | Apache-2.0, sources.jar AOSP | DEX, wrapper systemowej SQLite | Permisywna; brak nowego .so. |
-| glance-appwidget-external-protobuf | artefakt 1.2.0 | BSD-3-Clause w rzeczywistym `META-INF/.../LICENSE.txt`, `assets/Glance-Protobuf-BSD.txt` | Relokowany runtime protobuf w DEX | Permisywna; nie utożsamiamy z Apache innych modułów. |
-| protobuf-javalite wewnątrz datastore-preferences-core | 3.10.0, wersja z jego pom.properties | Google Inc./BSD-3-Clause, `assets/Protobuf-BSD.txt`, upstream LICENSE | Druga relokowana kopia w DEX | Pełny copyright/warunki dołączone. |
+| glance-appwidget, glance, glance-material3, glance-appwidget-proto | 1.2.0 | Apache-2.0, own META-INF/LICENSE.txt; `assets/AndroidX-APACHE-2.0.txt` | Glance DEX/resources | Permissive, full text included. |
+| core-remoteviews | 1.1.0 | Apache-2.0, sources.jar AOSP headers + the shared text above | DEX | Permissive. |
+| lifecycle-livedata, lifecycle-service, lifecycle-livedata-core-ktx | 2.8.7 | Apache-2.0, sources.jar/POM AOSP (core-ktx an empty compatibility artifact) | DEX/metadata | Permissive. |
+| datastore, datastore-core, datastore-preferences, datastore-preferences-core | 1.0.0 | Apache-2.0, sources.jar AOSP headers; protobuf below separately | DEX | Permissive; vendored code checked separately. |
+| concurrent-futures-ktx | 1.1.0 | Apache-2.0, sources.jar AOSP | DEX | Permissive. |
+| work-runtime, work-runtime-ktx | 2.7.1 | Apache-2.0, sources.jar AOSP | DEX/scheduler manifest | Permissive. |
+| room-runtime, room-common | 2.2.5 | Apache-2.0, sources.jar AOSP | DEX | Permissive. |
+| sqlite, sqlite-framework | 2.1.0 | Apache-2.0, sources.jar AOSP | DEX, a wrapper of the system SQLite | Permissive; no new .so. |
+| glance-appwidget-external-protobuf | artifact 1.2.0 | BSD-3-Clause in the real `META-INF/.../LICENSE.txt`, `assets/Glance-Protobuf-BSD.txt` | A relocated protobuf runtime in DEX | Permissive; we don't equate it with the other modules' Apache. |
+| protobuf-javalite inside datastore-preferences-core | 3.10.0, the version from its pom.properties | Google Inc./BSD-3-Clause, `assets/Protobuf-BSD.txt`, upstream LICENSE | A second relocated copy in DEX | Full copyright/conditions included. |
 
 CCS/1
-IO:NOTICE.txt uzupełniono o wszystkie20 modułów oraz obie kopie protobuf. Licencje Apache/BSD są pełnymi tekstami w assets i podlegają kontroli zawartości końcowego APK. Własny layout/shape preview: MIT projektu. Istniejące fonty/ZXing/Rust bez zmian.
+IO:NOTICE.txt was completed with all 20 modules and both protobuf copies. The Apache/BSD licenses are full texts in assets and are subject to a check of the final APK's contents. Our own preview layout/shape: the project's MIT. Existing fonts/ZXing/Rust unchanged.
 EXT:https://developer.android.com/jetpack/androidx/releases/glance ; https://android.googlesource.com/platform/frameworks/support ; https://github.com/protocolbuffers/protobuf/blob/v3.10.0/LICENSE
 
-## Skróty launchera (WN-72)
+## Launcher shortcuts (WN-72)
 
 CCS/1
-DEC:wariant A zatwierdzony przez użytkownika. WN-116: wszystkie trzy skróty działają. „Wyślij plik” otwiera ShareFilesActivity (PICK, systemowy wybór plików), „Touchpad” otwiera TouchpadActivity; oba bezpośrednio, bez Home. Stałe ID (send_file, touchpad) zostają, a publish() przy starcie procesu wywołuje też updateShortcuts, więc przypięte wcześniej kopie dostają nowe etykiety i cele.
-FLOW:przytrzymanie ikony -> statyczny send_clipboard (dostępny od instalacji) i dynamiczne send_file/touchpad (publikowane przy starcie procesu). Ustawienia -> „Przypnij: …” -> requestPinShortcut; można też przeciągnąć pozycję z menu launchera na pulpit. Dialog przypięcia renderuje launcher; treść aplikacji używa własnych komponentów motywu.
-RULE:stabilne ID; schowek immutable, przypinany przez samo ID. Pliki/touchpad mają „niedostępne” w etykiecie i osobny ekran wyjaśnienia zamiast pozorowania działania. Prośba do launchera nie jest potwierdzeniem przypięcia: UI mówi tylko o przekazaniu prośby. Limit dynamicznych pozycji uwzględnia statyczny schowek.
-SEC:eksportowany LauncherShortcutActivity akceptuje wyłącznie trzy stałe action; ignoruje URI/extras. Schowek -> istniejący SendClipboardActivity, bez Home, odczyt dopiero przy fokusie/odblokowaniu; offline/sensitive/limity jak WN-35. Plik/touchpad: ekran docelowy sam mówi o braku połączenia lub nieprzyjętej możliwości; skrót niczego nie wysyła sam.
-TEST:LauncherActionTest, LauncherShortcutsTest (rejestracja, brak duplikatów, bezpośrednie cele/offline, odrzucenie obcej akcji). Fizyczny S25 Ultra/One UI: przytrzymanie ikony, trzy pozycje, przeciąganie i przypięcie z Ustawień; działający schowek do PC i powrót do poprzedniej aplikacji, offline, blokada/anulowanie odblokowania; plik -> wybór plików i ekran wysyłania, touchpad -> touchpad (offline: komunikat ekranu), bez Home; przypięte przed WN-116 kopie po aktualizacji. Jasny/ciemny,150% tekstu i TalkBack. Emulator nie zastępuje launchera Samsunga.
+DEC:variant A approved by the user. WN-116: all three shortcuts work. "Send a file" opens ShareFilesActivity (PICK, the system file picker), "Touchpad" opens TouchpadActivity; both directly, without Home. The fixed IDs (send_file, touchpad) stay, and publish() at process start also calls updateShortcuts, so copies pinned earlier get the new labels and targets.
+FLOW:holding the icon -> the static send_clipboard (available from installation) and the dynamic send_file/touchpad (published at process start). Settings -> one button per shortcut -> requestPinShortcut; an entry can also be dragged from the launcher's menu onto the home screen. The pin dialog is rendered by the launcher; the app's content uses our own theme components.
+RULE:stable IDs; the clipboard is immutable, pinned by the ID alone. Files/touchpad have "unavailable" in the label and a separate explanation screen instead of pretending to work. A request to the launcher is not a confirmation of pinning: the UI says only that the request was handed over. The limit of dynamic entries takes the static clipboard into account.
+SEC:the exported LauncherShortcutActivity accepts only three fixed actions; it ignores URIs/extras. Clipboard -> the existing SendClipboardActivity, without Home, reading only on focus/unlocking; offline/sensitive/limits as in WN-35. File/touchpad: the target screen itself says there is no connection or no accepted capability; the shortcut sends nothing by itself.
+TEST:LauncherActionTest, LauncherShortcutsTest (registration, no duplicates, direct targets/offline, rejecting a foreign action). A physical S25 Ultra/One UI: holding the icon, three entries, dragging and pinning from Settings; a working clipboard to the PC and returning to the previous app, offline, locking/cancelling unlocking; file -> the file picker and the sending screen, touchpad -> touchpad (offline: the screen's message), without Home; copies pinned before WN-116 after an update. Light/dark, 150% text and TalkBack. An emulator doesn't replace Samsung's launcher.
 
-## Kafelek szybkich ustawień (WN-32)
+## Quick Settings tile (WN-32)
 
 CCS/1
-FLOW: Android13+: Ustawienia -> „Dodaj do szybkich ustawień” -> systemowy dialog requestAddTileService. Dodano/już dodany -> potwierdzenie; odmowa -> brak ponawiania, akcja pozostaje w Ustawieniach. Starszy Android: instrukcja ręcznej edycji panelu zamiast przycisku. Stuknięcie kafelka -> odblokowanie -> istniejący ekran wysyłania schowka -> powrót po dostarczeniu. Przytrzymanie -> aplikacja.
-STATE: aktywny = połączony komputer; nieaktywny = łączenie lub brak połączenia. Nazwa/stany są opisane dla TalkBack. SystemUI renderuje kafelek i kolory motywu systemowego; aplikacja dostarcza własną ikonę i tekst.
-RULE: panel obserwuje stan istniejącego ConnectionOwner, bez nowego klienta, połączenia, timera ani odczytu schowka. Obserwacja trwa tylko podczas nasłuchu TileService. Ostatnie zwolnienie klienta resetuje stan; ponowne otwarcie panelu od razu odczytuje aktualny stan. Usługa połączenia aktualizuje ten sam stan bez otwierania Activity.
-SEC: TileService jest eksportowany wyłącznie z systemowym BIND_QUICK_SETTINGS_TILE. Odczyt schowka odbywa się po odblokowaniu i uzyskaniu fokusu SendClipboardActivity; obowiązują istniejące limity/sensitive. Brak payloadu i surowych błędów w kafelku.
+FLOW: Android 13+: Settings -> "Add to Quick Settings" -> the system dialog requestAddTileService. Added/already added -> confirmation; refusal -> no retry, the action stays in Settings. Older Android: instructions for editing the panel by hand instead of a button. Tapping the tile -> unlocking -> the existing clipboard sending screen -> back after delivery. Holding -> the app.
+STATE: active = a connected computer; inactive = connecting or no connection. The name/states are described for TalkBack. SystemUI renders the tile and the system theme's colours; the app provides its own icon and text.
+RULE: the panel observes the state of the existing ConnectionOwner, without a new client, connection, timer or clipboard read. Observing lasts only while the TileService is listening. The last client release resets the state; reopening the panel reads the current state at once. The connection service updates the same state without opening the Activity.
+SEC: the TileService is exported only with the system's BIND_QUICK_SETTINGS_TILE. Reading the clipboard happens after unlocking and SendClipboardActivity getting focus; the existing limits/sensitive apply. No payload and no raw errors in the tile.
 
-Testy: `:app:testDebugUnitTest` (stany, utrata połączenia, prywatność),
-`ClipboardTileRegistrationTest` w `:app:connectedDebugAndroidTest` (deklaracja
-usługi, uprawnienie, odkrywanie, cel przytrzymania).
-Na S25 Ultra / One UI: dodaj kafelek, zamknij aplikację przy działającej usłudze,
-rozłącz/przywróć PC i sprawdź zmianę stanu w otwartym panelu oraz po jego
-ponownym otwarciu. Skopiuj tekst, stuknij kafelek, sprawdź schowek PC i powrót;
-powtórz z blokadą ekranu i anulowanym odblokowaniem (bez wysyłki), schowkiem
-wrażliwym oraz bez połączenia. Przytrzymanie otwiera WindConnect. Sprawdź
-jasny/ciemny motyw systemu, tekst 150% i odczyt TalkBack. Emulator nie
-potwierdza zachowania panelu Samsunga.
+Tests: `:app:testDebugUnitTest` (states, losing the connection, privacy),
+`ClipboardTileRegistrationTest` in `:app:connectedDebugAndroidTest` (the service's
+declaration, permission, discovery, the hold target).
+On an S25 Ultra / One UI: add the tile, close the app with the service running,
+disconnect/restore the PC and check the state change in the open panel and after
+reopening it. Copy text, tap the tile, check the PC's clipboard and the return;
+repeat with the screen locked and unlocking cancelled (no sending), a sensitive
+clipboard and without a connection. Holding opens WindConnect. Check
+the system's light/dark theme, 150% text and TalkBack reading. An emulator doesn't
+confirm the behaviour of Samsung's panel.
 
-Ikona WN-93 „Orbita” ma warstwy adaptive i monochrome, własny biały wektor
-powiadomienia oraz mipmapy mdpi–xxxhdpi. Źródła i odtwarzanie:
-`assets/brand/README.md`. Na S25 Ultra sprawdź launcher One UI przy włączonych
-i wyłączonych ikonach tematycznych oraz stałe powiadomienie; emulator potwierdza
-zasoby/API Androida, ale nie zachowanie launchera Samsunga.
+The WN-93 icon "Orbita" has adaptive and monochrome layers, its own white
+notification vector and mdpi–xxxhdpi mipmaps. Sources and regenerating:
+`assets/brand/README.md`. On an S25 Ultra check the One UI launcher with themed
+icons on and off, and the persistent notification; an emulator confirms
+Android's resources/APIs, but not the behaviour of Samsung's launcher.
 
-Aplikacja Kotlin / Jetpack Compose ze skanerem QR i potwierdzeniem parowania z PC.
-Moduł `:wind-core` zawiera wiązania UniFFI 0.32.2, wrapper korutynowy ze
-`StateFlow` i biblioteki Rust dla arm64-v8a oraz x86_64. Wymagany Android 10+
-(minSdk 29). Parowanie QR korzysta z protokołu WN-19 przez UniFFI;
-debug zachowuje dodatkowy ekran ręcznego testu połączenia z PC.
+A Kotlin / Jetpack Compose app with a QR scanner and confirmation of pairing with the PC.
+The `:wind-core` module contains UniFFI 0.32.2 bindings, a coroutine wrapper with
+`StateFlow` and the Rust libraries for arm64-v8a and x86_64. Requires Android 10+
+(minSdk 29). QR pairing uses the WN-19 protocol through UniFFI;
+debug keeps an additional screen for a manual connection test with the PC.
 
-## Budowanie
+## Building
 
-Wymagania: JDK 17, Android SDK Platform 35, Build Tools 35.0.0,
-NDK 27.0.12077973 oraz stabilny Rust/Cargo w PATH.
-Zainstaluj cele Rust: `rustup target add aarch64-linux-android x86_64-linux-android`.
-Ustaw `JAVA_HOME` na katalog JDK, a `ANDROID_HOME` na katalog SDK
-(albo wpisz ścieżkę `sdk.dir` w lokalnym, ignorowanym `local.properties`).
-Gradle Wrapper pobiera przypięty Gradle 8.11.1 i sprawdza SHA-256 dystrybucji.
+Requirements: JDK 17, Android SDK Platform 35, Build Tools 35.0.0,
+NDK 27.0.12077973 and Rust/Cargo in PATH (the version is pinned in `rust-toolchain.toml`,
+together with both Android targets; rustup installs them on first use).
+Set `JAVA_HOME` to the JDK folder and `ANDROID_HOME` to the SDK folder
+(or write the `sdk.dir` path into a local, ignored `local.properties`).
+The Gradle Wrapper downloads the pinned Gradle 8.11.1 and checks the distribution's SHA-256.
 
-Z katalogu `apps/android` na Windows:
+From the `apps/android` folder on Windows:
 
 ```powershell
 .\gradlew.bat --no-daemon :app:lintDebug
 .\gradlew.bat --no-daemon :app:assembleDebug
 ```
 
-Na Linuxie/macOS użyj `./gradlew` zamiast `.\gradlew.bat`.
-Wynik: `app/build/outputs/apk/debug/app-debug.apk`.
+On Linux/macOS use `./gradlew` instead of `.\gradlew.bat`.
+Output: `app/build/outputs/apk/debug/app-debug.apk`.
 
-ABI (WN-95): wywołanie z samymi zadaniami debug (`assembleDebug`,
-`connectedDebugAndroidTest`, `testDebugUnitTest`, `lintDebug`…) poza CI
-kompiluje i pakuje jedno ABI, domyślnie `x86_64` (emulator). Na telefon
-(S25 Ultra) dodaj `-PwindAbi=arm64-v8a`; oba naraz: `-PwindAbi=all`.
-Release, `build` i wszystko w CI (zmienna `CI`) budują oba ABI. Biblioteki
-Rust trafiają do wspólnego `target/` repozytorium (bez drugiej kopii w
-`wind-core/build`); sprzątanie: `scripts/clean-build.ps1` (MSI usuwa tylko w
-wersjach starszych niż `[workspace.package]` z `Cargo.toml`, a bez odczytanej
-wersji żadnego; test: `pwsh scripts/test-clean-build.ps1`).
-Klucz debug jest generowany lokalnie przez narzędzia Androida; APK służy do testów.
+ABI (WN-95): a call with only debug tasks (`assembleDebug`,
+`connectedDebugAndroidTest`, `testDebugUnitTest`, `lintDebug`…) outside CI
+compiles and packages one ABI, `x86_64` by default (the emulator). For a phone
+(S25 Ultra) add `-PwindAbi=arm64-v8a`; both at once: `-PwindAbi=all`.
+Release, `build` and everything in CI (the `CI` variable) build both ABIs. The Rust
+libraries go into the repository's shared `target/` (without a second copy in
+`wind-core/build`); cleanup: `scripts/clean-build.ps1` (it removes MSIs only of
+versions older than `[workspace.package]` from `Cargo.toml`, and without a version
+read, none; test: `pwsh scripts/test-clean-build.ps1`).
+The debug key is generated locally by Android's tools; the APK is for testing.
 
-## CI i instalacja
+## CI and installation
 
-Workflow **Android debug APK** uruchamia lint i buduje APK dla PR,
-push do `master` oraz ręcznego uruchomienia. W Actions pobierz artefakt
-`WindConnect-android-debug-apk` i rozpakuj ZIP.
+The **Android debug APK** workflow runs lint and builds the APK for a PR,
+a push to `master` and a manual run. In Actions download the artifact
+`WindConnect-android-debug-apk` and unpack the ZIP.
 
-Na telefonie z Androidem 10+ włącz debugowanie USB, zatwierdź komputer i wykonaj:
+On a phone with Android 10+ turn on USB debugging, approve the computer and run:
 
 ```sh
 adb install -r app-debug.apk
 adb shell am start -W -n io.github.prejas3.windconnect/.MainActivity
 ```
 
-Powinien pojawić się ekran „Połącz z komputerem”. Debug: przycisk „Test połączenia z PC”
-otwiera diagnostykę z odciskiem i kluczem publicznym Androida.
-Ikona robocza jest własnym zasobem projektu na licencji MIT. Aplikacja
-uprawnienia CAMERA żąda dopiero po wybraniu skanera i naciśnięciu „Zezwól na aparat”;
-odbiór linku z aparatu systemowego nie wymaga tego uprawnienia. Używa też INTERNET. Instalację na telefonie oraz pobranie APK z CI trzeba
-potwierdzić po opublikowaniu repozytorium.
+The "Connect to the computer" screen should appear. Debug: the button "PC connection test"
+opens diagnostics with Android's fingerprint and public key.
+The working icon is the project's own resource under the MIT license. The app
+asks for the CAMERA permission only after choosing the scanner and pressing "Allow the camera";
+receiving a link from the system camera doesn't need this permission. It also uses INTERNET. Release
+test packages are published on GitHub Releases (WN-162).
 
-Gradle Wrapper jest narzędziem budowania na licencji Apache-2.0;
-tekst licencji znajduje się w `gradle/wrapper/LICENSE`.
+The Gradle Wrapper is a build tool under the Apache-2.0 license;
+the license text is in `gradle/wrapper/LICENSE`.
 
 
-## Parowanie QR (WN-26)
+## QR pairing (WN-26)
 
 CCS/1
-FLOW: „Zeskanuj kod QR” -> zgoda CAMERA -> Camera2/YUV -> ZXing -> ścisły parser Rust §12.4 -> ekran nazwy i odcisku -> jawne „Sparuj urządzenia” -> uwierzytelniony protokół WN-19 -> zapis przypiętego klucza.
-IO: Link `windconnect:pair?v=1&k=…&s=…&a=…[&n=…]` obsługiwany przez ACTION_VIEW/DEFAULT/BROWSABLE (schemat z PROTOCOL.md). Zewnętrzny aparat otwiera ekran potwierdzenia; ciepły start obsługuje onNewIntent. Link nigdy nie uruchamia parowania sam.
-SEC: Skan/intent używają tego samego parsera Rust: limit 1024 bajty, wersja, klucz Ed25519, jednorazowy sekret, adresy i powtórzone pola. Błędny link nie nadaje zaufania. Nazwa z linku jest niezaufana; UI podaje też odcisk. Nie wyświetlamy ani nie logujemy sekretu; intent jest czyszczony, oferta nie trafia do saved state/preferences. Po odtworzeniu procesu trzeba zeskanować kod ponownie.
-STATE: Oferta żyje w obiekcie Rust, wymazującym sekret przy zwolnieniu. Anulowanie zwalnia ofertę; równoległe intenty nie zastępują trwającego parowania. Próba trwa maksymalnie 30 s; po błędzie wymagany nowy kod. Sekret jest konsumowany przez FFI jednokrotnie. Potwierdzone klucze: noBackupFilesDir/paired.txt, ładowane przy otwieraniu WindCore; klucz prywatny pozostaje w istniejącym KeystoreIdentityStore.
-RULE: Uszkodzone linie paired.txt są pomijane zgodnie z WN-19. load_paired zwraca poprawne devices i osobne skipped_records; poprawne klucze pozostają przypięte. Liczba pominiętych wpisów przechodzi przez WindCore do nieblokującego komunikatu na ekranie głównym. Błąd odczytu pliku nadal jest błędem magazynu; zła linia nie blokuje startu ani nie powoduje wyczyszczenia pliku.
-RULE: Aparat tylko na ekranie skanera i w stanie resumed; sesja/obrazy zamykane po wyjściu lub onPause. Brak zapisu zdjęć, wysyłania klatek i usługi aparatu w tle. Odmowa zgody ma własny komunikat i przejście do ustawień; link systemowy działa bez zgody CAMERA. Brak aparatu nie blokuje instalacji.
-LIMIT: Ekran urządzeń i usługa należą do kolejnych kart lane. WN-25 dodaje QR na PC i automatyczne połączenie po parowaniu: adres z odkrywania, klucz wyłącznie z zapisanego zaufania, limit 7 s. Brak połączenia nie cofa parowania; status UI śledzi sesję. Fizyczne zachowanie Samsung Camera na S25 Ultra/One UI wymaga sprawdzenia: aparat musi zaoferować otwarcie custom URI `windconnect:pair`. Obsługa VIEW potwierdzona testem Androida nie zastępuje tego testu aparatu.
+FLOW: "Scan the QR code" -> CAMERA permission -> Camera2/YUV -> ZXing -> the strict Rust parser §12.4 -> the name and fingerprint screen -> an explicit "Pair devices" -> the authenticated WN-19 protocol -> storing the pinned key.
+IO: The link `windconnect:pair?v=1&k=…&s=…&a=…[&n=…]` handled through ACTION_VIEW/DEFAULT/BROWSABLE (the scheme from PROTOCOL.md). An external camera opens the confirmation screen; a warm start is handled by onNewIntent. A link never starts pairing by itself.
+SEC: The scan/intent use the same Rust parser: the 1024-byte limit, the version, the Ed25519 key, the one-time secret, addresses and repeated fields. A bad link grants no trust. The name from the link is untrusted; the UI also gives the fingerprint. We don't display or log the secret; the intent is cleared, the offer doesn't go into saved state/preferences. After the process is recreated, the code has to be scanned again.
+STATE: The offer lives in a Rust object that erases the secret when it is dropped. Cancelling drops the offer; parallel intents don't replace an ongoing pairing. An attempt lasts at most 30 s; after an error a new code is required. The secret is consumed by the FFI once. Confirmed keys: noBackupFilesDir/paired.txt, loaded when WindCore opens; the private key stays in the existing KeystoreIdentityStore.
+RULE: Damaged lines of paired.txt are skipped as in WN-19. load_paired returns the valid devices and a separate skipped_records; valid keys stay pinned. The number of skipped entries goes through WindCore to a non-blocking message on the home screen. A file read error is still a store error; a bad line doesn't block the start or cause the file to be cleared.
+RULE: The camera only on the scanner screen and in the resumed state; the session/images are closed on leaving or onPause. No saving of photos, sending of frames or background camera service. A refused permission has its own message and a way to the settings; the system link works without the CAMERA permission. No camera doesn't block installation.
+LIMIT: The devices screen and the service belong to further cards of the lane. WN-25 adds the QR code on the PC and connecting automatically after pairing: the address from discovery, the key only from the stored trust, a 7 s limit. No connection doesn't undo the pairing; the UI status follows the session. The physical behaviour of Samsung Camera on an S25 Ultra/One UI needs checking: the camera must offer to open the custom URI `windconnect:pair`. VIEW handling confirmed by an Android test doesn't replace this camera test.
 
-Testy:
+Tests:
 
 ```powershell
 cargo test --locked -p wind-ffi --test pairing
@@ -196,33 +196,33 @@ cargo test --locked -p wind-ffi --test pairing
 ```
 
 CCS/1
-STATE: PairingTest: VIEW intent, jawne potwierdzenie, anulowanie bez zapisu zaufania, odtworzenie Activity i kolejny intent, błędne/obce/za długie linki, QR w czterech obrotach, puste klatki i wejście/wyjście ze skanera. Bridge Rust: rzeczywisty QUIC, brak połączenia przed potwierdzeniem, trwałość klucza po ponownym otwarciu, odmowa replay i brak sekretu w błędach.
-IO: Opcjonalny lokalny peer Androida: `cargo run --locked -p wind-ffi --example qr_pairing_peer -- <katalog-TEMP>`. Zapisuje testowy offer.txt (jednorazowy sekret, 120 s), nasłuchuje na loopback i podaje adres 10.0.2.2 emulatora. Test `PairingTest#explicitConfirmationPairsWithRealPc` przyjmuje argument instrumentacji pairingLink z tego pliku. Nie używać jako serwera produkcyjnego ani dla prawdziwych tożsamości; plik pozostaje wyłącznie w TEMP, poza logiem testów.
+STATE: PairingTest: a VIEW intent, explicit confirmation, cancelling without storing trust, recreating the Activity and a further intent, bad/foreign/too long links, the QR code in four rotations, empty frames and entering/leaving the scanner. The Rust bridge: real QUIC, no connection before confirmation, the key persisting after reopening, refusing a replay and no secret in errors.
+IO: An optional local Android peer: `cargo run --locked -p wind-ffi --example qr_pairing_peer -- <TEMP folder>`. It writes a test offer.txt (a one-time secret, 120 s), listens on loopback and gives the emulator's 10.0.2.2 address. The test `PairingTest#explicitConfirmationPairsWithRealPc` takes the instrumentation argument pairingLink from this file. Don't use it as a production server or for real identities; the file stays only in TEMP, outside the test log.
 
-Nowa zależność dostarczana w APK:
+A new dependency shipped in the APK:
 
-| Komponent | Wersja | Licencja i pliki źródłowe | Gdzie trafia | Wynik audytu |
+| Component | Version | License and source files | Where it goes | Audit result |
 | --- | --- | --- | --- | --- |
-| ZXing Core | 3.5.4 | Apache-2.0, upstream LICENSE i NOTICE; nagłówki klas core i POM | DEX; assets/ZXing-LICENSE.txt i ZXing-NOTICE.txt | Permisywna; niezmieniona biblioteka, brak runtime zależności przechodnich. Pełne teksty dołączone i zweryfikowane w APK. |
+| ZXing Core | 3.5.4 | Apache-2.0, upstream LICENSE and NOTICE; core class headers and POM | DEX; assets/ZXing-LICENSE.txt and ZXing-NOTICE.txt | Permissive; an unchanged library, no transitive runtime dependencies. Full texts included and verified in the APK. |
 
 CCS/1
-EXT: https://github.com/zxing/zxing/tree/zxing-3.5.4/core ; źródła licencji https://github.com/zxing/zxing/blob/zxing-3.5.4/LICENSE i NOTICE. Audyt WN-26 dotyczy przyrostu; istniejące DM Sans/AndroidX/JNA/Rust pozostają bez nowych zasobów/licencji. Camera2, własny podgląd i przyciski nie dodają biblioteki UI.
+EXT: https://github.com/zxing/zxing/tree/zxing-3.5.4/core ; license sources https://github.com/zxing/zxing/blob/zxing-3.5.4/LICENSE and NOTICE. The WN-26 audit covers the increment; the existing DM Sans/AndroidX/JNA/Rust stay without new resources/licenses. Camera2, our own preview and buttons add no UI library.
 
-## Klucz tożsamości (Android Keystore)
+## Identity key (Android Keystore)
 
-`identity/KeystoreIdentityStore.kt` przechowuje klucz tożsamości urządzenia
-(PKCS#8 PEM z `wind-core`) w `noBackupFilesDir/identity.key`, zaszyfrowany
-AES-256-GCM kluczem z Android Keystore (StrongBox, gdy telefon go ma).
-Klucza AES nie da się wyeksportować. Sam klucz Ed25519 nie może żyć w
-Keystore (StrongBox nie ma Ed25519, Keystore ma go dopiero od API 33,
-a TLS w `wind-core` podpisuje w procesie), więc na dysku chroni go sprzęt,
-a w czasie użycia jest w pamięci aplikacji. Gdzie faktycznie jest klucz AES,
-mówi `securityLevel()` (StrongBox / TEE / software), odczytane z `KeyInfo`.
-Adapter UniFFI korzysta z tego magazynu w `WindCore.open`; błąd odczytu lub
-odszyfrowania przerywa inicjalizację, zamiast generować nową tożsamość.
+`identity/KeystoreIdentityStore.kt` keeps the device's identity key
+(PKCS#8 PEM from `wind-core`) in `noBackupFilesDir/identity.key`, encrypted with
+AES-256-GCM with a key from the Android Keystore (StrongBox when the phone has it).
+The AES key can't be exported. The Ed25519 key itself can't live in
+the Keystore (StrongBox has no Ed25519, the Keystore has it only from API 33,
+and TLS in `wind-core` signs in-process), so on disk it is protected by hardware,
+and while in use it is in the app's memory. Where the AES key actually is
+is told by `securityLevel()` (StrongBox / TEE / software), read from `KeyInfo`.
+The UniFFI adapter uses this store in `WindCore.open`; a read or decryption error
+stops initialization, instead of generating a new identity.
 
-Testy instrumentacyjne (emulator albo telefon z debugowaniem USB), z
-katalogu `apps/android`:
+Instrumented tests (an emulator or a phone with USB debugging), from
+the `apps/android` folder:
 
 ```powershell
 .\gradlew.bat --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest
@@ -233,29 +233,29 @@ $test = "io.github.prejas3.windconnect.identity.KeystoreIdentityStoreTest"
 adb shell am instrument -w -r $runner
 ```
 
-Na prawdziwym telefonie dodaj `-e requireHardware true`: test wymaga wtedy,
-by klucz AES był w TEE albo StrongBox (emulator ma Keystore programowy, więc
-tam ten wariant nie przejdzie). Status `wrappingKeySecurityLevel` w wyniku
-mówi, gdzie jest klucz.
+On a real phone add `-e requireHardware true`: the test then requires
+the AES key to be in the TEE or StrongBox (an emulator has a software Keystore, so
+this variant won't pass there). The status `wrappingKeySecurityLevel` in the result
+says where the key is.
 
-Restart urządzenia (klucz przetrwa ponowne uruchomienie):
+A device restart (the key survives a reboot):
 
 ```powershell
 adb shell am instrument -w -r -e phase write -e class "$test#restartPhaseWrite" $runner
 adb reboot; adb wait-for-device
-# poczekaj, aż `adb shell getprop sys.boot_completed` zwróci 1
+# wait until `adb shell getprop sys.boot_completed` returns 1
 adb shell am instrument -w -r -e phase verify -e class "$test#restartPhaseVerify" $runner
 ```
 
-`bootId` w obu fazach musi się różnić, a `restartVerified` równać `restartWritten`.
+`bootId` must differ between the two phases, and `restartVerified` must equal `restartWritten`.
 
-## Moduł Gradle i interfejs korutynowy (WN-17)
+## The Gradle module and the coroutine interface (WN-17)
 
-`crates/wind-ffi` jest osobnym adapterem UniFFI nad niezmienionym API `wind-core`.
-Gradle buduje bibliotekę hosta do generowania Kotlin, a następnie dwie biblioteki
-Androida NDK, ze stronami ELF wyrównanymi do 16 KB. Wyniki generowania trafiają
-wyłącznie do `wind-core/build/`; do repozytorium trafiają źródła i przypięty
-generator, a nie ręcznie edytowane wiązania lub binaria.
+`crates/wind-ffi` is a separate UniFFI adapter over the unchanged `wind-core` API.
+Gradle builds a host library for generating Kotlin, and then two Android NDK
+libraries, with ELF pages aligned to 16 KB. The generated output goes
+only into `wind-core/build/`; the repository holds the sources and the pinned
+generator, not hand-edited bindings or binaries.
 
 ```powershell
 .\gradlew.bat --no-daemon :wind-core:assembleRelease
@@ -263,27 +263,27 @@ generator, a nie ręcznie edytowane wiązania lub binaria.
 ```
 
 AAR: `wind-core/build/outputs/aar/wind-core-release.aar`.
-Lokalne repozytorium Maven z AAR, źródłami, POM i metadanymi Gradle:
-`wind-core/build/repo/`. Współrzędne: `io.github.prejas3.windconnect:wind-core:0.41.0`.
-Publikacja zapisuje pliki lokalnie; nie wysyła ich do zewnętrznego repozytorium.
-Konsument musi korzystać z POM/metadanych (JNA i korutyny są zależnościami
-przechodnimi); sama kopia pliku AAR nie dostarczy JNA.
+A local Maven repository with the AAR, sources, POM and Gradle metadata:
+`wind-core/build/repo/`. Coordinates: `io.github.prejas3.windconnect:wind-core:0.41.0`.
+Publishing writes the files locally; it doesn't send them to an external repository.
+A consumer must use the POM/metadata (JNA and coroutines are transitive
+dependencies); a copy of the AAR file alone won't provide JNA.
 
-W tym repozytorium aplikacja używa `implementation(project(":wind-core"))`.
-Konsument spoza repozytorium dodaje lokalne repozytorium do
-`dependencyResolutionManagement.repositories` w swoim `settings.gradle.kts`:
+In this repository the app uses `implementation(project(":wind-core"))`.
+A consumer outside the repository adds the local repository to
+`dependencyResolutionManagement.repositories` in its `settings.gradle.kts`:
 
 ```kotlin
-maven { url = uri("/sciezka/do/wind-core/build/repo") }
+maven { url = uri("/path/to/wind-core/build/repo") }
 ```
 
-oraz `implementation("io.github.prejas3.windconnect:wind-core:0.41.0")`.
-W aplikacji konsumenta ogranicz ABI do `arm64-v8a` i `x86_64`.
+and `implementation("io.github.prejas3.windconnect:wind-core:0.41.0")`.
+In the consumer's app limit the ABIs to `arm64-v8a` and `x86_64`.
 
 ```kotlin
-val core = WindCore.open(context, "Mój telefon")
-// Zbieraj core.state: StateFlow<ConnectionState> w cyklu życia właściciela.
-// peerKey to 32 bajty klucza Ed25519, zweryfikowane innym kanałem.
+val core = WindCore.open(context, "My phone")
+// Collect core.state: StateFlow<ConnectionState> in the owner's lifecycle.
+// peerKey is the 32 bytes of the Ed25519 key, verified over another channel.
 try {
     core.connect("192.168.1.10:47820", peerKey)
 } finally {
@@ -291,684 +291,690 @@ try {
 }
 ```
 
-Wywołania sieciowe są zawieszalne, a inicjalizacja Keystore działa na
-`Dispatchers.IO`. `Connected` oznacza zakończone mTLS, wymianę Hello/HelloAck
-i udany Ping/Pong. Zamykanie właściciela zatrzymuje obserwację połączenia,
-zamyka endpoint i zwalnia uchwyty UniFFI; `shutdown` jest odporne na anulowanie.
-Stan sesji nie jest trwałym zapisem parowań. Moduł udostępnia w tej karcie
-łączenie wychodzące i diagnostykę sesji; moduły funkcji nie są jeszcze spięte
-z aplikacją. Zmiany sieci budzą odkrywanie i próbę ostatnio wskazanego peera
-zgodnie z opisem WN-16 poniżej.
+Network calls are suspending, and Keystore initialization runs on
+`Dispatchers.IO`. `Connected` means completed mTLS, the Hello/HelloAck exchange
+and a successful Ping/Pong. Closing the owner stops observing the connection,
+closes the endpoint and releases the UniFFI handles; `shutdown` is cancellation-safe.
+The session state is not a persistent record of pairings. In this card the module offers
+outgoing connections and session diagnostics; the feature modules are not yet wired
+to the app. Network changes wake discovery and an attempt to the last chosen peer
+as described in WN-16 below.
 
-## Rzeczywisty test Android → PC
+## A real Android → PC test
 
-1. Uruchom APK. Skopiuj wyświetlony klucz publiczny Androida (64 hex).
-2. W katalogu głównym repozytorium uruchom:
-   `cargo run --locked -p wind-ffi --example android_peer -- <klucz_Androida> 0.0.0.0:47820`.
-   Program ufa tylko temu kluczowi, wypisuje `PC_PUBLIC_KEY` i kończy po
-   rozłączeniu albo po 90 s. Tożsamość PC w tym narzędziu jest tymczasowa.
-3. Na ekranie telefonu wpisz IP PC i port 47820 oraz sprawdzony
-   `PC_PUBLIC_KEY`. Naciśnij „Połącz z podanym kluczem”. Ekran powinien
-   pokazać „Połączono: WindConnect PC test; ping … ms”, a PC `CONNECTED`.
-   Zapora PC musi dopuszczać testowy port UDP.
-4. Naciśnij „Rozłącz”. Program PC zakończy działanie.
+1. Start the APK. Copy the displayed public key of Android (64 hex).
+2. In the repository root run:
+   `cargo run --locked -p wind-ffi --example android_peer -- <Android_key> 0.0.0.0:47820`.
+   The program trusts only this key, prints `PC_PUBLIC_KEY` and ends after
+   disconnecting or after 90 s. The PC identity in this tool is temporary.
+3. On the phone's screen type the PC's IP and port 47820 and the checked
+   `PC_PUBLIC_KEY`. Press "Connect with the given key". The screen should
+   show "Connected: WindConnect PC test; ping … ms", and the PC `CONNECTED`.
+   The PC's firewall must allow the test UDP port.
+4. Press "Disconnect". The PC program ends.
 
-Na emulatorze Android adres hosta to `10.0.2.2:47820`; proces PC może wtedy
-wiązać wyłącznie `127.0.0.1:47820`. Test instrumentacyjny ekranu wykonuje te
-same działania:
+On an Android emulator the host's address is `10.0.2.2:47820`; the PC process may then
+bind only `127.0.0.1:47820`. The screen's instrumented test performs the
+same actions:
 
 ```powershell
 adb shell am instrument -w -r -e class io.github.prejas3.windconnect.CoreConnectionTest#identityLoadsThroughUniFFIAndSurvivesActivityRecreation $runner
-# Odczytaj androidPublicKey z wyniku i uruchom android_peer z tym kluczem.
+# Read androidPublicKey from the result and run android_peer with this key.
 adb shell am instrument -w -r -e class io.github.prejas3.windconnect.CoreConnectionTest#screenConnectsToPc -e pcAddress 10.0.2.2:47820 -e pcKey <PC_PUBLIC_KEY> $runner
 adb shell am instrument -w -r -e class io.github.prejas3.windconnect.CoreApiTest $runner
 ```
 
-Pierwszy test sprawdza bibliotekę natywną, Keystore i odtworzenie aktywności;
-drugi prawdziwą sesję między Androidem a PC; trzeci błędy callbacku oraz
-anulowanie korutyny połączenia. Bez parametrów PC test sieciowy jest pomijany.
-Sprawdzenie S25 Ultra / StrongBox i sieci fizycznej wymaga telefonu; emulator
-potwierdza x86_64 i Keystore programowy. arm64-v8a jest kompilowane do AAR/APK.
+The first test checks the native library, the Keystore and recreating the activity;
+the second a real session between Android and a PC; the third callback errors and
+cancelling the connection coroutine. Without the PC parameters the network test is skipped.
+Checking an S25 Ultra / StrongBox and a physical network needs a phone; an emulator
+confirms x86_64 and the software Keystore. arm64-v8a is compiled into the AAR/APK.
 
-## Zmiany sieci (WN-16)
+## Network changes (WN-16)
 
-Właściciel `WindCore` rejestruje `ConnectivityManager.NetworkCallback` dla
-sieci niewymagających ograniczonych uprawnień, również Wi-Fi bez Internetu.
-`onLost` i zmiany `LinkProperties` trafiają do kanału
-`CONFLATED`; callback nie wykonuje operacji sieciowych. Obsługa na IO wywołuje
-zawieszalne `CoreClient.networkChanged()` w kontekście Tokio: zmienia gniazdo
-QUIC, sygnalizuje nową generację i budzi bieżącą próbę połączenia.
+The `WindCore` owner registers a `ConnectivityManager.NetworkCallback` for
+networks that need no restricted permissions, also Wi-Fi without Internet.
+`onLost` and `LinkProperties` changes go into a `CONFLATED`
+channel; the callback performs no network operations. Handling on IO calls
+the suspending `CoreClient.networkChanged()` in a Tokio context: it changes the QUIC
+socket, signals a new generation and wakes the current connection attempt.
 
-`core.network` jest `StateFlow<NetworkSnapshot>` z generacją, aktualnymi
-odciskami/adresami i ewentualnym błędem. Każda generacja usuwa stary widok
-adresów i tworzy nowy daemon mDNS z aktualnymi interfejsami i portem endpointu,
-bez czekania na okresowy timer. Brak sieci lub błąd mDNS pozostaje widoczny
-w stanie; kolejna zmiana sieci ponawia odkrywanie.
+`core.network` is a `StateFlow<NetworkSnapshot>` with the generation, the current
+fingerprints/addresses and a possible error. Each generation removes the old view of
+addresses and creates a new mDNS daemon with the current interfaces and the endpoint's port,
+without waiting for a periodic timer. No network or an mDNS error stays visible
+in the state; the next network change retries discovery.
 
-Zmiana to różnica interfejsu albo adresów sieci względem tego, czego używa
-odkrywanie (WN-103, `NetworkChangeFilter`). Android zaraz po rejestracji
-callbacku powtarza sieci, które już ma (`onAvailable`, `onLinkPropertiesChanged`);
-wcześniej restartowało to mDNS ok. 1 s po starcie, w trakcie sondowania, i
-przeglądarka uruchomiona od razu nie widziała telefonu w 5 s w 8 z 10
-przebiegów. Obserwator czyta stan sieci przed startem odkrywania, więc zmiana
-między odczytem a powtórką nadal się liczy. `onAvailable` nie decyduje (od API
-26 zawsze idzie po nim `onLinkPropertiesChanged`). Sprawdzenie:
-`NetworkChangeFilterTest` (`./gradlew :wind-core:testDebugUnitTest`) i na
-emulatorze lub telefonie z połączonym Wi-Fi (NsdManager nie robi mDNS na
-komórkowej):
+A change is a difference in the interface or the network's addresses compared with what
+discovery uses (WN-103, `NetworkChangeFilter`). Right after the callback is
+registered Android repeats the networks it already has (`onAvailable`, `onLinkPropertiesChanged`);
+earlier this restarted mDNS about 1 s after start, during probing, and
+a browser started right away didn't see the phone within 5 s in 8 of 10
+runs. The observer reads the network state before discovery starts, so a change
+between the read and the repeat still counts. `onAvailable` doesn't decide (from API
+26 `onLinkPropertiesChanged` always follows it). Checking:
+`NetworkChangeFilterTest` (`./gradlew :wind-core:testDebugUnitTest`) and on
+an emulator or a phone with connected Wi-Fi (NsdManager doesn't do mDNS on
+cellular):
 
 ```powershell
 adb shell am instrument -w -r -e class io.github.prejas3.windconnect.MdnsStartupTest $runner
 ```
 
-`a_browserSeesPhoneRightAfterStart` 10 razy otwiera `WindCore` i od razu
-przegląda `_windconnect._udp` systemowym NsdManager (`-e runs N`); wymaga
-znalezienia w 5 s i generacji 0 po 3 s. `b_networkChangeStillRestartsDiscovery`
-wyłącza i włącza Wi-Fi, wymaga nowej generacji po obu zmianach i czeka na
-powrót Wi-Fi. LIMIT: po włączeniu Wi-Fi sieć dochodzi do siebie krokami
-(restarty co ok. 0,6 s), więc telefon wraca w przeglądarce różnie (5,5 s – ponad
-20 s), tak samo przed WN-103; test to raportuje (`seenAfterWifiOnMs`). Emulator
-po kilku przełączeniach Wi-Fi bywa bez połączenia; test zgłasza to jako
-warunek wstępny, nie regresję.
+`a_browserSeesPhoneRightAfterStart` opens `WindCore` 10 times and right away
+browses `_windconnect._udp` with the system NsdManager (`-e runs N`); it requires
+finding it within 5 s and generation 0 after 3 s. `b_networkChangeStillRestartsDiscovery`
+turns Wi-Fi off and on, requires a new generation after both changes and waits for
+Wi-Fi to come back. LIMIT: after turning Wi-Fi on the network recovers in steps
+(restarts about every 0.6 s), so the phone comes back in the browser at varying times (5.5 s – over
+20 s), the same as before WN-103; the test reports it (`seenAfterWifiOnMs`). An emulator
+is sometimes left without a connection after a few Wi-Fi toggles; the test reports this as
+a precondition, not a regression.
 
-Jeśli poprzednia próba wskazanego ręcznie peera się nie powiodła albo sesja
-już się zamknęła, zdarzenie sieci uruchamia nową próbę. Trwająca próba jest
-budzona bez oczekiwania na jej limit 10 s. Aktywna sesja korzysta z migracji
-QUIC. Ręczne rozłączenie, anulowanie próby i odmowa zaufania usuwają zamiar
-automatycznego łączenia. Zaufanie nie jest nigdy tworzone z mDNS.
-Adres ostatniego peera pozostaje ręcznie wybranym adresem; automatyczny wybór
-nowego IP z listy urządzeń należy do integracji zarządzania urządzeniami.
+If the previous attempt to a manually chosen peer failed or the session
+has already closed, a network event starts a new attempt. An ongoing attempt is
+woken without waiting for its 10 s limit. An active session uses QUIC
+migration. Disconnecting by hand, cancelling an attempt and a trust refusal remove the intent
+to connect automatically. Trust is never created from mDNS.
+The last peer's address stays the manually chosen address; automatically choosing
+a new IP from the device list belongs to the device management integration.
 
-Moduł deklaruje normalne uprawnienia `ACCESS_NETWORK_STATE` i
-`CHANGE_WIFI_MULTICAST_STATE`. `MulticastLock` jest brany tylko wtedy, gdy
-odkrywanie jest potrzebne (WN-83, `MulticastPolicy`):
+The module declares the normal permissions `ACCESS_NETWORK_STATE` and
+`CHANGE_WIFI_MULTICAST_STATE`. The `MulticastLock` is taken only when
+discovery is needed (WN-83, `MulticastPolicy`):
 
-- bez aktywnej sesji przez 30 s od startu, od zmiany sieci, od utraty sesji
-  albo od `WindCore.refreshDiscovery()` (np. odświeżenie listy urządzeń);
-- przez cały czas, gdy otwarty jest ekran wymagający odkrywania (okno
-  parowania SAS, lista urządzeń): `WindCore.discoveryScreen(true)` …
-  `discoveryScreen(false)`, wywołania liczone parami.
+- without an active session for 30 s from start, from a network change, from losing the session
+  or from `WindCore.refreshDiscovery()` (e.g. refreshing the device list);
+- the whole time a screen that needs discovery is open (the SAS
+  pairing window, the device list): `WindCore.discoveryScreen(true)` …
+  `discoveryScreen(false)`, calls counted in pairs.
 
-Aktywna sesja nie trzyma locka, także po zmianie sieci: wraca przez migrację
-QUIC (WN-16, WN-84). `shutdown()` zwalnia lock razem z callbackiem, zadaniami
-i daemonem. Reguły sprawdza `MulticastPolicyTest`
-(`./gradlew :wind-core:testDebugUnitTest`), a na urządzeniu
-`MulticastLockTest`, który czyta listę „Multicast Locks held” z
-`dumpsys wifi` (wymaga `android_peer` jak w teście Android → PC; `-e
-toggleWifi true` dodaje prawdziwą zmianę sieci):
+An active session doesn't hold the lock, also after a network change: it comes back through QUIC
+migration (WN-16, WN-84). `shutdown()` releases the lock together with the callback, the jobs
+and the daemon. The rules are checked by `MulticastPolicyTest`
+(`./gradlew :wind-core:testDebugUnitTest`), and on a device by
+`MulticastLockTest`, which reads the list "Multicast Locks held" from
+`dumpsys wifi` (needs `android_peer` as in the Android → PC test; `-e
+toggleWifi true` adds a real network change):
 
 ```powershell
 adb shell am instrument -w -r -e class io.github.prejas3.windconnect.MulticastLockTest -e pcAddress 10.0.2.2:47820 -e pcKey <PC_PUBLIC_KEY> -e toggleWifi true $runner
 ```
 
-Inne komputery w czasie sesji (wiele PC, WN-90) telefon znajduje zapasowym
-odkrywaniem broadcast (WN-15), bez locka. Podstawą jest pytanie telefonu
-wysyłane co 2 s (wysyłanie nie wymaga locka) i odpowiedź unicast każdego PC.
-Zapytania broadcast innych PC docierające do telefonu są dodatkiem, nie
-podstawą: bez locka i przy wyłączonym ekranie układ Wi-Fi może je filtrować.
-Po zmianie sieci drugi PC wraca na listę `WindCore.network` w ciągu 5 s.
-W czasie sesji nie ma okna mDNS: przy wyłączonym drugim PC trzymałoby lock
-30 s po każdej zmianie sieci. Na hoście sprawdza to
+The phone finds other computers during a session (several PCs, WN-90) with the broadcast
+fallback discovery (WN-15), without the lock. The basis is the phone's query
+sent every 2 s (sending doesn't need the lock) and each PC's unicast answer.
+Other PCs' broadcast queries reaching the phone are an extra, not
+the basis: without the lock and with the screen off the Wi-Fi chip may filter them.
+After a network change the second PC returns to the `WindCore.network` list within 5 s.
+During a session there is no mDNS window: with the second PC off it would hold the lock
+30 s after every network change. On the host this is checked by
 `query_is_answered_by_unicast_so_the_asker_needs_no_broadcast`
-(`cargo test --locked -p wind-core --test broadcast`), na emulatorze
-`MulticastLockTest#otherPcFoundDuringSessionWithoutLock` przez runner
-(debug i androidTest APK zbudowane,
+(`cargo test --locked -p wind-core --test broadcast`), on an emulator by
+`MulticastLockTest#otherPcFoundDuringSessionWithoutLock` through the runner
+(the debug and androidTest APKs built,
 `cargo build --locked -p wind-ffi --example android_peer`):
 
 ```powershell
 node apps/android/scripts/check-multi-pc.cjs
 ```
 
-Runner przekierowuje UDP emulatora (`emu redir`, domyślnie 47823 → 47821;
-`REDIR_PORT`, `PC_PORT` zmieniają porty hosta), uruchamia `android_peer` jako
-pierwszy PC i co 2 s wysyła pakiet odkrywania drugiego PC. LIMIT: przez NAT
-emulatora pakiet przychodzi bez pytania, więc test sprawdza sesję, lock i
-pamięć odkrywania po zmianie sieci. Pytanie i odpowiedź unicast sprawdza test
-hosta, a filtrowanie broadcast przez prawdziwy układ Wi-Fi bez locka wymaga
-telefonu.
+The runner redirects the emulator's UDP (`emu redir`, 47823 → 47821 by default;
+`REDIR_PORT`, `PC_PORT` change the host's ports), starts `android_peer` as the
+first PC and sends the second PC's discovery packet every 2 s. LIMIT: through the emulator's
+NAT the packet arrives without a query, so the test checks the session, the lock and
+the discovery memory after a network change. The query and the unicast answer are checked by the host
+test, and broadcast filtering by a real Wi-Fi chip without the lock needs
+a phone.
 
-Wersja aplikacji to 0.61.0, a Android `versionCode` to 70. Numery wydań rosną
-niezależnie od kolejności kart, aby aktualizacja APK i MSI nie cofała wersji.
+The app version and Android's `versionCode` follow the repository's single version
+(CONTRIBUTING.md, WN-114); release numbers only grow, so that updating the APK and the MSI never
+goes back.
 
-## Pierwsze uruchomienie (WC-34)
-
-CCS/1
-FLOW:brak sparowanego komputera -> karta „Witaj w WindConnect” na górze ekranu głównego (co jest potrzebne, przycisk „Zeskanuj kod z komputera” jak w kroku 2 na PC, zdanie o aparacie przed pytaniem systemu) -> po stuknięciu od razu pytanie o aparat -> skaner -> „Gotowe”.
-RULE:„Gotowe” zadaje jedno pytanie: „Utrzymuj połączenie w tle” (ConnectionService + POST_NOTIFICATIONS na API 33+) albo „Nie teraz”. Parowanie samo już nie włącza usługi. Odmowa powiadomień: usługa działa, ale bez widocznego powiadomienia nie ma stanu komputera ani akcji „Wyślij schowek”; ekran mówi to jednym zdaniem i prowadzi do ustawień powiadomień. Ustawienia -> „Połączenie w tle” zmienia decyzję później.
-A11Y:nagłówki kart „Witaj” i „Gotowe” są oznaczone dla TalkBack.
-
-Test: `OnboardingTest` (karta „Witaj”, decyzja „Gotowe”, zdania skutków);
-`PairingTest` z `-e background true` wybiera „Utrzymuj połączenie w tle”.
-
-## Sparowane komputery (WC-28)
+## First start (WC-34)
 
 CCS/1
-FLOW:Ekran główny / Ustawienia -> „Sparowane komputery”: nazwa lokalna, „Połącz”, „Usuń” (pytanie w karcie, bez okna dialogowego).
-RULE:usunięcie z połączonym komputerem wysyła Goodbye UNPAIRED od razu; bez połączenia klucz jest odwołany natychmiast, a powiadomienie idzie, gdy odkrywanie pokaże ten komputer (raz na generację sieci, pełne uzgadnianie bez 0-RTT). Komputer, który usunął telefon, zamyka sesję kodem UNPAIRED: telefon usuwa klucz rozmówcy z TLS i nie wraca.
-RULE:BUSY (komputer ma inny telefon) i odmowa TLS („Komputer odrzuca połączenie — sparuj ponownie”) wstrzymują automatyczne ponawiania usługi tła do zmiany sieci albo „Połącz”.
-LIMIT:po BUSY telefon nie wraca sam, gdy komputer się zwolni. Powiadomienie o usunięciu należy się 30 dni.
+FLOW:no paired computer -> the card "Welcome to WindConnect" at the top of the home screen (what is needed, the button "Scan the code from the computer" as in step 2 on the PC, a sentence about the camera before the system's question) -> after the tap, the camera question at once -> the scanner -> "Done".
+RULE:"Done" asks one question: "Keep the connection in the background" (ConnectionService + POST_NOTIFICATIONS on API 33+) or "Not now". Pairing by itself no longer turns on the service. Notifications refused: the service works, but without a visible notification there is no computer state and no "Send clipboard" action; the screen says so in one sentence and leads to the notification settings. Settings -> "Background connection" changes the decision later.
+A11Y:the headings of the "Welcome" and "Done" cards are marked for TalkBack.
 
-Testy: `DevicesScreenTest` (lista, zmiana nazwy, pytanie o usunięcie,
-komunikaty końca sesji), `cargo test --locked -p wind-ffi --test bridge`
+Test: `OnboardingTest` (the "Welcome" card, the "Done" decision, the sentences about effects);
+`PairingTest` with `-e background true` chooses "Keep the connection in the background".
+
+## Paired computers (WC-28)
+
+CCS/1
+FLOW:Home screen / Settings -> "Paired computers": a local name, "Connect", "Remove" (a question in the card, without a dialog).
+RULE:removing with the computer connected sends Goodbye UNPAIRED at once; without a connection the key is revoked immediately, and the notice goes when discovery shows that computer (once per network generation, a full handshake without 0-RTT). A computer that removed the phone closes the session with the code UNPAIRED: the phone removes the peer's key from TLS and doesn't come back.
+RULE:BUSY (the computer has another phone) and a TLS refusal ("The computer refuses the connection — pair again") hold back the background service's automatic retries until a network change or "Connect".
+LIMIT:after BUSY the phone doesn't come back by itself when the computer becomes free. The removal notice is owed for 30 days.
+
+Tests: `DevicesScreenTest` (the list, renaming, the removal question,
+the end-of-session messages), `cargo test --locked -p wind-ffi --test bridge`
 (`ffi_paired_list_rename_unpair_both_ways_and_busy`).
 
-## Ekran główny (WN-31)
+## Home screen (WN-31)
 
 CCS/1
-FLOW: wspólny WindCore -> PairingViewModel -> rzeczywista nazwa sparowanego PC, stan sesji, ostatni RTT i trasa LAN/relay. Rozłączenie usuwa RTT; nazwa pozostaje. Bez dodatkowego pollingu i blokad CPU.
-DEC: cztery kafelki z makiety są nieaktywne do podłączenia ich kanałów; historia transferów pokazuje jawny stan pusty, bez demonstracyjnych plików. Ustawienia pod kołem zębatym zachowują parowanie i opcje usługi w tle.
-PERF: release używa R8 i shrinkera zasobów. Reguły konsumenckie zachowują refleksję UniFFI/JNA; wyciszone są wyłącznie cztery klasy AWT, których Android nie posiada. `ReportDrawnWhen` czeka na lokalną tożsamość i magazyn, nie na dostępność zdalnego PC.
+FLOW: the shared WindCore -> PairingViewModel -> the real name of the paired PC, the session state, the last RTT and the LAN/relay route. Disconnecting removes the RTT; the name stays. No additional polling and no CPU locks.
+DEC: the four tiles from the mockup are inactive until their channels are wired; the transfer history shows an explicit empty state, without demo files. Settings under the gear keep pairing and the background service's options.
+PERF: release uses R8 and the resource shrinker. The consumer rules keep the UniFFI/JNA reflection; only four AWT classes that Android doesn't have are silenced. `ReportDrawnWhen` waits for the local identity and the store, not for the remote PC to be reachable.
 
-Pomiar: zainstaluj podpisany APK **release**, ustaw `ANDROID_HOME`, `ANDROID_SERIAL`,
-uruchom `cw-progress --title "Android: pomiar startu release" -- node apps/windows/scripts/check-startup-android.cjs` z katalogu głównego.
-Skrypt zachowuje dane aplikacji, kończy jej proces po pomiarze i zapisuje 10 zimnych
-TTID/TTFD oraz `WaitTime` 10 powrotów z Home do `%TEMP%/windconnect-startup-*`.
-`WaitTime` powrotu jest czasem komendy systemowej, nie pomiarem TTID.
-Domyślne `STARTUP_COMPILATION=verify` wyłącza AOT; osobne `speed` wymusza AOT
-i musi być raportowane oddzielnie. Próg <400 ms należy sprawdzić na docelowym
-telefonie; wynik emulatora nie jest dowodem wydajności S25 Ultra.
+Measurement: install a signed **release** APK, set `ANDROID_HOME`, `ANDROID_SERIAL`,
+run `cw-progress --title "Android: release startup measurement" -- node apps/windows/scripts/check-startup-android.cjs` from the repository root.
+The script keeps the app's data, ends its process after measuring and records 10 cold
+TTID/TTFD and the `WaitTime` of 10 returns from Home into `%TEMP%/windconnect-startup-*`.
+The return `WaitTime` is the system command's time, not a TTID measurement.
+The default `STARTUP_COMPILATION=verify` turns AOT off; a separate `speed` forces AOT
+and must be reported separately. The <400 ms threshold has to be checked on the target
+phone; an emulator's result is no proof of S25 Ultra performance.
 
-Test rzeczywistej sesji i zrzuty obu motywów: po zbudowaniu debug/androidTest oraz
-`cargo build --locked -p windconnect-windows --example background_peer`, ustaw
-`HOME_SCREEN_PROOF=1` i uruchom `apps/windows/scripts/check-background-android.cjs`.
-Ten test wymaga jednorazowego emulatora i czyści wyłącznie jego dane WindConnect;
-sprawdza prawdziwy QR/TLS, odtworzenie Activity, ustawienia i stan kafelków.
+The real session test and screenshots of both themes: after building debug/androidTest and
+`cargo build --locked -p windconnect-windows --example background_peer`, set
+`HOME_SCREEN_PROOF=1` and run `apps/windows/scripts/check-background-android.cjs`.
+This test needs a disposable emulator and clears only its WindConnect data;
+it checks real QR/TLS, recreating the Activity, settings and the tiles' state.
 
-## Połączenie w tle (WN-29)
+## Background connection (WN-29)
 
 CCS/1
-FLOW: potwierdzone parowanie -> włączenie usługi `connectedDevice` -> stałe powiadomienie z nazwą PC, rzeczywistym stanem i akcjami „Otwórz urządzenie”, „Połącz ponownie” (offline), „Zatrzymaj”. Schowek/pliki są osobnymi modułami; powiadomienie nie udaje ich wysyłania przed ich wdrożeniem.
-RULE: Activity i usługa dzierżawią jeden WindCore w Application. Zamknięcie/obrót ekranu zwalnia tylko dzierżawę ekranu; ostatnia dzierżawa zamyka natywne uchwyty, discovery i sesję. Wyłączenie tła rozłącza sesję i zapisuje wyłączenie przed zatrzymaniem usługi.
-FLOW: START_STICKY odtwarza usługę po odzyskaniu procesu przez system. BOOT_COMPLETED po odblokowaniu i MY_PACKAGE_REPLACED wznawiają tylko wcześniej włączoną usługę; bez uruchamiania przed odblokowaniem tożsamości. Force-stop systemowy wymaga ponownego otwarcia aplikacji. Brak uprawnień do startu w tle daje komunikat przy kolejnym otwarciu.
-SEC: reconnect ładuje tylko trwałe sparowane klucze; discovery dostarcza adres, nie zaufanie. Ponawianie z backoff 3–60 s, bez domyślnego relay, alarmów lub nowych kanałów sieciowych. Obecnie wybierany ostatni zapisany komputer; wybór wielu urządzeń rozwija WN-31.
-PERF: aplikacja nie trzyma wake locka ani stałego podtrzymywania CPU (uprawnienie WAKE_LOCK w manifeście pochodzi z WorkManager, którego używa Glance; test Doze sprawdza, że w Doze i po „Zatrzymaj” UID aplikacji nie trzyma wake locka poza WorkManagerem, WN-141). Keepalive QUIC co15 s po stronie PC i Androida już istnieje w transporcie. FGS nie znosi restrykcji sieci Doze; wyjątek baterii jest decyzją użytkownika. Offline bez blokady CPU. Dobowy pobór energii mierzy osobna karta WN-30; emulator nie dowodzi budżetu <1%/dobę.
+FLOW: confirmed pairing -> turning on the `connectedDevice` service -> a persistent notification with the PC's name, the real state and the actions "Open device", "Reconnect" (offline), "Stop". Clipboard/files are separate modules; the notification doesn't pretend to send them before they are implemented.
+RULE: The Activity and the service lease one WindCore in the Application. Closing/rotating the screen releases only the screen's lease; the last lease closes the native handles, discovery and the session. Turning the background off disconnects the session and stores the off state before stopping the service.
+FLOW: START_STICKY recreates the service after the system recovers the process. BOOT_COMPLETED after unlocking and MY_PACKAGE_REPLACED resume only a service that was turned on before; nothing starts before the identity is unlocked. A system force-stop requires opening the app again. Missing permissions for a background start give a message at the next opening.
+SEC: reconnecting loads only persistent paired keys; discovery provides the address, not trust. Retrying with a 3–60 s backoff, without a default relay, alarms or new network channels. Currently the last stored computer is chosen; choosing among several devices is developed in WN-31.
+PERF: the app holds no wake lock and no constant CPU keep-awake (the WAKE_LOCK permission in the manifest comes from WorkManager, which Glance uses; the Doze test checks that in Doze and after "Stop" the app's UID holds no wake lock beyond WorkManager, WN-141). A QUIC keepalive every 15 s on the PC and Android side already exists in the transport. An FGS doesn't lift Doze's network restrictions; the battery exemption is the user's decision. Offline without a CPU lock. The daily energy use is measured by a separate card, WN-30; an emulator doesn't prove the <1%/day budget.
 
-### Telefon i nocny test
+### Phone and the overnight test
 
-1. Zainstaluj `app/build/outputs/apk/debug/app-debug.apk` i sparuj PC. Zezwól na powiadomienia, aby widzieć urządzenie i akcje; po odmowie sekcja „Połączenie w tle” prowadzi do ustawień powiadomień.
-2. W sekcji „Połączenie w tle” otwórz optymalizację baterii i ustaw WindConnect jako nieoptymalizowany. Sam FGS nie znosi ograniczeń sieci Doze. Aplikacja nie zmienia tej zgody samoczynnie.
-3. Samsung: Ustawienia → Bateria → Limity użycia w tle → aplikacje nigdy nieusypiane; dodaj WindConnect i usuń z listy głęboko usypianych. Nazwy mogą się różnić w wydaniach One UI. Po aktualizacji sprawdź ustawienie ponownie.
-4. Zanotuj model, Android/One UI, wersję APK, stan baterii i ustawienia oszczędzania. PC ma pozostać uruchomiony w tej samej sieci. Zamknij ekran aplikacji, wyłącz ekran telefonu i odłącz ładowarkę na8 h. Rano sprawdź „Połączono”, działającą sesję i zmianę baterii. Powtórz restart telefonu: po odblokowaniu usługa ma wrócić bez otwierania aplikacji. „Zatrzymaj” ma wyłączyć ją także po kolejnym restarcie.
+1. Install `app/build/outputs/apk/debug/app-debug.apk` and pair the PC. Allow notifications to see the device and the actions; after a refusal the section "Background connection" leads to the notification settings.
+2. In the section "Background connection" open battery optimization and set WindConnect as not optimized. The FGS alone doesn't lift Doze's network limits. The app doesn't change this permission by itself.
+3. Samsung: Settings → Battery → Background usage limits → never sleeping apps; add WindConnect and remove it from the deep sleeping list. The names may differ between One UI releases. Check the setting again after an update.
+4. Note the model, Android/One UI, the APK version, the battery state and the battery-saving settings. The PC should stay running on the same network. Close the app's screen, turn off the phone's screen and unplug the charger for 8 h. In the morning check "Connected", a working session and the battery change. Repeat with a phone restart: after unlocking the service should come back without opening the app. "Stop" should turn it off also after a further restart.
 
-CCS/1 LIMIT: emulator API35 z wymuszonym Doze i jawnym wyjątkiem baterii sprawdza cykl życia, nie zastępuje nocy na S25 Ultra/najnowszym One UI. Nie deklarować spełnienia nocnego kryterium bez tego pomiaru.
+CCS/1 LIMIT: an API 35 emulator with forced Doze and an explicit battery exemption checks the life cycle; it doesn't replace a night on an S25 Ultra/the newest One UI. Don't claim the overnight criterion is met without this measurement.
 
-Źródła reguł platformy: [typ connectedDevice](https://developer.android.com/develop/background-work/services/fgs/service-types), [Doze i wyjątki baterii](https://developer.android.com/training/monitoring-device-state/doze-standby), [start FGS w tle](https://developer.android.com/develop/background-work/services/fgs/restrictions-bg-start), [zarządzanie aplikacjami Samsunga](https://developer.samsung.com/mobile/app-management.html).
+Sources of the platform rules: [the connectedDevice type](https://developer.android.com/develop/background-work/services/fgs/service-types), [Doze and battery exemptions](https://developer.android.com/training/monitoring-device-state/doze-standby), [starting an FGS from the background](https://developer.android.com/develop/background-work/services/fgs/restrictions-bg-start), [Samsung's app management](https://developer.samsung.com/mobile/app-management.html).
 
-### Powtarzalne sprawdzenia
+### Repeatable checks
 
 ```powershell
 cargo build --locked -p windconnect-windows --example background_peer
-# ANDROID_HOME i JAVA_HOME jak w testach QR WN-25; macierz QR koduje ten sam Rust qrcode/ECC M co aplikacja PC
+# ANDROID_HOME and JAVA_HOME as in the WN-25 QR tests; the QR matrix encodes the same Rust qrcode/ECC M as the PC app
 node apps/windows/scripts/check-background-android.cjs
 ```
 
-CCS/1 STATE: fixture wymaga zweryfikowanego emulatora i czyści wyłącznie jego testową aplikację. PC peer ma efemeryczną tożsamość i limit2100 s; zainstalowana aplikacja PC nie jest zatrzymywana. Obraz QR dekodowany na Androidzie, pełne parowanie i TLS bez obejścia trust. Publiczny pakiet discovery przekazywany przez emulator NAT. Test zamyka Activity, wymusza60 s Doze (SOAK_SECONDS=1800:30 min; BATTERY_EXEMPT=0: bez wyjątku baterii), sprawdza brak blokad CPU, próbuje akcję Zatrzymaj, uruchamia ponownie usługę i restartuje emulator; wymaga nowej prawdziwej sesji po BOOT_COMPLETED. Przywraca ustawienia zasilania i usuwa surowy jednorazowy link. TEMP/windconnect-wn29-*/ zawiera wynik i logi. ConnectionOwnerTest osobno sprawdza współdzielenie, ostatnie zwolnienie i trwałą tożsamość.
+CCS/1 STATE: the fixture requires a verified emulator and clears only its test app. The PC peer has an ephemeral identity and a 2100 s limit; the installed PC app isn't stopped. The QR image is decoded on Android, full pairing and TLS without bypassing trust. The public discovery packet is passed through the emulator's NAT. The test closes the Activity, forces 60 s of Doze (SOAK_SECONDS=1800: 30 min; BATTERY_EXEMPT=0: without the battery exemption), checks there are no CPU locks, tries the Stop action, restarts the service and restarts the emulator; it requires a new real session after BOOT_COMPLETED. It restores the power settings and removes the raw one-time link. TEMP/windconnect-wn29-*/ contains the result and logs. ConnectionOwnerTest separately checks sharing, the last release and the persistent identity.
 
-Test na emulatorze/telefonie: `CoreApiTest#platformNetworkCallbackWakesDiscoveryWithoutPolling`
-potwierdza rzeczywisty callback systemu i generację z natywnego odkrywania.
-Opt-in `CoreApiTest#wifiReturnWakesNativeDiscovery` z argumentem instrumentacji
-`-e toggleWifi true` wyłącza i przywraca Wi-Fi na wskazanym urządzeniu testowym,
-a następnie potwierdza nową generację odkrywania; domyślnie ten test jest pomijany.
-Test ręczny: wprowadź zweryfikowany klucz i adres PC, spróbuj połączenia bez
-zasięgu PC, a potem wejdź do Wi-Fi tego PC. Próba powinna ruszyć po zdarzeniu
-sieci. Sprawdzenie przejścia między fizycznymi sieciami na S25 Ultra pozostaje
-testem sprzętowym.
+Test on an emulator/phone: `CoreApiTest#platformNetworkCallbackWakesDiscoveryWithoutPolling`
+confirms the real system callback and the generation from native discovery.
+The opt-in `CoreApiTest#wifiReturnWakesNativeDiscovery` with the instrumentation argument
+`-e toggleWifi true` turns Wi-Fi off and back on on the chosen test device,
+and then confirms a new discovery generation; by default this test is skipped.
+A manual test: enter the PC's verified key and address, try to connect out of
+the PC's range, and then come into that PC's Wi-Fi. The attempt should start after the network
+event. Checking a switch between physical networks on an S25 Ultra remains
+a hardware test.
 
-## Przekaźnik poza domem (WN-60)
+## Relay outside the home (WN-60)
 
-`WindCore.setRelay(url)` włącza przekaźnik E2E (PROTOCOL.md §13) z adresem
-`wss://…`, a `setRelay(null)` go wyłącza. `relayUrl: StateFlow<String?>`
-pokazuje stan. Ustawienie jest zapisane w SharedPreferences
-(`windconnect.core`) i wraca po restarcie. Domyślnie przekaźnik jest
-wyłączony (D3). Przełącznik „Przekaźnik poza domem” w ustawieniach
-(`RelayControls.kt`, WN-92) zapisuje adres, pokazuje błąd złego adresu przy
-polu, a wyłączenie od razu kończy sesję przez przekaźnik (`relay-off`) i
-próbuje LAN. Ekran główny pokazuje „Połączono przez przekaźnik”. Z włączonym
-przekaźnikiem `connect` próbuje adresu PC przez 2 s, potem łączy przez
-przekaźnik. `ConnectionState.Connected.route` to `"lan"` albo `"relay"`. Po
-zmianie sieci w czasie sesji przez przekaźnik rdzeń próbuje adresu w LAN, a
-jeśli odpowiada, przechodzi na LAN.
+`WindCore.setRelay(url)` turns on the E2E relay (PROTOCOL.md §13) with the address
+`wss://…`, and `setRelay(null)` turns it off. `relayUrl: StateFlow<String?>`
+shows the state. The setting is stored in SharedPreferences
+(`windconnect.core`) and comes back after a restart. By default the relay is
+off (D3). The switch "Relay outside the home" in the settings
+(`RelayControls.kt`, WN-92) stores the address, shows an error for a bad address at the
+field, and turning it off at once ends the session through the relay (`relay-off`) and
+tries the LAN. The home screen shows "Connected through the relay". With the relay
+on, `connect` tries the PC's address for 2 s, then connects through the
+relay. `ConnectionState.Connected.route` is `"lan"` or `"relay"`. After
+a network change during a session through the relay the core tries the LAN address, and
+if it answers, switches to the LAN.
 
-Test na emulatorze (Wi-Fi wyłączone przez test, tylko sieć komórkowa): przy
-`npm run dev` w `relay/` i `windctl serve --relay ws://127.0.0.1:8787 --trust
-<klucz Androida> --bind 127.0.0.1:47821`:
+Test on an emulator (Wi-Fi turned off by the test, only the cellular network): with
+`npm run dev` in `relay/` and `windctl serve --relay ws://127.0.0.1:8787 --trust
+<Android key> --bind 127.0.0.1:47821`:
 
 ```powershell
 adb shell am instrument -w -r -e class io.github.prejas3.windconnect.RelayRouteTest -e pcKey <PC_PUBLIC_KEY> -e relayUrl ws://10.0.2.2:8787 -e awayAddress 10.0.2.2:47999 $runner
 ```
 
-`awayAddress` to adres, który nie odpowiada (dom poza zasięgiem). Wynik z
+`awayAddress` is an address that doesn't answer (home out of range). The result from
 2026-11-10, emulator API 35: `network=cellular only`, `route=relay`,
-połączenie po 2057 ms (w tym 2 s próby LAN), ping 6 ms. Prawdziwa sieć
-komórkowa wymaga wdrożonego przekaźnika (relay/README.md) i telefonu.
+connected after 2057 ms (including the 2 s LAN attempt), ping 6 ms. A real cellular
+network needs a deployed relay (relay/README.md) and a phone.
 
-Wyłączenie w trakcie sesji (WN-92): `RelaySettingsTest#turningTheRelayOffEndsARelaySessionAtOnce`
-z tymi samymi argumentami (`awayAddress 192.0.2.1:47820`). Wynik z 2026-11-16,
-emulator API 35, lokalny `wrangler dev`: sesja `route=relay`, koniec po 86 ms,
-potem próba LAN bez powrotu na przekaźnik.
+Turning it off during a session (WN-92): `RelaySettingsTest#turningTheRelayOffEndsARelaySessionAtOnce`
+with the same arguments (`awayAddress 192.0.2.1:47820`). The result from 2026-11-16,
+emulator API 35, a local `wrangler dev`: a `route=relay` session, the end after 86 ms,
+then a LAN attempt without returning to the relay.
 
-Wyłączenie w trakcie łączenia (WN-139): wind-ffi czyta przekaźnik raz, na
-początku `connect`, więc połączenie w toku może i tak skończyć się na
-przekaźniku. `adopt` sprawdza to po przyjęciu sesji i od razu ją zwalnia
-(jak `leaveRelay`). Test: `RelaySettingsTest#turningTheRelayOffDuringAConnectLeavesNoRelaySession`
-z tymi samymi argumentami; 2026-11-16: 4/4 bez sesji przez przekaźnik, a bez
-poprawki 2/2 zostaje `route=relay`.
-## Bateria (WC-30)
+Turning it off during connecting (WN-139): wind-ffi reads the relay once, at the
+start of `connect`, so a connection in progress may still end up on the
+relay. `adopt` checks this after accepting the session and releases it at once
+(like `leaveRelay`). Test: `RelaySettingsTest#turningTheRelayOffDuringAConnectLeavesNoRelaySession`
+with the same arguments; 2026-11-16: 4/4 without a session through the relay, and without
+the fix 2/2 stay `route=relay`.
 
-Budżet planu: < 1% baterii na dobę. Pomiary składowe:
+## Battery (WC-30)
 
-| Data | Urządzenie | Pomiar | Wynik |
+The plan's budget: < 1% of battery per day. Component measurements:
+
+| Date | Device | Measurement | Result |
 | --- | --- | --- | --- |
-| 2026-11-10 | emulator API 35 (x86_64), `MulticastLockTest` z `android_peer` | `MulticastLock` (WN-83) | brany od startu; zwolniony 243 ms po zestawieniu sesji; przy aktywnej sesji zdarzenie sieci i odświeżenie go nie biorą; po utracie sesji brany po 237 ms i zwolniony sam po 30 253 ms; po wyłączeniu Wi-Fi bez sesji brany po 958 ms; po `shutdown()` zwolniony |
-| 2026-11-11 | emulator API 35 (x86_64), `check-multi-pc.cjs` (WN-90), 3 przebiegi | `MulticastLock` przy sesji z PC1 i drugim PC w sieci | lock nie brany przez całą sesję (sprawdzane co 200 ms); drugi PC na liście po 912–920 ms; po wyłączeniu Wi-Fi po 1 818–1 870 ms, po włączeniu po 1 850–1 872 ms (pakiet co 2 s); sesja z PC1 utrzymana |
+| 2026-11-10 | emulator API 35 (x86_64), `MulticastLockTest` with `android_peer` | `MulticastLock` (WN-83) | taken from start; released 243 ms after the session was set up; with an active session a network event and a refresh don't take it; after losing the session taken after 237 ms and released by itself after 30 253 ms; after turning Wi-Fi off without a session taken after 958 ms; released after `shutdown()` |
+| 2026-11-11 | emulator API 35 (x86_64), `check-multi-pc.cjs` (WN-90), 3 runs | `MulticastLock` with a session with PC1 and a second PC on the network | the lock not taken during the whole session (checked every 200 ms); the second PC on the list after 912–920 ms; after turning Wi-Fi off after 1 818–1 870 ms, after turning it on after 1 850–1 872 ms (a packet every 2 s); the session with PC1 kept |
 
-Przed WN-83 lock był trzymany przez całe życie `WindCore`. Teraz przy stałym
-połączeniu z PC jest trzymany tylko przez czas zestawiania sesji, a bez
-połączenia przez okna po 30 s. Szukanie innych PC w czasie sesji (WN-90) nie
-dokłada czasu z lockiem: idzie przez broadcast. Zużycie w mAh wymaga pomiaru na telefonie
-(S25 Ultra, Battery Historian) i należy do WC-30.
+Before WN-83 the lock was held for the whole life of `WindCore`. Now, with a constant
+connection to the PC, it is held only while the session is being set up, and without
+a connection for 30 s windows. Looking for other PCs during a session (WN-90) adds
+no time with the lock: it goes through broadcast. Usage in mAh needs a measurement on a phone
+(S25 Ultra, Battery Historian) and belongs to WC-30.
 
-## Motyw i komponenty (WN-22)
+## Theme and components (WN-22, WN-160)
 
-`ui/Theme.kt` definiuje DM Sans i paletę z zaakceptowanego WN-20. Domyślnie
-Android 12+ pobiera Material You z tapety (`dynamicLightColorScheme` /
-`dynamicDarkColorScheme`); Android 10/11 zachowuje paletę morską/grafitową.
-Motyw System reaguje na konfigurację OS, a ręczny wybór jasny/ciemny i opcja
-koloru dynamicznego są zapamiętywane w prywatnych preferencjach aplikacji.
-Zmiana ustawień nie wymaga restartu. Treść respektuje safe drawing/IME insets,
-skalowanie czcionek i semantykę dostępności; ikony pasków systemu dopasowują
-się do motywu. Ikony i geometria kart/akcji pochodzą z makiety WN-20.
+`ui/Theme.kt` defines DM Sans and the palette from the accepted WN-20. By default
+Android 12+ takes Material You from the wallpaper (`dynamicLightColorScheme` /
+`dynamicDarkColorScheme`); Android 10/11 keep the teal/graphite palette.
+WN-160: `readable()` gives the app and the widget one readable scheme: under Material You cards take
+`surfaceContainerHigh`, and secondary text on a card is pushed to at least 7:1 contrast,
+accents and errors to 4.5:1, lines to 1.8:1 (`ThemeContrastTest`).
+The System theme follows the OS configuration, and the manual light/dark choice and the dynamic
+colour option are remembered in the app's private preferences.
+Changing the settings needs no restart. The content respects safe drawing/IME insets,
+font scaling and accessibility semantics; the system bars' icons match
+the theme. The icons and the geometry of cards/actions come from the WN-20 mockup.
 
-`ui/Components.kt`: własne przyciski, karty, kafelki akcji, pola oparte na
-BasicTextField, przełącznik Canvas i wektorowe ikony. Brak domyślnych Button,
-Switch i OutlinedTextField. Role, opis pola, błąd i postęp są w semantyce Compose;
-elementy interaktywne mają co najmniej 48 dp. Ekran ręcznego połączenia nadal
-korzysta z rzeczywistego rdzenia i przypiętego klucza; jego tagi testowe zachowano.
+`ui/Components.kt`: our own buttons, cards, action tiles, fields based on
+BasicTextField, a Canvas switch and vector icons. No default Button,
+Switch or OutlinedTextField. Roles, field descriptions, errors and progress are in Compose semantics;
+interactive elements are at least 48 dp. The manual connection screen still
+uses the real core and a pinned key; its test tags were kept.
 
-W debug naciśnij **Podgląd** w nagłówku. Ekran demonstruje oba motywy, paletę
-systemową/marki, kartę SZYMON-PC, cztery akcje, transfer, switch i walidację pola.
-To dane przykładowe: kliknięcie nie łączy, nie blokuje komputera i nie wysyła
-plików. **Połączenie** przywraca rzeczywisty ekran. Release nie pokazuje podglądu
-(`BuildConfig.DEBUG`); testy i stan przykładowego urządzenia nie trafiają do UX
-wydania. Nie dodano powiadomień/QS/widgetu — to odrębne funkcje z makiet.
+In debug press **Preview** in the header. The screen demonstrates both themes, the system/brand
+palette, the SZYMON-PC card, four actions, a transfer, a switch and field validation.
+This is sample data: a click doesn't connect, doesn't lock the computer and doesn't send
+files. **Connection** restores the real screen. Release doesn't show the preview
+(`BuildConfig.DEBUG`); tests and the sample device's state don't reach the release's
+UX. No notifications/QS/widget were added here — those are separate features from the mockups.
 
-DM Sans jest tym samym niezmienionym fontem co w WN-21; kopia OFL i NOTICE
-są w `app/src/main/assets`, font w `res/font`. Nie dodano zależności ani fontów
-z sieci. Ikony i kod własny: MIT.
+DM Sans is the same unchanged font as in WN-21; a copy of the OFL and NOTICE
+are in `app/src/main/assets`, the font in `res/font`. No dependencies or fonts
+from the network were added. Icons and our own code: MIT.
 
-Testy: `./gradlew :app:connectedDebugAndroidTest` na podłączonym urządzeniu.
-`ComponentsTest` sprawdza motywy, dynamiczny kolor, akcję, switch, walidację,
-odtworzenie Activity i powrót do prawdziwego ekranu; zapisuje zrzuty obu palet
-w cache debug aplikacji (`wn22-Light.png`, `wn22-Dark.png`). CI kompiluje APK
-instrumentacji; urządzeniowe uruchomienie jest lokalne. Docelowo sprawdź na S25
-Ultra / najnowszym One UI, także duży font i nawigację gestami. Emulator API 35
-nie zastępuje kontroli układu i koloru tapety na Samsungu.
+Tests: `./gradlew :app:connectedDebugAndroidTest` on a connected device.
+`ComponentsTest` checks the themes, dynamic colour, an action, the switch, validation,
+recreating the Activity and returning to the real screen; it saves screenshots of both palettes
+in the debug app's cache (`wn22-Light.png`, `wn22-Dark.png`). CI compiles the
+instrumentation APK; running on a device is local. In the end check on an S25
+Ultra / the newest One UI, also a large font and gesture navigation. An API 35 emulator
+doesn't replace checking the layout and the wallpaper colour on a Samsung.
 
-## Parowanie bez aparatu (WN-27)
+## Pairing without the camera (WN-27)
 
-Ekran parowania ma „Paruj bez aparatu”: lista komputerów z otwartym oknem
-kodu (mDNS TXT `pair`, PROTOCOL.md §12.4; na czas ekranu włączony multicast,
-`discoveryScreen`). Wybór łączy się z portem parowania (`CoreClient.startSas`),
-oba ekrany pokazują ten sam kod (`SasPairing.code`), a para powstaje tylko
-po „Kody są takie same” na telefonie i na komputerze (`SasPairing.decide`).
-Lista niczego nie potwierdza; adres to wskazówka, uwierzytelnia porównanie
-kodów (§12.6). Test FFI: `cargo test -p wind-ffi --test pairing`
+The QR screen has "Pair without the camera": a list of computers with an open code
+window (mDNS TXT `pair`, PROTOCOL.md §12.4; multicast turned on for the screen's duration,
+`discoveryScreen`). A choice connects to the pairing port (`CoreClient.startSas`),
+both screens show the same code (`SasPairing.code`), and a pair is made only
+after "The codes are the same" on the phone and on the computer (`SasPairing.decide`).
+The list confirms nothing; the address is a hint, the code comparison
+authenticates (§12.6). FFI test: `cargo test -p wind-ffi --test pairing`
 (`sas_pairs_only_when_both_accept_the_same_code`).
 
-## Wspólny schowek (WN-35)
+## Shared clipboard (WN-35)
 
 CCS/1
-FLOW:systemowy ClipboardManager -> UniFFI -> clipboard/1 na sparowanej sesji -> schowek PC; Applied wraca dopiero po udanym zapisie OS. Odbiór PC -> telefon działa także przy zamkniętej Activity, jeśli działa usługa połączenia.
-RULE:automat włączony domyślnie. Przełącznik „Synchronizacja automatyczna” na Home/Ustawieniach zapamiętuje decyzję; wyłącza automatyczny odczyt oraz odbiór, ale nie zatrzymuje połączenia. Ręczne „Wyślij schowek” pozostaje dodatkiem. Samo ponowne otwarcie/fokus nie wysyła już wysłanej/odebranej treści.
-LIMIT:Android 10+ czyta schowek tylko przy fokusie aplikacji. Wysyłanie telefonu działa automatycznie przy fokusie WindConnect i po powrocie do aplikacji, jeśli treść się zmieniła. W innych aplikacjach użyj „Wyślij schowek” w stałym powiadomieniu: otworzy krótko osobny ekran, poczeka na fokus/odblokowanie i po dostarczeniu wróci do poprzedniej aplikacji. Bez READ_LOGS, Accessibility ani zmiany klawiatury. Czas otwarcia ekranu i działania człowieka nie jest budżetem transportu <150 ms.
-SEC:tylko plain text/linki do256 KiB bez NUL; bez otwierania URL lub odczytu URI providerów. EXTRA_IS_SENSITIVE blokuje także wysłanie ręczne. Odebrany tekst zawsze ma sensitive=true (ukryty podgląd Androida13+ i brak echa). Status nie zawiera treści; bez logowania payloadu; historia tylko w pamięci, przypięte zaszyfrowane (WN-117).
-DEC:chronologii zegarów urządzeń nie porównujemy. Licznik Lamporta+id16B rozstrzyga równoczesne zmiany, hash w pamięci zapobiega echo, reconnect nie odtwarza starej zawartości. Wire i limity w PROTOCOL.md §9.3.
-RULE:automat wysyła tylko schowek skopiowany po przyjęciu bieżącej sesji (ClipDescription.timestamp względem lokalnego System.currentTimeMillis). Stary tekst po restarcie procesu lub reconnect nie zastąpi schowka PC przy fokusie; ręczne wysłanie może go wysłać. Timestamp0/równy granicy jest pomijany. Po cofnięciu zegara użyj ręcznej akcji. Bez utrwalania payloadu.
+FLOW:the system ClipboardManager -> UniFFI -> clipboard/1 on the paired session -> the PC's clipboard; Applied comes back only after a successful OS write. Receiving PC -> phone also works with the Activity closed, if the connection service is running.
+RULE:automatic mode on by default. The switch "Automatic sync" on Home/in Settings remembers the decision; it turns off automatic reading and receiving, but doesn't stop the connection. The manual "Send clipboard" stays as an extra. Merely reopening/focus doesn't send content already sent/received.
+LIMIT:Android 10+ reads the clipboard only when the app has focus. Sending from the phone works automatically with WindConnect in focus and after returning to the app, if the content changed. In other apps use "Send clipboard" in the persistent notification: it briefly opens a separate screen, waits for focus/unlocking and after delivery returns to the previous app. No READ_LOGS, Accessibility or keyboard change. The time to open the screen and the person's actions are not the <150 ms transport budget.
+SEC:only plain text/links up to 256 KiB without NUL; no opening of URLs or reading of providers' URIs. EXTRA_IS_SENSITIVE also blocks a manual send. Received text always has sensitive=true (the Android 13+ preview hidden and no echo). The status doesn't contain the content; no logging of the payload; the history only in memory, pinned items encrypted (WN-117).
+DEC:we don't compare the devices' clock chronology. A Lamport counter+16 B id decides simultaneous changes, a hash in memory prevents an echo, a reconnect doesn't restore old content. Wire and limits in PROTOCOL.md §9.3.
+RULE:the automatic mode sends only a clipboard copied after the current session was accepted (ClipDescription.timestamp against the local System.currentTimeMillis). Old text after a process restart or a reconnect won't replace the PC's clipboard on focus; a manual send may send it. A timestamp of 0/equal to the boundary is skipped. After the clock goes back use the manual action. No persisting of the payload.
 
-Test telefonu: sparuj Windows i S25 Ultra, włącz usługę/powiadomienia. Skopiuj
-zwykły tekst Unicode lub link na PC i wklej na telefonie w innej aplikacji,
-gdy WindConnect jest w tle. Skopiuj nowy tekst na telefonie, stuknij akcję
-powiadomienia i wklej na PC. Przy otwartym WindConnect sprawdź automat.
-Tekst oznaczony przez menedżer haseł jako wrażliwy ma zostać pominięty.
-Sprawdź wyłączenie/przywrócenie synchronizacji, utratę sieci i brak starej
-kolejki po reconnect. Potwierdź na aktualnym One UI; emulator nie jest S25.
+Phone test: pair Windows and an S25 Ultra, turn on the service/notifications. Copy
+ordinary Unicode text or a link on the PC and paste it on the phone in another app
+while WindConnect is in the background. Copy new text on the phone, tap the action
+of the notification and paste on the PC. With WindConnect open check the automatic mode.
+Text marked by a password manager as sensitive should be skipped.
+Check turning sync off/on again, losing the network and no old
+queue after a reconnect. Confirm on the current One UI; an emulator is not an S25.
 
-Automatyczny test OS: z root `cargo build --locked -p windconnect-windows
---example clipboard_peer`; zbuduj Android debug/androidTest, ustaw
-`JAVA_HOME`, `ANDROID_HOME`, `CLIPBOARD_PROOF=1` i uruchom przez `cw-progress`
+An automatic OS test: from the root `cargo build --locked -p windconnect-windows
+--example clipboard_peer`; build Android debug/androidTest, set
+`JAVA_HOME`, `ANDROID_HOME`, `CLIPBOARD_PROOF=1` and run through `cw-progress`
 `node apps/windows/scripts/check-background-android.cjs`.
-Test wymaga jednorazowego emulatora (czyści tylko jego dane WindConnect).
-Przed uruchomieniem emulatora wyłącz jego „Enable clipboard sharing”
-(Extended Controls → Settings). Współdzielenie hosta jest drugim kanałem
-schowka, może nadpisywać próbki i gubić sensitive. Po zakończeniu przywróć
-swoje ustawienie. Test sprawdza odczytem kontrolnym każdą kopię przy fokusie;
-nie ponawia ani nie ukrywa błędnego zapisu próbki.
-Windows używa osobnego pulpitu w nieinteraktywnej stacji i odmawia testu,
-jeśli jej schowek nie jest pusty. Nie używa schowka interaktywnego użytkownika.
-100 próbek/kierunek mierzy od kopiowania w OS do Applied po zapisie drugiego
-OS (konserwatywna górna granica czasu kopiuj→wklej), osobno sprawdza odbiór
-Androida bez Activity, sensitive, akcję powiadomienia i brak echa po fokusie.
-Surowe próbki i zrzuty Light/Dark: `%TEMP%/windconnect-wn35-*`.
+The test needs a disposable emulator (it clears only its WindConnect data).
+Before starting the emulator turn off its "Enable clipboard sharing"
+(Extended Controls → Settings). Host sharing is a second clipboard
+channel, it may overwrite samples and lose sensitive. Afterwards restore
+your setting. The test checks every copy with a control read on focus;
+it doesn't retry or hide a bad write of a sample.
+Windows uses a separate desktop in a non-interactive station and refuses the test
+if its clipboard isn't empty. It doesn't use the user's interactive clipboard.
+100 samples/direction measure from copying in the OS to Applied after the other
+OS's write (a conservative upper bound of copy→paste time), and separately check Android's
+receiving without an Activity, sensitive, the notification action and no echo after focus.
+Raw samples and Light/Dark screenshots: `%TEMP%/windconnect-wn35-*`.
 
-## Hasła w schowku (WN-37)
-
-CCS/1
-SEC:klip z `ClipDescription.EXTRA_IS_SENSITIVE` (`android.content.extra.IS_SENSITIVE`) nie jest wysyłany na PC, także ręcznie (test: `ClipboardProof`, „WN35-PRIVATE-ANDROID”). Telefon czyta schowek tylko z fokusem albo ręcznie, nigdy w tle. W drugą stronę hasła z menedżerów na PC nie dochodzą (test OS z 4 znacznikami Windows, `apps/windows/README.md`, WN-37).
-LIMIT:menedżery ustawiają IS_SENSITIVE na Androidzie 13+; starsze lub źle napisane go nie ustawiają, a hasło skopiowane z nich wygląda jak zwykły tekst. Nie rozpoznajemy haseł po treści.
-
-## Historia schowka (WN-117)
+## Passwords in the clipboard (WN-37)
 
 CCS/1
-FLOW:pozycja trafia do historii, gdy PC potwierdził wysłany schowek (Applied) albo gdy schowek z PC został zapisany na telefonie; odebrany obraz dopiero po dojściu całego PNG. Karta „Historia schowka” na Home i w Ustawieniach: najnowsze u góry, stuknięcie kopiuje z powrotem, „Przypnij”/„Odepnij”, „Usuń”, „Wyczyść” (nieprzypięte).
-RULE:zasady jak na PC (WN-37, `apps/windows/README.md`): 20 ostatnich + do 20 przypiętych (u góry, poza dwudziestką); ta sama treść (SHA-256) przesuwa się na górę. Obrazy nieprzypięte do 64 MB łącznie (najstarszy wypada), przypięte też do 64 MB. Wyłączona synchronizacja: nic nowego (także ręczne wysłanie), wyłączenie czyści nieprzypięte.
-RULE:kopiowanie zachowuje flagi: tekst z PC wraca z IS_SENSITIVE jak przy odbiorze (więc nie jest odsyłany), obraz przez własny `ClipImageProvider` (bez echa); tekst z telefonu jako zwykły klip, który automat wysyła na PC jak każdą nową kopię.
-SEC:klip z IS_SENSITIVE nigdy nie trafia do historii (nie jest czytany ani wysyłany). Historia tylko w pamięci; UI dostaje podgląd (jedna linia, 120 znaków, sterujące/bidi/zerowej szerokości → spacja, zwykły Text) albo miniaturę. Przypięte w `noBackupFilesDir/clipboard-pins.bin`: AES-256-GCM, klucz w Android Keystore, nagłówek `WCPN` 1. Plik uszkodzony/nowszy albo bez klucza: start bez przypiętych, plik zostaje; brak przypiętych usuwa plik.
-LIMIT:po restarcie procesu zostają tylko przypięte; bez wyszukiwania.
-CHECK:`ClipboardHistoryTest` (JVM: kolejność, limity, budżet obrazów, plik przypiętych, podgląd); `ClipboardHistoryInstrumentedTest` (`:wind-core:connectedDebugAndroidTest`: prawdziwy schowek i Keystore, IS_SENSITIVE poza historią, flagi przy kopiowaniu, przypięte po restarcie, wyłączona synchronizacja); `ClipboardHistoryUiTest` (`:app`, Light/Dark, zrzuty `cache/wn117-history-*.png`).
-## Wspólny schowek: obrazy (WN-36)
+SEC:a clip with `ClipDescription.EXTRA_IS_SENSITIVE` (`android.content.extra.IS_SENSITIVE`) isn't sent to the PC, also manually (test: `ClipboardProof`, "WN35-PRIVATE-ANDROID"). The phone reads the clipboard only with focus or manually, never in the background. In the other direction, passwords from managers on the PC don't arrive (the OS test with 4 Windows markers, `apps/windows/README.md`, WN-37).
+LIMIT:managers set IS_SENSITIVE on Android 13+; older or badly written ones don't set it, and a password copied from them looks like ordinary text. We don't recognize passwords by their content.
+
+## Clipboard history (WN-117, WN-160)
 
 CCS/1
-FLOW:PC -> telefon: ImageSet (miniatura, rozmiar) -> setPrimaryClip z `content://<pakiet>.clipimage/<id>` (image/png) -> Applied; pełny PNG dochodzi w tle. `ClipImageProvider` (moduł wind-core, nieeksportowany, grantUriPermissions) daje podglądom (EXTRA_SIZE, `loadThumbnail`) miniaturę od razu, a wklejeniu strumień pełnego PNG w miarę napływu.
-FLOW:telefon -> PC: przy fokusie klip z URI image/* innej aplikacji (uprawnienie klipu) -> PNG bez zmian albo ponownie zakodowany -> miniatura -> clipboard/2. Własny URI dostawcy nigdy nie wraca do PC.
-RULE:limit „Maks. rozmiar obrazu” 5 / 16 / 50 MB w Ustawieniach (domyślnie 16 MB), dla wysyłania i odbioru.
-SEC:odebrany obraz nie ma EXTRA_IS_SENSITIVE (inaczej niż tekst), żeby podgląd z miniatury działał; pochodzi z własnego PC, który treści prywatnych nie wysyła. Obraz z IS_SENSITIVE nie jest wysyłany. Tylko pamięć, tylko ostatni obraz; po restarcie procesu stary URI daje FileNotFoundException (wklejenie się nie udaje, bez awarii).
-LIMIT:wklejenie przed końcem przesyłu czeka do 10 s bez nowych bajtów; nowszy schowek albo przerwanie kończą je błędem, nigdy częściowym obrazem.
+FLOW:an item goes into the history when the PC confirmed a sent clipboard (Applied) or when a clipboard from the PC was written on the phone; a received image only after the whole PNG arrived. The card "Clipboard history" on Home and in Settings: newest at the top, a tap copies it back, pin/unpin and remove as icons on the row (WN-160), "Clear" (the unpinned ones).
+RULE:rules as on the PC (WN-37, `apps/windows/README.md`): the last 20 + up to 20 pinned (at the top, outside the twenty); the same content (SHA-256) moves to the top. Unpinned images up to 64 MB in total (the oldest drops out), pinned ones also up to 64 MB. Sync turned off: nothing new (manual sending neither), turning it off clears the unpinned ones.
+RULE:copying keeps the flags: text from the PC comes back with IS_SENSITIVE as when received (so it isn't sent back), an image through our own `ClipImageProvider` (no echo); text from the phone as an ordinary clip, which the automatic mode sends to the PC like any new copy.
+SEC:a clip with IS_SENSITIVE never goes into the history (it isn't read or sent). The history only in memory; the UI gets a preview (one line, 120 characters, control/bidi/zero-width → space, leading blanks skipped and runs of blanks collapsed (WN-160), plain Text) or a thumbnail. Pinned items in `noBackupFilesDir/clipboard-pins.bin`: AES-256-GCM, the key in the Android Keystore, header `WCPN` 1. A damaged/newer file or no key: start without pinned items, the file stays; no pinned items deletes the file.
+LIMIT:after a process restart only pinned items remain; no search.
+CHECK:`ClipboardHistoryTest` (JVM: order, limits, the image budget, the pinned file, the preview); `ClipboardHistoryInstrumentedTest` (`:wind-core:connectedDebugAndroidTest`: the real clipboard and Keystore, IS_SENSITIVE outside the history, flags when copying, pinned after a restart, sync off); `ClipboardHistoryUiTest` (`:app`, Light/Dark, screenshots `cache/wn117-history-*.png`).
 
-Testy: `ClipImageProviderTest` (miniatura dla podglądu, pełny PNG w miarę
-napływu, błąd przy nowszym obrazie, nieznany obraz = FileNotFoundException).
-Pomiar „zrzut z PC wklejalny na telefonie < 500 ms” jest częścią testu OS
-WN-35 wyżej: PC kopiuje syntetyczny zrzut jako sam CF_DIB (kodowanie PNG po
-stronie PC) 10× 1080p i 3× 4K; raport podaje czas do Applied (wklejalny) i do
-ImageDone (cały PNG na telefonie), a telefon czyta pełny PNG przez URI i
-podgląd. Czas zależy od profilu: uruchom `clipboard_peer` zbudowany
+## Shared clipboard: images (WN-36)
+
+CCS/1
+FLOW:PC -> phone: ImageSet (thumbnail, size) -> setPrimaryClip with `content://<package>.clipimage/<id>` (image/png) -> Applied; the full PNG arrives in the background. `ClipImageProvider` (the wind-core module, not exported, grantUriPermissions) gives previews (EXTRA_SIZE, `loadThumbnail`) the thumbnail at once, and a paste a stream of the full PNG as it arrives.
+FLOW:phone -> PC: on focus a clip with another app's image/* URI (the clip's permission) -> the PNG unchanged or re-encoded -> thumbnail -> clipboard/2. The provider's own URI never goes back to the PC.
+RULE:the limit "Max image size" 5 / 16 / 50 MB in Settings (16 MB by default), for sending and receiving.
+SEC:a received image has no EXTRA_IS_SENSITIVE (unlike text), so that the thumbnail preview works; it comes from one's own PC, which doesn't send private content. An image with IS_SENSITIVE isn't sent. Memory only, only the last image; after a process restart the old URI gives FileNotFoundException (the paste fails, without a crash).
+LIMIT:a paste before the transfer ends waits up to 10 s without new bytes; a newer clipboard or a break end it with an error, never with a partial image.
+
+Tests: `ClipImageProviderTest` (the thumbnail for the preview, the full PNG as it
+arrives, an error with a newer image, an unknown image = FileNotFoundException).
+The measurement "a screenshot from the PC pasteable on the phone < 500 ms" is part of the WN-35
+OS test above: the PC copies a synthetic screenshot as CF_DIB alone (PNG encoding on
+the PC's side) 10× 1080p and 3× 4K; the report gives the time to Applied (pasteable) and to
+ImageDone (the whole PNG on the phone), and the phone reads the full PNG through the URI and
+the preview. The time depends on the profile: run `clipboard_peer` built with
 `CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS=true cargo build --release
---example clipboard_peer` i `PEER_PROFILE=release` (debugowy enkoder PNG jest
-~10× wolniejszy niż wysyłana aplikacja).
+--example clipboard_peer` and `PEER_PROFILE=release` (the debug PNG encoder is
+~10× slower than the shipped app).
 
-## Bateria telefonu na PC (WN-49)
-
-CCS/1
-FLOW:sesja przyjęta przez `WindCore` -> `BatteryReporter` rejestruje odbiornik `ACTION_BATTERY_CHANGED` (lepki intent daje stan od razu) -> `CoreConnection.sendBattery` -> PC (`battery/1`, PROTOCOL.md §9.4). Koniec sesji wyrejestrowuje odbiornik.
-RULE:jedna normalizacja `BatteryReading.from(intent)`: procent jak w pasku stanu (`level * 100 / scale`, w dół), ładowanie = podłączony, CHARGING albo FULL; nieznany poziom = brak odczytu (nic nie idzie). Z niej skorzysta też widżet (WN-33).
-RULE:bez pollingu i budzenia: odbiornik tylko w czasie sesji; równe odczyty (intent przychodzi też przy zmianie napięcia i temperatury) są pomijane, a rdzeń wysyła tylko zmiany pary (poziom, ładowanie).
-LIMIT:PC widzi zmiany tylko przy żywej sesji (połączenie w tle włączone). W Doze albo bez połączenia w tle stan na PC nie jest aktualizowany, więc alert 15% może przyjść późno albo wcale. Nie dotyka ConnectionService ani ekranu głównego.
-
-## Znajdź telefon (WN-50)
+## The phone's battery on the PC (WN-49)
 
 CCS/1
-FLOW:komputer prosi (`find/1`, PROTOCOL.md §9.5) -> `PhoneRinger`: głośność alarmu na max (poprzednia zapisana), wygenerowany ton (880/1320 Hz) przez AudioTrack z `USAGE_ALARM`, wibracje, powiadomienie -> stan 0 do PC dopiero, gdy głowica odtwarzania ruszyła.
-RULE:dźwięk omija tryb cichy i wibracje (strumień alarmu); ton jest generowany (bez pliku, bez opóźnienia przygotowania, niezależny od dzwonka użytkownika). Bez WAKE_LOCK: przy wygaszonym ekranie odtwarzanie podtrzymuje audioserver.
-RULE:zatrzymanie: powiadomienie na własnym kanale „Znajdź telefon” (IMPORTANCE_HIGH, bez własnego dźwięku, trwałe w czasie dzwonienia, znika po stanie końcowym, akcja „Zatrzymaj” i stuknięcie), pasek „Zatrzymaj dzwonienie” na każdym ekranie aplikacji (działa bez zgody na powiadomienia) i przycisk głośności przy otwartej aplikacji. Limit 60 s pilnuje rdzeń; koniec sesji nie zatrzymuje dzwonienia.
-RULE:głośność alarmu wraca po każdym dzwonieniu; gdy proces zginie w trakcie, następny start ją przywraca (chyba że użytkownik ją zmienił). Ustawienie „Pozwól komputerowi dzwonić” (domyślnie włączone) wycofuje `find/1` także w trwającej sesji.
-LIMIT:DND blokujące alarmy wycisza dźwięk (ominięcie wymaga dostępu do zasad DND, o który aplikacja nie prosi). Bez połączenia w tle albo w Doze prośba dochodzi późno albo wcale. Przycisk głośności przy wygaszonym ekranie lub poza aplikacją nie zatrzymuje dzwonienia (to wymagałoby sesji multimediów). Nie dotyka ConnectionService ani ekranu głównego; pasek jest nakładką w MainActivity.
+FLOW:a session accepted by `WindCore` -> `BatteryReporter` registers an `ACTION_BATTERY_CHANGED` receiver (the sticky intent gives the state at once) -> `CoreConnection.sendBattery` -> the PC (`battery/1`, PROTOCOL.md §9.4). The end of the session unregisters the receiver.
+RULE:one normalization `BatteryReading.from(intent)`: the percentage as in the status bar (`level * 100 / scale`, rounded down), charging = plugged in, CHARGING or FULL; an unknown level = no reading (nothing is sent). The widget (WN-33) uses it too.
+RULE:no polling and no waking: the receiver only during a session; equal readings (the intent also comes on voltage and temperature changes) are skipped, and the core sends only changes of the pair (level, charging).
+LIMIT:the PC sees changes only with a live session (background connection on). In Doze or without a background connection the state on the PC isn't updated, so the 15% alert may come late or not at all. It doesn't touch ConnectionService or the home screen.
 
-## Odtwarzacz telefonu na PC (WN-46)
-
-CCS/1
-FLOW:sesja przyjęta + dostęp + ustawienie -> `PhoneMedia`: `getActiveSessions` i `addOnActiveSessionsChangedListener` przez `MediaListenerService`, `MediaController.Callback` na wybranej sesji -> `CoreConnection.sendMedia` (tylko zmiany, okładka raz) -> PC. Polecenie z PC (`media-control/1`, sprawdzone w rdzeniu względem ostatnich `actions`) -> `transportControls`.
-RULE:wybór sesji: pierwsza w stanie PLAYING, inaczej pierwsza w kolejności systemu; zmiana przy `onActiveSessionsChanged` i zmianie stanu. Okładka ≤ 256 px JPEG ≤ 96 KiB, liczona raz na bitmapę, na wątku multimediów. Teksty przycinane do 256 B (aplikacja do 64 B) na granicy znaku.
-RULE:zgoda: Android nazywa to „dostępem do powiadomień”. `MediaListenerService` nie czyta żadnych powiadomień; karta w Ustawieniach mówi to wprost. Funkcja czytania powiadomień (WN-42) NIE MOŻE po cichu korzystać z tej zgody: dostaje własny przełącznik (domyślnie wyłączony) i własne wyjaśnienie (PROTOCOL.md §9.6, zasada 6).
-RULE:`media-control/1` jest ogłaszane tylko przy przyznanym dostępie i włączonym „Pokaż multimedia na komputerze”, także w trakcie sesji (`Router::start_disabled` / `set_accepted`). Wyłączone: telefon wysyła `Gone` i przestaje śledzić odtwarzacze, a usługa nasłuchu sama się odłącza (`requestUnbind`; `requestRebind` po włączeniu).
-PERF:bez sesji nic nie działa w `PhoneMedia` (żadnych callbacków ani skalowania okładek). Związana usługa nasłuchu utrzymuje jednak proces przy życiu także bez sesji: nowy czynnik rezydencji dla pomiaru baterii (WN-30).
-LIMIT:Spotify nie jest zainstalowany na emulatorze; test używa zwykłej `MediaSession` (Spotify wystawia taką samą). Dostęp do powiadomień przyznaje się tylko w ustawieniach systemu.
-
-## Odtwarzacz komputera na telefonie (WN-47)
+## Find my phone (WN-50)
 
 CCS/1
-FLOW:PC (`media/1` ogłasza telefon) -> `PcPlayer`: StateFlow dla karty „Na komputerze” na ekranie głównym (jedna wstawiona linia w HomeScreen) i własna `MediaSession` „WindConnect PC” z powiadomieniem MediaStyle na kanale „Multimedia komputera” (IMPORTANCE_LOW, bez dźwięku) -> systemowe sterowanie multimediami (powiadomienie, QS, ekran blokady) -> `sendMediaCommand` -> PC.
-RULE:sesja nie odtwarza dźwięku i nie ma odbiornika przycisków multimediów (`setMediaButtonReceiver(null)`), więc słuchawki i Bluetooth sterują odtwarzaczami telefonu. LIMIT:jeśli żaden odtwarzacz telefonu nie grał, Android może skierować przycisk słuchawek do aktywnej sesji WindConnect; wtedy wstrzyma odtwarzacz komputera.
-RULE:echo: `PhoneMedia` (WN-46) pomija własną sesję-lustro odtwarzacza komputera (po jej tokenie), więc odtwarzacz komputera nigdy nie wraca na PC jako „Na telefonie”.
-RULE:sprzątanie: `Gone`, koniec sesji, wyłączone „Pokaż odtwarzacz komputera” i zamknięcie rdzenia zwalniają sesję i usuwają powiadomienie; po śmierci procesu sesja znika z nim, a pozostawione powiadomienie usuwa następny start. Teksty z komputera: jedna linia, bez znaków sterujących i dwukierunkowych; okładka tylko JPEG/PNG po magicznych bajtach, dekodowana do ≤ 512 px.
-RULE:prywatność: tytuły odtwarzacza komputera widać na ekranie blokady, jak przy innych odtwarzaczach; mówi to opis przełącznika.
+FLOW:the computer asks (`find/1`, PROTOCOL.md §9.5) -> `PhoneRinger`: the alarm volume to max (the previous one stored), a generated tone (880/1320 Hz) through AudioTrack with `USAGE_ALARM`, vibration, a notification -> state 0 to the PC only once the playback head has moved.
+RULE:the sound bypasses silent mode and vibration (the alarm stream); the tone is generated (no file, no preparation delay, independent of the user's ringtone). No WAKE_LOCK: with the screen off the audioserver keeps playback going.
+RULE:stopping: a notification on its own channel "Find my phone" (IMPORTANCE_HIGH, without its own sound, persistent while ringing, it disappears after the final state, the action "Stop" and a tap), the bar "Stop ringing" on every app screen (works without notification permission) and a volume key with the app open. The core enforces the 60 s limit; the end of the session doesn't stop ringing.
+RULE:the alarm volume comes back after every ring; when the process dies in the middle, the next start restores it (unless the user changed it). The setting "Let the computer ring" (on by default) withdraws `find/1` also in an ongoing session.
+LIMIT:DND that blocks alarms silences the sound (bypassing it needs access to the DND policy, which the app doesn't ask for). Without a background connection or in Doze the request arrives late or not at all. A volume key with the screen off or outside the app doesn't stop ringing (that would need a media session). It doesn't touch ConnectionService or the home screen; the bar is an overlay in MainActivity.
 
-## Powiadomienia na komputerze (WN-42)
+## The phone's player on the PC (WN-46)
 
-`NotifyListenerService` czyta nowe powiadomienia i przez `WindCore` wysyła je
-na kanale `notify` (PROTOCOL.md §9.7) do komputera, który ogłosił `notify/1`
-(Windows od WN-43). Osobna zgoda (§9.6, zasada 6): własny wpis
-„WindConnect: powiadomienia na komputerze” w systemowym dostępie do
-powiadomień oraz przełącznik w Ustawieniach, domyślnie wyłączony; wyłączony
-usługa sama się odłącza i nic nie czyta. Dostęp dla multimediów (WN-46) nie
-wystarcza.
+CCS/1
+FLOW:an accepted session + access + the setting -> `PhoneMedia`: `getActiveSessions` and `addOnActiveSessionsChangedListener` through `MediaListenerService`, `MediaController.Callback` on the chosen session -> `CoreConnection.sendMedia` (changes only, the cover once) -> the PC. A command from the PC (`media-control/1`, checked in the core against the last `actions`) -> `transportControls`.
+RULE:choosing the session: the first one in the PLAYING state, otherwise the first in the system's order; a change on `onActiveSessionsChanged` and on a state change. The cover ≤ 256 px JPEG ≤ 96 KiB, computed once per bitmap, on the media thread. Texts trimmed to 256 B (the app to 64 B) at a character boundary.
+RULE:consent: Android calls it "notification access". `MediaListenerService` reads no notifications; the card in Settings says so plainly. The notification-reading feature (WN-42) MUST NOT silently use this consent: it gets its own switch (off by default) and its own explanation (PROTOCOL.md §9.6, rule 6).
+RULE:`media-control/1` is announced only with the access granted and "Show media on the computer" on, also during a session (`Router::start_disabled` / `set_accepted`). Turned off: the phone sends `Gone` and stops following players, and the listener service unbinds by itself (`requestUnbind`; `requestRebind` after turning it on).
+PERF:without a session nothing runs in `PhoneMedia` (no callbacks and no cover scaling). A bound listener service does keep the process alive also without a session: a new residency factor for the battery measurement (WN-30).
+LIMIT:Spotify isn't installed on the emulator; the test uses an ordinary `MediaSession` (Spotify exposes the same kind). Notification access is granted only in the system settings.
 
-Pomijane: stałe (trwające, usług pierwszoplanowych, nieusuwalne),
-podsumowania grup, odtwarzacze, `VISIBILITY_SECRET`, własne i puste. Tytuł:
-tytuł rozmowy, duży tytuł albo tytuł; treść: ostatnia wiadomość rozmowy
-(„nadawca: tekst”, gdy nadawca nie jest tytułem), duży tekst albo tekst. Bez
-formatowania, znaków sterujących i dwukierunkowych, przycięte do bajtów
-protokołu. Ikona aplikacji: PNG 64 px, raz na sesję. Identyfikator: SHA-256
-losowej soli instalacji i klucza powiadomienia (16 B). Rdzeń pilnuje tempa:
-najwyżej jedno `Posted` na sekundę na powiadomienie, pasek postępu tylko na
-początku i na końcu. Powiadomienia sprzed połączenia nie są wysyłane.
+## The computer's player on the phone (WN-47)
 
-Android 15+ ukrywa przed aplikacjami słuchającymi treść wrażliwą (kody
-jednorazowe i podobne): komputer zobaczy wtedy to, co dał system, np. „Treść
-ukryta” zamiast tekstu, albo nic. WindConnect tego nie obchodzi. Na emulatorze
-z asystentem powiadomień ukrywane bywają nawet zwykłe teksty z liczbami.
+CCS/1
+FLOW:the PC (the phone announces `media/1`) -> `PcPlayer`: a StateFlow for the "On the computer" card on the home screen and our own `MediaSession` "WindConnect PC" with a MediaStyle notification on the channel "Computer media" (IMPORTANCE_LOW, without sound) -> the system media controls (notification, QS, lock screen) -> `sendMediaCommand` -> the PC.
+RULE:the session plays no sound and has no media button receiver (`setMediaButtonReceiver(null)`), so headphones and Bluetooth control the phone's players. LIMIT:if no player of the phone was playing, Android may route a headphone button to the active WindConnect session; then it pauses the computer's player.
+RULE:echo: `PhoneMedia` (WN-46) skips its own mirror session of the computer's player (by its token), so the computer's player never goes back to the PC as "On the phone".
+RULE:cleanup: `Gone`, the end of the session, turning off "Show the computer's player" and closing the core release the session and remove the notification; after the process dies the session goes with it, and the next start removes a leftover notification. Texts from the computer: one line, without control and bidirectional characters; the cover only JPEG/PNG by its magic bytes, decoded to ≤ 512 px.
+RULE:privacy: the computer player's titles are visible on the lock screen, as with other players; the switch's description says so.
 
-Opóźnienie: z asystentem powiadomień (Google, Samsung) Android trzyma nowe
-powiadomienie ok. 200 ms, zanim dostanie je którykolwiek słuchacz, także
-systemowy pasek powiadomień; od wywołania słuchacza do zapisu w strumieniu
-QUIC mija p95 ok. 10 ms. Pomiar na emulatorze (najpierw
-`gradlew :app:assembleDebug :app:assembleDebugAndroidTest` i
-`cargo build --locked -p wind-ffi --example notify_peer`, potem z katalogu
-głównego):
+## Notifications on the computer (WN-42)
+
+`NotifyListenerService` reads new notifications and through `WindCore` sends them
+on the `notify` channel (PROTOCOL.md §9.7) to a computer that announced `notify/1`
+(Windows from WN-43). A separate consent (§9.6, rule 6): its own entry
+"WindConnect: notifications on the computer" in the system's notification
+access and a switch in Settings, off by default; turned off,
+the service unbinds by itself and reads nothing. The access for media (WN-46) isn't
+enough.
+
+Skipped: persistent ones (ongoing, foreground services, non-dismissible),
+group summaries, players, `VISIBILITY_SECRET`, our own and empty ones. Title:
+the conversation title, the big title or the title; content: the conversation's last message
+("sender: text" when the sender isn't the title), the big text or the text. Without
+formatting, control and bidirectional characters, trimmed to the protocol's
+bytes. The app's icon: a 64 px PNG, once per session. Identifier: the SHA-256 of
+the installation's random salt and the notification key (16 B). The core enforces the pace:
+at most one `Posted` per second per notification, a progress bar only at the
+start and at the end. Notifications from before the connection aren't sent.
+
+Android 15+ hides sensitive content from listening apps (one-time
+codes and the like): the computer then sees what the system gave, e.g. "Content
+hidden" instead of the text, or nothing. WindConnect doesn't get around that. On an emulator
+with the notification assistant even ordinary texts with numbers are sometimes hidden.
+
+Latency: with a notification assistant (Google, Samsung) Android holds a new
+notification for about 200 ms before any listener gets it, also
+the system's notification shade; from the listener call to the write into the QUIC
+stream it takes p95 about 10 ms. A measurement on an emulator (first
+`gradlew :app:assembleDebug :app:assembleDebugAndroidTest` and
+`cargo build --locked -p wind-ffi --example notify_peer`, then from the repository
+root):
 
 ```powershell
 $env:ANDROID_SERIAL = "emulator-5590"; node apps/android/scripts/check-notify-android.cjs
 ```
 
-`notify_peer` udaje komputer z `notify/1`. Pierwszy przebieg mierzy
-wywołanie słuchacza → zapis, drugi (asystent wyłączony na czas testu)
-`postTime` → zapis; oba p95 < 50 ms.
+`notify_peer` pretends to be a computer with `notify/1`. The first run measures
+the listener call → write, the second (the assistant turned off for the test)
+`postTime` → write; both p95 < 50 ms.
 
-### Odpowiedź i odrzucanie z komputera (WN-44)
+### Replying and dismissing from the computer (WN-44)
 
-Przy włączonej funkcji i przyznanym dostępie telefon ogłasza też
-`notify-action/1` (PROTOCOL.md §9.8; na żywo przy zmianie). `Posted` dostaje
-`reply` (etykietę), gdy powiadomienie ma akcję z `RemoteInput` przyjmującym
-dowolny tekst: najpierw `SEMANTIC_ACTION_REPLY`, potem pierwsza taka;
-kontekstowe (systemowe szybkie odpowiedzi) pomijane (`NotificationRules.replyAction`).
-`Reply` z komputera idzie przez `RemoteInput.addResultsToIntent` +
-`SOURCE_FREE_FORM_INPUT` i `PendingIntent` akcji, jak wpisana na telefonie,
-potem `Replied`. `Dismiss` to `cancelNotification` słuchacza; potem zwykłe
-`Removed`. Tylko dla id wysłanych w tej sesji (`WindCore.sentIds`; słuchacz
-pamięta klucz i akcję odpowiedzi 256 najnowszych, bez treści). Tekst
-odpowiedzi nie jest logowany ani przechowywany.
+With the feature on and the access granted, the phone also announces
+`notify-action/1` (PROTOCOL.md §9.8; live on a change). `Posted` gets
+`reply` (a label) when the notification has an action with a `RemoteInput` accepting
+any text: first `SEMANTIC_ACTION_REPLY`, then the first such one;
+contextual ones (the system's smart replies) are skipped (`NotificationRules.replyAction`).
+`Reply` from the computer goes through `RemoteInput.addResultsToIntent` +
+`SOURCE_FREE_FORM_INPUT` and the action's `PendingIntent`, as if typed on the phone,
+then `Replied`. `Dismiss` is the listener's `cancelNotification`; then the usual
+`Removed`. Only for ids sent in this session (`WindCore.sentIds`; the listener
+remembers the key and the reply action of the 256 newest, without content). The reply
+text is not logged or kept.
 
-### Filtr aplikacji i „Nie przeszkadzać” (WN-45)
+### App filter and "Do not disturb" (WN-45)
 
-W karcie „Powiadomienia na komputerze”: tryb „Wszystkie oprócz wyłączonych”
-(domyślny) albo „Tylko wybrane” (nowe aplikacje wyłączone) i przełącznik na
-aplikację. Lista to aplikacje widziane przez słuchacza (nazwy pakietów, do
-300, bez treści) i te z bieżących powiadomień, bez `QUERY_ALL_PACKAGES` i
-bez zmian w manifeście. Wyłączona aplikacja jest odrzucana w słuchaczu, zanim
-cokolwiek trafi do rdzenia (`AppFilter`), i jeszcze raz w miejscu wysyłki
-(`NotifyForwarder`: powiadomienie z kolejki sprzed blokady jest pomijane, z
-ikoną). Zablokowanie aplikacji wysyła `Removed` dla jej powiadomień z tej
-sesji i zapomina je dla odpowiedzi i odrzucania (WN-44). Powiadomienie, które
-nie przechodzi przez „Nie przeszkadzać” telefonu
-(`Ranking.matchesInterruptionFilter()`), idzie z `quiet`: na PC bez
-wyskakiwania i dźwięku. Testy: `NotifyAppsTest` (jednostkowy i Compose) oraz
+In the card "Notifications on the computer": the mode "All" (all except the ones turned off,
+the default) or "Chosen" (new apps off) and a switch per
+app, with the app's real name and icon (WN-159, WN-160). The list is the apps seen by the listener (package names, up to
+300, without content) and those of current notifications, without `QUERY_ALL_PACKAGES` and
+without manifest changes. A turned-off app is rejected in the listener before
+anything reaches the core (`AppFilter`), and once more at the point of sending
+(`NotifyForwarder`: a notification from the queue from before the block is skipped, with
+its icon). Blocking an app sends `Removed` for its notifications of this
+session and forgets them for replying and dismissing (WN-44). A notification that
+doesn't get through the phone's "Do not disturb"
+(`Ranking.matchesInterruptionFilter()`) goes with `quiet`: on the PC without
+popping up and sound. Tests: `NotifyAppsTest` (unit and Compose) and
 `apps/windows/scripts/check-notify-filter-android.cjs`.
 
-## Połączenia i głośność dla komputera (WN-48)
+## Calls and volume for the computer (WN-48)
 
-`CallWatcher` podaje rdzeniowi stan połączenia (PROTOCOL.md §9.10) bez
-nowych uprawnień i bez zmian w manifeście: tryb dźwięku
-(`addOnModeChangedListener`, API 31+), stan telefonii bez numeru
-(`LISTEN_CALL_STATE`, API 29-30) oraz powiadomienie kategorii połączenia od
-słuchacza powiadomień (tryb wibracji, tylko przy zgodzie „Powiadomienia na
-komputerze”). Dzwonienie i rozmowa idą od razu, bezczynność po 1,5 s.
-`PhoneVolume` zgłasza `STREAM_MUSIC` (obserwator `Settings.System`, bez
-odpytywania) i stosuje `Set` z komputera tylko w tym, co podaje (sam poziom
-przy wyciszeniu nie wyłącza wyciszenia, `VolumeScale.plan`). Ustawienie
-„Głośność z komputera” (domyślnie włączone) ogłasza `volume/1`; karta
-„Głośność komputera” na ekranie głównym (suwak bez „odbijania”, wycisz).
-Testy: `CallVolumeTest` (jednostkowy), `PcVolumeTest` (Compose) i
+`CallWatcher` gives the core the call state (PROTOCOL.md §9.10) without
+new permissions and without manifest changes: the audio mode
+(`addOnModeChangedListener`, API 31+), the telephony state without the number
+(`LISTEN_CALL_STATE`, API 29-30) and a notification of the call category from
+the notification listener (vibrate mode, only with the consent "Notifications on the
+computer"). Ringing and a call go at once, idle after 1.5 s.
+`PhoneVolume` reports `STREAM_MUSIC` (a `Settings.System` observer, without
+polling) and applies a `Set` from the computer only in what it gives (a level alone
+while muted doesn't unmute, `VolumeScale.plan`). The setting
+"Volume from the computer" (on by default) announces `volume/1`; the card
+"Computer volume" on the home screen (a slider without "bouncing", mute).
+Tests: `CallVolumeTest` (unit), `PcVolumeTest` (Compose) and
 `apps/windows/scripts/check-call-volume-android.cjs`.
 
-## SMS na komputerze (WN-55)
+## SMS on the computer (WN-55)
 
-`PhoneSms` udostępnia komputerowi wątki SMS/MMS do odczytu (PROTOCOL.md
-§9.11): lista wątków (`mms-sms/conversations?simple=true`, adresy z
-`canonical-addresses`, nieprzeczytane z `sms`/`mms`), wiadomości wątku
-(SMS i tekst MMS, od najnowszej, `before`/`since` włącznie, bez szkiców),
-nazwy i zdjęcia kontaktów (`PhoneLookup`, PNG 96 px do 64 KiB). Zmiany
-dostawcy (`ContentObserver` na `content://mms-sms/`) budzą obserwację
-komputera; rdzeń zbiera je w 250 ms.
-Ustawienie „SMS na komputerze” (domyślnie wyłączone) prosi o `READ_SMS` i
-`READ_CONTACTS` dopiero przy włączeniu, po wyjaśnieniu; kontakty są
-opcjonalne (bez nich same numery). Odmowa zostawia przełącznik wyłączony,
-reszta aplikacji działa. Uprawnienie jest sprawdzane przy każdej prośbie,
-więc cofnięcie go w ustawieniach Androida działa od razu. Treść i numery
-nie trafiają do logów.
-Decyzja D2: uprawnienia SMS deklaruje tylko ta wersja (GitHub/F-Droid);
-wariant Google Play musi je pominąć.
-Test: `apps/windows/scripts/check-sms-android.cjs` (z `SmsProof`).
+`PhoneSms` shares the SMS/MMS threads with the computer for reading (PROTOCOL.md
+§9.11): the thread list (`mms-sms/conversations?simple=true`, addresses from
+`canonical-addresses`, unread from `sms`/`mms`), a thread's messages
+(SMS and MMS text, newest first, `before`/`since` inclusive, without drafts),
+contacts' names and photos (`PhoneLookup`, a 96 px PNG up to 64 KiB). Provider changes
+(a `ContentObserver` on `content://mms-sms/`) wake the computer's
+watch; the core gathers them over 250 ms.
+The setting "SMS on the computer" (off by default) asks for `READ_SMS` and
+`READ_CONTACTS` only when it is turned on, after an explanation; contacts are
+optional (without them, numbers only). A refusal leaves the switch off,
+the rest of the app works. The permission is checked on every request,
+so revoking it in Android's settings takes effect at once. Content and numbers
+don't go into logs.
+Decision D2: only this version (GitHub/F-Droid) declares the SMS permissions;
+the Google Play variant must leave them out.
+Test: `apps/windows/scripts/check-sms-android.cjs` (with `SmsProof`).
 
-### Wysyłanie z komputera (WN-56)
+### Sending from the computer (WN-56)
 
-Osobne ustawienie „Wysyłanie z komputera” (widoczne przy włączonym odczycie,
-domyślnie wyłączone) prosi o `SEND_SMS` i opcjonalnie `READ_PHONE_STATE`
-(tylko lista kart SIM) dopiero przy włączeniu. `SmsSender` wysyła tekst do
-jednego numeru jako SMS (`divideMessage` + `sendMultipartTextMessage` z
-raportami wysłania i doręczenia, kartą wybraną na PC), a obraz lub kilku
-odbiorców jako MMS: `MmsPdu` (minimalne M-Send.req z SMIL) -> plik w
+A separate setting "Sending from the computer" (visible with reading on,
+off by default) asks for `SEND_SMS` and optionally `READ_PHONE_STATE`
+(only the SIM card list) only when it is turned on. `SmsSender` sends text to
+one number as an SMS (`divideMessage` + `sendMultipartTextMessage` with
+sent and delivery reports, with the card chosen on the PC), and an image or several
+recipients as an MMS: `MmsPdu` (a minimal M-Send.req with SMIL) -> a file in
 `cache/mms-out` -> `FileProvider` (`${applicationId}.mmsout`) ->
-`sendMultimediaMessage`. Jako aplikacja SMS niedomyślna WindConnect nie pisze
-do dostawcy SMS: Android sam zapisuje wysłane wiadomości, więc komputer widzi
-je przez obserwację. Najwyżej 10 wysyłek na minutę (rdzeń). Obrazy z
-odebranych MMS idą na komputer na prośbę (`Part`), jako JPEG do 1600 px.
-Testy: `MmsPduTest`, `SmsRulesTest`, `apps/windows/scripts/check-sms-send-android.cjs`.
+`sendMultimediaMessage`. As a non-default SMS app WindConnect doesn't write
+to the SMS provider: Android stores sent messages itself, so the computer sees
+them through the watch. At most 10 sends per minute (the core). Images from
+received MMS go to the computer on request (`Part`), as JPEG up to 1600 px.
+Tests: `MmsPduTest`, `SmsRulesTest`, `apps/windows/scripts/check-sms-send-android.cjs`.
 
-## Zdjęcia na komputerze (WN-58)
+## Photos on the computer (WN-58)
 
-`PhoneGallery` udostępnia panelowi komputera najnowsze zdjęcia i zrzuty
-ekranu (PROTOCOL.md §9.13, `gallery/1`): lista z MediaStore (wszystkie
-woluminy zewnętrzne, od `DATE_ADDED`; oczekujące i w koszu MediaStore ukrywa
-sam), miniatury z `loadThumbnail` (JPEG do 64 KiB) i oryginał jako deskryptor
-pliku (`openFileDescriptor` + `detachFd`, rdzeń go czyta i zamyka). Zrzut
-ekranu to zdjęcie z folderu `Screenshots` (`GalleryRules`). Zmiany
-(`ContentObserver` na `content://media`, tylko ścieżki `images`) budzą
-obserwację komputera; rdzeń zbiera je w 250 ms.
-Ustawienie „Zdjęcia na komputerze” (domyślnie wyłączone) prosi o dostęp do
-zdjęć dopiero przy włączeniu (Android 13+: `READ_MEDIA_IMAGES`, 10–12:
-`READ_EXTERNAL_STORAGE`). Odmowa zostawia przełącznik wyłączony; dostęp jest
-sprawdzany przy każdej prośbie. Nazwy nie trafiają do logów.
-LIMIT:dostęp częściowy Androida 14 („wybrane zdjęcia”) nie jest obsługiwany
-osobno: bez pełnego dostępu funkcja jest wyłączona.
-Testy: `GalleryRulesTest`, `apps/windows/scripts/check-gallery-android.cjs`
-(z `GalleryProof`).
+`PhoneGallery` shares the newest photos and screenshots with the computer's
+panel (PROTOCOL.md §9.13, `gallery/1`): a list from MediaStore (all
+external volumes, by `DATE_ADDED`; MediaStore itself hides pending and trashed
+ones), thumbnails from `loadThumbnail` (JPEG up to 64 KiB) and the original as a file
+descriptor (`openFileDescriptor` + `detachFd`, the core reads and closes it). A screenshot
+is a photo from the `Screenshots` folder (`GalleryRules`). Changes
+(a `ContentObserver` on `content://media`, only `images` paths) wake
+the computer's watch; the core gathers them over 250 ms.
+The setting "Photos on the computer" (off by default) asks for access to
+photos only when it is turned on (Android 13+: `READ_MEDIA_IMAGES`, 10–12:
+`READ_EXTERNAL_STORAGE`). A refusal leaves the switch off; access is
+checked on every request. Names don't go into logs.
+LIMIT:Android 14's partial access ("selected photos") isn't handled
+separately: without full access the feature is off.
+Tests: `GalleryRulesTest`, `apps/windows/scripts/check-gallery-android.cjs`
+(with `GalleryProof`).
 
-## Połączenia na komputerze (WN-57)
+## Calls on the computer (WN-57)
 
-Ustawienie „Połączenia na komputerze” (domyślnie wyłączone) prosi przy
-włączeniu o `READ_PHONE_STATE`, `READ_CALL_LOG` (numer dzwoniącego i
-nieodebrane), `ANSWER_PHONE_CALLS` (odrzucanie z komputera) i opcjonalnie
-`READ_CONTACTS` (nazwa). `PhoneCalls` słucha `PHONE_STATE` (numer przychodzi
-tylko z `READ_CALL_LOG`), nadaje każdemu dzwonieniu nowy `call` i dokłada
-dzwoniącego do stanu z `CallWatcher` (PROTOCOL.md §9.10); nieodebrane czyta z
-rejestru połączeń (7 dni, najwyżej 20). Z komputera (§9.12): „Odrzuć” to
-`TelecomManager.endCall`, „Wycisz” wycisza strumień dzwonka (zwykła aplikacja
-nie może użyć `silenceRinger`) i przywraca go po połączeniu; obie działają
-tylko na dzwoniące połączenie, które nazywają. Bez ustawienia komputer dostaje
-sam stan jak w WN-48. Numery nie trafiają do logów.
-CCS/1 SEC:Wycisz wymaga zwykłego `MODIFY_AUDIO_SETTINGS`; brak uprawnienia
-lub stała głośność urządzenia usuwa tę akcję. Odmowa Androida (np. polityka
-Nie przeszkadzać) nie wywołuje uprzywilejowanego API i nie zapisuje własnego
-wyciszenia. Odmowa przywrócenia zachowuje zapis do późniejszej próby odzyskania.
+The setting "Calls on the computer" (off by default) asks, when it is
+turned on, for `READ_PHONE_STATE`, `READ_CALL_LOG` (the caller's number and
+missed calls), `ANSWER_PHONE_CALLS` (rejecting from the computer) and optionally
+`READ_CONTACTS` (the name). `PhoneCalls` listens to `PHONE_STATE` (the number comes
+only with `READ_CALL_LOG`), gives each ring a new `call` and adds
+the caller to the state from `CallWatcher` (PROTOCOL.md §9.10); it reads missed calls from
+the call log (7 days, at most 20). From the computer (§9.12): "Reject" is
+`TelecomManager.endCall`, "Silence" mutes the ringer stream (an ordinary app
+can't use `silenceRinger`) and restores it after the call; both work
+only on the ringing call they name. Without the setting the computer gets
+the state alone, as in WN-48. Numbers don't go into logs.
+CCS/1 SEC:Silence needs the ordinary `MODIFY_AUDIO_SETTINGS`; without the permission
+or with a fixed device volume this action is removed. An Android refusal (e.g. the
+Do not disturb policy) doesn't call a privileged API and doesn't store its own
+muting. A refusal to restore keeps the record for a later recovery attempt.
 DEP:[TelecomManager.silenceRinger](https://developer.android.com/reference/android/telecom/TelecomManager#silenceRinger()),
 [AudioManager.adjustStreamVolume](https://developer.android.com/reference/android/media/AudioManager#adjustStreamVolume(int,int,int)).
 Test: `apps/windows/scripts/check-calls-android.cjs`.
 
-## Akcje zdalne (WN-100)
+## Remote actions (WN-100)
 
-Telefon -> PC: „Zablokuj PC” i „Otwórz na PC” na ekranie głównym oraz akcje
-własne komputera („x-…”, z `list_actions`) w karcie „Akcje na komputerze”;
-każdy status ma komunikat (wykonano, odrzucono, zły adres, zajęte, nie
-udało się, brak połączenia). „Otwórz na PC” bierze link ze schowka, a bez
-niego prosi o adres; udostępniony tekst z linkiem trafia tam przez „Otwórz na
-PC” w arkuszu udostępniania (`OpenOnPcActivity`, tylko istniejące
-połączenie). PC -> telefon: rdzeń hostuje `actions/1` z `ActionHost`
-(wyłącznie `open-url`, sprawdzony `check_url`), `LinkOpener` otwiera link
-od razu, gdy aplikacja jest na ekranie, a w tle pokazuje powiadomienie
-„Otwórz link z komputera”. Ustawienie „Otwieraj linki z komputera”
-(domyślnie włączone); wyłączone -> komputer dostaje „odrzucono”.
+Phone -> PC: "Lock PC" and "Open on PC" on the home screen, and the computer's
+custom actions ("x-…", from `list_actions`) in the card "Actions on the computer";
+each status has a message (done, refused, bad address, busy, failed,
+no connection). "Open on PC" takes the link from the clipboard, and without
+one asks for an address; shared text with a link goes there through "Open on
+PC" in the share sheet (`OpenOnPcActivity`, an existing
+connection only). PC -> phone: the core hosts `actions/1` with `ActionHost`
+(only `open-url`, checked by `check_url`), `LinkOpener` opens the link
+at once when the app is on screen, and in the background shows the notification
+"Open the link from the computer". The setting "Open links from the computer"
+(on by default); turned off -> the computer gets "refused".
 Test: `apps/windows/scripts/check-actions-android.cjs`, `PcActionTextTest`.
 
-## Parowanie po aktualizacji (WN-126)
+## Pairing after an update (WN-126)
 
-Zgłoszenie z testu WN-120 na S25 (2026-11-13): „problem z łącznością, po
-ponownym sparowaniu test przeszedł”. Co ustalono:
+A report from the WN-120 test on the S25 (2026-11-13): "a connectivity problem, after
+pairing again the test passed". What was found:
 
-- Tożsamości się nie zmieniły. `paired.txt` na PC (dziennik dopisywany)
-  ma jeden klucz telefonu od 11-10 do 11-13: usunięcie 12:52:37,
-  ponowne dodanie 12:52:56 z tym samym kluczem; `identity.key` PC z 11-10.
-  Wszystkie testowe APK 0.30–0.61 mają jeden certyfikat (debug.keystore
-  użytkownika) i rosnące `versionCode`, więc aktualizacja nie wymagała
-  odinstalowania (to skasowałoby `noBackupFilesDir`). Magazyny kluczy nigdy
-  nie tworzą nowego klucza w miejsce nieczytelnego. Ponowne parowanie
-  zadziałało więc jako ręczne wznowienie połączenia, nie naprawa kluczy.
-- Odtworzony przypadek (master, od WN-51): po zakończeniu sesji (np. restart
-  lub aktualizacja PC) pętla możliwości touchpada dostawała `channel closed`
-  bez obsługi i aplikacja padała. Android wznawia usługę po awarii z coraz
-  większym opóźnieniem (po drugiej awarii 30 min), więc telefon zostawał
-  rozłączony do otwarcia aplikacji. Poprawka w `WindCore.adopt`; przed nią
-  `check-update-android.cjs` zawodził przy 2. z 12 restartów PC, po niej
-  12/12 i 0 awarii.
-- Przyczyny wersji 0.54.0 nie da się już wskazać (brak logów; ta pętla
-  powstała później). Gdy problem wróci na telefonie, przed ponownym
-  parowaniem zanotuj: wersje APK i EXE oraz kolejność instalacji, tekst
-  powiadomienia WindConnect i stan na PC, a z PC z adb:
-  `adb logcat -b crash -d` i `adb shell dumpsys activity services io.github.prejas3.windconnect`
-  (szukaj „Restarting” i „crashed”). Z `paired.txt` wystarczy pierwszych
-  8 znaków kluczy; plików kluczy prywatnych nie kopiuj.
+- The identities didn't change. `paired.txt` on the PC (an append-only journal)
+  has one phone key from 11-10 to 11-13: removal at 12:52:37,
+  added again at 12:52:56 with the same key; the PC's `identity.key` from 11-10.
+  All test APKs 0.30–0.61 have one certificate (the user's
+  debug.keystore) and growing `versionCode`s, so the update needed no
+  uninstalling (that would have erased `noBackupFilesDir`). The key stores never
+  create a new key in place of an unreadable one. Pairing again
+  therefore worked as a manual reconnect, not a repair of keys.
+- A reproduced case (master, since WN-51): after a session ended (e.g. a restart
+  or an update of the PC) the touchpad capability loop got `channel closed`
+  without handling and the app crashed. Android restarts a service after a crash with a growing
+  delay (30 min after the second crash), so the phone stayed
+  disconnected until the app was opened. The fix is in `WindCore.adopt`; before it
+  `check-update-android.cjs` failed at the 2nd of 12 PC restarts, after it
+  12/12 and 0 crashes.
+- The cause in version 0.54.0 can no longer be pinned down (no logs; this loop
+  came later). When the problem comes back on the phone, before pairing
+  again note: the APK and EXE versions and the order of installation, the text of
+  the WindConnect notification and the state on the PC, and from the PC with adb:
+  `adb logcat -b crash -d` and `adb shell dumpsys activity services io.github.prejas3.windconnect`
+  (look for "Restarting" and "crashed"). From `paired.txt` the first
+  8 characters of the keys are enough; don't copy private key files.
 
-CHECK: `apps/windows/scripts/check-update-android.cjs` (jednorazowy emulator,
-`ANDROID_SERIAL`, `JAVA_HOME`, `ANDROID_HOME`; debug APK + androidTest i
-`cargo build -p windconnect-windows --example background_peer`). Paruje raz
-prawdziwym QR, potem: (A) `adb install -r` przy działającym PC, (B) restart PC
-z zachowaną tożsamością i listą (`PC_RESTARTS=n` powtarza), (C) aktualizacja
-APK przy wyłączonym PC (`PC_DOWN_MS`). Każdy krok wymaga nowej sesji bez
-parowania, listy sparowanych bez zmian i braku awarii aplikacji.
+CHECK: `apps/windows/scripts/check-update-android.cjs` (a disposable emulator,
+`ANDROID_SERIAL`, `JAVA_HOME`, `ANDROID_HOME`; debug APK + androidTest and
+`cargo build -p windconnect-windows --example background_peer`). It pairs once
+with a real QR code, then: (A) `adb install -r` with the PC running, (B) a PC restart
+with the identity and the list kept (`PC_RESTARTS=n` repeats), (C) an APK
+update with the PC off (`PC_DOWN_MS`). Each step requires a new session without
+pairing, an unchanged paired list and no app crash.
 
-## Wersja GitHub/F-Droid i wersja Google Play (WN-124, decyzja D2)
+## The GitHub/F-Droid version and the Google Play version (WN-124, decision D2)
 
-Jeden kod, dwa buildy wybierane właściwością Gradle `windStore`:
+One code base, two builds chosen by the Gradle property `windStore`:
 
-- `github` (domyślny, GitHub Releases i F-Droid): wszystkie funkcje, w tym
-  „SMS na komputerze” (READ_SMS, SEND_SMS) i „Połączenia na komputerze”
-  (READ_CALL_LOG, ANSWER_PHONE_CALLS) oraz kontakty (READ_CONTACTS).
-  APK: `app/build/outputs/apk/<typ>/app-<typ>.apk`, jak dotąd.
+- `github` (the default, GitHub Releases and F-Droid): all features, including
+  "SMS on the computer" (READ_SMS, SEND_SMS) and "Calls on the computer"
+  (READ_CALL_LOG, ANSWER_PHONE_CALLS) and contacts (READ_CONTACTS).
+  APK: `app/build/outputs/apk/<type>/app-<type>.apk`, as before.
 - `play` (`./gradlew :app:assembleRelease -PwindStore=play`): Google Play
-  ogranicza grupy uprawnień SMS i rejestru połączeń, więc
-  `app/src/play/AndroidManifest.xml` usuwa (`tools:node="remove"`, także z
-  bibliotek) READ_SMS, SEND_SMS, RECEIVE_SMS/MMS/WAP_PUSH, READ_CALL_LOG,
-  WRITE_CALL_LOG, READ_CONTACTS, ANSWER_PHONE_CALLS i READ_PHONE_STATE (prosi o nie
-  tylko wysyłanie SMS i połączenia; stan rozmowy innych funkcji pochodzi z trybu
-  audio bez uprawnień, WN-146). Build w
-  `app/build-play`, APK `app-play-<typ>.apk`, więc nie nadpisuje pełnego.
+  restricts the SMS and call log permission groups, so
+  `app/src/play/AndroidManifest.xml` removes (`tools:node="remove"`, also from
+  libraries) READ_SMS, SEND_SMS, RECEIVE_SMS/MMS/WAP_PUSH, READ_CALL_LOG,
+  WRITE_CALL_LOG, READ_CONTACTS, ANSWER_PHONE_CALLS and READ_PHONE_STATE (only
+  SMS sending and calls ask for them; the call state of other features comes from the
+  audio mode without permissions, WN-146). Built in
+  `app/build-play`, the APK `app-play-<type>.apk`, so it doesn't overwrite the full one.
 
-RULE:funkcje wynikają z tego, co APK deklaruje (`declaresPermission`, wind-core),
-nie z flagi: bez READ_SMS WindCore nie ustawia źródła SMS, więc `sms/1` nie jest
-trasowane ani ogłaszane, a w Ustawieniach nie ma „SMS na komputerze”; bez
-READ_CALL_LOG nie ma „Połączenia na komputerze”. Okno „Wiadomości” na PC mówi
-wtedy, że telefon nie udostępnia SMS (z podpowiedzią o wersji z Google Play).
+RULE:features follow from what the APK declares (`declaresPermission`, wind-core),
+not from a flag: without READ_SMS WindCore doesn't set the SMS source, so `sms/1` is
+neither routed nor announced, and Settings have no "SMS on the computer"; without
+READ_CALL_LOG there is no "Calls on the computer". The "Messages" window on the PC then says
+that the phone doesn't share SMS (with a hint about the Google Play version).
 CHECK:`node scripts/check-android-store-permissions.cjs <apk> github|play`
-(aapt; CI sprawdza oba buildy), `StoreVariantTest` (`-e windStore github|play`)
-na każdym buildzie, `apps/windows/scripts/check-sms-play-android.cjs`
-(prawdziwy PC + emulator z APK play: brak `sms/1`, `sms_status`
-`{connected:true, available:false}`, tekst okna).
+(aapt; CI checks both builds), `StoreVariantTest` (`-e windStore github|play`)
+on each build, `apps/windows/scripts/check-sms-play-android.cjs`
+(a real PC + an emulator with the play APK: no `sms/1`, `sms_status`
+`{connected:true, available:false}`, the window's text).
 
-## Szybki powrót do komputera po jego restarcie (WN-142)
+## A quick return to the computer after it restarts (WN-142)
 
-RULE:usługa w tle ponawia połączenie z odstępem 3 s → 60 s, ale czekanie kończy się
-od razu, gdy sparowany komputer wraca w wykrywaniu: pojawia się po zniknięciu albo
-pod innym adresem niż ten z nieudanej próby (np. aplikacja PC po aktualizacji na
-nowym porcie). Te same adresy nie budzą pętli, więc BUSY i odmowy nie są ponawiane
-w kółko (WC-28); wykrycie tylko budzi pętlę, połączenie nadal wymaga przypiętego
-klucza (`PcReturn.kt`, `PcReturnTest`).
-CHECK:`check-update-android.cjs` z `PC_DOWN_MS=150000`: telefon wraca 0,5 s po
-powrocie PC (wcześniej 14–22 s, najgorzej ~60 s); 8 restartów PC: 0,5–2,7 s.
-RULE (WN-149): pętla ponownego łączenia działa na wątku głównym; przy połączeniu (lub łączeniu) czeka na koniec sesji albo odstęp, nigdy na wykrywanie, a każdy obrót trwa co najmniej 500 ms (`reconnectWait`, `ReconnectWaitTest`). `check-update-android.cjs` sprawdza też, że wątek główny jest wolny po każdym powrocie.
+RULE:the background service retries the connection with an interval of 3 s → 60 s, but the wait ends
+at once when the paired computer comes back in discovery: it appears after disappearing or
+at an address other than the one of the failed attempt (e.g. the PC app after an update on
+a new port). The same addresses don't wake the loop, so BUSY and refusals aren't retried
+over and over (WC-28); discovery only wakes the loop, the connection still requires the pinned
+key (`PcReturn.kt`, `PcReturnTest`).
+CHECK:`check-update-android.cjs` with `PC_DOWN_MS=150000`: the phone comes back 0.5 s after
+the PC returns (earlier 14–22 s, at worst ~60 s); 8 PC restarts: 0.5–2.7 s.
+RULE (WN-149): the reconnect loop runs on the main thread; while connected (or connecting) it waits for the end of the session or the interval, never for discovery, and each turn takes at least 500 ms (`reconnectWait`, `ReconnectWaitTest`). `check-update-android.cjs` also checks that the main thread is free after every return.

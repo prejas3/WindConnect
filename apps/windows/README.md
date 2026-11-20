@@ -1,66 +1,66 @@
 # Windows
 
-## Przegląd z makietami (WN-65)
+## Review with mockups (WN-65)
 
 CCS/1
-CHECK:`node apps/windows/scripts/capture-screens-ui.cjs` (Playwright) robi zrzuty w obu motywach: panel z każdą sekcją, panel podczas parowania, okno główne, SMS i menu zasobnika (TEMP/windconnect-wn65-screens). Panel: nagłówek z telefonem pierwszy, karty co 20 px, touchpad i schowek jako karty, karta touchpada tylko przy połączonym telefonie.
+CHECK:`node apps/windows/scripts/capture-screens-ui.cjs` (Playwright) takes screenshots in both themes: the panel with every section, the panel while pairing, the main window, SMS and the tray menu (TEMP/windconnect-wn65-screens). Panel: the header with the phone first, cards every 20 px, the touchpad and the clipboard as cards, the touchpad card only with a connected phone.
 
-## Dostępność: Narrator, klawiatura, kontrast, duży tekst (WN-64)
-
-CCS/1
-RULE:cały panel i pozostałe okna przechodzi się samym Tab/Shift+Tab (kolejność jak na ekranie, bez pułapek, widoczny pierścień fokusu), każda kontrolka ma nazwę dla Narratora, tekst ma kontrast WCAG AA w obu motywach, tryb kontrastu Windows (forced-colors) zachowuje obramowania i fokus. Duży tekst (Ułatwienia dostępu → Rozmiar tekstu, do 200%) przenosi kafelki i baterię do kolejnych wierszy zamiast ucinać.
-CHECK:`node apps/windows/scripts/check-a11y-ui.cjs` (Playwright, `PLAYWRIGHT_MODULE`): panel z każdą sekcją, index, SMS i menu zasobnika; drzewo dostępności Chromium (to samo, które UIA podaje Narratorowi), kontrast tekstu, 200% bez poziomego przewijania, zrzuty w TEMP.
-
-## Języki: polski i angielski (WN-63)
+## Accessibility: Narrator, keyboard, contrast, large text (WN-64)
 
 CCS/1
-RULE:język interfejsu to język wyświetlania Windows: polski dla polskiego, angielski dla każdego innego. Frontend czyta go z `navigator.language` WebView2, kod natywny (zasobnik, toasty, menu Eksploratora, statusy i błędy pokazywane w UI) z `GetUserDefaultUILanguage`; `WINDCONNECT_LANG=pl|en` wymusza język natywnych tekstów. Teksty: `frontend/locales/{pl,en}.js` (klucze, `{nazwa}` jako placeholder, liczba mnoga przez `plural()`), `src-tauri/locales/{pl,en}.json`. Strony oznaczają teksty atrybutami `data-i18n` / `data-i18n-<atrybut>`, skrypty używają `t()`; daty i liczby formatuje `Intl` w języku UI.
-CHECK:`node apps/windows/scripts/check-i18n.cjs`: te same klucze i placeholdery w obu językach, każdy użyty klucz istnieje; z `PLAYWRIGHT_MODULE` renderuje wszystkie strony po angielsku i polsku (bez polskich znaków i surowych kluczy w wersji angielskiej, zrzuty w TEMP). Testy UI Playwright otwierają strony z `locale: 'pl-PL'`. `cargo test` sprawdza parytet `src-tauri/locales`.
+RULE:the whole panel and the other windows can be gone through with Tab/Shift+Tab alone (order as on screen, no traps, a visible focus ring), every control has a name for Narrator, text has WCAG AA contrast in both themes, Windows contrast mode (forced-colors) keeps borders and focus. Large text (Accessibility → Text size, up to 200%) moves the tiles and the battery to further rows instead of cutting them off.
+CHECK:`node apps/windows/scripts/check-a11y-ui.cjs` (Playwright, `PLAYWRIGHT_MODULE`): the panel with every section, index, SMS and the tray menu; the Chromium accessibility tree (the same one UIA gives Narrator), text contrast, 200% without horizontal scrolling, screenshots in TEMP.
 
-## Touchpad z telefonu (WN-51)
-
-Touchpad jest domyślnie dozwolony dla sparowanego telefonu. Otwórz „Touchpad” na ekranie głównym Androida: jeden palec porusza kursorem, stuknięcie klika, przytrzymanie przeciąga, dwa palce przewijają (z inercją), stuknięcie dwoma palcami daje prawy klik. Przyciski pod obszarem pozwalają też przytrzymać lewy/prawy przycisk. Czułość i naturalne przewijanie są ustawiane na telefonie.
-
-Trzy palce: w górę widok zadań, w dół pulpit, w lewo poprzednia aplikacja, w prawo następna. Wymaga PC z `input/2`; podstawowy ruch działa również z `input/1`. Klawiatura to osobna funkcja WN-52.
-
-### Tryb prezentacji (WN-53)
-
-Na ekranie touchpada wybierz „Prezentacja”. Przycisk głośniej to następny slajd, ciszej poprzedni (strzałki →/←, więc działa w PowerPoint, Google Slides i innych pokazach w przeglądarce bez konfiguracji). Przytrzymaj „wskaźnik laserowy” i celuj telefonem: PC pokazuje czerwoną kropkę nad kursorem, przezroczystą dla kliknięć i nieodbierającą fokusu pokazowi. Timer wystąpienia startuje przy pierwszym slajdzie. Laser wymaga PC z `input/4` (PROTOCOL.md §8.11); starszy PC zachowuje przełączanie slajdów.
-
-Test prawdziwej nakładki (kursor na żywo, okno na wierzchu) jest pominięty w `cargo test`, bo zależy od pulpitu (WN-139). Uruchom go osobno, nie ruszając myszą: `cargo test -p windconnect-windows laser::tests::real_overlay -- --ignored`.
-
-Panel PC pokazuje „Telefon steruje kursorem · nazwa”. „Wyłącz touchpad” natychmiast wycofuje przyjmowanie wejścia i zwalnia przyciski. Ustawienie pozostaje po ponownym uruchomieniu. Zamknięcie ekranu telefonu, utrata fokusu, blokada i zmiana połączenia zatrzymują wysyłkę; nic nie jest odtwarzane po ponownym połączeniu. Wykryty pulpit inny niż Default (blokada/UAC) lub błąd wstawiania wejścia wyłącza touchpad z komunikatem i wymaga lokalnego ponownego włączenia, bez podnoszenia uprawnień.
-
-CCS/1 SEC:częściowy skrót zwalnia tylko nadal wciśnięte klawisze przyjętego prefiksu, w odwrotnej kolejności; przed Win-up wysyła neutralne VK 0xFF down/up, aby nie otworzyć Start. Odzyskanie jest pojedynczą próbą, bez ponawiania gestu. LIMIT:na zwykłym pulpicie UIPI może blokować sterowanie aplikacją administratora. Nie sprawdzamy integralności aktywnego okna; wynik SendInput/GetLastError nie rozpoznaje przyczyny UIPI. Nie gwarantujemy wykrycia tej blokady ani automatycznego wyłączenia/komunikatu w każdym przypadku. DEP:[Microsoft SendInput](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-sendinput).
-
-CCS/1 PERF:QUIC loopback + wspólny interpolator PC, 360 próbek przy 120 Hz: p95 16,285 ms idle i 11,929 ms z 268 500 992 B transferu; surowe CSV w raporcie karty. To pomiar programowy, bez SendInput i ekranu. Fizyczny dotyk → kursor oraz płynność rzeczywistego monitora 120 Hz: WN-134 (testy końcowe, powiązane z WN-77). Odtworzenie: `WIND_TOUCHPAD_SAMPLES=<folder>` oraz `cargo test -p wind-core --test input touchpad_latency_with_interpolation_idle_and_bulk -- --ignored --nocapture`.
-
-## Postęp transferów (WN-41)
+## Languages: Polish and English (WN-63)
 
 CCS/1
-FLOW:panel pokazuje do50najnowszych transferów w obu kierunkach, stan, potwierdzone bajty/rozmiar, prędkość i dostępne akcje. Stabilne wiersze DOM zachowują focus podczas aktualizacji. Prędkość: monotoniczne delty, okno1s + EMA; „—” przed pierwszym oknem i podczas oczekiwania. Nieznany rozmiar ma pasek nieokreślony (obecny silnik zna rozmiar po imporcie źródła). Stany/bajty są łączone przed serializacją/IPC do najnowszego snapshotu w oknie100ms; jedno oczekujące deadline, żadnego timera idle. Systemowe powiadomienie Androida jest osobno ograniczone do1/s.
-SEC:Anuluj/Ponów/Otwórz folder rozwiązywane natywnie po ID. Niejednoznaczne ID (różne urządzenia/kierunki) odrzucane. Ponów tylko nieudany/anulowany outbound i nadal sparowany oryginalny peer; brak przekierowania na aktualny telefon. Odebrane pliki wymagają ponowienia po stronie nadawcy. Otwórz folder sprawdza w chwili kliknięcia lokalny plik source lub zweryfikowany incoming saved_as, canonical/containment/reparse; SHOpenFolderAndSelectItems zaznacza plik w Eksploratorze, nie uruchamia go. Przeniesiony/usunięty plik daje czytelny komunikat.
-CHECK:`check-send-ui.cjs` (Playwright): obie palety150%, keyboard/focus po100aktualizacjach, akcje, indeterminate i niezaufane nazwy. `check-transfer-performance.cjs` + release example `transfers_bench`: prawdziwy QUIC,1GiB i256x1MiB, mediana3prób off/on z produkcyjnym modelem i rendererem Chromium; cel >=95% baseline. Raw timings i event cadence w TEMP/performance.json. Początkowa nieograniczona emisja: mała partia86.2% (FAIL); po coalescing pierwszy pomiar104.2%/117.1%; powtórzenie256MiB miało91.4% (FAIL) przy dużym rozrzucie czasu. Finalny fixture używa dłuższej próby1GiB i zrównoważonej kolejności off/on: duży99.35%, mała partia101.28% (PASS); raw timings w run record. Wartości >100% oznaczają wahania hosta, nie deklarację przyspieszenia. Nie jest to pomiar realnego Wi-Fi ani wyświetlania fizycznego ekranu co100ms.
+RULE:the UI language is the Windows display language: Polish for Polish, English for any other. The frontend reads it from WebView2's `navigator.language`, native code (tray, toasts, Explorer menu, statuses and errors shown in the UI) from `GetUserDefaultUILanguage`; `WINDCONNECT_LANG=pl|en` forces the language of native texts. Texts: `frontend/locales/{pl,en}.js` (keys, `{name}` as a placeholder, plurals through `plural()`), `src-tauri/locales/{pl,en}.json`. Pages mark texts with the attributes `data-i18n` / `data-i18n-<attribute>`, scripts use `t()`; dates and numbers are formatted by `Intl` in the UI language.
+CHECK:`node apps/windows/scripts/check-i18n.cjs`: the same keys and placeholders in both languages, every key used exists; with `PLAYWRIGHT_MODULE` it renders all pages in English and Polish (no Polish characters and raw keys in the English version, screenshots in TEMP). The Playwright UI tests open pages with `locale: 'pl-PL'`. `cargo test` checks the parity of `src-tauri/locales`.
 
-## Odbiór plików z Androida (WN-40)
+## Touchpad from the phone (WN-51)
+
+The touchpad is allowed by default for a paired phone. Open "Touchpad" on Android's home screen: one finger moves the cursor, a tap clicks, holding drags, two fingers scroll (with inertia), a two-finger tap gives a right click. The buttons under the area also let you hold the left/right button. Sensitivity and natural scrolling are set on the phone.
+
+Three fingers: up is Task View, down is the desktop, left the previous app, right the next one. Requires a PC with `input/2`; basic motion also works with `input/1`. The keyboard is a separate feature, WN-52.
+
+### Presentation mode (WN-53)
+
+On the touchpad screen choose "Presentation". Volume up is the next slide, volume down the previous one (the →/← arrows, so it works in PowerPoint, Google Slides and other slideshows in the browser without configuration). Hold "laser pointer" and aim the phone: the PC shows a red dot over the cursor, transparent to clicks and not taking focus from the slideshow. The talk timer starts at the first slide. The laser needs a PC with `input/4` (PROTOCOL.md §8.11); an older PC keeps slide switching.
+
+The test of the real overlay (the live cursor, a topmost window) is skipped in `cargo test` because it depends on the desktop (WN-139). Run it separately, without moving the mouse: `cargo test -p windconnect-windows laser::tests::real_overlay -- --ignored`.
+
+The PC panel shows "Phone controls the cursor · name". "Turn off the touchpad" withdraws input acceptance at once and releases the buttons. The setting stays after a restart. Closing the phone's screen, losing focus, locking and a connection change stop sending; nothing is replayed after reconnecting. A detected desktop other than Default (lock/UAC) or an input insertion error turns the touchpad off with a message and requires turning it on again locally, without raising privileges.
+
+CCS/1 SEC:a partial shortcut releases only the still-pressed keys of the accepted prefix, in reverse order; before Win-up it sends a neutral VK 0xFF down/up so as not to open Start. Recovery is a single attempt, without retrying the gesture. LIMIT:on the ordinary desktop UIPI may block controlling an administrator's app. We don't check the integrity level of the active window; the result of SendInput/GetLastError doesn't identify UIPI as the cause. We don't guarantee detecting this block, nor turning off automatically/showing a message in every case. DEP:[Microsoft SendInput](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-sendinput).
+
+CCS/1 PERF:QUIC loopback + the PC's shared interpolator, 360 samples at 120 Hz: p95 16.285 ms idle and 11.929 ms with a 268 500 992 B transfer; the raw CSV is in the card's report. This is a software measurement, without SendInput and the screen. Physical touch → cursor and the smoothness of a real 120 Hz monitor: WN-134 (final tests, linked with WN-77). To reproduce: `WIND_TOUCHPAD_SAMPLES=<folder>` and `cargo test -p wind-core --test input touchpad_latency_with_interpolation_idle_and_bulk -- --ignored --nocapture`.
+
+## Transfer progress (WN-41)
 
 CCS/1
-FLOW:dopuszczona sparowana sesja -> files/1 -> istniejący FileEngine -> Pobrane/WindConnect/Obrazy, Wideo, Audio, Dokumenty lub Inne. Kategoria jest wybierana lokalnie przy zweryfikowanej finalizacji według ostatniego rozszerzenia bez rozróżniania wielkości liter; np.photo.jpg.exe i brak rozszerzenia -> Inne. Pełna tabela rozszerzeń: `wind-core::files::incoming_folder`; domyślna polityka silnika OFF, runtime Windows ON.
-SEC:sygnalizowany typ nie jest oceną zawartości. Dotychczasowe sprawdzanie ścieżek, brak nadpisywania, checksum/resume i Mark-of-the-Web obowiązują także w podfolderze kategorii; częściowe pliki pozostają poza inboxem. Nigdy nie otwieramy/uruchamiamy odebranego pliku automatycznie. Router przekazuje incoming queue dopiero po dopuszczeniu sesji (BUSY/unpair nadal przed odbiorem).
-IO:generowany fixture `files_peer` zapisuje tylko w przekazanym TEMP, z tą samą opt-in polityką silnika. Test20 obrazów i zestawu mieszanego jest opisany w Android README; nie dotyka Pobranych zalogowanego użytkownika ani zainstalowanej aplikacji. Wysyłanie z Windows jest WN-39; Android public Downloads receiver pozostaje WN-120, rozszerzone UI postępu WN-41.
+FLOW:the panel shows up to 50 of the newest transfers in both directions, the state, the confirmed bytes/size, the speed and the available actions. Stable DOM rows keep focus during updates. Speed: monotonic deltas, a 1 s window + EMA; "—" before the first window and while waiting. An unknown size has an indeterminate bar (the current engine knows the size after importing the source). States/bytes are coalesced before serialization/IPC into the newest snapshot in a 100 ms window; one pending deadline, no idle timer. Android's system notification is limited separately to 1/s.
+SEC:Cancel/Retry/Open folder are resolved natively by ID. Ambiguous IDs (different devices/directions) are rejected. Retry only a failed/cancelled outbound transfer and a still-paired original peer; no redirecting to the current phone. Received files need a retry on the sender's side. Open folder checks, at the moment of the click, the local source file or the verified incoming saved_as, canonical/containment/reparse; SHOpenFolderAndSelectItems selects the file in Explorer and doesn't run it. A moved/deleted file gives a readable message.
+CHECK:`check-send-ui.cjs` (Playwright): both palettes at 150%, keyboard/focus after 100 updates, actions, indeterminate and untrusted names. `check-transfer-performance.cjs` + the release example `transfers_bench`: real QUIC, 1 GiB and 256x1 MiB, the median of 3 runs off/on with the production model and the Chromium renderer; target >=95% of the baseline. Raw timings and event cadence in TEMP/performance.json. The initial unbounded emission: small batch 86.2% (FAIL); after coalescing, the first measurement 104.2%/117.1%; a repeat of 256 MiB had 91.4% (FAIL) with a large time spread. The final fixture uses a longer 1 GiB run and a balanced off/on order: large 99.35%, small batch 101.28% (PASS); raw timings in the run record. Values >100% mean host fluctuations, not a claim of speed-up. This is not a measurement of real Wi-Fi nor of a physical screen's display every 100 ms.
 
-Ikona WN-93 „Orbita”: źródła SVG i instrukcja odtwarzania w `assets/brand/README.md`.
-ICO zawiera rozmiary16–256px; zasobnik ma osobne warianty16/20/24/32px
-dla trzech stanów i obu palet. Nie skaluje małej bitmapy do większego DPI.
+## Receiving files from Android (WN-40)
 
-Klient Tauri 2 ze wstępnie wyrenderowanym panelem telefonu i statycznym frontendem
-bez Node.js. Parowanie i uwierzytelniona sesja działają w `wind-core`.
+CCS/1
+FLOW:an admitted paired session -> files/1 -> the existing FileEngine -> Downloads/WindConnect/Images, Video, Audio, Documents or Other. The category is chosen locally at the verified finalization by the last extension, case-insensitively; e.g. photo.jpg.exe and no extension -> Other. The full table of extensions: `wind-core::files::incoming_folder`; the engine's default policy is OFF, the Windows runtime ON.
+SEC:the signalled type is not an assessment of the content. The existing path checks, no overwriting, checksum/resume and Mark-of-the-Web also apply in the category subfolder; partial files stay outside the inbox. We never open/run a received file automatically. The router passes the incoming queue on only after the session is admitted (BUSY/unpair still before receiving).
+IO:the generated fixture `files_peer` writes only into the given TEMP, with the same opt-in engine policy. The test of 20 images and a mixed set is described in the Android README; it doesn't touch the logged-in user's Downloads or the installed app. Sending from Windows is WN-39; the Android public Downloads receiver stays WN-120, the extended progress UI WN-41.
 
-## Wymagania
+The WN-93 icon "Orbita": the SVG sources and how to regenerate them are in `assets/brand/README.md`.
+The ICO contains the sizes 16–256 px; the tray has separate variants 16/20/24/32 px
+for three states and both palettes. A small bitmap is never scaled up for a higher DPI.
 
-Windows 11 x64, stabilny Rust (MSVC), Microsoft C++ Build Tools z Windows SDK,
-Microsoft Edge WebView2. Do MSI potrzebna jest włączona funkcja Windows
-**VBSCRIPT**. Tauri pobiera WiX przy pierwszym pakowaniu.
+A Tauri 2 client with a prerendered phone panel and a static frontend
+without Node.js. Pairing and the authenticated session run in `wind-core`.
+
+## Requirements
+
+Windows 11 x64, Rust (MSVC; pinned in `rust-toolchain.toml`), Microsoft C++ Build Tools with the Windows SDK,
+Microsoft Edge WebView2. The MSI needs the Windows feature
+**VBSCRIPT** turned on. Tauri downloads WiX at the first packaging.
 
 ```powershell
 cargo install tauri-cli --version 2.11.4 --locked
@@ -75,138 +75,138 @@ cd apps/windows
 cargo tauri build --bundles msi -- --locked
 ```
 
-Wynik: `target/release/bundle/msi/*.msi` w katalogu głównym repozytorium.
-Instalator pobiera bootstrapper WebView2, jeżeli runtime nie jest zainstalowany;
-pierwsza instalacja wymaga wtedy połączenia z Internetem. MSI nie jest podpisany.
+Output: `target/release/bundle/msi/*.msi` in the repository root.
+The installer downloads the WebView2 bootstrapper if the runtime isn't installed;
+the first installation then needs an Internet connection. The MSI is not signed.
 
-Pliki do publicznego wydania (WN-162) buduj tak, żeby nie niosły ścieżek z
-komputera budującego (Rust domyślnie osadza ścieżki źródeł z rejestru Cargo,
-linker ścieżkę PDB):
+Build the files for a public release (WN-162) so that they don't carry paths from
+the building computer (Rust embeds the source paths from the Cargo registry by default,
+the linker the PDB path):
 
 ```powershell
 $env:RUSTFLAGS = "--remap-path-prefix=$env:USERPROFILE=~ -C link-arg=/PDBALTPATH:%_PDB%"
 cargo tauri build --bundles msi -- --locked
 ```
 
-Ścieżka profilu ze spacją wymaga `CARGO_ENCODED_RUSTFLAGS` (flagi rozdzielone
-znakiem `\x1f`). APK robi to sam (`apps/android/wind-core/build.gradle.kts`).
+A profile path with a space needs `CARGO_ENCODED_RUSTFLAGS` (flags separated
+by the character `\x1f`). The APK does this by itself (`apps/android/wind-core/build.gradle.kts`).
 
-Workflow **Windows MSI** buduje pakiet na `windows-latest` dla PR, push do
-`master` lub ręcznego uruchomienia. W zakładce Actions pobierz artefakt
-`WindConnect-windows-x64-msi`, rozpakuj ZIP i uruchom MSI.
-Po instalacji uruchom WindConnect: panel pokazuje QR do sparowania telefonu.
-Po sparowaniu i zestawieniu sesji pokazuje „Połączono” i nazwę telefonu.
-Zamknij panel i sprawdź odinstalowanie w Ustawieniach.
+The **Windows MSI** workflow builds the package on `windows-latest` for a PR, a push to
+`master` or a manual run. In the Actions tab download the artifact
+`WindConnect-windows-x64-msi`, unpack the ZIP and run the MSI.
+After installing, start WindConnect: the panel shows a QR code to pair the phone.
+After pairing and setting up the session it shows "Connected" and the phone's name.
+Close the panel and check uninstalling in Settings.
 
-W pliku `tauri.conf.json` wartości `identifier` i
-`bundle.windows.wix.upgradeCode` muszą pozostać stałe między wersjami,
-aby aktualizacje MSI poprawnie rozpoznawały zainstalowaną aplikację.
-Frontend nie używa bibliotek JavaScript ani zasobów z sieci. Lokalny DM Sans
-pochodzi z zaakceptowanych makiet WN-20 (OFL 1.1). Licencje fontu i bezpośrednio
-wywoływanej biblioteki Mica są dołączone w `frontend/assets/`; inwentarz i hash
-fontu: `frontend/assets/NOTICE.txt`. Ikona i SVG projektu: MIT.
+In `tauri.conf.json` the values `identifier` and
+`bundle.windows.wix.upgradeCode` must stay the same between versions,
+so that MSI updates recognize the installed app correctly.
+The frontend uses no JavaScript libraries or resources from the network. The local DM Sans
+comes from the accepted WN-20 mockups (OFL 1.1). The licenses of the font and of the directly
+called Mica library are included in `frontend/assets/`; the inventory and the font's
+hash: `frontend/assets/NOTICE.txt`. The project's icon and SVGs: MIT.
 
-Przebieg CI na GitHubie oraz ręczna instalacja i deinstalacja MSI wymagają
-potwierdzenia po opublikowaniu repozytorium.
+The CI runs on GitHub (WN-163); a manual installation and uninstallation of the MSI
+is part of the device tests before a release.
 
-## Kontrolki Windows (WN-21)
+## Windows controls (WN-21)
 
-`frontend/tokens.css` definiuje paletę jasną/ciemną, DM Sans, odstępy,
-promienie i ruch z WN-20. `style.css` rysuje przyciski, kafelki, przełączniki,
-checkbox, pola, listę, dialog, postęp i scrollbar. Semantyczne elementy HTML
-zachowują obsługę klawiatury; ich wygląd nie korzysta z domyślnych kontrolek.
-Fokus jest widoczny, dialog zamyka Escape i przywraca fokus, lista obsługuje
-strzałki/Home/End. `prefers-reduced-motion` usuwa animacje; forced-colors
-zachowuje obramowania i wybór. Motyw System reaguje na zmianę preferencji OS,
-a wybór użytkownika jest zapamiętywany lokalnie.
+`frontend/tokens.css` defines the light/dark palette, DM Sans, spacing,
+radii and motion from WN-20. `style.css` draws buttons, tiles, switches,
+the checkbox, fields, the list, the dialog, progress and the scrollbar. Semantic HTML elements
+keep their keyboard handling; their look doesn't use the default controls.
+Focus is visible, Escape closes the dialog and restores focus, the list handles
+arrows/Home/End. `prefers-reduced-motion` removes animations; forced-colors
+keeps borders and the selection. The System theme follows the OS preference change,
+and the user's choice is remembered locally.
 
-Okno ma własny pasek (przeciąganie, dwuklik, minimalizacja, maksymalizacja,
-zamknięcie). Mica jest nakładana natywnie przez `window-vibrancy`; dopiero
-udane wywołanie DWM włącza półprzezroczysty tint. Błąd lub brak wsparcia
-pozostawia nieprzezroczyste tło. Windows może sam wyłączyć efekt zgodnie
-z ustawieniami dostępności/energii. Nie emulujemy Mica obrazem ani rozmyciem CSS.
+The window has its own title bar (dragging, double click, minimize, maximize,
+close). Mica is applied natively through `window-vibrancy`; only
+a successful DWM call turns on the semi-transparent tint. An error or no support
+leaves an opaque background. Windows may turn the effect off by itself according to
+the accessibility/power settings. We don't emulate Mica with an image or a CSS blur.
 
-Galeria: `cargo tauri dev` i przycisk **Galeria kontrolek** w stopce.
-Opcjonalnie `?gallery` otwiera ją od razu. Natywny `ui_dev_mode` zwraca false
-w release, niezależnie od URL. Dane i akcje galerii są demonstracyjne,
-bez dostępu do transportu, zaufania czy urządzeń. Wydanie udostępnia rzeczywisty
-panel parowania WN-25, a galeria pozostaje tylko w debug.
+Gallery: `cargo tauri dev` and the **Controls gallery** button in the footer.
+Optionally `?gallery` opens it at once. The native `ui_dev_mode` returns false
+in release, regardless of the URL. The gallery's data and actions are for demonstration,
+without access to the transport, trust or devices. A release offers the real
+WN-25 pairing panel, and the gallery stays in debug only.
 
-Test UI: zainstaluj Playwright 1.61.1 poza repozytorium i jego Chromium,
-ustaw `PLAYWRIGHT_MODULE` na katalog modułu `playwright`, następnie:
+UI test: install Playwright 1.61.1 outside the repository, and its Chromium,
+set `PLAYWRIGHT_MODULE` to the folder of the `playwright` module, then:
 
 ```powershell
 node apps/windows/scripts/check-ui.cjs
 ```
 
-Runner uruchamia i zamyka lokalny serwer oraz przeglądarkę. Sprawdza oba motywy,
-400/700/1024 px, wczytanie fontu, klawiaturę, walidację, dialog, reduced-motion
-i bramkę release przy wstrzykniętym IPC. PNG trafiają do `%TEMP%/windconnect-wn21-ui`
-(lub `UI_ARTIFACTS`). CI Windows wykonuje ten sam test. Dodatkowo na Windows 11
-sprawdź natywnie przeciąganie/resize, przyciski okna, Alt+F4, Mica na tle pulpitu
-i tryb wyłączonej przezroczystości; Chromium headless nie potwierdza efektu DWM.
+The runner starts and closes a local server and the browser. It checks both themes,
+400/700/1024 px, font loading, the keyboard, validation, the dialog, reduced-motion
+and the release gate with injected IPC. PNGs go to `%TEMP%/windconnect-wn21-ui`
+(or `UI_ARTIFACTS`). Windows CI runs the same test. In addition, on Windows 11
+check natively dragging/resizing, the window buttons, Alt+F4, Mica on the desktop background
+and the mode with transparency off; headless Chromium doesn't confirm the DWM effect.
 
-## Zasobnik i autostart (WN-23)
+## Tray and autostart (WN-23)
 
-Lewy klik ikony otwiera panel WN-24, prawy otwiera własne menu (DM Sans, motyw
-aplikacji, strzałki/Home/End/Tab, Enter/Spacja, Escape). Menu jest też dostępne
-przez **Opcje zasobnika** w oknie. Utrata fokusu chowa menu. X/Alt+F4 chowa
-okno do zasobnika; **Zakończ** kończy proces i usuwa ikonę. Kolejne uruchomienie
-przywraca istniejące okno, zamiast dodawać drugą ikonę (mutex sesji logowania).
+A left click on the icon opens the WN-24 panel, a right click opens our own menu (DM Sans, the app's
+theme, arrows/Home/End/Tab, Enter/Space, Escape). The menu is also available
+through **Tray options** in the window. Losing focus hides the menu. X/Alt+F4 hides
+the window to the tray; **Quit** ends the process and removes the icon. A further start
+restores the existing window instead of adding a second icon (a logon-session mutex).
 
-Trzy własne ikony 32 px mają odrębny kształt i kolor: znacznik/teal połączenia,
-trzy kropki/amber wyszukiwania i przekreślony okrąg/gray braku połączenia.
-Tooltip i nagłówek menu zawierają opis słowny. `indicator.rs` publikuje zdarzenia
-przez watch, bez timerów. Natywny odbiorca wymienia ikonę i tooltip na wątku UI;
-`tray_snapshot` podaje czas od publikacji do zakończenia wywołań natywnych.
-To pomiar API, nie momentu odmalowania przez Explorer.
+Three own 32 px icons have a distinct shape and colour: a check mark/teal for connected,
+three dots/amber for searching and a crossed circle/gray for not connected.
+The tooltip and the menu header contain a verbal description. `indicator.rs` publishes events
+through a watch, without timers. The native receiver swaps the icon and tooltip on the UI thread;
+`tray_snapshot` gives the time from publishing to the end of the native calls.
+This measures the API, not the moment Explorer repaints.
 
-Integracja koordynatora sesji Windows (kolejne karty parowania): pobierz
-`app.state::<TrayRuntime>().indicator`, wywołaj `searching()` przed próbą,
-`attempt_failed(generation)` po błędzie lub uruchom `track_session(generation,
-&session)` dla uwierzytelnionej sesji. Jej zamknięcie przełącza ikonę na brak
-połączenia. Generacja chroni przed spóźnionym zdarzeniem poprzedniej sesji.
-Koordynator WN-25 publikuje te zdarzenia dla rzeczywistych sesji. Bez sesji ikona
-pokazuje brak połączenia, także po samym zapisaniu parowania. Klucze z odkrywania
-nie są przypinane; zaufanie pochodzi z protokołu parowania i zapisanego magazynu.
+Integrating the Windows session coordinator (the following pairing cards): take
+`app.state::<TrayRuntime>().indicator`, call `searching()` before an attempt,
+`attempt_failed(generation)` after an error, or run `track_session(generation,
+&session)` for an authenticated session. Its close switches the icon to not
+connected. The generation guards against a late event of the previous session.
+The WN-25 coordinator publishes these events for real sessions. Without a session the icon
+shows not connected, also after only storing a pairing. Keys from discovery
+are not pinned; trust comes from the pairing protocol and the stored store.
 
-**Uruchamiaj po zalogowaniu** jest domyślnie wyłączone. Jawny wybór użytkownika
-zapisuje REG_SZ w HKCU `Software\Microsoft\Windows\CurrentVersion\Run`, wartość
-`WindConnect`, z cytowaną ścieżką bieżącego EXE i `--autostart`. Bez powłoki
-i uprawnień administratora. Uruchomienie z tym argumentem tworzy tylko ikonę.
-MSI nie włącza autostartu; próbuje usunąć wpis przy deinstalacji w kontekście bieżącego
-użytkownika. Sprzątanie jest nieblokujące: brak lub blokada EXE albo błąd rejestru
-nie zatrzymuje deinstalacji; wpis Run może wtedy pozostać. Wpisy innych profili nie są usuwane. Po zmianie lokalizacji EXE
-włącz opcję ponownie. Task Manager/polityka Windows może wyłączyć start niezależnie
-od obecności Run. Nie ma usługi ani zadania Harmonogramu.
+**Start after signing in** is off by default. The user's explicit choice
+writes a REG_SZ in HKCU `Software\Microsoft\Windows\CurrentVersion\Run`, the value
+`WindConnect`, with the quoted path of the current EXE and `--autostart`. No shell
+and no administrator rights. A start with this argument creates only the icon.
+The MSI doesn't turn autostart on; it tries to remove the entry on uninstall in the current
+user's context. The cleanup doesn't block: a missing or locked EXE or a registry error
+doesn't stop the uninstall; the Run entry may then stay. Entries of other profiles are not removed. After the EXE's location changes,
+turn the option on again. Task Manager/Windows policy may disable the start regardless
+of the Run entry. There is no service and no Task Scheduler task.
 
-Testy: `cargo test -p windconnect-windows` (stara generacja, cytowanie, odczyt/
-zapis/usunięcie w prywatnym kluczu HKCU testu, nigdy w Run). `check-ui.cjs`
-sprawdza też własne menu i checkbox autostartu z atrapą IPC. Test natywny:
+Tests: `cargo test -p windconnect-windows` (an old generation, quoting, reading/
+writing/removing in a private HKCU key of the test, never in Run). `check-ui.cjs`
+also checks our own menu and the autostart checkbox with a fake IPC. The native test:
 
 ```powershell
 node apps/windows/scripts/check-tray-native.cjs target/debug/windconnect-windows.exe
 node apps/windows/scripts/check-tray-native.cjs target/release/windconnect-windows.exe --release
 ```
 
-Ustaw `PLAYWRIGHT_MODULE` jak dla testu UI. Runner startuje i zamyka własną
-aplikację/WebView2, sprawdza cichy start, zamknięcie do zasobnika, drugą instancję
-i klawiaturę menu. W debug `dev_tray_probe` tworzy dwa lokalne uwierzytelnione
-węzły QUIC/Session, mierzy 15 przejść ikony i wymaga każdego <100 ms; release
-odmawia tej operacji. Pozostają ręczne testy powłoki (prawy/lewy klik rzeczywistej
-ikony, restart Explorera, logowanie i deinstalacja na VM, różne DPI/monitory).
+Set `PLAYWRIGHT_MODULE` as for the UI test. The runner starts and closes its own
+app/WebView2, checks the silent start, closing to the tray, a second instance
+and the menu's keyboard. In debug `dev_tray_probe` creates two local authenticated
+QUIC/Session nodes, measures 15 icon transitions and requires each <100 ms; release
+refuses this operation. Manual shell tests remain (right/left click on the real
+icon, restarting Explorer, signing in and uninstalling on a VM, different DPIs/monitors).
 
-## Panel przy zasobniku (WN-24)
+## Panel by the tray (WN-24)
 
 CCS/1
 M: Windows / panel 380×540 DIP
-FLOW: start -> ukryty WebView2 -> font i layout gotowe -> lewy klik zasobnika lub Win+Shift+W -> pokaż istniejące okno.
-RULE: Escape, X, Alt+F4 i utrata fokusu chowają panel; przycisk „Otwórz aplikację” otwiera główne okno. Prawy klik zachowuje menu WN-23.
-RULE: Skrót rejestrowany przez RegisterHotKey bez powtarzania; zamknięcie procesu zwalnia rejestrację. Konflikt skrótu nie przerywa startu: panel pokazuje wyjaśnienie, zasobnik nadal działa.
-IO: Fizyczny prostokąt ikony -> monitor, DPI i work area -> pozycja przy odpowiedniej krawędzi paska. Rozmiar ograniczony do work area; mniejsze ekrany mają przewijanie.
-RULE: Lokalny DM Sans, tokeny WN-20, cztery własne kafle, motyw aplikacji, wejście 160 ms / 8 px; reduced-motion wyłącza animację. Bez sparowanego urządzenia akcje są nieaktywne; brak fikcyjnych zdjęć, powiadomień i baterii.
-PERF: panel_snapshot.painted_us mierzy czas od rozpoczęcia natywnej obsługi otwarcia do potwierdzenia dwóch requestAnimationFrame w WebView2. To potwierdzenie zgłoszenia klatki, nie pomiar fizycznego ekranu; nie czeka na zakończenie animacji 160 ms.
-STATE: Test geometrii: cztery krawędzie paska, ujemne współrzędne, 200% DPI, mały monitor i auto-hide. Test rejestracji: konflikt, dispatch i zwolnienie skrótu z Ctrl+Alt+Shift+F24 (nie przejmuje Win+Shift+W użytkownika).
+FLOW: start -> hidden WebView2 -> font and layout ready -> left click on the tray or Win+Shift+W -> show the existing window.
+RULE: Escape, X, Alt+F4 and losing focus hide the panel; the button "Open the app" opens the main window. A right click keeps the WN-23 menu.
+RULE: The shortcut is registered through RegisterHotKey without repeats; ending the process releases the registration. A shortcut conflict doesn't stop the start: the panel shows an explanation, the tray still works.
+IO: The icon's physical rectangle -> monitor, DPI and work area -> a position at the matching edge of the taskbar. The size is limited to the work area; smaller screens get scrolling.
+RULE: Local DM Sans, WN-20 tokens, four own tiles, the app's theme, a 160 ms / 8 px entrance; reduced-motion turns the animation off. Without a paired device the actions are inactive; no made-up photos, notifications or battery.
+PERF: panel_snapshot.painted_us measures the time from the start of the native handling of the open to the confirmation of two requestAnimationFrame calls in WebView2. That confirms a frame was submitted, not a measurement of the physical screen; it doesn't wait for the 160 ms animation to end.
+STATE: Geometry test: the four taskbar edges, negative coordinates, 200% DPI, a small monitor and auto-hide. Registration test: a conflict, dispatch and releasing the shortcut with Ctrl+Alt+Shift+F24 (it doesn't take over the user's Win+Shift+W).
 
 ```powershell
 node apps/windows/scripts/check-panel-native.cjs target/debug/windconnect-windows.exe
@@ -214,24 +214,24 @@ node apps/windows/scripts/check-panel-native.cjs target/release/windconnect-wind
 ```
 
 CCS/1
-DEP: PLAYWRIGHT_MODULE jak dla check-ui.cjs.
-IO: 20 pomiarów <80 ms; preloading bez flash, Escape, utrata fokusu, otwarcie aplikacji, motywy, DM Sans, reduced-motion. Bez telefonu (debug: pusty magazyn w folderze raportu) szybkie akcje są ukryte, a wyłączone są tylko niezbudowane Dzwoń i Touchpad; Wyślij i Schowek działają po połączeniu (WN-109). Raport i PNG: %TEMP%/windconnect-wn24 (lub PANEL_ARTIFACTS). Runner zamyka własny proces i przeglądarkę.
-LIMIT: Przy zajętym Win+Shift+W raport jawnie zapisuje shortcut=false i komunikat OS; pozostałe sprawdzenia działają. Pełny test fizycznego skrótu wymaga wolnego skrótu. Zmiana krawędzi paska/monitora/DPI i rzeczywisty klik ikony pozostają do ręcznej walidacji powłoki; runner nie zmienia konfiguracji pulpitu.
+DEP: PLAYWRIGHT_MODULE as for check-ui.cjs.
+IO: 20 measurements <80 ms; preloading without a flash, Escape, losing focus, opening the app, themes, DM Sans, reduced-motion. Without a phone (debug: an empty store in the report folder) the quick actions are hidden, and only the unbuilt Ring and Touchpad are disabled; Send and Clipboard work after connecting (WN-109). Report and PNGs: %TEMP%/windconnect-wn24 (or PANEL_ARTIFACTS). The runner closes its own process and browser.
+LIMIT: With Win+Shift+W taken, the report explicitly records shortcut=false and the OS message; the other checks work. A full test of the physical shortcut needs a free shortcut. Changing the taskbar edge/monitor/DPI and a real click on the icon remain for manual shell validation; the runner doesn't change the desktop configuration.
 
-## QR i połączenie telefonu (WN-25)
+## QR and connecting the phone (WN-25)
 
 CCS/1
-FLOW: normalny start -> ukryty panel gotowy -> QR przy pierwszym uruchomieniu -> skan/potwierdzenie na Androidzie -> parowanie WN-19 -> zapis klucza -> uwierzytelniona Session -> „Połączono” + prawdziwa nazwa telefonu i ikona zasobnika.
-SEC: DPAPI i paired.txt w profilu użytkownika jak w rdzeniu. Uszkodzone rekordy pomijane i liczone; błąd odczytu/tożsamości nie generuje zastępczych kluczy. Zaufane klucze ładowane przed nasłuchem głównej sesji. Samo odkrywanie lub sukces parowania nie jest stanem „Połączono”.
-RULE: QR ma jednorazowy sekret i 5 min ważności. Nowy kod, anulowanie lub zmiana sieci unieważnia poprzednie okno; po wygaśnięciu/3 nieudanych próbach obraz znika. Brak adresu LAN daje opis i ponowienie. Po sparowaniu czekamy na Session; po 10 s bez niej pokazujemy zachowane sparowanie i brak połączenia. Rozłączenie usuwa stan „Połączono”, klucz pozostaje.
-IO: Adresy QR: IPv4 interfejsów LAN, najpierw interfejs domyślnej trasy (maks. 8); osobny port parowania, główny endpoint dla sesji. Odkrywanie równolegle mDNS + broadcast WN-15. Wi-Fi/Ethernet w tej samej sieci; relay nie jest tu automatycznie włączany.
-RULE: Kod renderowany w Rust do macierzy modułów, w canvas: czarny/biały w każdym motywie, całkowita skala, quiet zone 4 moduły. Surowy link nie trafia do DOM, localStorage ani logów. Cztery akcje telefonu pozostają nieaktywne do swoich kart; brak fikcyjnych baterii/zdjęć.
-SEC (WN-94): Moduły QR kodują jednorazowy sekret, więc aplikacja czyści każdą swoją kopię. Sekret i link są `Zeroizing` w rdzeniu; bufor modułów z `qrcode` jest nadpisywany po skopiowaniu; `QrBits` zeruje się przy zwolnieniu (stan pętli, wartość `watch`, klony `publish` i `pairing_snapshot`). Zamknięcie, nowy kod, wygaśnięcie, sparowanie i koniec pętli ustawiają `qr = None`. Panel zeruje tablicę modułów po narysowaniu i czyści canvas, gdy QR znika.
-LIMIT (WN-94): Poza zasięgiem aplikacji są robocze bufory kodera `qrcode` (zwalniane w nim bez zerowania), JSON serializowany przez Tauri dla IPC (zdarzenie `pairing-state` i odpowiedź `pairing_snapshot`) oraz kopie w WebView (ciąg IPC, sterta JS, bitmapa w GPU/kompozytorze), które zwalnia GC i przeglądarka. Ochrona jednorazowości nie zależy od zerowania: zamknięte okno unieważnia sekret w rdzeniu, a stary kod jest odrzucany.
-FLOW: Android po parowaniu wyszukuje adres tylko dla zapisanego klucza, następnie łączy się z tym przypiętym kluczem; limit 7 s. Nieosiągalny komputer nie usuwa udanego parowania. Ekran telefonu śledzi rzeczywisty stan sesji.
+FLOW: normal start -> hidden panel ready -> QR at first start -> scan/confirmation on Android -> WN-19 pairing -> storing the key -> authenticated Session -> "Connected" + the phone's real name and the tray icon.
+SEC: DPAPI and paired.txt in the user's profile as in the core. Damaged records are skipped and counted; a read/identity error doesn't generate substitute keys. Trusted keys are loaded before the main session starts listening. Discovery alone or a pairing success is not the "Connected" state.
+RULE: The QR code has a one-time secret and is valid for 5 min. A new code, cancelling or a network change invalidates the previous window; after expiry/3 failed attempts the image disappears. No LAN address gives a description and a retry. After pairing we wait for the Session; after 10 s without it we show the kept pairing and not connected. Disconnecting removes the "Connected" state, the key stays.
+IO: QR addresses: the IPv4 addresses of the LAN interfaces, the default route's interface first (max. 8); a separate pairing port, the main endpoint for sessions. Discovery in parallel: mDNS + the WN-15 broadcast. Wi-Fi/Ethernet on the same network; the relay is not turned on automatically here.
+RULE: The code is rendered in Rust into a module matrix, onto a canvas: black/white in every theme, an integer scale, a quiet zone of 4 modules. The raw link never goes into the DOM, localStorage or logs. The phone's four actions stay inactive until their cards; no made-up battery/photos.
+SEC (WN-94): The QR modules encode a one-time secret, so the app clears each of its copies. The secret and the link are `Zeroizing` in the core; the module buffer from `qrcode` is overwritten after copying; `QrBits` zeroes itself when dropped (the loop's state, the `watch` value, the clones in `publish` and `pairing_snapshot`). Closing, a new code, expiry, pairing and the end of the loop set `qr = None`. The panel zeroes the module array after drawing and clears the canvas when the QR code disappears.
+LIMIT (WN-94): Outside the app's reach are the `qrcode` encoder's working buffers (freed in it without zeroing), the JSON serialized by Tauri for IPC (the `pairing-state` event and the `pairing_snapshot` answer), and the copies in WebView (the IPC string, the JS heap, the bitmap in the GPU/compositor), which the GC and the browser free. The one-time protection doesn't depend on zeroing: a closed window invalidates the secret in the core, and an old code is rejected.
+FLOW: After pairing, Android looks up the address only for the stored key, then connects with this pinned key; a 7 s limit. An unreachable computer doesn't remove a successful pairing. The phone's screen follows the session's real state.
 
-Sprawdzenia natywne (zewnętrzny Playwright jak wyżej; JDK 17 w JAVA_HOME,
-ZXING_CORE_JAR wskazuje na `core-3.5.4.jar` pobrany przez Gradle):
+Native checks (external Playwright as above; JDK 17 in JAVA_HOME,
+ZXING_CORE_JAR points at the `core-3.5.4.jar` downloaded by Gradle):
 
 ```powershell
 cargo build --locked -p windconnect-windows
@@ -241,62 +241,62 @@ node apps/windows/scripts/check-pairing-android.cjs
 ```
 
 CCS/1
-STATE: Native test dekoduje rzeczywisty canvas ZXingiem, używa prawdziwego protokołu parowania i Session, sprawdza nazwę, ikonę, zniknięcie QR, restart, anulowanie i odmowę starego kodu. Peery mają efemeryczne tożsamości; DPAPI/trust w unikalnym TEMP. Komenda dev_pairing_address i zmienne WINDCONNECT_TEST_DATA_DIR/WINDCONNECT_TEST_PAIR_IP działają wyłącznie w debug; release nie pozwala tymi zmiennymi przekierować tożsamości.
-STATE: Android test wymaga emulatora-5556 (lub ANDROID_SERIAL), APK i APK testowego. Dekoduje obraz canvas w Androidzie, potwierdza w UI i wymaga „Połączono” <10 s. Emulator NAT wymaga przekierowania UDP 47823 -> 47821; test wysyła wyłącznie publiczny pakiet odkrywania z odciskiem i portem, nie przypina kluczy. Pełne parowanie/TLS/Session to kod produkcyjny. Port/timer/procesy test kończy; testowy surowy link jest usuwany. PNG i run.json: TEMP/windconnect-wn25-*.
-LIMIT: Budżet jest mierzony od rozpoznania QR, z automatycznym potwierdzeniem testu, do prawdziwej sesji. Czas człowieka i fizycznego ustawiania ostrości nie jest ograniczany. Fizyczny S25 Ultra i rzeczywiste Wi-Fi/Private firewall trzeba potwierdzić na telefonie. MSI/APK do pierwszego testu są budowane lokalnie; MSI nie jest instalowany przez test.
+STATE: The native test decodes the real canvas with ZXing, uses the real pairing protocol and Session, checks the name, the icon, the QR code disappearing, a restart, cancelling and refusing an old code. The peers have ephemeral identities; DPAPI/trust in a unique TEMP. The command dev_pairing_address and the variables WINDCONNECT_TEST_DATA_DIR/WINDCONNECT_TEST_PAIR_IP work only in debug; release doesn't let these variables redirect the identity.
+STATE: The Android test needs emulator-5556 (or ANDROID_SERIAL), the APK and the test APK. It decodes the canvas image on Android, confirms in the UI and requires "Connected" in <10 s. The emulator's NAT needs a UDP redirect 47823 -> 47821; the test sends only the public discovery packet with the fingerprint and port, it doesn't pin keys. Full pairing/TLS/Session is production code. The test ends the port/timer/processes; the test's raw link is deleted. PNGs and run.json: TEMP/windconnect-wn25-*.
+LIMIT: The budget is measured from recognizing the QR code, with the test's automatic confirmation, to the real session. Human time and physical focusing are not limited. A physical S25 Ultra and real Wi-Fi/Private firewall have to be confirmed on the phone. The MSI/APK for the first test are built locally; the test doesn't install the MSI.
 
-Audyt nowej zależności dostarczanej w EXE/MSI:
+Audit of the new dependency shipped in the EXE/MSI:
 
-| Komponent | Wersja | Licencja z pakietu | Gdzie trafia | Wynik |
+| Component | Version | License from the package | Where it goes | Result |
 | --- | --- | --- | --- | --- |
-| qrcode | 0.14.1 | MIT OR Apache-2.0; wybrana MIT, LICENSE-MIT.txt | Natywny EXE; pełny tekst frontend/assets/qrcode-MIT.txt | Permisywna; bez domyślnych funkcji i zależności image/SVG/PIC. |
-| if-addrs | 0.15.0 | Dotychczasowa zależność wind-core | Ten sam EXE, bez nowej biblioteki runtime | Nowe bezpośrednie wywołanie istniejącego komponentu. |
+| qrcode | 0.14.1 | MIT OR Apache-2.0; MIT chosen, LICENSE-MIT.txt | The native EXE; full text frontend/assets/qrcode-MIT.txt | Permissive; without default features and the image/SVG/PIC dependencies. |
+| if-addrs | 0.15.0 | An existing wind-core dependency | The same EXE, no new runtime library | A new direct call of an existing component. |
 
 CCS/1
-EXT: qrcode upstream https://github.com/kennytm/qrcode-rust (pakiet 0.14.1, niezmieniony); NOTICE w frontend/assets. Brak zewnętrznego generatora QR, zdjęć ani nowych fontów.
+EXT: qrcode upstream https://github.com/kennytm/qrcode-rust (package 0.14.1, unchanged); NOTICE in frontend/assets. No external QR generator, photos or new fonts.
 
-## Odkrywanie i reguła zapory (WN-15)
+## Discovery and the firewall rule (WN-15)
 
-Rdzeń uruchamia mDNS i IPv4 broadcast równolegle. Broadcast korzysta z portu
-UDP 47821, wysyła odcisk klucza i rzeczywisty port QUIC, a wynik pozostaje
-niezaufaną wskazówką do sesji z przypiętym kluczem. Fallback można sprawdzić
-przez `windctl discover --broadcast-only` oraz węzeł
-`windctl serve --advertise --broadcast-only` z osobnym kluczem.
+The core runs mDNS and IPv4 broadcast in parallel. Broadcast uses
+UDP port 47821, sends the key's fingerprint and the actual QUIC port, and the result stays
+an untrusted hint for a session with a pinned key. The fallback can be checked
+with `windctl discover --broadcast-only` and a node
+`windctl serve --advertise --broadcast-only` with a separate key.
 
-Fragment `src-tauri/wix/firewall.wxs` dodaje przy instalacji regułę
-**WindConnect - LAN UDP (Private)**. Reguła dotyczy wyłącznie pełnej ścieżki
-instalowanego `windconnect-windows.exe`, protokołu UDP, profilu Private i
-adresów LocalSubnet. Obejmuje mDNS 5353, broadcast 47821 i port QUIC wybrany
-przez aplikację, również po migracji gniazda. Nie otwiera TCP, profilu Public
-ani innych aplikacji (w tym osobnego `windctl.exe`).
+The fragment `src-tauri/wix/firewall.wxs` adds at installation the rule
+**WindConnect - LAN UDP (Private)**. The rule applies only to the full path of the
+installed `windconnect-windows.exe`, the UDP protocol, the Private profile and
+LocalSubnet addresses. It covers mDNS 5353, broadcast 47821 and the QUIC port chosen
+by the app, also after a socket migration. It doesn't open TCP, the Public profile
+or other apps (including the separate `windctl.exe`).
 
-WiX FirewallExtension zarządza dodaniem, wycofaniem instalacji i usunięciem
-reguły razem z komponentem MSI. Błąd rejestracji reguły przerywa instalację
-i uruchamia rollback, zamiast po cichu pozostawić niekompletną konfigurację.
-Administrator może dodatkowo ograniczyć ruch polityką organizacji.
+WiX FirewallExtension manages adding, rolling back the installation and removing
+the rule together with the MSI component. An error registering the rule stops the installation
+and runs a rollback, instead of silently leaving an incomplete configuration.
+An administrator can further restrict traffic with an organization's policy.
 
-Budowanie MSI kompiluje i łączy fragment przez standardowe narzędzia WiX;
-nie instaluje go i nie zmienia zapory komputera budującego. Test instalacji
-i deinstalacji wykonuj na przeznaczonym do tego Windows VM: po instalacji
-sprawdź `Get-NetFirewallRule -DisplayName 'WindConnect - LAN UDP (Private)'`
-oraz powiązane filtry aplikacji/adresów/protokołu, a po deinstalacji brak
-tej reguły. Test fallbacku w dwóch węzłach z wyłączonym mDNS jest niezależny
-od lokalnej polityki instalatora.
+Building the MSI compiles and links the fragment with the standard WiX tools;
+it doesn't install it and doesn't change the building computer's firewall. Test installation
+and uninstallation on a Windows VM meant for it: after installing,
+check `Get-NetFirewallRule -DisplayName 'WindConnect - LAN UDP (Private)'`
+and the related application/address/protocol filters, and after uninstalling that the
+rule is gone. The two-node fallback test with mDNS off is independent
+of the installer's local policy.
 
-## Akcje zdalne (WN-54)
+## Remote actions (WN-54)
 
-Sparowany telefon może poprosić komputer o akcję z jego listy dozwolonych
-(PROTOCOL.md §9.2): zablokowanie ekranu (`LockWorkStation`), uśpienie
-(`SetSuspendState`, po wysłaniu odpowiedzi), otwarcie linku `http`/`https` w
-domyślnej przeglądarce (`ShellExecuteW`) albo własną akcję. Telefon wysyła
-tylko identyfikator (i adres dla linku), nigdy polecenia.
+A paired phone can ask the computer for an action from its allowed list
+(PROTOCOL.md §9.2): locking the screen (`LockWorkStation`), sleeping
+(`SetSuspendState`, after the answer is sent), opening an `http`/`https` link in the
+default browser (`ShellExecuteW`) or a custom action. The phone sends
+only the identifier (and the address for a link), never commands.
 
-Lista to `%LOCALAPPDATA%\WindConnect\actions.json`, obok tożsamości i
-`paired.txt`. Okno główne pokazuje ją w sekcji „Akcje zdalne”: przełączniki
-zapisują plik, a „Edytuj własne akcje” otwiera go w Notatniku. Plik jest
-czytany przy każdej prośbie, więc wyłączenie działa od razu. Brak pliku:
-akcje wbudowane włączone, bez własnych. Plik, którego nie da się odczytać:
-nic się nie wykona, dopóki go nie poprawisz lub nie usuniesz.
+The list is `%LOCALAPPDATA%\WindConnect\actions.json`, next to the identity and
+`paired.txt`. The main window shows it in the section "Remote actions": the switches
+write the file, and "Edit custom actions" opens it in Notepad. The file is
+read on every request, so turning something off takes effect at once. No file:
+built-in actions on, no custom ones. A file that can't be read:
+nothing runs until you fix or delete it.
 
 ```json
 {
@@ -304,351 +304,353 @@ nic się nie wykona, dopóki go nie poprawisz lub nie usuniesz.
   "sleep": true,
   "openUrl": true,
   "custom": [
-    { "id": "x-kopia", "label": "Kopia zapasowa", "enabled": true,
-      "program": "C:\\Program Files\\Backup\\backup.exe", "args": ["--teraz"] }
+    { "id": "x-backup", "label": "Backup", "enabled": true,
+      "program": "C:\\Program Files\\Backup\\backup.exe", "args": ["--now"] }
   ]
 }
 ```
 
-Własna akcja: `id` zaczyna się od `x-` (małe litery, cyfry, `-`), `program`
-to pełna ścieżka do pliku `.exe` (bez `.bat`/`.cmd` i bez powłoki), `args`
-są stałe. Błędny wpis jest pominięty i opisany w oknie. Ostatnia wykonana
-lub odrzucona prośba jest widoczna pod listą.
+A custom action: `id` starts with `x-` (lower-case letters, digits, `-`), `program`
+is the full path to an `.exe` file (no `.bat`/`.cmd` and no shell), `args`
+are fixed. An invalid entry is skipped and described in the window. The last request
+run or refused is visible under the list.
 
-Test sekcji (Playwright jak dla `check-ui.cjs`, IPC podstawione):
+Test of the section (Playwright as for `check-ui.cjs`, IPC stubbed):
 `node apps/windows/scripts/check-actions-ui.cjs`.
 
-Sprawdzenie bez telefonu: przypnij klucz `windctl` jak telefon (parowanie)
-i użyj `windctl action` (crates/windctl/README.md).
+Checking without a phone: pin the `windctl` key like a phone (pairing)
+and use `windctl action` (crates/windctl/README.md).
 
-## Wysyłanie plików (WN-39)
+## Sending files (WN-39)
 
-Pliki i foldery idą na telefon silnikiem WN-38 (PROTOCOL.md §9.1), do
-połączonego telefonu, a gdy żaden nie jest połączony, do ostatnio
-sparowanego: transfery czekają w kolejce i ruszają po połączeniu. Folder to
-osobny transfer dla każdego pliku, ze ścieżką względną.
+Files and folders go to the phone with the WN-38 engine (PROTOCOL.md §9.1), to
+the connected phone, and when none is connected, to the most recently
+paired one: transfers wait in a queue and start after connecting. A folder is
+a separate transfer for each file, with a relative path.
 
-Skąd:
+From where:
 
-- **Menu Eksploratora**: „Wyślij na telefon” dla plików i folderów
-  (`HKCU\Software\Classes\*\shell` i `Directory\shell`, klucz
-  `WindConnect.SendToPhone`, bez uprawnień administratora). Aplikacja
-  zapisuje wpis przy każdym starcie (ścieżka exe może się zmienić), a
-  odinstalowanie usuwa go (`--remove-shell-menu`). W Windows 11 wpis jest w
-  klasycznym menu („Pokaż więcej opcji”, Shift+F10); górne menu Windows 11
-  wymaga pakietu z tożsamością (MSIX), czego MSI nie ma.
-  Eksplorator uruchamia `WindConnect.exe --send "<element>"` dla każdego
-  zaznaczonego elementu; taki proces przekazuje ścieżkę działającej
-  aplikacji przez potok `\\.\pipe\io.github.prejas3.windconnect.send-<sesja>`
-  (tylko ta sesja logowania, bez klientów zdalnych) i kończy się. Gdy
-  aplikacja nie działa, pierwszy taki proces ją uruchamia.
-- **Przeciągnięcie** na panel albo na okno główne. Panel nie chowa się,
-  gdy przeciągany element jest nad nim; można go otworzyć w trakcie
-  przeciągania skrótem Win + Shift + W.
-- **Kafelek „Wyślij”** w panelu: systemowe okno wyboru wielu plików.
+- **The Explorer menu**: "Send to phone" for files and folders
+  (`HKCU\Software\Classes\*\shell` and `Directory\shell`, the key
+  `WindConnect.SendToPhone`, without administrator rights). The app
+  writes the entry at every start (the exe's path may change), and
+  uninstalling removes it (`--remove-shell-menu`). In Windows 11 the entry is in
+  the classic menu ("Show more options", Shift+F10); the top menu of Windows 11
+  requires a package with an identity (MSIX), which the MSI doesn't have.
+  Explorer runs `WindConnect.exe --send "<item>"` for each
+  selected item; such a process passes the path to the running
+  app through the pipe `\\.\pipe\io.github.prejas3.windconnect.send-<session>`
+  (this logon session only, no remote clients) and ends. When
+  the app isn't running, the first such process starts it.
+- **Dragging** onto the panel or the main window. The panel doesn't hide
+  while a dragged item is over it; it can be opened during the
+  drag with the shortcut Win + Shift + W.
+- **The "Send" tile** in the panel: the system's multi-file picker.
 
-Ikona w zasobniku nie przyjmuje upuszczanych plików: obszar powiadomień
-Windows nie przekazuje aplikacjom przeciągania (brak celu OLE dla ikon),
-dlatego celem jest panel.
+The tray icon doesn't accept dropped files: the Windows notification area
+doesn't pass dragging on to apps (there is no OLE target for icons),
+so the panel is the target.
 
-Panel pokazuje wysyłanie: łączny postęp, do czterech pozycji (anuluj,
-ponów) i „Wyczyść” dla zakończonych. Telefon, który jeszcze nie przyjmuje
-plików (`files/1`, WN-40), daje „Telefon nie przyjmuje teraz plików”.
-Komputer nie ogłasza jeszcze `files/1` (odbiór to WN-40); folder
-`Pobrane\WindConnect` jest przygotowany pod odbiór.
+The panel shows sending: the total progress, up to four items (cancel,
+retry) and "Clear" for finished ones. A phone that doesn't accept
+files yet (`files/1`, WN-40) gives "The phone doesn't accept files now".
+The computer doesn't announce `files/1` yet (receiving is WN-40); the folder
+`Downloads\WindConnect` is prepared for receiving.
 
-Test panelu (Playwright jak dla `check-ui.cjs`, IPC podstawione):
+Test of the panel (Playwright as for `check-ui.cjs`, IPC stubbed):
 `node apps/windows/scripts/check-send-ui.cjs`.
 
-## Parowanie bez aparatu (WN-27)
+## Pairing without the camera (WN-27)
 
-Panel w trybie kodu QR ma przycisk „Paruj bez aparatu”: otwiera okno SAS
-(PROTOCOL.md §12.6) i ogłasza w mDNS port parowania (TXT `pair`, §12.4) na
-czas okna. Telefon w „Paruj bez aparatu” pokazuje komputery z tym polem;
-po wybraniu oba ekrany pokazują ten sam sześciocyfrowy kod z nazwą drugiej
-strony. Klucz drugiej strony jest zapisany dopiero wtedy, gdy na **obu**
-ekranach wybrano „Kody są takie same”. „Kody się różnią” albo brak decyzji
-w 60 s to nieudana próba; po 3 próbach okno się zamyka (§12.2). Lista na
-telefonie to niezaufane wskazówki z sieci: o zaufaniu decyduje porównanie
-kodów.
+The panel in QR code mode has a button "Pair without the camera": it opens a SAS window
+(PROTOCOL.md §12.6) and announces the pairing port in mDNS (TXT `pair`, §12.4) for
+the window's duration. The phone in "Pair without the camera" shows computers with this field;
+after choosing, both screens show the same six-digit code with the other
+side's name. The other side's key is stored only when "The codes are the same"
+was chosen on **both** screens. "The codes differ" or no decision
+within 60 s is a failed attempt; after 3 attempts the window closes (§12.2). The list on
+the phone is untrusted hints from the network: the code comparison decides
+trust.
 
-Test panelu (IPC podstawione): `node apps/windows/scripts/check-sas-ui.cjs`.
+Test of the panel (IPC stubbed): `node apps/windows/scripts/check-sas-ui.cjs`.
 
-## Pierwsze uruchomienie (WC-34)
-
-CCS/1
-FLOW:start bez `--autostart` i bez sparowanego telefonu -> główne okno z trzema krokami i kodem QR bez klikania (to samo okno parowania co panel) -> parowanie -> krok „Gotowe” (skrót panelu, „Uruchamiaj z Windows”) -> zwykłe okno. Ze sparowanym telefonem start otwiera panel jak dotąd.
-RULE:kod QR jak w panelu (WN-94): tylko canvas z `aria-label="Kod parowania"`, moduły zerowane po narysowaniu, bez linku w DOM. Po wygaśnięciu nowy kod tylko na „Wyświetl nowy kod”. Fokus na głównym przycisku kroku. Ustawienia wymagające telefonu czekają do końca onboardingu.
-RULE:„sparowany telefon” ma jedną definicję (WN-113): `pairing::has_paired_in`, telefon w `devices`; usunięty telefon, któremu wciąż należy się powiadomienie o rozparowaniu (`owed`), się nie liczy. Wybór pierwszego okna (`has_paired`) i widok onboardingu (pole `paired` w stanie parowania) czytają tę samą regułę.
-LIMIT:werdykt „nowy użytkownik paruje bez instrukcji w < 60 s” pochodzi z testu z człowiekiem; skrypty mierzą tylko część, którą dokłada system.
-
-Testy: `node apps/windows/scripts/check-onboarding-ui.cjs` (podstawione IPC:
-kroki, zasady QR, SAS, wygaśnięcie, „Gotowe”, fokus, Light/Dark, tekst 150%,
-start z samym telefonem `owed`)
-i `node apps/windows/scripts/check-onboarding-native.cjs` (prawdziwa aplikacja
-z pustym magazynem, `JAVA_HOME`, `ZXING_CORE_JAR`, zamknięty zainstalowany
-WindConnect): raport `launchToQrMs`, `qrToDoneMs`, `systemAddsMs`.
-
-## Telefony w panelu (WC-28)
+## First start (WC-34)
 
 CCS/1
-FLOW:panel „Telefony” -> device_action(rename|unpair|disconnect) -> aktor parowania; „Dodaj telefon” otwiera kod QR także w czasie sesji.
-RULE:jedna sesja naraz. Ten sam telefon zastępuje swoje stare połączenie; inny dostaje BUSY (PROTOCOL.md §12.10). Telefon sparowany w panelu przed chwilą (2 min) przejmuje sesję. „Rozłącz” odpowiada temu telefonowi BUSY przez 10 min albo do sesji innego telefonu.
-SEC:rozparowanie zapisuje `-<klucz>`, odpina i odwołuje klucz od razu; telefon dostaje Goodbye UNPAIRED w sesji albo przy następnym połączeniu (tryb powiadomienia: bez routera i kanałów). Telefon, który sam usunął parowanie, usuwa tylko klucz rozmówcy z TLS.
-LIMIT:nazwa jest lokalna (nie trafia do telefonu). Telefon po BUSY nie wraca sam, gdy komputer się zwolni.
+FLOW:start without `--autostart` and without a paired phone -> the main window with three steps and a QR code without clicking (the same pairing window as the panel) -> pairing -> the "Done" step (the panel's shortcut, "Start with Windows") -> the normal window. With a paired phone the start opens the panel as before.
+RULE:the QR code as in the panel (WN-94): only a canvas with `aria-label="Pairing code"`, modules zeroed after drawing, no link in the DOM. After expiry a new code only on "Show a new code". Focus on the step's main button. Settings that need a phone wait until onboarding ends.
+RULE:"a paired phone" has one definition (WN-113): `pairing::has_paired_in`, a phone in `devices`; a removed phone that is still owed an unpairing notice (`owed`) doesn't count. Choosing the first window (`has_paired`) and the onboarding view (the `paired` field in the pairing state) read the same rule.
+LIMIT:the verdict "a new user pairs without instructions in < 60 s" comes from a test with a person; the scripts measure only the part the system adds.
 
-Test UI (podstawione IPC): `node apps/windows/scripts/check-devices-ui.cjs`
-z `PLAYWRIGHT_MODULE`. Logikę obu stron sprawdzają
-`cargo test --locked -p wind-core --test unpair` (rozparowanie w sesji i
-poza nią w obie strony, brak 0-RTT ze starego biletu, strumienie
-odwołanego klucza bez odbiorcy, dwa telefony naraz bez przepychanki) i
-`--test relay` (tryb powiadomienia przez przekaźnik, wymaga `wrangler dev`).
+Tests: `node apps/windows/scripts/check-onboarding-ui.cjs` (stubbed IPC:
+steps, QR rules, SAS, expiry, "Done", focus, Light/Dark, 150% text,
+a start with only an `owed` phone)
+and `node apps/windows/scripts/check-onboarding-native.cjs` (the real app
+with an empty store, `JAVA_HOME`, `ZXING_CORE_JAR`, the installed
+WindConnect closed): the report `launchToQrMs`, `qrToDoneMs`, `systemAddsMs`.
 
-## Wspólny schowek (WN-35)
+## Phones in the panel (WC-28)
 
 CCS/1
-FLOW:AddClipboardFormatListener/WM_CLIPBOARDUPDATE -> odczyt CF_UNICODETEXT -> clipboard/1 -> Applied po zapisie OS telefonu. Bez odpytywania. Własne operacje są serializowane, a procedura okna odracza zdarzenie przy zajętym adapterze, zamiast blokować komunikaty właściciela schowka.
-RETRY:schowek trzymany przez inny proces dłużej niż 30 ms -> jeden WM_TIMER na wątku okna, backoff 50/100/200/400/800/1600 ms (≈3,2 s), potem rezygnacja (zostaje ręczne wysłanie). Ponawia tylko sekwencję, która wywołała zdarzenie; nowa zmiana, wyłączenie monitorowania i zamknięcie okna kasują timer (WN-105).
-RULE:automat domyślny; ustawienie w clipboard.json obok tożsamości zawiera tylko bool. Uszkodzony plik oznacza wyłączenie. Przełącznik wyłącza automat wysyłania i odbioru. Kafelek „Schowek” i Ctrl+Alt+Shift+C wysyłają ręcznie; konflikt skrótu jest widoczny i nie wyłącza przycisku. Win+Shift+W pozostaje skrótem panelu.
-SEC:nie wysyłamy formatu ExcludeClipboardContentFromMonitorProcessing ani CanIncludeInClipboardHistory/CanUploadToCloudClipboard=0; dotyczy to także ręcznej akcji. Odbiór ustawia oba formaty opt-out=0, zanim zapisze tekst. Brak payloadu w IPC/front-endzie/logach/historii plikowej. Limit256 KiB, bez NUL (terminator Windows jest obcinany); link jest tekstem, nie poleceniem uruchomienia. Szczegóły PROTOCOL.md §9.3.
-LIMIT:PC -> telefon automatycznie także bez otwartej Activity. Telefon -> PC z innej aplikacji wymaga akcji powiadomienia i krótkiego fokusu WindConnect; bez dodatkowych uprawnień systemowych. Oznaczone hasła nie są synchronizowane. Brak odtwarzania schowka po reconnect.
+FLOW:the "Phones" panel -> device_action(rename|unpair|disconnect) -> the pairing actor; "Add a phone" opens the QR code also during a session.
+RULE:one session at a time. The same phone replaces its old connection; another gets BUSY (PROTOCOL.md §12.10). A phone paired in the panel a moment ago (2 min) takes over the session. "Disconnect" answers that phone BUSY for 10 min or until another phone's session.
+SEC:unpairing writes `-<key>`, unpins and revokes the key at once; the phone gets Goodbye UNPAIRED in the session or at its next connection (notice mode: no router and no channels). A phone that removed the pairing itself removes only the peer's key from TLS.
+LIMIT:the name is local (it doesn't go to the phone). After BUSY the phone doesn't come back by itself when the computer becomes free.
+UI (WN-161): one row per phone: a phone icon, the friendly name (a model code such as "SM-S938B" stored at pairing gives way to the name the connected phone sends in its session Hello; a name you set wins), the state with a dot and the battery. One main button ("Disconnect" for the connected phone); "Rename", "Details" (fingerprint, pairing date, model) and "Remove pairing" (confirmed in place) are in an own "…" menu.
 
-Test natywny bez zmieniania schowka interaktywnego:
+UI test (stubbed IPC): `node apps/windows/scripts/check-devices-ui.cjs`
+with `PLAYWRIGHT_MODULE`. The logic of both sides is checked by
+`cargo test --locked -p wind-core --test unpair` (unpairing in a session and
+outside it in both directions, no 0-RTT from an old ticket, the streams of a
+revoked key without a receiver, two phones at once without pushing each other out) and
+`--test relay` (notice mode through the relay, needs `wrangler dev`).
+
+## Shared clipboard (WN-35)
+
+CCS/1
+FLOW:AddClipboardFormatListener/WM_CLIPBOARDUPDATE -> reading CF_UNICODETEXT -> clipboard/1 -> Applied after the phone's OS write. No polling. Our own operations are serialized, and the window procedure defers the event when the adapter is busy, instead of blocking the clipboard owner's messages.
+RETRY:a clipboard held by another process longer than 30 ms -> one WM_TIMER on the window's thread, backoff 50/100/200/400/800/1600 ms (≈3.2 s), then giving up (manual sending remains). It retries only the sequence that caused the event; a new change, turning monitoring off and closing the window cancel the timer (WN-105).
+RULE:automatic by default; the setting in clipboard.json next to the identity contains only a bool. A damaged file means off. The switch turns off automatic sending and receiving. The "Clipboard" tile and Ctrl+Alt+Shift+C send manually; a shortcut conflict is visible and doesn't disable the button. Win+Shift+W stays the panel's shortcut.
+SEC:we don't send the format ExcludeClipboardContentFromMonitorProcessing nor CanIncludeInClipboardHistory/CanUploadToCloudClipboard=0; this also applies to the manual action. Receiving sets both opt-out formats=0 before writing the text. No payload in IPC/the frontend/logs/a file history. Limit 256 KiB, no NUL (the Windows terminator is cut off); a link is text, not a command to run. Details in PROTOCOL.md §9.3.
+LIMIT:PC -> phone automatically also without an open Activity. Phone -> PC from another app needs a notification action and a brief WindConnect focus; without additional system permissions. Marked passwords are not synced. No clipboard replay after a reconnect.
+
+A native test without changing the interactive clipboard:
 `cargo run --locked -p windconnect-windows --example clipboard_probe`.
-Tworzy osobny pulpit w nieinteraktywnej stacji, wymaga pustego schowka tej
-stacji, sprawdza zdarzenia, Unicode i trzy flagi prywatności, usuwa własne
-syntetyczne dane i kończy wątki. Drugi proces (ten sam przykład,
-`--hold-child`) w tej samej stacji trzyma schowek swoim oknem dłużej niż 30 ms:
-sprawdza dostarczenie raz, brak tekstu sensitive, limit ponowień, anulowanie
-przy wyłączeniu i brak timera po zamknięciu. Stacja nieinteraktywna sesji
-przeżywa uruchomienia: przerwany test może zostawić syntetyczny tekst, a
-kolejny odmówi startu, dopóki ktoś go nie usunie. Test Android/PC i pomiar100 próbek w obu
-kierunkach opisano w `apps/android/README.md`, sekcja WN-35.
+It creates a separate desktop in a non-interactive window station, requires that station's
+clipboard to be empty, checks events, Unicode and three privacy flags, removes its own
+synthetic data and ends its threads. A second process (the same example,
+`--hold-child`) in the same station holds the clipboard with its window for longer than 30 ms:
+it checks delivery once, no sensitive text, the retry limit, cancellation
+when turned off and no timer after closing. The session's non-interactive station
+outlives the runs: an interrupted test may leave synthetic text, and
+the next one refuses to start until someone removes it. The Android/PC test and the measurement of 100 samples in both
+directions are described in `apps/android/README.md`, section WN-35.
 
-### Obrazy (WN-36)
-
-CCS/1
-FLOW:WM_CLIPBOARDUPDATE bez tekstu -> format „PNG” (bez zmian) albo CF_DIBV5/CF_DIB (kodowany do PNG poza wątkiem okna, `png` 0.18, szybka kompresja) + miniatura ≤ 512 px -> clipboard/2 (PROTOCOL.md §9.3.1). Status: „Wysyłanie obrazu…” po Applied telefonu (obraz już wklejalny), „Obraz wysłany na telefon” po ImageDone.
-RULE:odebrany obraz trafia do schowka od razu jako „PNG” i CF_DIB z opóźnionym renderowaniem; WM_RENDERFORMAT czeka na bajty (najwyżej 10 s bez postępu), potem renderuje. Nowszy schowek, przerwanie lub zastój: wklejenie się nie udaje, bez częściowego obrazu. WM_RENDERALLFORMATS przy zamknięciu renderuje tylko kompletny obraz, inaczej czyści schowek. Własnego obrazu (właściciel = nasze okno) nie odczytujemy: brak echa i czekania na samego siebie.
-RULE:limit „Maks. rozmiar obrazu” 5 / 16 / 50 MB (domyślnie 16) w Ustawieniach i panelu, zapisany w clipboard-images.json obok clipboard.json; dotyczy wysyłania i odbioru.
-SEC:te same flagi prywatności co dla tekstu: obrazu oznaczonego jako prywatny nie kopiujemy z OS; odebrany ma opt-out historii i chmury. Tekst ma pierwszeństwo, gdy w schowku są oba.
-LIMIT:wątek okna czeka na bajty tylko przy wklejaniu przed końcem przesyłu; ścieżka odbioru fragmentów go nie potrzebuje (bez zakleszczenia). Zrzuty większe niż 16384 px nie są wysyłane. Wklejenie odebranego obrazu jako CF_DIB dekoduje PNG z limitem 64 MiB pikseli (ochrona przed „bombą dekompresyjną”): większy obraz (np. 8K) wkleja się tylko jako „PNG”.
-
-Test OS (ta sama stacja co wyżej): `clipboard_probe` sprawdza odczyt „PNG” i
-samego DIB, brak kopii obrazu prywatnego, opóźnione renderowanie (wklejenie
-czeka i dostaje cały PNG, CF_DIB z PNG), błąd wklejenia przy nowszym
-schowku od razu i przy zastoju po ~10 s, odpowiadające okno po zastoju i
-brak odczytu własnego obrazu. Pomiar zrzutu PC -> telefon: `apps/android/README.md`, WN-36.
-
-### Historia i hasła (WN-37)
+### Images (WN-36)
 
 CCS/1
-FLOW:pozycja trafia do historii, gdy telefon potwierdził wysłany schowek (Applied) albo gdy schowek z telefonu został zapisany w Windows. Panel i Ustawienia pokazują „Historia schowka”: najnowsze u góry, kliknięcie (Enter) kopiuje z powrotem do schowka z flagami, jakie miała (z telefonu: poza historią Win+V i chmurą, jak przy odbiorze) i przy włączonej synchronizacji wysyła na telefon, przypinka i „Usuń z historii” obok, „Wyczyść” usuwa nieprzypięte.
-RULE:wyłączona synchronizacja: nic nowego nie trafia do historii (także ręczne wysłanie), a wyłączenie czyści nieprzypięte; przypięte zostają.
-RULE:20 ostatnich + do 20 przypiętych (przypięte u góry, poza dwudziestką); powtórka tej samej treści (SHA-256) przesuwa się na górę zamiast dublować. Obrazy nieprzypięte do 64 MB łącznie w pamięci (najstarszy wypada), przypięte też do 64 MB; obraz z telefonu można skopiować i przypiąć po dojściu całego PNG.
-SEC:historia jest tylko w pamięci; na dysk trafiają wyłącznie przypięte, w `clipboard-pins.bin` obok clipboard.json, zaszyfrowane DPAPI bieżącego użytkownika z własnym celem (nagłówek `WCPN` 1). Plik innego użytkownika, uszkodzony albo nowszy: start bez przypiętych, plik zostaje.
-SEC:do panelu (IPC) idzie tylko podgląd tekstu (jedna linia, 120 znaków) albo miniatura; pełny tekst i PNG zostają w procesie, kopiowanie idzie po id. Podgląd wstawiany jako tekst, nigdy HTML; znaki sterujące, bidi (U+202A–202E, U+2066–2069) i zerowej szerokości (U+200B–200F, U+FEFF) zamieniane na spację. Miniatury jako `data:image/png`: CSP pozwala na `data:` tylko w `img-src`.
-SEC:hasła: schowek z ExcludeClipboardContentFromMonitorProcessing, „Clipboard Viewer Ignore” (KeePass, Password Safe i inne), CanIncludeInClipboardHistory = 0 albo CanUploadToCloudClipboard = 0 nie jest nawet kopiowany z OS, więc nie wychodzi z PC ani nie trafia do historii. Nie rozpoznajemy haseł po treści: liczą się tylko znaczniki, które ustawia menedżer.
-LIMIT:Android ma własną historię na tych samych zasadach (WN-117, `apps/android/README.md`); po restarcie zostają tylko przypięte; bez wyszukiwania.
-DATA:pliki schowka w katalogu danych aplikacji (obok tożsamości): clipboard.json (włączona synchronizacja), clipboard-images.json (limit obrazów), clipboard-pins.bin (przypięte, DPAPI). Odinstalowanie MSI nie usuwa katalogu danych (jak tożsamości); usunięcie wszystkich przypiętych usuwa clipboard-pins.bin.
+FLOW:WM_CLIPBOARDUPDATE without text -> the "PNG" format (unchanged) or CF_DIBV5/CF_DIB (encoded to PNG off the window thread, `png` 0.18, fast compression) + a thumbnail ≤ 512 px -> clipboard/2 (PROTOCOL.md §9.3.1). Status: "Sending the image…" after the phone's Applied (the image is already pasteable), "Image sent to the phone" after ImageDone.
+RULE:a received image goes into the clipboard at once as "PNG" and CF_DIB with delayed rendering; WM_RENDERFORMAT waits for the bytes (at most 10 s without progress), then renders. A newer clipboard, a break or a stall: the paste fails, without a partial image. WM_RENDERALLFORMATS on close renders only a complete image, otherwise it clears the clipboard. We don't read our own image (owner = our window): no echo and no waiting on ourselves.
+RULE:the limit "Max image size" 5 / 16 / 50 MB (16 by default) in Settings and the panel, stored in clipboard-images.json next to clipboard.json; it applies to sending and receiving.
+SEC:the same privacy flags as for text: we don't copy an image marked as private from the OS; a received one has the history and cloud opt-out. Text takes precedence when both are in the clipboard.
+LIMIT:the window thread waits for bytes only when pasting before the transfer ends; the chunk-receiving path doesn't need it (no deadlock). Screenshots larger than 16384 px are not sent. Pasting a received image as CF_DIB decodes the PNG with a limit of 64 Mi pixels (protection against a "decompression bomb"): a larger image (e.g. 8K) pastes only as "PNG".
 
-Test „hasło nie opuszcza urządzenia”: `clipboard_probe` (każdy z 4 znaczników
-osobno, atomowo, jak menedżer haseł: nic nie jest kopiowane; pozycja z historii
-zachowuje flagi; obraz z historii wklejalny jako „PNG” i CF_DIB, bez echa) oraz test
-OS z telefonem (`check-background-android.cjs`): PC kopiuje 4 hasła z
-pojedynczymi znacznikami, telefon nie dostaje żadnego, a następny zwykły tekst
-dochodzi. Logika historii: testy jednostkowe `clipboard_history` (kolejność,
-limity, pamięć, przypinanie, plik DPAPI).
-Test UI: `node apps/windows/scripts/check-clipboard-ui.cjs` z zewnętrznym
-Playwright (`PLAYWRIGHT_MODULE`). Sprawdza klawiaturę, przełącznik, ręczne
-wysyłanie bez połączenia, status sensitive/konfliktu skrótu, historię (podgląd jako tekst, kopiuj/przypnij/usuń/wyczyść klawiaturą, własne przewijanie w panelu) i układ Light/Dark.
-Podstawione IPC sprawdza UI; dostarczenie OS potwierdza osobny test natywny.
+OS test (the same station as above): `clipboard_probe` checks reading "PNG" and
+DIB alone, no copy of a private image, delayed rendering (the paste
+waits and gets the whole PNG, CF_DIB from PNG), a paste error with a newer
+clipboard at once and with a stall after ~10 s, a responsive window after a stall and
+not reading our own image. The PC -> phone screenshot measurement: `apps/android/README.md`, WN-36.
 
-## Bateria telefonu (WN-49)
+### History and passwords (WN-37)
 
 CCS/1
-FLOW:telefon (ACTION_BATTERY_CHANGED, tylko w czasie sesji) -> `Battery` na kanale `battery` (`07`, PROTOCOL.md §9.4) -> `Snapshot.battery` w `pairing-state` (wypychane, bez pollingu) -> nagłówek panelu, podpowiedź ikony w zasobniku, plakietka niskiej baterii, toast.
-RULE:panel: poziom i błyskawica przy ładowaniu obok nazwy telefonu, `role="img"` z etykietą „Bateria telefonu 82%, ładuje się”; bez aria-live (zmiana procentu nie jest ogłaszana). Bez sesji albo bez odczytu element znika.
-RULE:zasobnik: podpowiedź „WindConnect · Połączono · bateria 82%, ładuje się”. Przy ≤ 15% bez ładowania bursztynowa kropka w prawym dolnym rogu, nałożona na stan WN-23 (nie osobny stan); znika po podłączeniu ładowarki albo końcu sesji.
-RULE:alerty (wind-core `battery::Alerts`): toast „Bateria telefonu: N%” przy spadku do ≤ 15% bez ładowania, raz na rozładowanie (ponownie po ładowaniu albo > 20%); „Telefon naładowany” przy 100% na ładowarce, raz (ponownie po odłączeniu albo < 95%). Pierwszy odczyt sesji nie daje toastu. Toast niesie tylko poziom, nazwę telefonu i stały tekst; kliknięcie otwiera panel.
-DEC:wersja release rejestruje nadawcę `HKCU\Software\Classes\AppUserModelId\io.github.prejas3.windconnect` (DisplayName „WindConnect”, `IconUri` = `%LOCALAPPDATA%\WindConnect\toast-icon.png`) i schemat `windconnect-panel:` (`HKCU\Software\Classes\windconnect-panel`, polecenie: ten exe z `"%1"`). Toast baterii ma `launch="windconnect-panel:" activationType="protocol"`: kliknięcie uruchamia exe, które przez potok (`WCP1`, send_pipe) każe działającej aplikacji pokazać panel, a gdy aplikacja nie działa, sama startuje z panelem. Działa więc także po restarcie aplikacji i z centrum powiadomień (WN-118). Debug wysyła jak dotąd jako PowerShell przez `tauri-winrt-notification` z kliknięciem w procesie. Skrót MSI w menu Start też niesie ten AUMID; wpis HKCU zostaje, bo testowe EXE release są przenośne (bez skrótu). Tylko zapis DisplayName jest konieczny; ikona i schemat są „best effort” (błąd idzie do logu i nie wyłącza toastów baterii ani powiadomień telefonu, WN-146). Schemat przejmuje exe tylko, gdy nikt go nie ma, wskazany exe nie istnieje, to ten sam exe albo to aplikacja zainstalowana (Program Files): przenośne EXE testowe nie zabiera działającego schematu MSI, a zainstalowana aplikacja odbiera go przy następnym toaście. Odinstalowanie MSI usuwa schemat niezależnie od tego, kto go zapisał; przenośne EXE zapisze go znowu przy swoim toaście.
-LIMIT:zmiany dochodzą tylko przy żywej sesji (połączenie w tle włączone na telefonie). W Doze albo bez połączenia w tle komputer nie widzi zmian, więc alert 15% może przyjść późno albo wcale. Odinstalowanie MSI usuwa nadawcę, schemat i ikonę (`--remove-toasts`, jak `--remove-autostart`).
-CHECK (WN-118, zainstalowany MSI 0.69/0.70, emulator sparowany QR z aplikacją release): oba toasty pokazane jako „WindConnect”, kliknięcie otwiera panel (~265 ms przez schemat); przy zamkniętej aplikacji kliknięcie ją uruchamia z panelem. Na Windows 11 26300 nagłówek toastu nadal pokazuje ogólną ikonę mimo `IconUri` i ikony skrótu (prawdopodobnie pamięć podręczna powłoki; sprawdzić po ponownym zalogowaniu).
+FLOW:an item goes into the history when the phone confirmed a sent clipboard (Applied) or when a clipboard from the phone was written in Windows. The panel and Settings show "Clipboard history": newest at the top, a click (Enter) copies it back into the clipboard with the flags it had (from the phone: outside the Win+V history and the cloud, as when receiving) and, with sync on, sends it to the phone; a pin and "Remove from history" beside it, "Clear" removes the unpinned ones.
+RULE:sync turned off: nothing new goes into the history (manual sending neither), and turning it off clears the unpinned ones; pinned ones stay.
+RULE:the last 20 + up to 20 pinned (pinned at the top, outside the twenty); a repeat of the same content (SHA-256) moves to the top instead of duplicating. Unpinned images up to 64 MB in total in memory (the oldest drops out), pinned ones also up to 64 MB; an image from the phone can be copied and pinned after the whole PNG has arrived.
+SEC:the history is only in memory; only pinned items go to disk, in `clipboard-pins.bin` next to clipboard.json, encrypted with the current user's DPAPI with its own purpose (header `WCPN` 1). Another user's file, a damaged or a newer one: start without pinned items, the file stays.
+SEC:only a text preview (one line, 120 characters) or a thumbnail goes to the panel (IPC); the full text and PNG stay in the process, copying goes by id. The preview is inserted as text, never HTML; control, bidi (U+202A–202E, U+2066–2069) and zero-width (U+200B–200F, U+FEFF) characters are replaced with a space. Thumbnails as `data:image/png`: the CSP allows `data:` only in `img-src`.
+SEC:passwords: a clipboard with ExcludeClipboardContentFromMonitorProcessing, "Clipboard Viewer Ignore" (KeePass, Password Safe and others), CanIncludeInClipboardHistory = 0 or CanUploadToCloudClipboard = 0 isn't even copied from the OS, so it doesn't leave the PC and doesn't go into the history. We don't recognize passwords by their content: only the markers a manager sets count.
+LIMIT:Android has its own history with the same rules (WN-117, `apps/android/README.md`); after a restart only pinned items remain; no search.
+DATA:the clipboard files in the app's data folder (next to the identity): clipboard.json (sync on), clipboard-images.json (the image limit), clipboard-pins.bin (pinned, DPAPI). Uninstalling the MSI doesn't remove the data folder (like the identity); removing all pinned items deletes clipboard-pins.bin.
 
-Testy: `cargo test -p wind-core` (`battery`: koder, błędne wiadomości, alerty z histerezą; `tests/battery.rs`: prawdziwa sesja, tylko zmiany i w kolejności, PC bez `battery/1` nic nie dostaje), testy jednostkowe aplikacji (plakietka, podpowiedź, teksty), `node apps/windows/scripts/check-battery-ui.cjs` (podstawione IPC: poziom, ładowanie, niski, ukrycie bez sesji, aktualizacje bez wywołań IPC, Light/Dark, 150%) i `node apps/windows/scripts/check-battery-android.cjs` (prawdziwa aplikacja i emulator: `dumpsys battery` zmienia poziom, panel i podpowiedź nadążają, alerty 15% i pełne).
+The test "a password doesn't leave the device": `clipboard_probe` (each of the 4 markers
+separately, atomically, like a password manager: nothing is copied; an item from the history
+keeps its flags; an image from the history pasteable as "PNG" and CF_DIB, without an echo) and the
+OS test with a phone (`check-background-android.cjs`): the PC copies 4 passwords with
+single markers, the phone gets none, and the next ordinary text
+arrives. The history logic: the `clipboard_history` unit tests (order,
+limits, memory, pinning, the DPAPI file).
+UI test: `node apps/windows/scripts/check-clipboard-ui.cjs` with an external
+Playwright (`PLAYWRIGHT_MODULE`). It checks the keyboard, the switch, manual
+sending without a connection, the sensitive/shortcut-conflict status, the history (preview as text, copy/pin/remove/clear by keyboard, own scrolling in the panel) and the Light/Dark layout.
+The stubbed IPC checks the UI; OS delivery is confirmed by a separate native test.
 
-Audyt nowych zależności w EXE/MSI:
+## The phone's battery (WN-49)
 
-| Komponent | Wersja | Licencja z pakietu | Gdzie trafia | Wynik |
+CCS/1
+FLOW:the phone (ACTION_BATTERY_CHANGED, only during a session) -> `Battery` on the `battery` channel (`07`, PROTOCOL.md §9.4) -> `Snapshot.battery` in `pairing-state` (pushed, no polling) -> the panel header, the tray icon's tooltip, a low-battery badge, a toast.
+RULE:panel: the level and a lightning bolt when charging next to the phone's name, `role="img"` with the label "Phone battery 82%, charging"; no aria-live (a change of percent isn't announced). Without a session or without a reading the element disappears.
+RULE:tray: the tooltip "WindConnect · Connected · battery 82%, charging". At ≤ 15% without charging an amber dot in the bottom right corner, laid over the WN-23 state (not a separate state); it disappears after plugging in the charger or when the session ends.
+RULE:alerts (wind-core `battery::Alerts`): the toast "Phone battery: N%" on dropping to ≤ 15% without charging, once per discharge (again after charging or > 20%); "Phone charged" at 100% on the charger, once (again after unplugging or < 95%). The session's first reading gives no toast. A toast carries only the level, the phone's name and fixed text; a click opens the panel.
+DEC:the release version registers the sender `HKCU\Software\Classes\AppUserModelId\io.github.prejas3.windconnect` (DisplayName "WindConnect", `IconUri` = `%LOCALAPPDATA%\WindConnect\toast-icon.png`) and the scheme `windconnect-panel:` (`HKCU\Software\Classes\windconnect-panel`, command: this exe with `"%1"`). The battery toast has `launch="windconnect-panel:" activationType="protocol"`: a click starts the exe, which through a pipe (`WCP1`, send_pipe) tells the running app to show the panel, and when the app isn't running, starts with the panel itself. So it also works after the app restarts and from the notification center (WN-118). Debug still sends as PowerShell through `tauri-winrt-notification` with an in-process click. The MSI's Start menu shortcut also carries this AUMID; the HKCU entry stays, because the test release EXEs are portable (no shortcut). Only writing DisplayName is required; the icon and the scheme are "best effort" (an error goes to the log and doesn't turn off battery toasts or phone notifications, WN-146). An exe takes over the scheme only when nobody has it, the registered exe doesn't exist, it is the same exe, or it is the installed app (Program Files): a portable test EXE doesn't take the MSI's working scheme, and the installed app takes it back at its next toast. Uninstalling the MSI removes the scheme regardless of who wrote it; a portable EXE writes it again with its toast.
+LIMIT:changes arrive only with a live session (background connection on the phone). In Doze or without a background connection the computer doesn't see changes, so the 15% alert may come late or not at all. Uninstalling the MSI removes the sender, the scheme and the icon (`--remove-toasts`, like `--remove-autostart`).
+CHECK (WN-118, installed MSI 0.69/0.70, an emulator paired by QR with the release app): both toasts shown as "WindConnect", a click opens the panel (~265 ms through the scheme); with the app closed a click starts it with the panel. On Windows 11 26300 the toast header still shows a generic icon despite `IconUri` and the shortcut's icon (probably the shell's cache; check after signing in again).
+
+Tests: `cargo test -p wind-core` (`battery`: the codec, invalid messages, alerts with hysteresis; `tests/battery.rs`: a real session, changes only and in order, a PC without `battery/1` gets nothing), the app's unit tests (badge, tooltip, texts), `node apps/windows/scripts/check-battery-ui.cjs` (stubbed IPC: level, charging, low, hidden without a session, updates without IPC calls, Light/Dark, 150%) and `node apps/windows/scripts/check-battery-android.cjs` (the real app and an emulator: `dumpsys battery` changes the level, the panel and the tooltip keep up, the 15% and full alerts).
+
+Audit of the new dependencies in the EXE/MSI:
+
+| Component | Version | License from the package | Where it goes | Result |
 | --- | --- | --- | --- | --- |
-| tauri-winrt-notification | 0.7.3 | MIT OR Apache-2.0 (LICENSE_MIT, LICENSE_APACHE-2.0, LICENSE.spdx); wybrana MIT | Natywny EXE; frontend/assets/tauri-winrt-notification-MIT.txt | Permisywna |
-| windows (+ windows-core, -collections, -future, -link, -numerics, -result, -strings, -threading) | 0.61.3 (części 0.1–0.61) | MIT OR Apache-2.0 (license-mit, license-apache-2.0, identyczne we wszystkich); wybrana MIT | Natywny EXE; frontend/assets/windows-rs-MIT.txt | Permisywna; bez plików NOTICE |
+| tauri-winrt-notification | 0.7.3 | MIT OR Apache-2.0 (LICENSE_MIT, LICENSE_APACHE-2.0, LICENSE.spdx); MIT chosen | The native EXE; frontend/assets/tauri-winrt-notification-MIT.txt | Permissive |
+| windows (+ windows-core, -collections, -future, -link, -numerics, -result, -strings, -threading) | 0.61.3 (parts 0.1–0.61) | MIT OR Apache-2.0 (license-mit, license-apache-2.0, identical in all); MIT chosen | The native EXE; frontend/assets/windows-rs-MIT.txt | Permissive; no NOTICE files |
 
-## Znajdź telefon (WN-50)
-
-CCS/1
-FLOW:kafelek „Dzwoń” w panelu -> `Ring` na kanale `find` (`08`, PROTOCOL.md §9.5) -> telefon gra ton alarmu i dopiero wtedy odsyła stan 0 -> kafelek „Zatrzymaj” (aria-pressed) -> `Stop` z PC albo zatrzymanie na telefonie -> stan końcowy -> linia stanu („Zatrzymano”, „Zatrzymano na telefonie”, „Telefon dzwonił 60 s”, „Telefon nie może teraz dzwonić”).
-RULE:kafelek działa tylko przy sesji i gdy telefon ogłasza `find/1`; wyłączone na telefonie („Pozwól komputerowi dzwonić”) daje kafelek nieaktywny z wyjaśnieniem. Linia stanu ma `role="status"` (odpowiedź na własną akcję).
-RULE:sesja przerwana w czasie dzwonienia nie znaczy „zatrzymano”: linia mówi „Połączenie przerwane — telefon może nadal dzwonić (do 60 s)”, bo telefon dzwoni dalej do limitu albo zatrzymania na nim.
-PERF:`ring_ms` w stanie parowania to czas od prośby do stanu 0, czyli górna granica startu dźwięku na telefonie.
-
-Testy: `cargo test -p wind-core` (`find`: koder; `tests/find.rs`: dzwonienie i Stop, zatrzymanie na telefonie, limit, drugi Ring, dzwonienie po końcu sesji, brak dźwięku, wycofanie i włączenie `find/1` w trakcie sesji), `node apps/windows/scripts/check-find-ui.cjs` (podstawione IPC: stany kafelka, klawiatura, wyniki, niedostępne, Light/Dark, 150%) i `node apps/windows/scripts/check-find-android.cjs` (prawdziwa aplikacja i emulator z urządzeniem audio, `QEMU_AUDIO_DRV=none`; `FIND_NOTIFICATIONS=denied` sprawdza zatrzymanie bez powiadomień).
-
-## Odtwarzacz telefonu w panelu (WN-46)
+## Find my phone (WN-50)
 
 CCS/1
-FLOW:telefon (`media/1` ogłasza PC, PROTOCOL.md §9.6) -> `Now`/`Art`/`Gone` -> `media::Player` (teksty przez sanitizer podglądu schowka, okładka tylko JPEG/PNG po magicznych bajtach) -> `Snapshot.media` w `pairing-state` -> karta „Na telefonie” (okładka, tytuł, wykonawca, aplikacja, postęp, ⏮ ⏯ ⏭, klik/strzałki na pasku = przewiń) -> `media_action` -> `Command` na `media-control` (telefon ogłasza `media-control/1`).
-RULE:teksty z innych aplikacji telefonu trafiają do panelu wyłącznie przez `textContent`; okładka tylko jako `data:image/jpeg|png;base64` sprawdzony też w panelu. Przyciski zależą od `actions` odtwarzacza; telefon i tak pomija polecenie spoza `actions`.
-PERF:postęp liczy panel z ostatniego stanu (`position_ms + upływ × speed`) lokalnym zegarem 1 s, tylko gdy panel widoczny i gra; nic nie jest odpytywane.
+FLOW:the "Ring" tile in the panel -> `Ring` on the `find` channel (`08`, PROTOCOL.md §9.5) -> the phone plays an alarm tone and only then sends back state 0 -> the "Stop" tile (aria-pressed) -> `Stop` from the PC or stopping on the phone -> the final state -> the status line ("Stopped", "Stopped on the phone", "The phone rang for 60 s", "The phone can't ring now").
+RULE:the tile works only with a session and when the phone announces `find/1`; turned off on the phone ("Let the computer ring") gives an inactive tile with an explanation. The status line has `role="status"` (an answer to one's own action).
+RULE:a session broken during ringing doesn't mean "stopped": the line says "Connection lost — the phone may still be ringing (up to 60 s)", because the phone keeps ringing until the limit or until stopped on it.
+PERF:`ring_ms` in the pairing state is the time from the request to state 0, i.e. an upper bound of the sound starting on the phone.
 
-Testy: `cargo test -p wind-core` (`media`: koder, granice, ekstrapolacja, bramka akcji; `tests/media.rs`: prawdziwa sesja Now/Art/Gone tylko przy zmianie, Command z powrotem, nic bez możliwości), testy aplikacji (sanityzacja, okładka po kluczu), `node apps/windows/scripts/check-media-ui.cjs` (podstawione IPC: teksty, okładka, postęp bez IPC, polecenia, bramka akcji, wrogi tekst, ukrycie, Light/Dark, 150%) i `node apps/windows/scripts/check-media-android.cjs` (prawdziwa aplikacja + emulator z testową sesją multimediów zamiast Spotify; 10 próbek ⏯ i ⏭, przewinięcie, czasy w obie strony, polecenie spoza `actions` bez reakcji).
+Tests: `cargo test -p wind-core` (`find`: the codec; `tests/find.rs`: ringing and Stop, stopping on the phone, the limit, a second Ring, ringing after the session ends, no sound, withdrawing and enabling `find/1` during a session), `node apps/windows/scripts/check-find-ui.cjs` (stubbed IPC: tile states, keyboard, results, unavailable, Light/Dark, 150%) and `node apps/windows/scripts/check-find-android.cjs` (the real app and an emulator with an audio device, `QEMU_AUDIO_DRV=none`; `FIND_NOTIFICATIONS=denied` checks stopping without notifications).
 
-## Odtwarzacz komputera na telefonie (WN-47)
-
-CCS/1
-FLOW:Windows SMTC (`GlobalSystemMediaTransportControlsSessionManager`, zdarzenia sesji i menedżera, wątek MTA) -> `pc_media::PcMedia` -> `Now`/`Art`/`Gone` na `media` (telefon ogłasza `media/1`) -> telefon: karta w aplikacji i systemowe sterowanie multimediami. Polecenie z telefonu (`media-control/1`, ogłaszane przez PC) -> sprawdzenie względem `actions` -> `TryPause/Play/TogglePlayPause/SkipNext/SkipPrevious/ChangePlaybackPosition`.
-RULE:wybór sesji: pierwsza odtwarzana, inaczej bieżąca sesja systemu, jeśli wolno ją śledzić, inaczej pierwsza dozwolona. Okładka: miniatura sesji dekodowana i kodowana jako JPEG ≤ 256 px (Windows.Graphics.Imaging), ponad 96 KiB bez okładki. Po własnym poleceniu stan czytany od razu raz jeszcze (odpowiedź na akcję, nie odpytywanie).
-RULE:ustawienie w oknie głównym „Udostępnij odtwarzanie telefonowi” (domyślnie włączone, `pc-media.json`): wyłączone wycofuje `media-control/1` także w trwającej sesji, wysyła `Gone` i kończy subskrypcje SMTC. Gdy telefon znów przyjmuje `media/1`, PC wysyła stan od nowa.
-SEC:w wersji debug `WINDCONNECT_TEST_MEDIA_APP=<AUMID>` ogranicza śledzenie do jednej aplikacji, by test nie wstrzymał odtwarzaczy użytkownika; release tę zmienną pomija.
-
-Testy: testy jednostkowe (`pc_media`: wybór sesji, akcje, czas w tickach, nazwy, granice), `node apps/windows/scripts/check-pc-media-android.cjs` (prawdziwa aplikacja + `examples/smtc_player` z prawdziwą sesją SMTC `WindConnect.TestPlayer` + emulator: karta i powiadomienie na telefonie, 10× pauza/odtwarzanie ze sterowania Androida i z aplikacji, polecenie spoza `actions` bez reakcji, przełącznik i `Gone` sprzątają, brak echa).
-
-## Powiadomienia z telefonu (WN-43)
+## The phone's player in the panel (WN-46)
 
 CCS/1
-FLOW:telefon `Posted`/`Icon`/`Removed` na `notify` (PC ogłasza `notify/1`, PROTOCOL.md §9.7) -> pętla sesji -> `notify::Notifications` (czy wyskakuje) -> jeden wątek roboczy (kolejność zachowana) -> `ToastNotifier.Show` / `ToastNotificationHistory`.
-RULE:toast `ToastGeneric`: tytuł (bez tytułu nazwa aplikacji), treść, „aplikacja · telefon”, ikona aplikacji (`appLogoOverride`), nagłówek na aplikację telefonu (grupowanie w centrum powiadomień). Tag = id powiadomienia (hex), grupa `phone`: zmiana zastępuje toast bez ponownego wyskakiwania, `Removed` go zdejmuje. Najwyżej 5 wyskakujących w 2 s; reszta trafia cicho do centrum powiadomień. Kliknięcie otwiera panel.
-SEC:teksty pochodzą z innych aplikacji telefonu: druga sanityzacja na PC (jedna linia, bez znaków sterujących, dwukierunkowych i zerowej szerokości, przycięte) i escapowanie XML. Ikona (PNG ≤ 16 KiB) jest dekodowana i kodowana od nowa jako PNG 64 px (Windows.Graphics.Imaging), więc Windows nie czyta bajtów nadawcy; plik `notify-icons\<klucz hex>.png` w katalogu danych aplikacji, najwyżej 256 plików (najstarsze usuwane). Nic nie jest logowane.
-RULE:Windows przechowuje treść toastów w swojej bazie powiadomień (centrum powiadomień): każdy wygasa po 24 h, a wyłączenie ustawienia „Powiadomienia z telefonu” (okno główne, domyślnie włączone, `notify.json`; wycofuje `notify/1` także w trwającej sesji) albo usunięcie parowania (z PC lub z telefonu) usuwa od razu wszystkie toasty z telefonu i pamięć ikon. Zwykły koniec sesji ich nie usuwa.
-### Odpowiedź i odrzucanie (WN-44)
+FLOW:the phone (the PC announces `media/1`, PROTOCOL.md §9.6) -> `Now`/`Art`/`Gone` -> `media::Player` (texts through the clipboard preview sanitizer, the cover only JPEG/PNG by its magic bytes) -> `Snapshot.media` in `pairing-state` -> the "On the phone" card (cover, title, artist, app, progress, ⏮ ⏯ ⏭, click/arrows on the bar = seek) -> `media_action` -> `Command` on `media-control` (the phone announces `media-control/1`).
+RULE:texts from the phone's other apps go into the panel only through `textContent`; the cover only as a `data:image/jpeg|png;base64` that the panel checks too. The buttons depend on the player's `actions`; the phone skips a command outside `actions` anyway.
+PERF:the panel computes progress from the last state (`position_ms + elapsed × speed`) with a local 1 s clock, only when the panel is visible and playing; nothing is polled.
 
-FLOW:pole „Odpowiedz…” w toaście (gdy `Posted` ma `reply`) i w sekcji „Powiadomienia” panelu (20 najnowszych z sesji) -> `Reply` na `notify-action` (telefon ogłasza `notify-action/1`, PROTOCOL.md §9.8) -> telefon wysyła odpowiedź akcją aplikacji (RemoteInput) i odsyła `Replied` (stan „Wysłano” / „Nie udało się”).
-RULE:**Zmiana zachowania:** zamknięcie wyskakującego toastu (✕, przesunięcie) albo ✕ w panelu odrzuca powiadomienie także na telefonie (`Dismiss`); wygaśnięcie i usunięcie przez aplikację nie. Odrzucone na telefonie znika z Windows (`Removed`, jak w WN-43). Bez osobnego ustawienia.
-SEC:tekst odpowiedzi nie jest logowany ani przechowywany po wysłaniu; w panelu pole czyści się dopiero po `Replied` ok, po błędzie tekst zostaje. Ponad 1024 B UTF-8: wysłanie zablokowane z komunikatem, nigdy przycinane (z toastu tekst trafia do pola w panelu). Akcje tylko dla powiadomień pokazanych w tej sesji (sprawdza PC i telefon).
-LIMIT:aplikacja bez pakietu (bez aktywatora COM) dostaje zdarzenia toastu tylko, dopóki jego obiekt żyje w procesie: wątek roboczy trzyma je do `Removed`/odrzucenia/wygaśnięcia (najwyżej 256). Dlatego w wydaniu treść i nagłówek toastu z telefonu (jak toasty baterii) otwierają panel przez schemat `windconnect-panel:` (aktywacja protokołem, WN-144), co działa też po ponownym uruchomieniu aplikacji; debug zostaje przy kliknięciu w procesie. Pole odpowiedzi to akcja w tle w procesie: po ponownym uruchomieniu aplikacji odpowiedź ze starego toastu nie działa (bez aktywatora COM). Wyczyszczenie w centrum powiadomień nie daje zdarzenia, więc nie odrzuca na telefonie.
+Tests: `cargo test -p wind-core` (`media`: the codec, limits, extrapolation, the action gate; `tests/media.rs`: a real session, Now/Art/Gone only on change, Command back, nothing without the capability), the app's tests (sanitization, the cover by key), `node apps/windows/scripts/check-media-ui.cjs` (stubbed IPC: texts, cover, progress without IPC, commands, the action gate, hostile text, hiding, Light/Dark, 150%) and `node apps/windows/scripts/check-media-android.cjs` (the real app + an emulator with a test media session instead of Spotify; 10 samples of ⏯ and ⏭, seeking, times both ways, a command outside `actions` without a reaction).
 
-Testy: testy jednostkowe (`notify`: pole odpowiedzi w XML tylko z `reply`, aktywacja toastu po argumentach i tekście (odpowiedź, pusta, za długa bez przycinania), tylko zamknięcie przez osobę odrzuca na telefonie, tag -> id, lista panelu: limit 20, stany, szkic, usuwanie), `wind-core` (kodek `Dismiss`/`Reply`/`Replied`, granice, wektory z PROTOCOL.md §9.7–9.8, sesja: `notify-action/1` tylko za zgodą telefonu), Kotlin (`NotificationRules.replyAction`: `SEMANTIC_ACTION_REPLY`, dowolny tekst, bez kontekstowych), `node apps/windows/scripts/check-notify-panel-ui.cjs` (sekcja panelu z podstawionym IPC: Enter, pole i fokus przetrwają odświeżenie, czyszczenie dopiero po `Replied` ok, tekst zostaje po błędzie, > 1024 B zablokowane, szkic z toastu, ✕, Light/Dark) i `node apps/windows/scripts/check-notify-reply-android.cjs` (prawdziwa aplikacja debug + emulator + Google Messages zasilane `adb emu sms send`: toast z polem odpowiedzi, odpowiedź z panelu i z toastu (`dev_toast_activate`, ta sama funkcja co WinRT) wysłana jako SMS, ✕ w panelu znika z telefonu, uśpione na telefonie znika z PC, zamknięcie popupu przez osobę odrzuca, wygaśnięcie nie). Prawdziwego kliknięcia i zamknięcia systemowego toastu nie da się tu zautomatyzować: sprawdza je krótki test ręczny na telefonie. Wymaga tego samego co test WN-43; asystent powiadomień jest na czas testu wyłączony (Android 15 ukrywa treść SMS jako wrażliwą).
+## The computer's player on the phone (WN-47)
 
-### Filtry i tryb skupienia (WN-45)
+CCS/1
+FLOW:Windows SMTC (`GlobalSystemMediaTransportControlsSessionManager`, session and manager events, an MTA thread) -> `pc_media::PcMedia` -> `Now`/`Art`/`Gone` on `media` (the phone announces `media/1`) -> the phone: a card in the app and the system media controls. A command from the phone (`media-control/1`, announced by the PC) -> checked against `actions` -> `TryPause/Play/TogglePlayPause/SkipNext/SkipPrevious/ChangePlaybackPosition`.
+RULE:choosing the session: the first playing one, otherwise the system's current session if it may be followed, otherwise the first allowed one. Cover: the session's thumbnail decoded and encoded as JPEG ≤ 256 px (Windows.Graphics.Imaging), no cover above 96 KiB. After our own command the state is read once more at once (an answer to an action, not polling).
+RULE:the setting in the main window "Share playback with the phone" (on by default, `pc-media.json`): turned off, it withdraws `media-control/1` also in an ongoing session, sends `Gone` and ends the SMTC subscriptions. When the phone accepts `media/1` again, the PC sends the state anew.
+SEC:in the debug version `WINDCONNECT_TEST_MEDIA_APP=<AUMID>` limits following to one app, so that the test doesn't pause the user's players; release ignores this variable.
 
-RULE:wybór aplikacji jest na telefonie (wyłączona aplikacja nie wysyła nic). PC tylko wycisza: w „Cichych godzinach” (okno główne, domyślnie wyłączone, 22:00–07:00, krok 15 min, przez północ), gdy `SHQueryUserNotificationState` mówi o pełnym ekranie, grze Direct3D, prezentacji albo czasie ciszy po instalacji, i gdy telefon oznaczy powiadomienie `quiet` (jego „Nie przeszkadzać”), toast idzie bez wyskakiwania i z `<audio silent="true"/>` do centrum powiadomień i panelu, nie zużywając limitu wyskakujących. Tryb „Nie przeszkadzać”/skupienia Windows sam wstrzymuje toasty aplikacji spoza listy priorytetowej, więc nie czytamy go (bez nieudokumentowanego WNF). Sprawdzane przy każdym `Posted`, bez timerów. Wyciszony toast nie odrzuca niczego na telefonie (tylko UserCanceled, WN-44).
-RULE:`notify.json` to `{enabled, quiet:{on,from,to}}` (minuty od lokalnej północy); stary plik `true`/`false` jest czytany, uszkodzony daje ustawienia domyślne; zapis przez plik tymczasowy i zmianę nazwy.
+Tests: unit tests (`pc_media`: choosing the session, actions, time in ticks, names, limits), `node apps/windows/scripts/check-pc-media-android.cjs` (the real app + `examples/smtc_player` with a real SMTC session `WindConnect.TestPlayer` + an emulator: the card and the notification on the phone, 10× pause/play from Android's controls and from the app, a command outside `actions` without a reaction, the switch and `Gone` clean up, no echo).
 
-Testy: testy jednostkowe (`notify`: ciche godziny przez północ, `from == to`, granice; migracja i uszkodzony `notify.json`, zapis; stany `SHQueryUserNotificationState`; ciche bez wyskakiwania i dźwięku, bez zużycia limitu, zamknięcie nie odrzuca na telefonie), `node apps/windows/scripts/check-notify-quiet-ui.cjs` (ustawienie z podstawionym IPC, klawisze, północ, Light/Dark) i `node apps/windows/scripts/check-notify-filter-android.cjs` (prawdziwa aplikacja + emulator, powłoka i Google Messages jako nadawcy: zablokowana aplikacja nic nie przekazuje do rdzenia, „Tylko wybrane” bez wyboru nic, zablokowanie usuwa jej powiadomienia z PC, „Nie przeszkadzać” na telefonie i ciche godziny na PC bez wyskakiwania, a powiadomienie zostaje na telefonie).
+## Notifications from the phone (WN-43)
 
-## Połączenia i głośność (WN-48)
+CCS/1
+FLOW:the phone's `Posted`/`Icon`/`Removed` on `notify` (the PC announces `notify/1`, PROTOCOL.md §9.7) -> the session loop -> `notify::Notifications` (whether it pops up) -> one worker thread (order kept) -> `ToastNotifier.Show` / `ToastNotificationHistory`.
+RULE:a `ToastGeneric` toast: the title (without a title, the app's name), the content, "app · phone", the app's icon (`appLogoOverride`), a header per phone app (grouping in the notification center). Tag = the notification's id (hex), group `phone`: a change replaces the toast without popping up again, `Removed` takes it down. At most 5 pop-ups in 2 s; the rest go quietly to the notification center. A click opens the panel.
+SEC:the texts come from the phone's other apps: a second sanitization on the PC (one line, without control, bidirectional and zero-width characters, trimmed) and XML escaping. The icon (PNG ≤ 16 KiB) is decoded and encoded anew as a 64 px PNG (Windows.Graphics.Imaging), so Windows doesn't read the sender's bytes; the file `notify-icons\<key hex>.png` in the app's data folder, at most 256 files (the oldest removed). Nothing is logged.
+RULE:Windows keeps the toasts' content in its notification database (the notification center): each expires after 24 h, and turning off the setting "Notifications from the phone" (main window, on by default, `notify.json`; it withdraws `notify/1` also in an ongoing session) or removing the pairing (from the PC or from the phone) removes all toasts from the phone and the icon cache at once. An ordinary end of a session doesn't remove them.
 
-FLOW:telefon `State` na `call` (PC ogłasza `call/1` przy ustawieniu „Wstrzymaj odtwarzanie przy połączeniu”, okno główne, domyślnie włączone, PROTOCOL.md §9.10) -> pętla sesji -> jeden wątek `call_pause` (żyje między sesjami) -> `CallPause` decyduje -> SMTC `TryPauseAsync` na każdej grającej sesji / `TryPlayAsync` na tych, które wstrzymał, jeśli nadal są wstrzymane (≤ 30 min). W debug `WINDCONNECT_TEST_MEDIA_APP` ogranicza to do jednego odtwarzacza.
-FLOW:głośność (`volume/1`, §9.9, ustawienie „Głośność z telefonu”, domyślnie włączone): Core Audio (domyślne urządzenie, `IAudioEndpointVolume` + jego wywołanie zmian, `IMMNotificationClient` przy zmianie urządzenia, bez odpytywania) -> `Level` do telefonu; `Set` z telefonu -> Core Audio. Panel: „Głośność telefonu” (suwak: strzałki 5 %, PageUp/PageDown 10 %, Home/End; wycisz), bez „odbijania”: przez 500 ms po własnej zmianie i podczas przeciągania przychodzący poziom nie przesuwa suwaka.
-LIMIT:urządzenie o stałej głośności (część wyjść HDMI/S/PDIF/USB) nie zmienia poziomu; wyciszenie działa. W trybie wibracji część telefonów nie zmienia trybu dźwięku: wtedy pauzę daje powiadomienie połączenia, które wymaga dostępu „Powiadomienia na komputerze” (opis ustawienia o tym mówi). „Rozmowa” to też rozmowy w komunikatorach (Discord, Teams, notatki głosowe).
+### Replying and dismissing (WN-44)
 
-Testy: testy jednostkowe (`call_pause`: jedna pauza na połączenie, wznowienie tego, co wstrzymał, zerwana sesja rozstrzygnięta przez następny stan, limit 30 min, ustawienia; `pc_volume`: skala; ręczny `cargo test pc_volume -- --ignored` czyta domyślne urządzenie), `wind-core` (kodeki `State`/`Level`/`Set`, granice, wektory §9.9–9.10, „najnowszy wygrywa”), `node apps/windows/scripts/check-call-volume-ui.cjs` (suwak, klawisze, wyciszenie, brak odbijania, przełączniki, Light/Dark) i `node apps/windows/scripts/check-call-volume-android.cjs` (prawdziwa aplikacja + `examples/smtc_player` + emulator: 5 połączeń `adb emu gsm call`, dzwonek -> pauza p95 < 1 s (zmierzone ok. 0,2-0,3 s; drugi dzwonek ok. 6 s), rozłączenie -> wznowienie, odebrane, zatrzymane ręcznie, ustawienie wyłączone, tryb wibracji, głośność w obie strony; głośność i wyciszenie PC przywracane od razu).
+FLOW:the field "Reply…" in the toast (when `Posted` has `reply`) and in the panel's "Notifications" section (the 20 newest of the session) -> `Reply` on `notify-action` (the phone announces `notify-action/1`, PROTOCOL.md §9.8) -> the phone sends the reply through the app's action (RemoteInput) and sends back `Replied` (the state "Sent" / "Failed").
+RULE:**A change of behaviour:** closing a popped-up toast (✕, swiping) or ✕ in the panel dismisses the notification on the phone too (`Dismiss`); expiry and removal by the app don't. One dismissed on the phone disappears from Windows (`Removed`, as in WN-43). No separate setting.
+SEC:the reply text isn't logged or kept after sending; in the panel the field is cleared only after `Replied` ok, after an error the text stays. Over 1024 B of UTF-8: sending is blocked with a message, never trimmed (from a toast the text goes into the panel's field). Actions only for notifications shown in this session (checked by the PC and the phone).
+LIMIT:an unpackaged app (without a COM activator) gets a toast's events only as long as its object lives in the process: the worker thread keeps them until `Removed`/dismissal/expiry (at most 256). That is why in the release the content and header of a toast from the phone (like the battery toasts) open the panel through the `windconnect-panel:` scheme (protocol activation, WN-144), which also works after the app restarts; debug stays with the in-process click. The reply field is a background action in the process: after the app restarts, a reply from an old toast doesn't work (no COM activator). Clearing in the notification center gives no event, so it doesn't dismiss on the phone.
 
-RULE:nadawca toastów jak przy baterii (`toast.rs`): w debug PowerShell, w release zarejestrowany AUMID „WindConnect” (sprawdzenie z instalatora: WN-118).
+Tests: unit tests (`notify`: the reply field in the XML only with `reply`, toast activation by arguments and text (reply, empty, too long without trimming), only a close by a person dismisses on the phone, tag -> id, the panel list: limit 20, states, draft, removal), `wind-core` (the `Dismiss`/`Reply`/`Replied` codec, limits, the vectors from PROTOCOL.md §9.7–9.8, session: `notify-action/1` only with the phone's consent), Kotlin (`NotificationRules.replyAction`: `SEMANTIC_ACTION_REPLY`, any text, not contextual), `node apps/windows/scripts/check-notify-panel-ui.cjs` (the panel section with stubbed IPC: Enter, the field and focus survive a refresh, cleared only after `Replied` ok, the text stays after an error, > 1024 B blocked, a draft from a toast, ✕, Light/Dark) and `node apps/windows/scripts/check-notify-reply-android.cjs` (the real debug app + an emulator + Google Messages fed by `adb emu sms send`: a toast with a reply field, a reply from the panel and from the toast (`dev_toast_activate`, the same function as WinRT) sent as an SMS, ✕ in the panel disappears from the phone, snoozed on the phone disappears from the PC, closing the popup by a person dismisses, expiry doesn't). A real click on and close of the system toast can't be automated here: a short manual test on the phone checks them. Needs the same as the WN-43 test; the notification assistant is turned off for the test (Android 15 hides SMS content as sensitive).
 
-Testy: testy jednostkowe (`notify`: XML, escapowanie i sanityzacja, brak tytułu, granice, limit wyskakujących, ciche aktualizacje, nazwy i limit pamięci ikon), `node apps/windows/scripts/check-notify-settings-ui.cjs` (przełącznik z podstawionym IPC, Light/Dark) i `node apps/windows/scripts/check-notify-toasts-android.cjs` (prawdziwa aplikacja debug + emulator; parowanie QR, potem `NotifyProof` dwa razy w jednej sesji: z asystentem powiadomień i bez). Sprawdza: dokładnie 21 toastów na przebieg (20 + rozmowa; odtwarzacz i niezmienione ponowienie nic), uśpione na telefonie znika z Windows, pozostałe 20 w historii, ≤ 5 wyskakujących w 2 s, jedna ikona 64 px, wyłączenie ustawienia czyści historię i ikony. Opóźnienie (zegary skorygowane o przesunięcie emulatora): wywołanie słuchacza na telefonie -> `Show` na PC p95 < 250 ms (sprawdzane; zmierzone ok. 20 ms), `postTime` -> `Show` raportowane (z asystentem ok. 230 ms przez systemowe wstrzymanie ok. 200 ms, bez niego ok. 30 ms). Wymaga `JAVA_HOME`, `ZXING_CORE_JAR`, `PLAYWRIGHT_MODULE`, `ANDROID_SERIAL`.
+### Filters and focus mode (WN-45)
 
-## Wiadomości SMS (WN-55)
+RULE:choosing apps is on the phone (a turned-off app sends nothing). The PC only silences: in "Quiet hours" (main window, off by default, 22:00–07:00, 15 min steps, across midnight), when `SHQueryUserNotificationState` reports full screen, a Direct3D game, a presentation or the quiet time after installation, and when the phone marks a notification `quiet` (its "Do not disturb"), the toast goes without popping up and with `<audio silent="true"/>` to the notification center and the panel, without using up the pop-up limit. Windows' own "Do not disturb"/focus mode holds back toasts of apps not on the priority list by itself, so we don't read it (no undocumented WNF). Checked on every `Posted`, without timers. A silenced toast dismisses nothing on the phone (only UserCanceled, WN-44).
+RULE:`notify.json` is `{enabled, quiet:{on,from,to}}` (minutes from local midnight); an old `true`/`false` file is read, a damaged one gives the default settings; written through a temporary file and a rename.
 
-Przycisk „Wiadomości” w panelu (gdy telefon jest połączony) otwiera osobne
-okno: wątki po lewej, rozmowa po prawej (PROTOCOL.md §9.11, `sms/1`).
-Telefon udostępnia SMS dopiero po włączeniu „SMS na komputerze” i zgodzie na
-dostęp do SMS; bez tego okno mówi, co włączyć. Wątek otwiera się z pamięci
-(`sms.rs`) i dociąga tylko nowsze wiadomości (`since`); pierwsze otwarcie
-pobiera 1000 najnowszych, starsze strony przy przewinięciu do góry. Zmiany na
-telefonie przychodzą przez obserwację (`Watch` → `sms-changed`). Treść jest
-tylko w pamięci aplikacji (bez zapisu na dysku), znika przy połączeniu innego
-telefonu albo rozparowaniu i trafia na stronę wyłącznie jako tekst.
-Pomiar: `scripts/check-sms-android.cjs` (prawdziwa aplikacja + emulator,
-1000 SMS w wątku, otwarcie od kliknięcia do narysowania).
+Tests: unit tests (`notify`: quiet hours across midnight, `from == to`, limits; migration and a damaged `notify.json`, writing; the `SHQueryUserNotificationState` states; quiet without popping up and sound, without using up the limit, closing doesn't dismiss on the phone), `node apps/windows/scripts/check-notify-quiet-ui.cjs` (the setting with stubbed IPC, keys, midnight, Light/Dark) and `node apps/windows/scripts/check-notify-filter-android.cjs` (the real app + an emulator, the shell and Google Messages as senders: a blocked app passes nothing to the core, "Only chosen" without a choice passes nothing, blocking removes its notifications from the PC, "Do not disturb" on the phone and quiet hours on the PC without popping up, and the notification stays on the phone).
 
-### Wysyłanie SMS i MMS (WN-56)
+## Calls and volume (WN-48)
 
-W oknie „Wiadomości” pole na dole wysyła odpowiedź w otwartym wątku, a „+”
-zaczyna nową wiadomość (numery oddzielone przecinkami). Gdy telefon ma kilka
-kart SIM, obok jest wybór karty. Ikona obrazu dołącza zdjęcie: okno zmniejsza
-je do 1280 px i JPEG do ok. 300 KB, a wiadomość idzie jako MMS (także przy
-kilku odbiorcach). Stan wysyłki widać od razu (wysyłanie…, wysłano,
-dostarczono, nie wysłano); potem wiadomość zastępuje zapis z telefonu.
-Zdjęcia z odebranych MMS ładują się przy przewijaniu. Wysyłanie trzeba
-włączyć na telefonie („Wysyłanie z komputera”); do tego czasu pole to mówi.
-Pomiar: `scripts/check-sms-send-android.cjs`.
+FLOW:the phone's `State` on `call` (the PC announces `call/1` with the setting "Pause playback during calls", main window, on by default, PROTOCOL.md §9.10) -> the session loop -> one `call_pause` thread (it lives across sessions) -> `CallPause` decides -> SMTC `TryPauseAsync` on every playing session / `TryPlayAsync` on those it paused, if they are still paused (≤ 30 min). In debug `WINDCONNECT_TEST_MEDIA_APP` limits this to one player.
+FLOW:volume (`volume/1`, §9.9, the setting "Volume from the phone", on by default): Core Audio (the default device, `IAudioEndpointVolume` + its change callback, `IMMNotificationClient` on a device change, no polling) -> `Level` to the phone; `Set` from the phone -> Core Audio. Panel: "Phone volume" (a slider: arrows 5 %, PageUp/PageDown 10 %, Home/End; mute), without "bouncing": for 500 ms after one's own change and while dragging, an incoming level doesn't move the slider.
+LIMIT:a device with a fixed volume (some HDMI/S/PDIF/USB outputs) doesn't change the level; muting works. In vibrate mode some phones don't change the audio mode: then the pause comes from the call notification, which needs the "Notifications on the computer" access (the setting's description says so). "In a call" also covers calls in messaging apps (Discord, Teams, voice notes).
 
-## Ostatnie zdjęcia w panelu (WN-58)
+Tests: unit tests (`call_pause`: one pause per call, resuming what it paused, a broken session decided by the next state, the 30 min limit, settings; `pc_volume`: the scale; a manual `cargo test pc_volume -- --ignored` reads the default device), `wind-core` (the `State`/`Level`/`Set` codecs, limits, the vectors from §9.9–9.10, "newest wins"), `node apps/windows/scripts/check-call-volume-ui.cjs` (the slider, keys, muting, no bouncing, the switches, Light/Dark) and `node apps/windows/scripts/check-call-volume-android.cjs` (the real app + `examples/smtc_player` + an emulator: 5 calls with `adb emu gsm call`, ringing -> pause p95 < 1 s (measured about 0.2-0.3 s; the second ring about 6 s), hanging up -> resume, answered, stopped manually, the setting off, vibrate mode, volume both ways; the PC's volume and muting are restored at once).
 
-Gdy telefon udostępnia zdjęcia („Zdjęcia na komputerze”, PROTOCOL.md §9.13,
-`gallery/1`), panel pokazuje 10 najnowszych zdjęć i zrzutów ekranu (dwa rzędy
-po pięć). Nowe zdjęcie przychodzi przez obserwację (`Watch` → `Recent` →
-miniatury tylko nowych), bez odpytywania. Naciśnięcie zdjęcia zaczyna
-pobierać oryginał; przeciągnięcie oddaje go Windows jako plik (OLE
-`DoDragDrop`, obiekt danych powłoki z `SHCreateItemFromParsingName`, tylko
-kopiowanie), a kliknięcie lub Enter otwiera go w domyślnej przeglądarce. Gdy
-przycisk puszczono, zanim oryginał doszedł, panel prosi o ponowne
-przeciągnięcie (plik już czeka). Własne przeciągnięcie nie jest brane za
-pliki do wysłania na telefon ani nie chowa panelu.
-Miniatury są tylko w pamięci; oryginały w `%TEMP%\WindConnect\gallery`
-(najwyżej 8), usuwane z końcem sesji, przy połączeniu innego telefonu i przy
-starcie. CCS/1 SEC:PC dopuszcza wyłącznie końcowe rozszerzenia jpg, jpeg,
-png, webp, heic, heif, gif, avif, bmp (bez rozróżniania wielkości liter).
-Inną nazwę zastępuje `IMG_<id>.<rozszerzenie z MIME>`; brak dozwolonego
-MIME oznacza odmowę. Przed otwarciem/przeciągnięciem sprawdza sygnaturę
-obrazu i zapisuje `Zone.Identifier` (`ZoneId=3`); błąd oznacza odmowę
-i usunięcie pliku częściowego. Nazwa pozostaje jedną częścią ścieżki.
-Pomiar: `scripts/check-gallery-android.cjs` (prawdziwa aplikacja + emulator:
-nowe zdjęcie od polecenia do narysowanej miniatury < 1 s, oryginał zgodny co
-do SHA-256, ustawienie telefonu wył./wł.). Samo przeciągnięcie myszą wymaga
-testu ręcznego.
+RULE:the toast sender as for the battery (`toast.rs`): in debug PowerShell, in release the registered AUMID "WindConnect" (checked from the installer: WN-118).
 
-## Połączenia z telefonu (WN-57)
+Tests: unit tests (`notify`: XML, escaping and sanitization, no title, limits, the pop-up limit, quiet updates, names and the icon cache's limit), `node apps/windows/scripts/check-notify-settings-ui.cjs` (the switch with stubbed IPC, Light/Dark) and `node apps/windows/scripts/check-notify-toasts-android.cjs` (the real debug app + an emulator; QR pairing, then `NotifyProof` twice in one session: with the notification assistant and without). It checks: exactly 21 toasts per run (20 + a call; the player and an unchanged repeat give nothing), one snoozed on the phone disappears from Windows, the other 20 in the history, ≤ 5 pop-ups in 2 s, one 64 px icon, turning the setting off clears the history and the icons. Latency (clocks corrected for the emulator's offset): the listener call on the phone -> `Show` on the PC p95 < 250 ms (checked; measured about 20 ms), `postTime` -> `Show` reported (with the assistant about 230 ms because of a system hold of about 200 ms, without it about 30 ms). Needs `JAVA_HOME`, `ZXING_CORE_JAR`, `PLAYWRIGHT_MODULE`, `ANDROID_SERIAL`.
 
-Ustawienie „Połączenia z telefonu” (okno główne, domyślnie włączone,
-`call-volume.json`) pokazuje połączenie przychodzące jako powiadomienie
-Windows (`calls.rs`, scenariusz incomingCall, bez dźwięku): nazwa kontaktu lub
-numer, „Wycisz” i „Odrzuć” (tylko te, które telefon umie), znika po odebraniu
-lub końcu. Nieodebrane: powiadomienie o nowych i lista w panelu („Nieodebrane
-połączenia”, najwyżej 5). Telefon musi to udostępnić („Połączenia na
-komputerze”). Komputer przyjmuje `call/1`, gdy włączone jest to ustawienie
-albo wstrzymywanie odtwarzania; pauza działa tylko przy tym drugim.
-Pomiar: `scripts/check-calls-android.cjs` (połączenie -> powiadomienie na PC).
+## SMS messages (WN-55)
 
-## Otwórz na telefonie (WN-100)
+The "Messages" button in the panel (when the phone is connected) opens a separate
+window: threads on the left, the conversation on the right (PROTOCOL.md §9.11, `sms/1`).
+The phone shares SMS only after "SMS on the computer" is turned on and access to
+SMS is granted; without that the window says what to turn on. A thread opens from memory
+(`sms.rs`) and fetches only newer messages (`since`); the first opening
+fetches the 1000 newest, older pages when scrolling to the top. Changes on
+the phone come through the watch (`Watch` → `sms-changed`). The content is
+only in the app's memory (not written to disk), it disappears when another
+phone connects or on unpairing, and goes onto the page only as text.
+Measurement: `scripts/check-sms-android.cjs` (the real app + an emulator,
+1000 SMS in a thread, opening from the click to drawing).
 
-Pole „Otwórz na telefonie” w panelu (gdy telefon przyjmuje `actions/1`)
-wysyła adres http(s) do telefonu (PROTOCOL.md §9.2 `open-url`, sprawdzony
-`check_url` już na PC). Telefon otwiera go od razu albo pokazuje
-powiadomienie, gdy jest w tle; wyłączone na telefonie -> „Telefon
-odrzucił…”. Telefon wykonuje tylko otwarcie linku, nic innego.
-Pomiar: `scripts/check-actions-android.cjs`.
+### Sending SMS and MMS (WN-56)
 
-## Przekaźnik poza domem (WN-92)
+In the "Messages" window the field at the bottom sends a reply in the open thread, and "+"
+starts a new message (numbers separated by commas). When the phone has several
+SIM cards, a card choice is next to it. The image icon attaches a photo: the window scales
+it down to 1280 px and a JPEG of about 300 KB, and the message goes as an MMS (also with
+several recipients). The sending state shows at once (sending…, sent,
+delivered, not sent); then the message replaces the record from the phone.
+Pictures from received MMS load while scrolling. Sending has to be
+turned on on the phone ("Sending from the computer"); until then the field says so.
+Measurement: `scripts/check-sms-send-android.cjs`.
 
-Ustawienia w oknie głównym: przełącznik „Przekaźnik poza domem” i adres
-(`wss://windconnect-relay.<subdomena>.workers.dev`, relay/README.md). Domyślnie
-wyłączony (D3). Adres jest w pliku `relay-url` obok klucza tożsamości i
-wraca po restarcie; adres odrzucony przez `check_url` pokazuje błąd przy
-polu. Włączony: `relay.rs` trzyma jedno `RelayLink` na każdy sparowany
-telefon (jak `windctl serve --relay`, ponowienia 1–60 s; parowanie i
-usunięcie parowania zmieniają listę od razu, WN-139). Wyłączony: wszystkie
-połączenia z przekaźnikiem są przerywane od razu, a sesja, która przez nie
-biegnie, jest zamykana (GoingAway `relay-off`), więc telefon wraca do LAN
-zamiast czekać na limit bezczynności QUIC (WN-139). Okno pyta o ustawienie,
-aż rdzeń wczyta plik (wcześniej zapisane „włączone” pokazywało się jako
-wyłączone tuż po starcie). Opis tego, co widzi operator: PROTOCOL.md §13.4.
+## Latest photos in the panel (WN-58)
 
-Testy: `cargo test -p windconnect-windows relay::` oraz, przy `npm run dev` w
+When the phone shares photos ("Photos on the computer", PROTOCOL.md §9.13,
+`gallery/1`), the panel shows the 10 newest photos and screenshots (two rows
+of five). A new photo arrives through the watch (`Watch` → `Recent` →
+thumbnails of the new ones only), without polling. Pressing a photo starts
+fetching the original; dragging hands it to Windows as a file (OLE
+`DoDragDrop`, a shell data object from `SHCreateItemFromParsingName`, copy
+only), and a click or Enter opens it in the default viewer. When
+the button was released before the original arrived, the panel asks to drag
+again (the file is already waiting). Our own drag isn't taken for
+files to send to the phone and doesn't hide the panel.
+Thumbnails are only in memory; originals in `%TEMP%\WindConnect\gallery`
+(at most 8), deleted when the session ends, when another phone connects and at
+start. CCS/1 SEC:the PC allows only the final extensions jpg, jpeg,
+png, webp, heic, heif, gif, avif, bmp (case-insensitively).
+Any other name is replaced with `IMG_<id>.<extension from the MIME>`; no allowed
+MIME means a refusal. Before opening/dragging it checks the image's signature
+and writes `Zone.Identifier` (`ZoneId=3`); an error means a refusal
+and deleting the partial file. The name stays one path part.
+Measurement: `scripts/check-gallery-android.cjs` (the real app + an emulator:
+a new photo from the command to the drawn thumbnail < 1 s, the original matching by
+SHA-256, the phone's setting off/on). Dragging with the mouse itself needs
+a manual test.
+
+## Calls from the phone (WN-57)
+
+The setting "Calls from the phone" (main window, on by default,
+`call-volume.json`) shows an incoming call as a Windows
+notification (`calls.rs`, the incomingCall scenario, without sound): the contact's name or
+the number, "Silence" and "Reject" (only those the phone can do), it disappears when answered
+or ended. Missed calls: a notification about new ones and a list in the panel ("Missed
+calls", at most 5). The phone has to share this ("Calls on the
+computer"). The computer accepts `call/1` when this setting
+or pausing playback is on; the pause works only with the latter.
+Measurement: `scripts/check-calls-android.cjs` (a call -> a notification on the PC).
+
+## Open on the phone (WN-100)
+
+The field "Open on the phone" in the panel (when the phone accepts `actions/1`)
+sends an http(s) address to the phone (PROTOCOL.md §9.2 `open-url`, checked
+by `check_url` already on the PC). The phone opens it at once or shows a
+notification when it is in the background; turned off on the phone -> "The phone
+refused…". The phone only opens the link, nothing else.
+Measurement: `scripts/check-actions-android.cjs`.
+
+## Relay outside the home (WN-92)
+
+Settings in the main window: the switch "Relay outside the home" and the address
+(`wss://windconnect-relay.<subdomain>.workers.dev`, relay/README.md). Off by
+default (D3). The address is in the file `relay-url` next to the identity key and
+comes back after a restart; an address rejected by `check_url` shows an error at the
+field. On: `relay.rs` keeps one `RelayLink` for each paired
+phone (like `windctl serve --relay`, retries 1–60 s; pairing and
+removing a pairing change the list at once, WN-139). Off: all
+connections to the relay are broken off at once, and a session that runs through them
+is closed (GoingAway `relay-off`), so the phone returns to the LAN
+instead of waiting for QUIC's idle limit (WN-139). The window asks for the setting
+until the core has read the file (earlier, a stored "on" showed as
+off right after start). What the operator sees: PROTOCOL.md §13.4.
+
+Tests: `cargo test -p windconnect-windows relay::` and, with `npm run dev` in
 `relay/`, `RELAY_URL=ws://127.0.0.1:8787 cargo test -p windconnect-windows
-relay::tests::off_closes -- --ignored` (sesja przez dwa `RelayLink`,
-wyłączenie zamyka ją; 2026-11-16: telefon widzi koniec po 2,5 ms).
-Prawdziwa aplikacja: `node apps/windows/scripts/check-relay-native.cjs`
-(widoczna sekcja, domyślnie wyłączona, błąd złego adresu, plik `relay-url`
-zapisany i usunięty, stan po restarcie; zrzuty w `RELAY_ARTIFACTS`).
+relay::tests::off_closes -- --ignored` (a session through two `RelayLink`s,
+turning off closes it; 2026-11-16: the phone sees the end after 2.5 ms).
+The real app: `node apps/windows/scripts/check-relay-native.cjs`
+(a visible section, off by default, an error for a bad address, the file `relay-url`
+written and deleted, the state after a restart; screenshots in `RELAY_ARTIFACTS`).
 
-## Panel otwiera się od góry (WN-145)
+## The panel opens at the top (WN-145)
 
-RULE:panel pamiętał ostatnie przewinięcie, więc mógł się otworzyć w połowie treści
-(pod paskiem zadań u góry wyglądał na ucięty; samo położenie okna jest poprawne,
-`place` uwzględnia pasek z każdej strony). Każde otwarcie zaczyna od góry, a gdy
-trwa parowanie (widoczny QR albo kod), karta parowania z dołu panelu jest
-przewijana do widoku, także gdy QR pojawia się przy otwartym panelu („Dodaj telefon”).
-CHECK:`node apps/windows/scripts/check-panel-scroll-ui.cjs` (atrapa IPC, bez okna
-aplikacji; bez poprawki pada na „opens at the top”).
+RULE:the panel remembered the last scroll position, so it could open in the middle of its content
+(under a taskbar at the top it looked cut off; the window's position itself is correct,
+`place` takes the taskbar on any side into account). Every opening starts at the top, and while
+pairing is going on (a visible QR code or code), the pairing card at the bottom of the panel is
+scrolled into view, also when the QR code appears with the panel open ("Add a phone").
+CHECK:`node apps/windows/scripts/check-panel-scroll-ui.cjs` (a fake IPC, without the app's
+window; without the fix it fails on "opens at the top").

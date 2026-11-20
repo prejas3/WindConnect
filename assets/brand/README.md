@@ -1,19 +1,19 @@
 # Orbita
 
 CCS/1
-DEC:aktualny znak to wariant C z WN-131, wybrany przez Szymona 2026-11-13: sama otwarta orbita ze strzałkami, bez monitora i telefonu w środku. Zastępuje urządzenia w pierwotnym kierunku C z WN-93 (2026-11-11). Zachowane łuki, strzałki, paleta WN-20 i marginesy WN-115; znak nie został powiększony. Własne ścieżki, licencja MIT projektu; bez zapożyczonej biblioteki ikon.
-SOURCE:orbita.svg (64 jednostki) dla aplikacji; orbita-small.svg (16 jednostek) z prostszą geometrią i dopasowanymi liniami dla zasobnika, małych ICO i powiadomienia. Nie powiększamy bitmapy16px. Każda PNG/RGBA jest renderowana osobno z SVG w rozmiarze docelowym.
-CHECK:WN-131:środek połączonego znaku jest pusty. check-icons sprawdza środkowe25% każdego wymiaru w PNG/ICO/mipmapach i connected tray obu palet (alpha<=16 dla transparentnych,brak białego tuszu dla kolorowych). Natywny test Androida sprawdza foreground/monochrome i ic_connection. Przekreślenie stanu unavailable jest zamierzonym wyjątkiem; barwa nie jest jedynym oznaczeniem stanu. Archiwalny raster WN-115 jest wyłącznie w androidTest/assets do porównań przed/po,nie w aplikacji.
-IO:scripts/generate-icons.cjs -> ICO16/20/24/32/40/48/64/96/128/256, PNG Tauri, zasobnik3stany×2palety×4rozmiary, Android VectorDrawable/adaptive/monochrome i mipmapy mdpi–xxxhdpi. generated.json zapisuje hash każdego wyniku i wersję Chromium.
-RULE:zasobnik używa rozmiaru SM_CXSMICON dla DPI Shell_TrayWnd, nie DPI okna na innym monitorze; dobiera wariant16/20/24/32 bez dekodowania PNG w runtime. SystemUsesLightTheme określa kontrast na pasku. Aktualizacja przy zmianie stanu oraz natywnych WM_SETTINGCHANGE/WM_THEMECHANGED/WM_DISPLAYCHANGE/WM_DPICHANGED na istniejącym oknie (bez pollingu/nowego workera); hook zwalnia się na WM_NCDESTROY. ThemeChanged/ScaleFactorChanged Tauri są też fallbackiem. Połączono: strzałki/teal; szukanie: przerywana orbita/amber; brak: przekreślenie/grafit. Kolor nie jest jedyną informacją o stanie.
-RULE:Android warstwy108dp, znak48dp wyśrodkowany w66dp bezpiecznej strefie (WN-115); foreground i monochrome są osobnymi białymi wektorami z przezroczystym tłem. Maska launchera pokazuje ok.72dp warstwy: poprzednie64dp znaku wypełniały ją zbyt mocno mimo spełnienia safe zone. Obecna sylwetka zajmuje ok.60–64% widocznej maski. Tło adaptive jednolite teal. Powiadomienie/kafelek24dp ma nominalny znak20dp i margines2dp. Mipmapy fallback mają odpowiadający margines (skala2/3 wewnątrz64); launcher API26+ używa adaptive.
-RULE:WN-115:Windows app PNG/ICO też miały ciasny znak na kolorowym tle; skala.75 wewnątrz niezmienionego tła daje margines. Zasobnik i titlebar pozostają bez zmiany: ich osobny, transparentny glif16–32px nie ma problemu maski i potrzebuje czytelności przy16px. Źródłowe ścieżki Orbity/kolory niezmienione; rastry nadal generowane bezpośrednio w docelowej rozdzielczości.
-LIMIT:100–200%DPI mają warianty16/20/24/32; powyżej200% używany jest32px. S25 Ultra/One UI wymaga sprawdzenia fizycznego launchera i themed icons; emulator nie dowodzi zachowania One UI.
+DEC:the current mark is variant C from WN-131, chosen by Szymon on 2026-11-13: the open orbit with arrows alone, without a monitor and phone inside. It replaces the devices in the original direction C from WN-93 (2026-11-11). The arcs, arrows, the WN-20 palette and the WN-115 margins are kept; the mark was not enlarged. Own paths, the project's MIT license; no borrowed icon library.
+SOURCE:orbita.svg (64 units) for the apps; orbita-small.svg (16 units) with simpler geometry and fitted lines for the tray, small ICOs and the notification. We never enlarge a 16 px bitmap. Every PNG/RGBA is rendered separately from the SVG at its target size.
+CHECK:WN-131: the centre of the connected mark is empty. check-icons checks the middle 25% of each dimension in the PNG/ICO/mipmaps and the connected tray of both palettes (alpha<=16 for transparent ones, no white ink for coloured ones). A native Android test checks foreground/monochrome and ic_connection. The strike-through of the unavailable state is an intended exception; colour is not the only sign of the state. The archived WN-115 raster is only in androidTest/assets for before/after comparisons, not in the app.
+IO:scripts/generate-icons.cjs -> ICO 16/20/24/32/40/48/64/96/128/256, Tauri PNGs, the tray 3 states × 2 palettes × 4 sizes, Android VectorDrawable/adaptive/monochrome and mipmaps mdpi–xxxhdpi. generated.json records the hash of every output and the Chromium version.
+RULE:the tray uses the SM_CXSMICON size for the DPI of Shell_TrayWnd, not the DPI of a window on another monitor; it picks the 16/20/24/32 variant without decoding PNG at runtime. SystemUsesLightTheme decides the contrast on the taskbar. It updates on a state change and on native WM_SETTINGCHANGE/WM_THEMECHANGED/WM_DISPLAYCHANGE/WM_DPICHANGED on the existing window (no polling, no new worker); the hook is released on WM_NCDESTROY. Tauri's ThemeChanged/ScaleFactorChanged are a fallback too. Connected: arrows/teal; searching: dashed orbit/amber; none: strike-through/graphite. Colour is not the only information about the state.
+RULE:Android layers 108 dp, the mark 48 dp centred in the 66 dp safe zone (WN-115); foreground and monochrome are separate white vectors with a transparent background. The launcher mask shows about 72 dp of the layer: the previous 64 dp mark filled it too much while still meeting the safe zone. The current silhouette takes about 60–64% of the visible mask. The adaptive background is solid teal. The notification/tile 24 dp has a nominal 20 dp mark and a 2 dp margin. The fallback mipmaps have a matching margin (scale 2/3 inside 64); launchers on API 26+ use adaptive.
+RULE:WN-115: the Windows app PNG/ICO also had a tight mark on a coloured background; a .75 scale inside the unchanged background gives a margin. The tray and title bar stay unchanged: their separate, transparent 16–32 px glyph has no mask problem and needs to be legible at 16 px. The source Orbita paths/colours are unchanged; rasters are still generated directly at the target resolution.
+LIMIT:100–200% DPI have the 16/20/24/32 variants; above 200% the 32 px one is used. S25 Ultra/One UI needs a check of the physical launcher and themed icons; an emulator doesn't prove One UI's behaviour.
 
-Generowanie (Playwright jest narzędziem zewnętrznym, nie zależnością aplikacji):
+Generating (Playwright is an external tool, not an app dependency):
 
 ```powershell
-$env:PLAYWRIGHT_MODULE = 'pełna/ścieżka/do/playwright'
+$env:PLAYWRIGHT_MODULE = 'full/path/to/playwright'
 node scripts/generate-icons.cjs
 node scripts/generate-icons.cjs --check
 node scripts/check-icons.cjs
@@ -23,43 +23,43 @@ $env:ANDROID_SERIAL = 'emulator-5558'
 node scripts/check-android-icons.cjs
 ```
 
-## Inwentarz WN-131
+## WN-131 inventory
 
-| Miejsce | Źródło aktywnego znaku |
+| Place | Source of the active mark |
 | --- | --- |
-| Android launcher adaptive, koło, ikony motywowane | `mipmap-anydpi-v26` -> foreground/monochrome z generatora; jednolite `icon_background` zachowane |
-| Fallback launcher mdpi–xxxhdpi | 10 generowanych mipmap PNG |
-| Powiadomienia połączenia, wysyłania/odbioru plików, media i dzwonek | wspólny generowany `ic_connection`; fallback systemowy pozostaje tylko na wypadek braku zasobu |
-| Kafelek QS | manifest `ClipboardTileService` i `ClipboardTileControls` -> `ic_connection` |
-| Skróty WN-72 | statyczny `shortcuts.xml` i dynamiczny `LauncherShortcuts` -> `mipmap/ic_launcher`; przypięte odwołania używają tego samego zasobu |
-| Widżet WN-33 | `WindWidget` wyświetla tekst/status/przyciski, nie ma własnego znaku ani starego monitora/telefonu; bez zmiany |
-| Tauri bundle, ikona EXE/MSI | `icons/icon.ico`, wszystkie 10 rozmiarów generowane z wybranego znaku |
-| Frontend Windows | `.brand-mark` maskuje generowany `frontend/assets/orbita-small.svg`; brak osobnego favicon w HTML |
-| Windows titlebar i tray | `brand_icon` wczytuje generowane RGBA 3stany × 2palety × 4rozmiary; badge baterii nakładany w runtime bez własnego starego znaku |
+| Android launcher adaptive, round, themed icons | `mipmap-anydpi-v26` -> foreground/monochrome from the generator; solid `icon_background` kept |
+| Fallback launcher mdpi–xxxhdpi | 10 generated mipmap PNGs |
+| Notifications for the connection, sending/receiving files, media and the ringer | the shared generated `ic_connection`; the system fallback stays only in case the resource is missing |
+| QS tile | the `ClipboardTileService` manifest and `ClipboardTileControls` -> `ic_connection` |
+| WN-72 shortcuts | static `shortcuts.xml` and dynamic `LauncherShortcuts` -> `mipmap/ic_launcher`; pinned references use the same resource |
+| WN-33 widget | `WindWidget` shows text/status/buttons, has no mark of its own and no old monitor/phone; unchanged |
+| Tauri bundle, EXE/MSI icon | `icons/icon.ico`, all 10 sizes generated from the chosen mark |
+| Windows frontend | `.brand-mark` masks the generated `frontend/assets/orbita-small.svg`; no separate favicon in the HTML |
+| Windows title bar and tray | `brand_icon` loads the generated RGBA 3 states × 2 palettes × 4 sizes; the battery badge is drawn at runtime without an old mark of its own |
 
 CCS/1
-LIMIT:generowane 76plików obejmuje manifest75wyników + sam manifest. Jednolite tło i odwołania adaptive mogą pozostać bajtowo identyczne; nie mają starego środka. Ogólne ikony telefonu/PC w kontrolkach UI oznaczają urządzenia, nie są znakiem aplikacji i pozostają. WN-131 usuwa tusz ze środka, więc suma białych pikseli maleje; skala i zewnętrzny obrys są zachowane jak w zaakceptowanym porównaniu. Pytanie o odczuwaną lekkość znaku należy do testu S25, nie uzasadnia samowolnego powiększenia.
+LIMIT:the 76 generated files are the manifest's 75 outputs plus the manifest itself. The solid background and the adaptive references may stay byte-identical; they have no old centre. Generic phone/PC icons in UI controls stand for devices, are not the app's mark and stay. WN-131 removes the ink from the centre, so the sum of white pixels goes down; the scale and the outer outline are kept as in the accepted comparison. Whether the mark feels too light belongs to the S25 test and doesn't justify enlarging it unasked.
 
-Audyt przyrostu WN-131:
+WN-131 incremental audit:
 
-| Komponent | Wersja/licencja i źródło | Dostarczany w | Ocena |
+| Component | Version/license and source | Shipped in | Assessment |
 | --- | --- | --- | --- |
-| Orbita bez środka i wszystkie pochodne | WN-131, własne ścieżki, MIT projektu `LICENSE` | APK, EXE/ICO, frontend, tray | bez materiałów osób trzecich; istniejące noty zachowane |
-| Archiwalny raster WN-115 do porównania | własne źródła MIT projektu, render Chromium | wyłącznie testowy APK androidTest | nie jest aktywnym zasobem aplikacji |
+| Orbita without the centre and all derivatives | WN-131, own paths, the project's MIT `LICENSE` | APK, EXE/ICO, frontend, tray | no third-party material; existing notices kept |
+| Archived WN-115 raster for comparison | own sources under the project's MIT, rendered by Chromium | only the androidTest test APK | not an active app resource |
 
 CCS/1
-DEP:bez nowych bibliotek/fontów/runtime/instalatorów; istniejące noty APK/Windows nie wymagają regeneracji. Playwright/Chromium pozostają narzędziem deweloperskim, nie trafiają do aplikacji. Zasoby MSI pochodzą z tego samego ICO; sam instalator nie jest zmieniany.
+DEP:no new libraries/fonts/runtimes/installers; the existing APK/Windows notices need no regeneration. Playwright/Chromium remain a developer tool and don't go into the app. The MSI resources come from the same ICO; the installer itself is unchanged.
 
 CCS/1
-DEP:brak nowej paczki runtime, fontu ani assetu osoby trzeciej. Windows SVG/CSS i Android XML wykorzystują własny znak. Istniejące licencje DM Sans/ZXing/JNA/Windows/Tauri pozostają bez zmian. Generator nie dostarcza Playwright/Chromium w APK/MSI.
-CHECK:check-android-icons wymaga wyłącznie przypisanego, jednorazowego emulatora; weryfikuje ro.kernel.qemu. Test powiadomienia tymczasowo zapisuje publiczny klucz testowy RFC8032 offline do magazynu parowań (przywracając wcześniejszy plik), aby produkcyjna usługa nie zakończyła się z powodu braku urządzeń. Nie nawiązuje uwierzytelnionej sesji. Ikona powiadomienia jest sprawdzana przez NotificationManager i po pokazaniu tytułu w SystemUI. Nie uruchamiać tego fixture na telefonie użytkownika.
+DEP:no new runtime package, font or third-party asset. The Windows SVG/CSS and Android XML use our own mark. The existing DM Sans/ZXing/JNA/Windows/Tauri licenses stay unchanged. The generator doesn't ship Playwright/Chromium in the APK/MSI.
+CHECK:check-android-icons needs only an assigned, disposable emulator; it verifies ro.kernel.qemu. The notification test temporarily writes the offline RFC 8032 test public key into the pairing store (restoring the previous file), so that the production service doesn't end for lack of devices. It doesn't set up an authenticated session. The notification icon is checked through NotificationManager and after the title shows in SystemUI. Don't run this fixture on the user's phone.
 EXT:https://learn.microsoft.com/en-us/windows/win32/menurc/about-icons ; https://developer.android.com/develop/ui/compose/system/icon_design_adaptive
 
-Audyt przyrostu WN-115:
+WN-115 incremental audit:
 
-| Komponent | Wersja | Licencja i źródło | Dostarczany w | Ocena |
+| Component | Version | License and source | Shipped in | Assessment |
 | --- | --- | --- | --- | --- |
-| Orbita pełna/mała, padding i regenerowane zasoby | WN-115 | MIT projektu, `LICENSE`; własne ścieżki `orbita.svg`, `orbita-small.svg` | APK i ikony aplikacji Windows/ICO | Bez nowych materiałów osób trzecich; istniejące noty zachowane. |
+| Orbita full/small, padding and regenerated resources | WN-115 | the project's MIT, `LICENSE`; own paths `orbita.svg`, `orbita-small.svg` | APK and the Windows app icons/ICO | No new third-party material; existing notices kept. |
 
 CCS/1
-DEP:audyt dotyczy zmienionych ikon; brak nowych paczek/runtime/fontów. Playwright/Chromium pozostaje wyłącznie narzędziem budowania, bez dostarczania go użytkownikom aplikacji. Brak nowych not licencji do generowania.
+DEP:the audit covers the changed icons; no new packages/runtimes/fonts. Playwright/Chromium remain only a build tool, not shipped to the app's users. No new license notices to generate.

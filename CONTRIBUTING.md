@@ -1,70 +1,80 @@
-# Współpraca
+# Contributing
 
-Ogranicz zmianę do zakresu zadania. Opisz jej cel i sposób sprawdzenia.
-Nowy kod i dokumentacja projektu są udostępniane na licencji MIT.
+Keep a change to the scope of its task. Describe its purpose and how to check it.
+New code and project documentation are released under the MIT license.
+
+## Language (WN-164)
+
+Everything developers read is in English: documentation (`*.md`), code comments
+and doc comments, test names and test/CI messages, commit messages, pull requests
+and release notes. The app's user interface is translated (Polish and English,
+WN-63): its texts live in the localization resources (`apps/android/**/values*/strings.xml`,
+`apps/windows/frontend/locales/`, `apps/windows/src-tauri/locales/`), and UI tests
+may check the Polish texts the app shows.
 
 ## Rust
 
-Używaj stabilnego toolchaina Rust oraz formatowania rustfmt.
-Przed przekazaniem zmiany do recenzji uruchom z katalogu głównego:
+The Rust toolchain is pinned in `rust-toolchain.toml` (WN-163), so local builds and
+CI use the same compiler and lints; rustup installs it on first use. Moving to a
+newer Rust is a change of its own: update the file and fix what its clippy finds.
+Before handing a change in for review, run from the repository root:
 
 ```sh
 cargo fmt --all -- --check
 cargo build --locked
 ```
 
-Gdy dodajesz zachowanie, dodaj odpowiednie testy i uruchom `cargo test --locked`.
-Aktualizuj `Cargo.lock` przy zmianach zależności i dołącz go do commita.
+When you add behaviour, add the matching tests and run `cargo test --locked`.
+Update `Cargo.lock` when dependencies change and include it in the commit.
 
-## Aplikacje
+## Apps
 
-Instrukcje klienta Windows: [apps/windows/README.md](apps/windows/README.md).
-Instrukcje klienta Android: [apps/android/README.md](apps/android/README.md).
+Windows client: [apps/windows/README.md](apps/windows/README.md).
+Android client: [apps/android/README.md](apps/android/README.md).
 
-## Wersje i tagi (WN-114)
+## Versions and tags (WN-114)
 
-Jedna wersja `X.Y.Z` dla całego repozytorium. Tag zawsze nazywa wersję,
-nigdy kartę: numer karty jest w treści commita, nie w tagu.
+One `X.Y.Z` version for the whole repository. A tag always names a version,
+never a card: the card number is in the commit message, not in the tag.
 
-- Karta z nową funkcją lub zmianą zachowania kończy się jednym commitem
-  na `master` o tytule `WN-N (vX.Y.Z): opis`. Ten commit podnosi wersję
-  (zwykle `Y`; poprawka bez nowej funkcji może podnieść `Z`) i dostaje
-  lokalny tag `vX.Y.Z` (bez wypychania, dopóki zdalne repozytorium nie jest
-  publiczne).
-- Commity bez zmiany wersji (testy, porządki, poprawki wewnątrz karty)
-  nie dostają tagu i nie mają wersji w tytule.
-- Karta nie wskazuje numeru wersji ani tagu z góry: wersję wybiera ten,
-  kto robi commit, jako kolejną po bieżącej na `master`. Prośba w karcie
-  o konkretny tag jest nieaktualna, jeśli wersja już go przekroczyła.
-- Wersję zmieniaj naraz we wszystkich miejscach: `Cargo.toml`
-  (`workspace.package`) i `Cargo.lock`, `apps/android/app/build.gradle.kts`
-  (`versionName` oraz `versionCode` + 1), `apps/android/wind-core/build.gradle.kts`,
-  oba `tauri.conf.json` w `apps/windows/src-tauri`, `relay/package.json`
-  i `relay/package-lock.json`.
-- Przed commitem i przed tagiem uruchom `node scripts/check-version.cjs`
-  (wydanie: `--tag vX.Y.Z`). Sprawdza zgodność wszystkich miejsc, tag na
-  `HEAD` i wzrost `versionCode`; uruchamia go też Core CI. Dopóki tagi są
-  tylko lokalne, CI (płytki checkout bez tagów) sprawdza jedynie zgodność
-  plików i pisze to wprost („No previous v* tag here…”); tag i `versionCode`
-  sprawdza lokalne uruchomienie przed commitem.
-- Istniejących tagów nie przepisuje się i wersji się nie obniża. Wyjątek
-  sprzed tej zasady: `v0.32.0` wskazuje commit z wersją 0.40.0 (WN-32).
+- A card with a new feature or a change of behaviour ends with one commit
+  on `master` titled `WN-N (vX.Y.Z): description`. That commit raises the
+  version (usually `Y`; a fix without a new feature may raise `Z`) and gets
+  the tag `vX.Y.Z`, pushed together with `master`.
+- Commits that don't change the version (tests, cleanups, fixes within a card)
+  get no tag and have no version in their title.
+- A card doesn't name a version or tag in advance: whoever commits picks the
+  next version after the current one on `master`. A card asking for a specific
+  tag is out of date if the version has already passed it.
+- Change the version in all places at once: `Cargo.toml`
+  (`workspace.package`) and `Cargo.lock`, `apps/android/app/build.gradle.kts`
+  (`versionName` and `versionCode` + 1), `apps/android/wind-core/build.gradle.kts`,
+  both `tauri.conf.json` under `apps/windows/src-tauri`, `relay/package.json`
+  and `relay/package-lock.json`.
+- Before the commit and before the tag, run `node scripts/check-version.cjs`
+  (for a release: `--tag vX.Y.Z`). It checks that all places agree, the tag on
+  `HEAD` and that `versionCode` went up; Core CI runs it too. CI checks out
+  shallowly without tags, so there it checks only that the files agree and says
+  so ("No previous v* tag here…"); the tag and `versionCode` are checked by the
+  local run before the commit.
+- Existing tags are never rewritten and versions never go down. An exception
+  from before this rule: `v0.32.0` points at a commit with version 0.40.0 (WN-32).
 
-## Praca agentów: miejsce na dysku (WN-95)
+## Agents' work: disk space (WN-95)
 
-Każdy slot i każda kopia recenzji buduje od zera, więc foldery robocze
-szybko rosną. Zasady:
+Every slot and every review copy builds from scratch, so working folders grow
+quickly. Rules:
 
-- Po zakończonej karcie (Done) i po każdej recenzji uruchom sprzątanie:
-  `pwsh scripts/clean-build.ps1` (podgląd: `-WhatIf`, cały `target`:
-  `-Full`). Skrypt usuwa tylko wyniki budowania: pamięć przyrostową Cargo,
-  paczki MSI starszych wersji, buildy Gradle i `target` fuzzingu. Kodu ani
-  plików śledzonych przez Git nie rusza; działa też na czystym slocie.
-- Nie trzymaj kopii MSI ani APK z poprzednich wersji (także poza `target`).
-- Pełne logi testów i budowania trzymaj w `%TEMP%` (folder roboczy agenta),
-  tylko do końca karty, nigdy w repozytorium.
-- Android: buildy debug i testy kompilują jedno ABI, domyślnie `x86_64`
-  (emulator); na telefon `-PwindAbi=arm64-v8a`. Release i CI budują oba.
-- Profil `dev`/`test` Cargo ma tylko tablice linii dla naszych crate'ów i
-  bez danych debug dla zależności; do debuggera z pełnymi danymi ustaw
-  na chwilę `CARGO_PROFILE_DEV_DEBUG=true`.
+- After a finished card (Done) and after every review, run the cleanup:
+  `pwsh scripts/clean-build.ps1` (preview: `-WhatIf`, the whole `target`:
+  `-Full`). The script removes build outputs only: Cargo's incremental cache,
+  MSI packages of older versions, Gradle builds and the fuzzing `target`. It
+  never touches code or files tracked by Git, and it works on a clean slot too.
+- Don't keep copies of MSI or APK files from previous versions (also outside `target`).
+- Keep full test and build logs in `%TEMP%` (the agent's working folder),
+  only until the card ends, never in the repository.
+- Android: debug builds and tests compile one ABI, `x86_64` by default
+  (emulator); for a phone use `-PwindAbi=arm64-v8a`. Release and CI build both.
+- Cargo's `dev`/`test` profile has line tables only for our crates and no
+  debug info for dependencies; for a debugger with full info set
+  `CARGO_PROFILE_DEV_DEBUG=true` for a while.

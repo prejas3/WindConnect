@@ -1,68 +1,68 @@
 # windctl
 
-CLI diagnostyczne do testów `wind-core`: tożsamość, mDNS, połączenie QUIC,
-surowe wiadomości i pomiar RTT między węzłami. Wymaga jawnego wskazania pliku
-tożsamości i zweryfikowanych kluczy publicznych peerów.
+A diagnostic CLI for testing `wind-core`: identity, mDNS, the QUIC connection,
+raw messages and RTT measurement between nodes. It requires an explicit identity
+file and verified public keys of the peers.
 
-Z katalogu głównego: `cargo build --locked -p windctl`.
-Program: `target/debug/windctl.exe` na Windows albo `target/debug/windctl`
-na Linuxie/macOS. Można też użyć `cargo run --locked -p windctl -- <argumenty>`.
-`windctl --help`, `windctl ping --help` i `windctl --version` nie tworzą klucza.
+From the repository root: `cargo build --locked -p windctl`.
+The program: `target/debug/windctl.exe` on Windows or `target/debug/windctl`
+on Linux/macOS. You can also use `cargo run --locked -p windctl -- <arguments>`.
+`windctl --help`, `windctl ping --help` and `windctl --version` don't create a key.
 
-## Dwa komputery
+## Two computers
 
-Na każdym węźle wybierz osobny plik w prywatnym katalogu użytkownika.
-Na Windows klucz jest szyfrowany przez DPAPI dla bieżącego użytkownika;
-na Unixie `FileKeyStore` zapisuje PKCS#8 z uprawnieniami 0600. Istniejący
-nieczytelny klucz oznacza błąd — nie jest zastępowany. Nie używaj jednego pliku
-lub kopii klucza na obu węzłach.
+On each node choose a separate file in the user's private folder.
+On Windows the key is encrypted with DPAPI for the current user;
+on Unix `FileKeyStore` writes PKCS#8 with permissions 0600. An existing
+unreadable key is an error: it is never replaced. Don't use one file
+or a copy of a key on both nodes.
 
-1. Na A: `windctl --identity <plik_A> identity`.
-2. Na B: `windctl --identity <plik_B> identity`.
-3. Wymień i zweryfikuj `public_key` (64 znaki hex) innym kanałem.
-   `fingerprint` to SHA-256 SPKI, a nie klucz publiczny; nie podawaj go jako
-   `--peer-key`. Żadne ogłoszenie mDNS nie udziela zaufania.
-4. Na B uruchom:
-
-   ```text
-   windctl --identity <plik_B> --name PC-B serve --bind 0.0.0.0:47820 --trust <public_key_A> --duration 300 --advertise --echo
-   ```
-
-5. Na A, podając rzeczywisty adres LAN B:
+1. On A: `windctl --identity <file_A> identity`.
+2. On B: `windctl --identity <file_B> identity`.
+3. Exchange and verify the `public_key` (64 hex characters) over another channel.
+   `fingerprint` is the SHA-256 of the SPKI, not the public key; don't pass it as
+   `--peer-key`. No mDNS announcement grants trust.
+4. On B run:
 
    ```text
-   windctl --identity <plik_A> discover --duration 5
-   windctl --identity <plik_A> connect --address 192.168.1.20:47820 --peer-key <public_key_B>
-   windctl --identity <plik_A> ping --address 192.168.1.20:47820 --peer-key <public_key_B> --count 100 --warmup 5 --interval-ms 50
+   windctl --identity <file_B> --name PC-B serve --bind 0.0.0.0:47820 --trust <public_key_A> --duration 300 --advertise --echo
    ```
 
-`serve` wypisuje rzeczywisty port (`--bind ...:0` wybiera wolny), akceptuje
-wyłącznie klucze z powtarzalnego `--trust`, odpowiada na Ping/Pong i ogłasza
-kanały diagnostyczne. Trwa domyślnie 60 s, maksymalnie 86400 s; Ctrl+C kończy
-wcześniej. Obsługuje do 16 równoległych sesji. Na komputerze B zezwól w
-zaporze na testowy port UDP; mDNS wymaga UDP 5353 i sieci przepuszczającej
-multicast. Program nie zmienia reguł zapory.
+5. On A, with B's actual LAN address:
 
-Fallback broadcast działa na UDP 47821. Aby sprawdzić sieć bez multicastu,
-uruchom B z `serve --advertise --broadcast-only` (pozostałe argumenty jak wyżej),
-a A z `discover --duration 5 --broadcast-only`. Ten tryb w ogóle nie uruchamia
-mDNS; znaleziony wpis `broadcast-<odcisk>` podaje IP nadawcy i jego rzeczywisty
-port QUIC. Sprawdź potem `connect` lub `ping` ze zweryfikowanym kluczem B.
-Nieodświeżone wpisy broadcast wygasają po 8 s. Fallback dotyczy lokalnego IPv4;
-odkrywanie IPv6 nadal używa mDNS.
+   ```text
+   windctl --identity <file_A> discover --duration 5
+   windctl --identity <file_A> connect --address 192.168.1.20:47820 --peer-key <public_key_B>
+   windctl --identity <file_A> ping --address 192.168.1.20:47820 --peer-key <public_key_B> --count 100 --warmup 5 --interval-ms 50
+   ```
 
-IPv6: `serve --bind [::]:47820`, po stronie klienta np.
-`--address [2001:db8::20]:47820`. Domyślny serwer `0.0.0.0` jest IPv4;
-wybór rodziny adresów nasłuchu jest jawny.
+`serve` prints the actual port (`--bind ...:0` picks a free one), accepts
+only the keys from the repeatable `--trust`, answers Ping/Pong and announces
+diagnostic channels. It runs 60 s by default, 86400 s at most; Ctrl+C ends it
+earlier. It handles up to 16 parallel sessions. On computer B allow the test UDP
+port in the firewall; mDNS needs UDP 5353 and a network that lets multicast
+through. The program doesn't change firewall rules.
 
-`discover` używa modułu mDNS rdzenia, wypisuje zmiany `DISCOVERED` i `REMOVED`
-z odciskiem oraz adresami i kończy po zadanym czasie. Ogłasza także własny
-tymczasowy endpoint z tym samym kluczem; własne wyniki są pomijane. Do
-połączenia nadal wymagany jest zweryfikowany klucz publiczny.
+The broadcast fallback works on UDP 47821. To check a network without multicast,
+run B with `serve --advertise --broadcast-only` (other arguments as above)
+and A with `discover --duration 5 --broadcast-only`. This mode doesn't start
+mDNS at all; a found `broadcast-<fingerprint>` entry gives the sender's IP and its
+actual QUIC port. Then check `connect` or `ping` with B's verified key.
+Broadcast entries that aren't refreshed expire after 8 s. The fallback covers local IPv4;
+IPv6 discovery still uses mDNS.
 
-## Pomiar latencji
+IPv6: `serve --bind [::]:47820`, on the client side e.g.
+`--address [2001:db8::20]:47820`. The default server `0.0.0.0` is IPv4;
+the listening address family is chosen explicitly.
 
-Przykładowy format wyniku (wartości zależą od sieci):
+`discover` uses the core's mDNS module, prints `DISCOVERED` and `REMOVED` changes
+with the fingerprint and addresses, and ends after the given time. It also announces
+its own temporary endpoint with the same key; its own results are skipped. A
+connection still needs a verified public key.
+
+## Latency measurement
+
+Example output (values depend on the network):
 
 ```text
 PING seq=1 rtt_ms=1.234
@@ -70,87 +70,87 @@ PING seq=1 rtt_ms=1.234
 SUMMARY sent=100 received=100 lost=0 warmup=5 p50_ms=1.234 p95_ms=2.345 min_ms=0.987 max_ms=3.456
 ```
 
-Mierzony jest RTT kontrolnego Ping/Pong po mTLS i wymianie Hello/HelloAck,
-bez czasu zestawiania sesji. Rozgrzewka nie wchodzi do próbek. Każdy Ping
-rdzenia ma limit 5 s. Nieudane próby wchodzą do `lost`, a nie do percentyli.
-Najbliższa ranga: po posortowaniu wyników percentyl P to próbka o indeksie
-`ceil(P*N/100)` (liczonym od 1). Jeden pomiar daje identyczne p50 i p95.
-Program zwraca błąd, jeśli nie otrzyma żadnej poprawnej próbki; częściowa
-utrata pozostaje widoczna w podsumowaniu. Liczba pomiarów: 1–10000.
-`--timeout-ms` ogranicza zestawienie sesji (domyślnie 10000 ms) oraz oczekiwanie
-na echo, nie zmienia wewnętrznego limitu Ping/Pong.
+What is measured is the RTT of the control Ping/Pong after mTLS and the Hello/HelloAck
+exchange, without the session setup time. The warmup isn't part of the samples. Each
+core Ping has a 5 s limit. Failed attempts count as `lost`, not in the percentiles.
+Nearest rank: after sorting the results, percentile P is the sample at index
+`ceil(P*N/100)` (counted from 1). A single measurement gives identical p50 and p95.
+The program returns an error if it gets no valid sample; partial
+loss stays visible in the summary. Number of measurements: 1–10000.
+`--timeout-ms` limits the session setup (10000 ms by default) and waiting
+for the echo; it doesn't change the internal Ping/Pong limit.
 
-`connect` kończy się sukcesem po zweryfikowaniu obu kluczy, Hello/HelloAck
-i jednym udanym Ping/Pong. Błędne argumenty, odmowa TLS, błąd klucza lub
-brak wymaganej odpowiedzi oznaczają niezerowy kod wyjścia.
+`connect` succeeds after both keys are verified, Hello/HelloAck
+and one successful Ping/Pong. Wrong arguments, a TLS refusal, a key error or
+a missing required answer give a non-zero exit code.
 
-## Wiadomości diagnostyczne
+## Diagnostic messages
 
-Do węzła `windctl serve --echo`:
+To a `windctl serve --echo` node:
 
 ```text
-windctl --identity <plik_A> send --address 192.168.1.20:47820 --peer-key <public_key_B> --channel notify --message-type 65000 --text "test węzła A" --expect-echo
-windctl --identity <plik_A> send --address 192.168.1.20:47820 --peer-key <public_key_B> --channel media --message-type 65001 --body-hex a100182a --expect-echo
+windctl --identity <file_A> send --address 192.168.1.20:47820 --peer-key <public_key_B> --channel notify --message-type 65000 --text "test from node A" --expect-echo
+windctl --identity <file_A> send --address 192.168.1.20:47820 --peer-key <public_key_B> --channel media --message-type 65001 --body-hex a100182a --expect-echo
 ```
 
-`--text` koduje ciało `{0: tekst}`. `--body-hex` przyjmuje samo ciało wiadomości
-jako deterministyczną mapę CBOR z naturalnymi kluczami (`a100182a` = `{0: 42}`).
-Kodowanie, ramkowanie, limity i wysyłanie strumieniem należą do rdzenia.
-Kanały: `clipboard`, `notify`, `media`. To narzędzie surowych testów;
-typy 65000/65001 nie są schematem funkcji schowka, powiadomień ani multimediów
-i nie są dodawane do normatywnego protokołu.
+`--text` encodes the body `{0: text}`. `--body-hex` takes the message body alone
+as a deterministic CBOR map with natural keys (`a100182a` = `{0: 42}`).
+Encoding, framing, limits and sending over a stream belong to the core.
+Channels: `clipboard`, `notify`, `media`. This is a raw test tool;
+types 65000/65001 are not the schema of the clipboard, notification or media features
+and are not added to the normative protocol.
 
-`--expect-echo` potwierdza odebranie identycznej wiadomości zwrotnej, łącznie
-z kanałem i typem. Bez tej opcji `SENT ... echo_verified=false` potwierdza
-lokalne wysłanie i żywą sesję kontrolną, nie wykonanie funkcji na odbiorcy.
-Serwer wypisuje `RECEIVED` z ciałem CBOR w hex; bez `--echo` nie odsyła go.
+`--expect-echo` confirms receiving the identical message back, including
+the channel and type. Without it `SENT ... echo_verified=false` confirms
+local sending and a live control session, not that the receiver ran a feature.
+The server prints `RECEIVED` with the CBOR body in hex; without `--echo` it doesn't send it back.
 
-## Przekaźnik (WN-60)
+## Relay (WN-60)
 
-Przekaźnik (PROTOCOL.md §13) działa tylko po podaniu `--relay URL`
-(`wss://…`; `ws://` tylko do adresu loopback lub prywatnego, np. lokalnego
+The relay (PROTOCOL.md §13) is used only when `--relay URL` is given
+(`wss://…`; `ws://` only to a loopback or private address, e.g. a local
 `wrangler dev`):
 
 ```text
-windctl --identity <plik_PC> serve --trust <public_key_telefonu> --relay wss://windconnect-relay.<subdomena>.workers.dev
-windctl --identity <plik_A> send --address 192.168.1.20:47820 --peer-key <public_key_PC> --relay wss://windconnect-relay.<subdomena>.workers.dev --text "schowek"
+windctl --identity <file_PC> serve --trust <public_key_phone> --relay wss://windconnect-relay.<subdomain>.workers.dev
+windctl --identity <file_A> send --address 192.168.1.20:47820 --peer-key <public_key_PC> --relay wss://windconnect-relay.<subdomain>.workers.dev --text "clipboard"
 ```
 
-`serve --relay` czeka na przekaźniku na każde urządzenie z `--trust` i
-łączy się ponownie z narastającym opóźnieniem, gdy połączenie się kończy
-(`RELAY waiting peer=…`). Dla `connect`, `ping` i `send` opcja `--route`
-przyjmuje `auto` (domyślnie: adres przez 2 s, potem przekaźnik), `lan` albo
-`relay`. Wypisywana linia `CONNECTED … route=lan|relay` mówi, którą drogą
-poszła sesja.
+`serve --relay` waits on the relay for every device from `--trust` and
+reconnects with a growing delay when the connection ends
+(`RELAY waiting peer=…`). For `connect`, `ping` and `send` the `--route` option
+takes `auto` (the default: the address for 2 s, then the relay), `lan` or
+`relay`. The printed line `CONNECTED … route=lan|relay` says which way
+the session went.
 
-## Akcje zdalne (WN-54)
+## Remote actions (WN-54)
 
-`action` prosi drugą stronę o akcję z jej listy dozwolonych (PROTOCOL.md
-§9.2): samym identyfikatorem, bez poleceń. `serve --dry-run-actions` przyjmuje
-akcje wbudowane i wypisuje `ACTION_REQUEST`, niczego nie wykonując.
+`action` asks the other side for an action from its allowed list (PROTOCOL.md
+§9.2): by identifier alone, without commands. `serve --dry-run-actions` accepts
+built-in actions and prints `ACTION_REQUEST` without running anything.
 
 ```text
-windctl --identity <plik_B> serve --bind 0.0.0.0:47820 --trust <public_key_A> --dry-run-actions
-windctl --identity <plik_A> action --address 192.168.1.20:47820 --peer-key <public_key_B> --list
-windctl --identity <plik_A> action --address 192.168.1.20:47820 --peer-key <public_key_B> lock
-windctl --identity <plik_A> action --address 192.168.1.20:47820 --peer-key <public_key_B> open-url --url https://example.com/
+windctl --identity <file_B> serve --bind 0.0.0.0:47820 --trust <public_key_A> --dry-run-actions
+windctl --identity <file_A> action --address 192.168.1.20:47820 --peer-key <public_key_B> --list
+windctl --identity <file_A> action --address 192.168.1.20:47820 --peer-key <public_key_B> lock
+windctl --identity <file_A> action --address 192.168.1.20:47820 --peer-key <public_key_B> open-url --url https://example.com/
 ```
 
-Wynik: `ACTION id=lock status=Done` (albo `Refused`, `BadArgument`,
-`Failed`, `Busy`). Ten sam `action` wobec aplikacji WindConnect na PC
-naprawdę blokuje ekran, usypia komputer albo otwiera link, jeśli PC ma
-klucz `windctl` przypięty jako sparowany telefon i akcja jest włączona.
+The result: `ACTION id=lock status=Done` (or `Refused`, `BadArgument`,
+`Failed`, `Busy`). The same `action` against the WindConnect app on a PC
+really locks the screen, puts the computer to sleep or opens the link, if the PC has
+the `windctl` key pinned as a paired phone and the action is enabled.
 
-## Testy
+## Tests
 
 ```text
 cargo test --locked -p windctl
 cargo test --locked -p windctl --test cli -- --ignored --nocapture
 ```
 
-Pierwsze polecenie sprawdza percentyle i parser, uruchamia dwa odrębne procesy
-z osobnymi kluczami oraz testuje sesję, Ping/Pong, oba formaty wiadomości,
-echo i odmowę obcego klucza. Drugie wymaga działającego multicastu i sprawdza
-odkrywanie osobnego procesu przez mDNS. Każdy proces testowy jest ograniczony
-czasowo i sprzątany po teście. Te testy lokalne nie zastępują pomiaru na dwóch
-fizycznych komputerach w LAN według procedury powyżej.
+The first command checks the percentiles and the parser, starts two separate processes
+with separate keys, and tests the session, Ping/Pong, both message formats,
+the echo and the refusal of an unknown key. The second needs working multicast and checks
+discovering a separate process over mDNS. Every test process is time-limited
+and cleaned up after the test. These local tests don't replace a measurement on two
+physical computers on a LAN following the procedure above.

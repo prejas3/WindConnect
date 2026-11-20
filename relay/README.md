@@ -1,86 +1,86 @@
-# Przekaźnik WindConnect (WN-59)
+# WindConnect relay (WN-59)
 
-Cloudflare Worker z Durable Object, który łączy dwa sparowane urządzenia w
-różnych sieciach. Przenosi tylko pakiety QUIC, już zaszyfrowane end-to-end
-TLS 1.3 z przypiętymi kluczami. Przekaźnik nie ma żadnego klucza sesji ani
-urządzenia, więc nie może odczytać treści. Protokół opisuje
+A Cloudflare Worker with a Durable Object that connects two paired devices on
+different networks. It carries only QUIC packets, already encrypted end to end with
+TLS 1.3 and pinned keys. The relay has no session or device key,
+so it can't read the content. The protocol is described in
 [PROTOCOL.md §13](../PROTOCOL.md).
 
-Opcja jest wyłączona domyślnie (decyzja D3): aplikacje łączą się z
-przekaźnikiem dopiero po włączeniu go w ustawieniach (WC-60).
+The option is off by default (decision D3): the apps connect to the
+relay only after it is turned on in the settings (WC-60).
 
-## Co robi serwer
+## What the server does
 
-- Rendezvous po kluczach publicznych: Durable Object na każdą parę,
-  nazwany `SHA-256("wc-relay-v1 pair" ‖ niższy klucz ‖ wyższy klucz)`. Oba
-  urządzenia muszą wskazać siebie nawzajem.
-- Każde urządzenie podpisuje losowe wyzwanie swoim kluczem Ed25519, więc
-  nikt nie zajmie cudzego miejsca w parze.
-- Przekazuje ramki binarne bez zmian i bez zapisu. Brak peera oznacza, że
-  ramka przepada, jak w UDP.
-- Limity:
+- Rendezvous by public keys: a Durable Object for each pair,
+  named `SHA-256("wc-relay-v1 pair" ‖ lower key ‖ higher key)`. Both
+  devices must name each other.
+- Each device signs a random challenge with its Ed25519 key, so
+  nobody can take someone else's place in a pair.
+- It forwards binary frames unchanged and without storing them. Without a peer
+  a frame is dropped, as in UDP.
+- Limits:
 
-  | limit | wartość |
+  | limit | value |
   |---|---|
-  | ramka | 2048 B |
-  | przepustowość na urządzenie | 1 MiB/s, chwilowo 4 MiB (zmienne w `wrangler.jsonc`) |
-  | gniazda przed uwierzytelnieniem | 4 na parę; nowe wypiera najstarsze (4004) |
-  | uwierzytelnienie | 10 s |
-  | nowe połączenia | 30 na minutę z jednego IP |
+  | frame | 2048 B |
+  | throughput per device | 1 MiB/s, bursts up to 4 MiB (variables in `wrangler.jsonc`) |
+  | sockets before authentication | 4 per pair; a new one displaces the oldest (4004) |
+  | authentication | 10 s |
+  | new connections | 30 per minute from one IP |
 
-- WebSocket Hibernation: czekające urządzenie nie zużywa czasu CPU, a
-  `{"t":"ping"}` dostaje odpowiedź bez budzenia obiektu.
-- Workers Logs są wyłączone: adres żądania niesie oba klucze, a log dodałby
-  IP. Operator nadal może widzieć IP, klucze, czas i objętość ruchu, ale nie
-  treść (PROTOCOL.md §13.4).
+- WebSocket Hibernation: a waiting device uses no CPU time, and
+  `{"t":"ping"}` gets an answer without waking the object.
+- Workers Logs are off: the request address carries both keys, and a log would add
+  the IP. The operator can still see IPs, keys, times and traffic volume, but not
+  the content (PROTOCOL.md §13.4).
 
-## Lokalnie
+## Locally
 
 ```powershell
 cd relay
 npm ci
-npm test            # testy w środowisku Workers (workerd): zasady §13 i wektory z wind-core
+npm test            # tests in the Workers environment (workerd): the §13 rules and the vectors from wind-core
 npm run typecheck
-npm run dev         # wrangler dev na http://127.0.0.1:8787
+npm run dev         # wrangler dev on http://127.0.0.1:8787
 ```
 
-Dowód, że przekaźnik widzi tylko szyfrogram: przy działającym
-`npm run dev`, w katalogu głównym repozytorium uruchom
+Proof that the relay sees only ciphertext: with
+`npm run dev` running, run from the repository root
 
 ```powershell
 $env:RELAY_URL = "ws://127.0.0.1:8787"
 cargo test -p wind-core --test relay -- --ignored --nocapture
 ```
 
-Test zestawia prawdziwą sesję QUIC przez przekaźnik i wysyła wiadomość
-schowka. Każdą ramkę wysłaną do przekaźnika w obu kierunkach sprawdza pod
-kątem tekstu wiadomości, jego fragmentu i nazw urządzeń. Żadna ich nie
-zawiera, a druga strona odczytuje wiadomość. Pomiar z 2026-11-10 (Windows,
-`wrangler dev`): 27–31 ramek, ok. 15 KB, RTT 6–9 ms.
+The test sets up a real QUIC session through the relay and sends a clipboard
+message. It checks every frame sent to the relay in both directions for
+the message text, a fragment of it and the device names. None of them
+contains them, and the other side reads the message. A measurement from 2026-11-10 (Windows,
+`wrangler dev`): 27–31 frames, about 15 KB, RTT 6–9 ms.
 
-Klient (WN-60): `cargo test -p wind-core --test relay -- --ignored`
-sprawdza też `RelayLink`, a `cargo test -p wind-ffi --test bridge -- --ignored`
-sprawdza przejście z LAN na przekaźnik i powrót. Z `windctl`:
+The client (WN-60): `cargo test -p wind-core --test relay -- --ignored`
+also checks `RelayLink`, and `cargo test -p wind-ffi --test bridge -- --ignored`
+checks the switch from the LAN to the relay and back. With `windctl`:
 
 ```powershell
-windctl --identity pc.key serve --trust <klucz telefonu> --relay ws://127.0.0.1:8787
-windctl --identity phone.key send --address 192.0.2.1:47820 --peer-key <klucz PC> --relay ws://127.0.0.1:8787 --text "schowek"
+windctl --identity pc.key serve --trust <phone key> --relay ws://127.0.0.1:8787
+windctl --identity phone.key send --address 192.0.2.1:47820 --peer-key <PC key> --relay ws://127.0.0.1:8787 --text "clipboard"
 ```
 
-Gdy adres nie odpowiada, druga komenda wypisze `route=relay`, a pierwsza
+When the address doesn't answer, the second command prints `route=relay`, and the first
 `RECEIVED channel=Clipboard`.
 
-## Wdrożenie (tylko właściciel)
+## Deployment (owner only)
 
-Agenci nie wdrażają przekaźnika. Szymon uruchamia w Claude Code, w katalogu
-głównym repozytorium:
+Agents don't deploy the relay. The owner runs, in Claude Code, from the repository
+root:
 
 ```text
 ! cd relay && npm ci && npx wrangler login && npx wrangler deploy
 ```
 
-`wrangler login` jest potrzebny tylko przy pierwszym wdrożeniu na danym
-komputerze. Po wdrożeniu adres to
-`wss://windconnect-relay.<subdomena>.workers.dev/v1/relay`; podaje się go w
-ustawieniach aplikacji (WC-60). Usunięcie przekaźnika:
+`wrangler login` is needed only for the first deployment on a given
+computer. After deployment the address is
+`wss://windconnect-relay.<subdomain>.workers.dev/v1/relay`; it goes into
+the app's settings (WC-60). Removing the relay:
 `! cd relay && npx wrangler delete`.
