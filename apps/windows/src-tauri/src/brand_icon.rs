@@ -169,12 +169,18 @@ mod tests {
             for (index, size) in SIZES.into_iter().enumerate() {
                 for state in table {
                     assert_eq!(state[index].len(), (size * size * 4) as usize);
-                    assert!(state[index].chunks_exact(4).any(|p| p[3] == 0));
-                    assert!(state[index].chunks_exact(4).any(|p| p[3] > 0 && p[3] < 255));
+                    assert!(state[index].as_chunks::<4>().0.iter().any(|p| p[3] == 0));
+                    assert!(state[index]
+                        .as_chunks::<4>()
+                        .0
+                        .iter()
+                        .any(|p| p[3] > 0 && p[3] < 255));
                 }
                 let alpha = |state: usize| {
                     table[state][index]
-                        .chunks_exact(4)
+                        .as_chunks::<4>()
+                        .0
+                        .iter()
                         .map(|p| p[3])
                         .collect::<Vec<_>>()
                 };

@@ -87,7 +87,8 @@ const server = http.createServer(async (request, response) => {
     await page.screenshot({ path: path.join(artifacts, 'forced-colors.png'), fullPage: true });
     // Native release reply wins over localhost and the query parameter.
     const release = await browser.newPage({ locale: 'pl-PL' });
-    await release.addInitScript(() => { window.__TAURI__ = { core: { invoke: async command => command === 'ui_dev_mode' ? false : command === 'core_version' ? 'release-test' : false } }; });
+    // WN-163: the app's modules also subscribe to events (event.listen), as in Tauri; without it the page stopped early.
+    await release.addInitScript(() => { window.__TAURI__ = { core: { invoke: async command => command === 'ui_dev_mode' ? false : command === 'core_version' ? 'release-test' : false }, event: { listen: async () => () => {} } }; });
     await release.goto(url);
     await release.waitForFunction(() => document.querySelector('#status').textContent.includes('release-test'));
     assert.equal(await release.locator('#gallery-toggle').isHidden(), true);
@@ -96,7 +97,7 @@ const server = http.createServer(async (request, response) => {
     assert.equal(await release.locator('#home').isVisible(), true);
     assert.deepEqual(errors, []);
     const menu = await browser.newPage({ locale: 'pl-PL', viewport: { width: 280, height: 250 } });
-    await menu.addInitScript(() => { window.menuCalls = []; window.__TAURI__ = { core: { invoke: async (command,args) => { window.menuCalls.push([command,args]); if (command === 'tray_snapshot') return { phase:'searching' }; if (command === 'autostart_enabled') return false; if (command === 'set_autostart') return args.enabled; } } }; });
+    await menu.addInitScript(() => { window.menuCalls = []; window.__TAURI__ = { core: { invoke: async (command,args) => { window.menuCalls.push([command,args]); if (command === 'tray_snapshot') return { phase:'searching' }; if (command === 'autostart_enabled') return false; if (command === 'set_autostart') return args.enabled; } }, event: { listen: async () => () => {} } }; });
     await menu.goto(url.replace('/?gallery','/tray-menu.html'));
     await menu.waitForFunction(() => document.querySelector('#tray-state').textContent === 'Szukam urządzenia');
     await menu.locator('[data-action="open"]').focus(); await menu.keyboard.press('ArrowDown');

@@ -43,11 +43,15 @@ pub fn decode_png(png: &[u8]) -> Result<Rgba, ImageError> {
     let pixels = match frame.color_type {
         png::ColorType::Rgba => data.to_vec(),
         png::ColorType::Rgb => data
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
+            .iter()
             .flat_map(|p| [p[0], p[1], p[2], 255])
             .collect(),
         png::ColorType::GrayscaleAlpha => data
-            .chunks_exact(2)
+            .as_chunks::<2>()
+            .0
+            .iter()
             .flat_map(|p| [p[0], p[0], p[0], p[1]])
             .collect(),
         png::ColorType::Grayscale => data.iter().flat_map(|g| [*g, *g, *g, 255]).collect(),
@@ -63,7 +67,7 @@ pub fn decode_png(png: &[u8]) -> Result<Rgba, ImageError> {
 /// Encodes RGBA as PNG (RGB when fully opaque: smaller). Fast compression:
 /// a screenshot has to be on the phone in well under half a second.
 pub fn encode_png(image: &Rgba) -> Vec<u8> {
-    let opaque = image.pixels.chunks_exact(4).all(|p| p[3] == 255);
+    let opaque = image.pixels.as_chunks::<4>().0.iter().all(|p| p[3] == 255);
     let mut out = Vec::new();
     {
         let mut encoder = png::Encoder::new(&mut out, image.width, image.height);
@@ -73,7 +77,9 @@ pub fn encode_png(image: &Rgba) -> Vec<u8> {
             encoder.set_color(png::ColorType::Rgb);
             let rgb: Vec<u8> = image
                 .pixels
-                .chunks_exact(4)
+                .as_chunks::<4>()
+                .0
+                .iter()
                 .flat_map(|p| [p[0], p[1], p[2]])
                 .collect();
             let mut writer = encoder.write_header().expect("in-memory PNG header");
@@ -264,7 +270,11 @@ pub fn decode_dib(dib: &[u8]) -> Result<Rgba, ImageError> {
         }
     }
     if !any_alpha {
-        pixels.chunks_exact_mut(4).for_each(|p| p[3] = 255);
+        pixels
+            .as_chunks_mut::<4>()
+            .0
+            .iter_mut()
+            .for_each(|p| p[3] = 255);
     }
     Ok(Rgba {
         width: w,
@@ -287,7 +297,9 @@ pub fn encode_dib(image: &Rgba) -> Vec<u8> {
     out.extend(
         image
             .pixels
-            .chunks_exact(4)
+            .as_chunks::<4>()
+            .0
+            .iter()
             .flat_map(|p| [p[2], p[1], p[0], p[3]]),
     );
     out
@@ -355,9 +367,14 @@ mod tests {
     #[test]
     fn a_32_bit_dib_with_zero_alpha_is_opaque_and_bitfields_work() {
         let mut image = gradient(4, 4, false);
-        image.pixels.chunks_exact_mut(4).for_each(|p| p[3] = 0);
+        image
+            .pixels
+            .as_chunks_mut::<4>()
+            .0
+            .iter_mut()
+            .for_each(|p| p[3] = 0);
         let opaque = decode_dib(&encode_dib(&image)).unwrap();
-        assert!(opaque.pixels.chunks_exact(4).all(|p| p[3] == 255));
+        assert!(opaque.pixels.as_chunks::<4>().0.iter().all(|p| p[3] == 255));
         // BI_BITFIELDS with masks after a 40-byte header (R G B in BGRA order).
         let mut dib = encode_dib(&gradient(2, 1, false));
         dib[16..20].copy_from_slice(&3u32.to_le_bytes());

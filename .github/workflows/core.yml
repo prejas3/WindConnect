@@ -27,18 +27,19 @@ jobs:
       # WN-114: one version in every manifest, and a v* tag on HEAD matches it.
       - name: Check versions and tags
         run: node scripts/check-version.cjs
-      - name: Install stable Rust
-        run: rustup toolchain install stable --profile minimal --component rustfmt --component clippy
+      # WN-163: the Rust pinned in rust-toolchain.toml (with rustfmt and clippy), the same as local builds.
+      - name: Install pinned Rust
+        run: rustup toolchain install
       - name: Check formatting
-        run: cargo +stable fmt --all -- --check
+        run: cargo fmt --all -- --check
       - name: Test core and UniFFI
-        run: cargo +stable test --locked -p wind-core -p wind-ffi -p windctl --all-features
+        run: cargo test --locked -p wind-core -p wind-ffi -p windctl --all-features
       # The latency budgets measured under a saturating transfer (WC-11,
       # WC-13) run alone, one test at a time, so that only the code is
       # measured, not other tests loading the machine (WN-85).
       - name: Latency budgets under load
-        run: cargo +stable test --locked -p wind-core --test latency -- --ignored --test-threads=1
+        run: cargo test --locked -p wind-core --test latency -- --ignored --test-threads=1
       - name: Lint core and UniFFI
-        run: cargo +stable clippy --locked -p wind-core -p wind-ffi -p windctl --all-targets --all-features -- -D warnings
+        run: cargo clippy --locked -p wind-core -p wind-ffi -p windctl --all-targets --all-features -- -D warnings
       - name: Build core and UniFFI
-        run: cargo +stable build --locked -p wind-core -p wind-ffi -p windctl --all-targets --all-features
+        run: cargo build --locked -p wind-core -p wind-ffi -p windctl --all-targets --all-features

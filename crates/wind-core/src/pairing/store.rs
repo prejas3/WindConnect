@@ -316,8 +316,9 @@ fn parse_key(key_hex: &str) -> Result<PublicKey, &'static str> {
         return Err("bad key");
     }
     let mut key = [0u8; 32];
-    for (b, pair) in key.iter_mut().zip(hex.chunks_exact(2)) {
-        *b = hex_byte(pair[0], pair[1]).ok_or("bad key")?;
+    let (pairs, _) = hex.as_chunks::<2>();
+    for (b, [high, low]) in key.iter_mut().zip(pairs) {
+        *b = hex_byte(*high, *low).ok_or("bad key")?;
     }
     PublicKey::from_bytes(&key).ok_or("bad key")
 }

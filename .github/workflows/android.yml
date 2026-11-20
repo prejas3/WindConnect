@@ -26,12 +26,15 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+      # WN-163: the action's default package list has "tools", which the current sdkmanager no longer offers
+      # (the step failed with "Failed to find package 'tools'"): name exactly what the build needs.
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
-      - name: Install Android platform
-        run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "ndk;27.0.12077973"
+        with:
+          packages: platform-tools platforms;android-35 build-tools;35.0.0 ndk;27.0.12077973
+      # The Rust pinned in rust-toolchain.toml, with both Android targets.
       - name: Set up Rust for Android
-        run: rustup target add aarch64-linux-android x86_64-linux-android
+        run: rustup toolchain install
       - name: Set up Gradle and validate wrapper
         uses: gradle/actions/setup-gradle@v4
       - name: Lint Android app

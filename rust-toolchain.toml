@@ -1,0 +1,8 @@
+# WN-163: one Rust for local builds and CI, so `clippy -D warnings` sees the same lints everywhere
+# (CI's "stable" moved to 1.100 and brought new lints that the local 1.97 did not have).
+# Moving to a newer Rust is a change of its own: update this file, fix what its clippy finds.
+[toolchain]
+channel = "1.100.0"
+profile = "minimal"
+components = ["rustfmt", "clippy"]
+targets = ["aarch64-linux-android", "x86_64-linux-android"]

@@ -36,6 +36,8 @@ const stub = () => {
       if (cmd === 'core_version') return '0.34.0';
       if (cmd === 'apply_window_theme') return false;
       if (cmd === 'actions_snapshot') return snapshot;
+      // WN-163: the page's modules read the pairing state at start (touchpad.js awaits it); the app always has one.
+      if (cmd === 'pairing_snapshot') return { phase: 'connected', phone: 'Galaxy S25 Ultra', connected: true, paired: true, devices: [], touchpad: { allowed: true, message: null } };
       if (cmd === 'set_action_enabled') {
         const item = [...snapshot.builtins, ...snapshot.custom].find(i => i.id === args.id);
         item.enabled = args.enabled; return snapshot;
