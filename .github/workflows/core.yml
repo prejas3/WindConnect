@@ -37,8 +37,25 @@ jobs:
       # The latency budgets measured under a saturating transfer (WC-11,
       # WC-13) run alone, one test at a time, so that only the code is
       # measured, not other tests loading the machine (WN-85).
-      - name: Latency budgets under load
-        run: cargo test --locked -p wind-core --test latency -- --ignored --test-threads=1
+      # WN-163 (decision A): on shared runners they are informational. The
+      # numbers go to the run summary, over budget is a warning, never a red
+      # build; the gate is the same run on real hardware (tests/latency.rs).
+      - name: Latency budgets under load (informational)
+        shell: bash
+        run: |
+          set -o pipefail
+          if cargo test --locked -p wind-core --test latency -- --ignored --test-threads=1 --nocapture 2>&1 | tee latency.log; then
+            verdict="within budget on this runner"
+          else
+            verdict="over budget on this shared runner (informational; the gate is real hardware)"
+            echo "::warning title=Latency budgets under load::${verdict}. See the run summary and crates/wind-core/tests/latency.rs."
+          fi
+          {
+            echo "### Latency budgets under load (${{ matrix.os }}): ${verdict}"
+            echo '```'
+            grep -oE 'round [0-9]+: .*' latency.log || echo "no measurements (see the step's log)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
       - name: Lint core and UniFFI
         run: cargo clippy --locked -p wind-core -p wind-ffi -p windctl --all-targets --all-features -- -D warnings
       - name: Build core and UniFFI

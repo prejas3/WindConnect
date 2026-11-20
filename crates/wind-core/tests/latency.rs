@@ -4,9 +4,13 @@
 //!
 //! The budget is the code's; the test machine's load is not. So (WN-85):
 //! - The two budgets under a saturating transfer are `#[ignore]`d in the
-//!   normal `cargo test` and run on their own in CI (step "Latency budgets
-//!   under load" in .github/workflows/core.yml):
+//!   normal `cargo test` and run on their own:
 //!   `cargo test -p wind-core --test latency -- --ignored --test-threads=1`.
+//!   That run on real hardware (an idle PC, not a shared VM) is the gate,
+//!   e.g. before a release. GitHub's shared runners measured p95 ~13 ms and
+//!   a ~15 ms control delay (WN-163), so in CI (step "Latency budgets under
+//!   load" in .github/workflows/core.yml) the run is informational: the
+//!   numbers go to the run's summary with a warning, never a red build.
 //!   Within a full parallel `cargo test` on a shared machine, the transfer
 //!   itself competes with everything else for CPU, and a whole run could
 //!   land on a busy stretch (seen on Windows: 5.3–5.8 ms in three rounds in
