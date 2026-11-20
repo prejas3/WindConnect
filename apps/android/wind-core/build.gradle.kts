@@ -83,7 +83,12 @@ val nativeTasks = listOf("arm64-v8a" to "aarch64-linux-android", "x86_64" to "x8
         inputs.property("androidTarget", "${triple}29")
         inputs.property("elfPageSize", 16384)
         environment("${prefix}_LINKER", toolchain.resolve("clang$extension").absolutePath)
-        environment("${prefix}_RUSTFLAGS", "-C link-arg=--target=${triple}29 -C link-arg=-Wl,-z,max-page-size=16384 -C link-arg=-Wl,-z,common-page-size=16384")
+        // WN-162: the published .so must not carry the builder's home folder (the cargo registry's source paths):
+        // remap it to "~". Encoded flags (\u001f between them): a home path may contain spaces. With --target these
+        // apply to the target only, as the target-specific variable did.
+        val home = System.getProperty("user.home")
+        environment("CARGO_ENCODED_RUSTFLAGS", listOf("-C", "link-arg=--target=${triple}29", "-C", "link-arg=-Wl,-z,max-page-size=16384",
+            "-C", "link-arg=-Wl,-z,common-page-size=16384", "--remap-path-prefix=$home=~").joinToString("\u001f"))
         commandLine("cargo", "build", "--locked", "--release", "-p", "wind-ffi", "--lib", "--target", triple)
         outputs.file(rustTarget.resolve("$triple/release/libwind_ffi.so"))
     }
