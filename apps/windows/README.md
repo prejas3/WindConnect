@@ -79,6 +79,18 @@ Wynik: `target/release/bundle/msi/*.msi` w katalogu głównym repozytorium.
 Instalator pobiera bootstrapper WebView2, jeżeli runtime nie jest zainstalowany;
 pierwsza instalacja wymaga wtedy połączenia z Internetem. MSI nie jest podpisany.
 
+Pliki do publicznego wydania (WN-162) buduj tak, żeby nie niosły ścieżek z
+komputera budującego (Rust domyślnie osadza ścieżki źródeł z rejestru Cargo,
+linker ścieżkę PDB):
+
+```powershell
+$env:RUSTFLAGS = "--remap-path-prefix=$env:USERPROFILE=~ -C link-arg=/PDBALTPATH:%_PDB%"
+cargo tauri build --bundles msi -- --locked
+```
+
+Ścieżka profilu ze spacją wymaga `CARGO_ENCODED_RUSTFLAGS` (flagi rozdzielone
+znakiem `\x1f`). APK robi to sam (`apps/android/wind-core/build.gradle.kts`).
+
 Workflow **Windows MSI** buduje pakiet na `windows-latest` dla PR, push do
 `master` lub ręcznego uruchomienia. W zakładce Actions pobierz artefakt
 `WindConnect-windows-x64-msi`, rozpakuj ZIP i uruchom MSI.
