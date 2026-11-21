@@ -143,6 +143,8 @@ fun WindConnectTheme(mode: ThemeMode = ThemeMode.System, dynamicColor: Boolean =
         }
     }
     MaterialTheme(colorScheme = colors, typography = WindTypography, shapes = WindShapes.material) {
-        CompositionLocalProvider(LocalContentColor provides colors.onBackground, content = content)
+        // WN-169: "Remove animations" (animator duration scale 0) turns every Wind animation into a jump to its end.
+        val reduce = androidx.compose.runtime.remember(view) { reduceMotion(view.context) }
+        CompositionLocalProvider(LocalContentColor provides colors.onBackground, LocalReduceMotion provides reduce, content = content)
     }
 }

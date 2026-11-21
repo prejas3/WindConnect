@@ -206,13 +206,8 @@ class ShareFilesActivity : ComponentActivity() {
 private fun TransferProgress(status: FileSendStatus) {
     val total = status.total
     val fraction = total?.let { if (it == 0L) 0f else (status.done.toDouble() / it).coerceIn(0.0, 1.0).toFloat() }
-    val colors = MaterialTheme.colorScheme
-    Box(Modifier.fillMaxWidth().height(8.dp).background(colors.surfaceContainerHigh).testTag("transferProgress").semantics {
-        progressBarRangeInfo = fraction?.let { ProgressBarRangeInfo(it, 0f..1f) } ?: ProgressBarRangeInfo.Indeterminate
-        contentDescription = str(R.string.share_progress)
-    }) {
-        Box(Modifier.fillMaxWidth(fraction ?: .35f).fillMaxHeight().background(colors.primary))
-    }
+    // WN-169: the shared progress: wavy while sending, a running segment (not a frozen 35%) when the size is unknown.
+    WindLinearProgress(fraction, Modifier.testTag("transferProgress").semantics { contentDescription = str(R.string.share_progress) }, wavy = true, thick = true)
     val bytes = total?.let { str(R.string.bytes_of, transferBytes(status.done), transferBytes(it)) } ?: (transferBytes(status.done) + " · " + str(R.string.size_unknown))
     Text(bytes + " · " + (status.rate?.let { str(R.string.per_second, transferBytes(it)) } ?: "—"), Modifier.testTag("transferBytes"))
 }

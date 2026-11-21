@@ -69,10 +69,8 @@ internal fun ReceiveFilesControls(state: ReceiveUi = FileReceiving.ui.collectAsS
         active.forEach { file ->
             Text(cleanName(file.name), style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
             val fraction = if (file.size == 0uL) 0f else (file.done.toDouble() / file.size.toDouble()).coerceIn(0.0, 1.0).toFloat()
-            Box(Modifier.fillMaxWidth().height(6.dp).clip(WindShapes.full).background(colors.outline).semantics {
-                progressBarRangeInfo = ProgressBarRangeInfo(fraction, 0f..1f)
-                contentDescription = str(R.string.receive_progress)
-            }) { Box(Modifier.fillMaxWidth(fraction).fillMaxHeight().background(colors.primary)) }
+            // WN-169: the shared progress (wavy while a file moves).
+            WindLinearProgress(fraction, Modifier.semantics { contentDescription = str(R.string.receive_progress) }, wavy = true, thick = true)
             Text(if (file.state == "waiting") str(R.string.receive_waiting_connection) else if (file.done == file.size) str(R.string.receive_publishing)
                 else str(R.string.bytes_of, transferBytes(file.done.toLong()), transferBytes(file.size.toLong())), style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
         }

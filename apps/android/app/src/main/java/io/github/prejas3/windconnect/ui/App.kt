@@ -85,9 +85,7 @@ private fun ComponentPreview(mode: ThemeMode, dynamic: Boolean, onMode: (ThemeMo
         WindCard(Modifier.fillMaxWidth()) {
             Text(stringResource(R.string.preview_transfer), style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
             Text(if (complete) stringResource(R.string.preview_sent) else stringResource(R.string.preview_progress), style = MaterialTheme.typography.bodyMedium)
-            Box(Modifier.fillMaxWidth().height(5.dp).background(colors.surface).semantics { progressBarRangeInfo = ProgressBarRangeInfo(if (complete) 1f else .64f, 0f..1f) }) {
-                Box(Modifier.fillMaxWidth(if (complete) 1f else .64f).fillMaxHeight().background(colors.primary))
-            }
+            WindLinearProgress(if (complete) 1f else .64f, Modifier.testTag("previewProgress"), wavy = true, thick = true)
             WindButton(if (complete) stringResource(R.string.preview_reset) else stringResource(R.string.preview_finish), { complete = !complete }, kind = ButtonKind.Secondary)
         }
         WindCard(Modifier.fillMaxWidth()) {

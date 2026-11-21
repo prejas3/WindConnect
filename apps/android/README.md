@@ -609,6 +609,17 @@ a `maxLength` counter (a computer's name: 64); `WindTextArea` shares its focus a
 The off switch's edge stays onSurfaceVariant and the Secondary button's edge stays strong (WN-160 rule).
 `M3ControlsTest` covers them.
 
+WN-169 (motion): `ui/Motion.kt` holds the M3 springs (`WindMotion`: spatial damping 0.9 with
+stiffness 1400/700/300, effects damping 1.0 with 3800/1600/800), the shared-axis-X and expand
+transitions, and `LocalReduceMotion` (true when the animator duration scale is 0, "Remove animations"):
+then every Wind animation jumps to its end. Pairing steps and screens change on the shared X axis
+(deeper = forward), the (i) details and the clipboard history expand, the switch thumb moves on the
+fast spring. `ui/Progress.kt` is the one progress: `WindLinearProgress` (4 dp, 8 dp `thick`, gap,
+stop dot, primaryContainer track, a running segment when the size is unknown, `wavy` for transfers)
+and `WindCircularProgress` (pairing waits). Back is predictive (`enableOnBackInvokedCallback`,
+`PredictiveBackHandler`: the screen shrinks and shifts while swiping; cancelling restores it).
+`MotionTest` and `PredictiveBackTest` cover them.
+
 In debug press **Preview** in the header. The screen demonstrates both themes, the system/brand
 palette, the SZYMON-PC card, four actions, a transfer, a switch and field validation.
 This is sample data: a click doesn't connect, doesn't lock the computer and doesn't send

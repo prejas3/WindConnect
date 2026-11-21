@@ -90,10 +90,15 @@ fun HomeScreen(state: PairingUi, onScan: () -> Unit, onDiagnostics: () -> Unit, 
     // an empty history otherwise takes no card.
     var historyAsked by remember { mutableIntStateOf(0) }
     val historyView = remember { BringIntoViewRequester() }
-    LaunchedEffect(historyAsked) { if (historyAsked > 0) { withFrameNanos { }; historyView.bringIntoView() } }
     if (onClipboard != null && onClipboardEnabled != null) ClipboardControls(state, onClipboard, onClipboardEnabled, onHistory = history?.let { { historyAsked++ } })
-    if (history != null && (state.clipboardHistory.isNotEmpty() || historyAsked > 0)) Box(Modifier.bringIntoViewRequester(historyView)) {
-        ClipboardHistoryCard(state.clipboardHistory, state.clipboard.enabled, history)
+    // WN-169: the card opens (expand), and is scrolled to once it has its full height.
+    val reduce = LocalReduceMotion.current
+    androidx.compose.animation.AnimatedVisibility(history != null && (state.clipboardHistory.isNotEmpty() || historyAsked > 0), enter = expandIn(reduce), exit = shrinkOut(reduce)) {
+        val settled = !transition.isRunning
+        LaunchedEffect(historyAsked, settled) { if (historyAsked > 0 && settled) { withFrameNanos { }; historyView.bringIntoView() } }
+        if (history != null) Box(Modifier.bringIntoViewRequester(historyView)) {
+            ClipboardHistoryCard(state.clipboardHistory, state.clipboard.enabled, history)
+        }
     }
     PcMediaCard() // WN-47/48: the PC's player and volume, one card, shown while the PC shares either.
     PcActionsCard(pcActions, connected != null) // WN-100: the outcome, the link box and the PC's own actions.

@@ -9,7 +9,6 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.text.drawText
 import androidx.compose.foundation.background
@@ -423,16 +422,21 @@ fun WindSettingRow(
                 else if (onClick != null) WindIcon("chevron", Modifier.size(18.dp), tint = colors.onSurfaceVariant)
             }
         }
-        if (status != null || actions != null || (more != null && open)) Column(Modifier.fillMaxWidth().padding(start = ROW_TEXT_START), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (more != null && open) Column(Modifier.fillMaxWidth().clip(WindShapes.medium).background(colors.surface).padding(12.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                androidx.compose.material3.ProvideTextStyle(MaterialTheme.typography.bodySmall.copy(color = colors.onSurface)) { more(this) }
+        // WN-169: the details open and close (expand + fade), without motion when animations are off.
+        val reduce = LocalReduceMotion.current
+        androidx.compose.animation.AnimatedVisibility(status != null || actions != null || (more != null && open), enter = expandIn(reduce), exit = shrinkOut(reduce)) {
+        Column(Modifier.fillMaxWidth().padding(start = ROW_TEXT_START), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            androidx.compose.animation.AnimatedVisibility(more != null && open, enter = expandIn(reduce), exit = shrinkOut(reduce)) {
+                Column(Modifier.fillMaxWidth().clip(WindShapes.medium).background(colors.surface).padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    androidx.compose.material3.ProvideTextStyle(MaterialTheme.typography.bodySmall.copy(color = colors.onSurface)) { more?.invoke(this) }
+                }
             }
             if (status != null) {
                 val tagged = (if (statusTag.isNotEmpty()) Modifier.testTag(statusTag) else Modifier).semantics { liveRegion = LiveRegionMode.Polite }
                 if (warning) WindNotice(status, tagged) else Text(status, style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant, modifier = tagged)
             }
             if (actions != null) CompositionLocalProvider(LocalButtonFill provides true) { actions(this) }
+        }
         }
     }
 }
@@ -467,8 +471,8 @@ fun WindHeaderAction(text: String, onClick: () -> Unit, modifier: Modifier = Mod
 @Composable
 fun WindSwitchMark(checked: Boolean, enabled: Boolean = true, pressed: Boolean = false) {
     val colors = MaterialTheme.colorScheme
-    val position by animateFloatAsState(if (checked) 1f else 0f, spring(dampingRatio = .9f, stiffness = 1400f), label = "switchThumb")
-    val thumb by animateDpAsState(when { pressed -> 28.dp; checked -> 24.dp; else -> 16.dp }, spring(dampingRatio = .9f, stiffness = 1400f), label = "switchThumbSize")
+    val position by animateFloatAsState(if (checked) 1f else 0f, motion(WindMotion.fastSpatial()), label = "switchThumb")
+    val thumb by animateDpAsState(when { pressed -> 28.dp; checked -> 24.dp; else -> 16.dp }, motion(WindMotion.fastSpatial()), label = "switchThumbSize")
     val check = remember { PathParser().parsePathString(windIconData("check")).toPath() }
     val inactive = remember(colors) { readableOn(colors.surfaceContainerHighest, colors.surfaceContainerHigh, colors.onSurface, 1.35) }
     Canvas(Modifier.size(52.dp, 32.dp)) {

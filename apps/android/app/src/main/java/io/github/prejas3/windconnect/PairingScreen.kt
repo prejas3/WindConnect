@@ -11,7 +11,13 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.provider.Settings
 import io.github.prejas3.windconnect.core.declaresPermission
-import androidx.activity.compose.BackHandler
+import androidx.activity.BackEventCompat
+import androidx.activity.compose.PredictiveBackHandler
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalDensity
+import kotlin.coroutines.cancellation.CancellationException
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
@@ -37,8 +43,7 @@ fun PairingScreen(model: PairingViewModel, diagnostic: @Composable () -> Unit) {
     var hasCamera by remember { mutableStateOf(context.checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) }
     var denied by remember { mutableStateOf(false) }
     var diagnostics by remember { mutableStateOf(false) }
-    val scroll = rememberScrollState()
-    LaunchedEffect(state.screen) { if (state.screen != "home") diagnostics = false; scroll.scrollTo(0) }
+    LaunchedEffect(state.screen) { if (state.screen != "home") diagnostics = false }
     val lifecycle = LocalLifecycleOwner.current
     DisposableEffect(lifecycle) {
         val observer = object : DefaultLifecycleObserver {
@@ -50,10 +55,35 @@ fun PairingScreen(model: PairingViewModel, diagnostic: @Composable () -> Unit) {
         onDispose { lifecycle.lifecycle.removeObserver(observer) }
     }
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted -> hasCamera = granted; denied = !granted }
-    BackHandler(state.screen != "home" || diagnostics) { if (diagnostics) diagnostics = false else model.cancel() }
-    if (diagnostics && state.screen == "home") { diagnostic(); return }
-    Column(Modifier.fillMaxSize().verticalScroll(scroll).padding(24.dp).testTag("pairingScreen"), verticalArrangement = Arrangement.spacedBy(18.dp)) {
-        when (state.screen) {
+    // WN-169: predictive back. While the person swipes, the screen shrinks and moves towards the swipe (a preview of
+    // leaving it); letting go goes back, cancelling restores it. Below Android 13 back simply goes back.
+    val reduce = LocalReduceMotion.current
+    val density = LocalDensity.current
+    var backProgress by remember { mutableFloatStateOf(0f) }
+    var backEdge by remember { mutableIntStateOf(BackEventCompat.EDGE_LEFT) }
+    PredictiveBackHandler(state.screen != "home" || diagnostics) { events ->
+        try {
+            events.collect { backProgress = it.progress; backEdge = it.swipeEdge }
+            backProgress = 0f
+            if (diagnostics) diagnostics = false else model.cancel()
+        } catch (cancelled: CancellationException) {
+            backProgress = 0f
+            throw cancelled
+        }
+    }
+    val page = if (diagnostics && state.screen == "home") "diagnostics" else state.screen
+    // WN-169: steps and screens change on the M3 shared X axis (deeper = forward), none when animations are off.
+    AnimatedContent(page, Modifier.fillMaxSize().graphicsLayer {
+        if (!reduce && backProgress > 0f) {
+            val scale = 1f - .1f * backProgress
+            scaleX = scale; scaleY = scale
+            translationX = (if (backEdge == BackEventCompat.EDGE_LEFT) 1 else -1) * backProgress * 16.dp.toPx()
+        }
+    }, transitionSpec = { sharedAxisX(pairingDepth(targetState) >= pairingDepth(initialState), reduce, density) },
+        contentKey = ::pairingStep, label = "pairingStep") { screen ->
+    if (screen == "diagnostics") { diagnostic(); return@AnimatedContent }
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp).testTag("pairingScreen"), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+        when (screen) {
             "home" -> {
                 // WC-34: the Welcome card explained the camera, so the system asks right after the tap.
                 val scan = { if (!hasCamera) permission.launch(Manifest.permission.CAMERA); model.scan() }
@@ -131,12 +161,12 @@ fun PairingScreen(model: PairingViewModel, diagnostic: @Composable () -> Unit) {
                 Text(stringResource(R.string.confirm_about))
                 WindButton(if (state.screen == "pairing") stringResource(R.string.pairing_progress) else stringResource(R.string.pair_devices), model::confirm, Modifier.fillMaxWidth().testTag("confirmPairing"), enabled = state.ready && state.screen == "confirm")
                 if (state.screen == "confirm") WindButton(stringResource(R.string.cancel), model::cancel, Modifier.testTag("cancelPairing"), kind = ButtonKind.Secondary)
-                else Text(stringResource(R.string.pairing_verifying), modifier = Modifier.testTag("pairingProgress"))
+                else Waiting(stringResource(R.string.pairing_verifying), "pairingProgress")
             }
             "nearby" -> {
                 Text(stringResource(R.string.nearby_title), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.semantics { heading() })
                 Text(stringResource(R.string.nearby_about))
-                if (state.nearby.isEmpty()) Text(stringResource(R.string.nearby_searching), modifier = Modifier.testTag("nearbyEmpty"))
+                if (state.nearby.isEmpty()) Waiting(stringResource(R.string.nearby_searching), "nearbyEmpty")
                 state.nearby.forEach { device ->
                     WindCard(Modifier.fillMaxWidth().testTag("nearbyDevice")) {
                         Text(stringResource(R.string.nearby_ready), style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
@@ -149,7 +179,7 @@ fun PairingScreen(model: PairingViewModel, diagnostic: @Composable () -> Unit) {
             }
             "sas-connecting" -> {
                 Text(stringResource(R.string.sas_connecting), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.semantics { heading() })
-                Text(stringResource(R.string.sas_soon))
+                Waiting(stringResource(R.string.sas_soon), "sasConnecting")
                 WindButton(stringResource(R.string.cancel), model::cancel, Modifier.testTag("cancelPairing"), kind = ButtonKind.Secondary)
             }
             "sas-code", "sas-rejected", "sas-confirming" -> {
@@ -161,7 +191,7 @@ fun PairingScreen(model: PairingViewModel, diagnostic: @Composable () -> Unit) {
                 Text(stringResource(R.string.sas_about))
                 WindButton(stringResource(R.string.sas_same), { model.decide(true) }, Modifier.fillMaxWidth().testTag("sasSame"), enabled = state.screen == "sas-code")
                 WindButton(stringResource(R.string.sas_different), { model.decide(false) }, Modifier.fillMaxWidth().testTag("sasDifferent"), enabled = state.screen == "sas-code", kind = ButtonKind.Secondary)
-                if (state.screen == "sas-confirming") Text(stringResource(R.string.sas_waiting), modifier = Modifier.testTag("pairingProgress"))
+                if (state.screen == "sas-confirming") Waiting(stringResource(R.string.sas_waiting), "pairingProgress")
             }
             "paired" -> DoneScreen(state.name, state.message, onDone = model::cancel)
             else -> {
@@ -171,5 +201,31 @@ fun PairingScreen(model: PairingViewModel, diagnostic: @Composable () -> Unit) {
                 WindButton(stringResource(R.string.go_back), model::cancel, Modifier.testTag("cancelPairing"), kind = ButtonKind.Secondary)
             }
         }
+    }
+    }
+}
+
+/** WN-169: how deep a pairing screen sits, so a step further in slides forward and a step back slides back. */
+private fun pairingDepth(screen: String): Int = when (screen) {
+    "home", "diagnostics" -> 0
+    "settings", "devices", "scanner", "nearby" -> 1
+    "confirm", "pairing", "sas-connecting" -> 2
+    "sas-code", "sas-rejected", "sas-confirming" -> 3
+    else -> 4
+}
+
+/** WN-169: screens that are one step in different states (confirm → pairing) change in place, without a transition. */
+private fun pairingStep(screen: String): String = when (screen) {
+    "confirm", "pairing" -> "confirm"
+    "sas-code", "sas-rejected", "sas-confirming" -> "sas"
+    else -> screen
+}
+
+/** WN-169: a wait in pairing (searching, connecting, verifying): the circular progress beside its text. */
+@Composable
+private fun Waiting(text: String, tag: String) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        WindCircularProgress(diameter = 24.dp)
+        Text(text, modifier = Modifier.testTag(tag).weight(1f))
     }
 }
