@@ -598,6 +598,16 @@ BasicTextField, a Canvas switch and vector icons. No default Button,
 Switch or OutlinedTextField. Roles, field descriptions, errors and progress are in Compose semantics;
 interactive elements are at least 48 dp. The manual connection screen still
 uses the real core and a pinned key; its test tags were kept.
+WN-168 (M3 controls, all own drawings): `WindSlider` has a 16 dp track (40 dp with an icon in it, as for
+the PC's volume), a 4×44 dp handle with 6 dp gaps, a stop dot and a value bubble while dragged;
+`WindSwitchMark` is 52×32 with a 16/24/28 dp thumb (off/on/pressed) on a spring and a ✓ when on;
+`WindButton` is a 40 dp pill in a 48 dp touch area with 16 dp padding and a new `Tonal` kind
+(the PC's actions, the presenter's "previous"); `WindSegmented` is a connected button group
+(2 dp gaps, inner corners 8 dp, the chosen one secondaryContainer with ✓); `WindIconButton(selected =)`
+is a toggle (pin, details) and has 24 dp icons; `WindField` is 56 dp with an error icon and
+a `maxLength` counter (a computer's name: 64); `WindTextArea` shares its focus and disabled look.
+The off switch's edge stays onSurfaceVariant and the Secondary button's edge stays strong (WN-160 rule).
+`M3ControlsTest` covers them.
 
 In debug press **Preview** in the header. The screen demonstrates both themes, the system/brand
 palette, the SZYMON-PC card, four actions, a transfer, a switch and field validation.

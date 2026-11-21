@@ -91,7 +91,7 @@ private val OWN_BUTTONS = setOf("lock", "open-url")
 fun PcActionButtons(actions: List<RemoteAction>, onRun: (id: String, label: String) -> Unit) {
     for (action in actions) {
         val label = PcActionText.label(action.id, action.label)
-        WindButton(label, { onRun(action.id, label) }, Modifier.fillMaxWidth().testTag("pcAction:${action.id}"), kind = ButtonKind.Secondary)
+        WindButton(label, { onRun(action.id, label) }, Modifier.fillMaxWidth().testTag("pcAction:${action.id}"), kind = ButtonKind.Tonal)
     }
 }
 

@@ -81,7 +81,7 @@ private fun PcMediaPart(shown: io.github.prejas3.windconnect.core.PcMedia, conne
         shown.durationMs?.takeIf { it > 0 }?.let { total ->
             var dragged by remember { mutableStateOf<Float?>(null) }
             WindSlider(value = dragged ?: (position.toFloat() / total), enabled = can(16),
-                onValueChange = { dragged = it },
+                onValueChange = { dragged = it }, valueLabel = { clock((it * total).toLong()) },
                 onValueChangeFinished = { dragged?.let { connections.pcMediaCommand("seek", (it * total).toLong()) }; dragged = null },
                 modifier = Modifier.fillMaxWidth().semantics { contentDescription = str(R.string.media_position, clock(position), clock(total)) })
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {

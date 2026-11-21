@@ -62,6 +62,14 @@ object WindShapes {
     val extraLargeIncreased = RoundedCornerShape(WindRadius.ExtraLargeIncreased)
     val extraExtraLarge = RoundedCornerShape(WindRadius.ExtraExtraLarge)
     val full = RoundedCornerShape(percent = 50)
+    /** WN-168: one segment of a connected button group: outer ends full, inner corners [WindRadius.Small]. */
+    fun connected(first: Boolean, last: Boolean): RoundedCornerShape {
+        val full = androidx.compose.foundation.shape.CornerSize(50)
+        val inner = androidx.compose.foundation.shape.CornerSize(WindRadius.Small)
+        val start = if (first) full else inner
+        val end = if (last) full else inner
+        return RoundedCornerShape(topStart = start, topEnd = end, bottomEnd = end, bottomStart = start)
+    }
     val material = Shapes(extraSmall = extraSmall, small = small, medium = medium, large = large, extraLarge = extraLarge)
 }
 // CCS/1 RULE:FontWeight metadata alone does not instantiate a variable font's wght axis.

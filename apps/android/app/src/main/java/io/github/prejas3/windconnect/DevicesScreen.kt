@@ -72,7 +72,7 @@ fun DevicesScreen(
                 editing == entry.fingerprint -> {
                     var name by remember(entry.fingerprint) { mutableStateOf(label) }
                     var empty by remember { mutableStateOf(false) }
-                    WindField(name, { name = it.take(64); empty = false }, stringResource(R.string.device_rename_label), Modifier.testTag("renameField"), errorText = if (empty) stringResource(R.string.device_name_empty) else null)
+                    WindField(name, { name = it; empty = false }, stringResource(R.string.device_rename_label), Modifier.testTag("renameField"), errorText = if (empty) stringResource(R.string.device_name_empty) else null, maxLength = 64)
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         WindButton(stringResource(R.string.save), { if (name.isBlank()) empty = true else { editing = null; onRename(entry, name.trim()) } }, Modifier.testTag("renameSave"))
                         WindButton(stringResource(R.string.cancel), { editing = null }, kind = ButtonKind.Quiet)

@@ -120,7 +120,7 @@ class TouchpadActivity : ComponentActivity() {
                     }
                     Column(Modifier.heightIn(max=270.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(8.dp)) {
                     Text(str(R.string.touchpad_sensitivity),style=MaterialTheme.typography.labelLarge)
-                    WindSlider(value=sensitivity,step=0.125f,onValueChange={sensitivity=it;capture?.engine?.sensitivity=it},onValueChangeFinished={settings.edit().putFloat("sensitivity",sensitivity).apply()},valueRange=0.5f..3f)
+                    WindSlider(value=sensitivity,step=0.125f,valueLabel={"%.2f×".format(it)},onValueChange={sensitivity=it;capture?.engine?.sensitivity=it},onValueChangeFinished={settings.edit().putFloat("sensitivity",sensitivity).apply()},valueRange=0.5f..3f)
                     WindSwitch(str(R.string.touchpad_natural),natural,{natural=it;capture?.engine?.natural=it;settings.edit().putBoolean("natural",it).apply()})
                     Text(str(R.string.touchpad_help),style=MaterialTheme.typography.bodySmall)
                     Text(if(gestures) str(R.string.touchpad_gestures) else str(R.string.touchpad_gestures_old),style=MaterialTheme.typography.bodySmall)

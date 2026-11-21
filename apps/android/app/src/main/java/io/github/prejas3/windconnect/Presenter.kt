@@ -107,7 +107,7 @@ internal fun PresenterPanel(active: Boolean, laserSupported: Boolean, gyro: Bool
             WindButton(str(R.string.presenter_reset), { timer.reset(); running = false; now = 0L }, kind = ButtonKind.Quiet)
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            WindButton(str(R.string.presenter_previous), { slide(PresenterKeys.PREVIOUS) }, Modifier.weight(1f).heightIn(min = 72.dp).testTag("presenterPrevious"), enabled = active, kind = ButtonKind.Secondary)
+            WindButton(str(R.string.presenter_previous), { slide(PresenterKeys.PREVIOUS) }, Modifier.weight(1f).heightIn(min = 72.dp).testTag("presenterPrevious"), enabled = active, kind = ButtonKind.Tonal)
             WindButton(str(R.string.presenter_next), { slide(PresenterKeys.NEXT) }, Modifier.weight(1f).heightIn(min = 72.dp).testTag("presenterNext"), enabled = active)
         }
         val laserReady = active && laserSupported && gyro

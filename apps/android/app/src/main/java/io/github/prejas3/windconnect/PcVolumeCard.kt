@@ -70,6 +70,8 @@ internal fun PcVolumeControls(volume: PcVolume, onLevel: (Int) -> Unit, onMute: 
         },
         onValueChangeFinished = { dragging = false; localAt = SystemClock.uptimeMillis() },
         step = 0.05f,
+        icon = if (muted) "mute" else "volume",
+        valueLabel = { "${(it * 100).roundToInt()}%" },
         modifier = Modifier.fillMaxWidth().testTag("pcVolumeSlider").semantics {
             contentDescription = str(R.string.pc_volume)
             stateDescription = if (muted) str(R.string.volume_muted_state, "$level%") else "$level%"
