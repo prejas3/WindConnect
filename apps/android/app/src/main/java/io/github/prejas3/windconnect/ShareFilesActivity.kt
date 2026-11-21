@@ -207,7 +207,7 @@ private fun TransferProgress(status: FileSendStatus) {
     val total = status.total
     val fraction = total?.let { if (it == 0L) 0f else (status.done.toDouble() / it).coerceIn(0.0, 1.0).toFloat() }
     val colors = MaterialTheme.colorScheme
-    Box(Modifier.fillMaxWidth().height(8.dp).background(colors.surfaceVariant).testTag("transferProgress").semantics {
+    Box(Modifier.fillMaxWidth().height(8.dp).background(colors.surfaceContainerHigh).testTag("transferProgress").semantics {
         progressBarRangeInfo = fraction?.let { ProgressBarRangeInfo(it, 0f..1f) } ?: ProgressBarRangeInfo.Indeterminate
         contentDescription = str(R.string.share_progress)
     }) {

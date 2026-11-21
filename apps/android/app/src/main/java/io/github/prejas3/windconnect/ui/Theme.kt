@@ -23,7 +23,9 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.font.FontVariation
 import androidx.compose.ui.text.ExperimentalTextApi
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.shape.RoundedCornerShape
 import io.github.prejas3.windconnect.R
 
 enum class ThemeMode { System, Light, Dark }
@@ -34,23 +36,34 @@ private tailrec fun Context.activity(): Activity? = when (this) {
     else -> null
 }
 
-// CCS/1 DEP:accepted WN-20, DM Sans OFL | RULE:Android 10/11 use the same brand palette.
-val BrandLight = lightColorScheme(
-    primary = Color(0xFF0D7F74), onPrimary = Color.White,
-    primaryContainer = Color(0xFFD7EFEB), onPrimaryContainer = Color(0xFF0B5E55),
-    background = Color(0xFFF8FBFB), onBackground = Color(0xFF15282F),
-    surface = Color(0xFFF8FBFB), onSurface = Color(0xFF15282F),
-    surfaceVariant = Color(0xFFE8EFEF), onSurfaceVariant = Color(0xFF52686E),
-    outline = Color(0xFFCCDADB), error = Color(0xFFAD2838),
-)
-val BrandDark = darkColorScheme(
-    primary = Color(0xFF43C9B8), onPrimary = Color(0xFF062E28),
-    primaryContainer = Color(0xFF1F5C55), onPrimaryContainer = Color(0xFFDFF7F2),
-    background = Color(0xFF16242B), onBackground = Color(0xFFE9F1F1),
-    surface = Color(0xFF16242B), onSurface = Color(0xFFE9F1F1),
-    surfaceVariant = Color(0xFF22343C), onSurfaceVariant = Color(0xFFA1B2B6),
-    outline = Color(0xFF34454B), error = Color(0xFFFF9DA9),
-)
+// CCS/1 DEP:accepted WN-20, DM Sans OFL | RULE:Android 10/11 use the same brand palette (BrandLight/BrandDark,
+// generated from assets/brand-tokens.json, WN-167).
+
+/** WN-167: the M3 corner scale; every rounded corner in the app and the widget takes one of these. */
+object WindRadius {
+    val ExtraSmall = 4.dp
+    val Small = 8.dp
+    val Medium = 12.dp
+    val Large = 16.dp
+    val LargeIncreased = 20.dp
+    val ExtraLarge = 28.dp
+    val ExtraLargeIncreased = 32.dp
+    val ExtraExtraLarge = 48.dp
+}
+
+/** WN-167: [WindRadius] as shapes; [full] is the pill/circle. [material] is what `MaterialTheme.shapes` holds. */
+object WindShapes {
+    val extraSmall = RoundedCornerShape(WindRadius.ExtraSmall)
+    val small = RoundedCornerShape(WindRadius.Small)
+    val medium = RoundedCornerShape(WindRadius.Medium)
+    val large = RoundedCornerShape(WindRadius.Large)
+    val largeIncreased = RoundedCornerShape(WindRadius.LargeIncreased)
+    val extraLarge = RoundedCornerShape(WindRadius.ExtraLarge)
+    val extraLargeIncreased = RoundedCornerShape(WindRadius.ExtraLargeIncreased)
+    val extraExtraLarge = RoundedCornerShape(WindRadius.ExtraExtraLarge)
+    val full = RoundedCornerShape(percent = 50)
+    val material = Shapes(extraSmall = extraSmall, small = small, medium = medium, large = large, extraLarge = extraLarge)
+}
 // CCS/1 RULE:FontWeight metadata alone does not instantiate a variable font's wght axis.
 @OptIn(ExperimentalTextApi::class)
 private fun dmFont(weight: FontWeight) = Font(
@@ -87,17 +100,18 @@ fun readableOn(fg: Color, bg: Color, toward: Color, ratio: Double): Color {
 }
 
 /**
- * WN-160: one readable scheme for the app and the widget, whatever the palette. Under Material You the cards were the
- * light grey surfaceVariant with grey text on them (Samsung): cards take the calmer surfaceContainerHigh, and secondary
- * text, accents and lines on a card are pushed to a sure contrast (text ≥ 7:1, accents ≥ 4.5:1, lines ≥ 1.8:1).
+ * WN-160/WN-167: one readable scheme for the app and the widget, whatever the palette. Cards are surfaceContainerHigh
+ * (brand and Material You: under Material You surfaceVariant is a light grey with grey text on it, Samsung), and
+ * secondary text, accents and lines on a card are pushed to a sure contrast against it (text ≥ 7:1, accents ≥ 4.5:1,
+ * outlines ≥ 1.8:1, dividers ≥ 1.5:1).
  */
-fun readable(scheme: ColorScheme, dynamic: Boolean): ColorScheme {
-    val card = if (dynamic) scheme.surfaceContainerHigh else scheme.surfaceVariant
+fun readable(scheme: ColorScheme): ColorScheme {
+    val card = scheme.surfaceContainerHigh
     return scheme.copy(
-        surfaceVariant = card,
         onSurfaceVariant = readableOn(scheme.onSurfaceVariant, card, scheme.onSurface, 7.0),
         primary = readableOn(scheme.primary, card, scheme.onSurface, 4.5),
         outline = readableOn(scheme.outline, card, scheme.onSurface, 1.8),
+        outlineVariant = readableOn(scheme.outlineVariant, card, scheme.onSurface, 1.5),
         error = readableOn(scheme.error, card, scheme.onSurface, 4.5),
     )
 }
@@ -108,7 +122,7 @@ fun WindConnectTheme(mode: ThemeMode = ThemeMode.System, dynamicColor: Boolean =
     val dynamic = dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
     val colors = readable(if (dynamic) {
         if (dark) dynamicDarkColorScheme(LocalContext.current) else dynamicLightColorScheme(LocalContext.current)
-    } else if (dark) BrandDark else BrandLight, dynamic)
+    } else if (dark) BrandDark else BrandLight)
     val view = LocalView.current
     SideEffect {
         view.context.activity()?.window?.let { window ->
@@ -120,7 +134,7 @@ fun WindConnectTheme(mode: ThemeMode = ThemeMode.System, dynamicColor: Boolean =
             }
         }
     }
-    MaterialTheme(colorScheme = colors, typography = WindTypography) {
+    MaterialTheme(colorScheme = colors, typography = WindTypography, shapes = WindShapes.material) {
         CompositionLocalProvider(LocalContentColor provides colors.onBackground, content = content)
     }
 }

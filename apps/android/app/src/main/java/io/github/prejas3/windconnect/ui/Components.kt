@@ -7,7 +7,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material3.MaterialTheme
@@ -62,7 +61,7 @@ val LocalButtonFill = androidx.compose.runtime.staticCompositionLocalOf { false 
 @Composable
 fun WindButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true, kind: ButtonKind = ButtonKind.Primary, dense: Boolean = false) {
     val colors = MaterialTheme.colorScheme
-    val shape = RoundedCornerShape(24.dp)
+    val shape = WindShapes.full
     val background = if (kind == ButtonKind.Primary) (if (enabled) colors.primary else colors.onSurface.copy(alpha = .12f)) else Color.Transparent
     val foreground = when { !enabled -> colors.onSurfaceVariant; kind == ButtonKind.Primary -> colors.onPrimary; kind == ButtonKind.Secondary -> colors.onSurface; else -> colors.primary }
     val outline = if (kind == ButtonKind.Secondary) Modifier.border(1.dp, if (enabled) colors.onSurfaceVariant else colors.outline, shape) else Modifier
@@ -111,7 +110,7 @@ fun WindSlider(value: Float, onValueChange: (Float) -> Unit, modifier: Modifier 
 @Composable
 fun <T> WindSegmented(options: List<T>, selected: T, label: @Composable (T) -> String, onSelect: (T) -> Unit, modifier: Modifier = Modifier, tag: (T) -> String = { "" }) {
     val colors = MaterialTheme.colorScheme
-    val shape = RoundedCornerShape(24.dp)
+    val shape = WindShapes.full
     Row(modifier.fillMaxWidth().height(IntrinsicSize.Min).clip(shape).border(1.dp, colors.onSurfaceVariant, shape)) {
         options.forEachIndexed { index, option ->
             val on = option == selected
@@ -130,7 +129,7 @@ fun <T> WindSegmented(options: List<T>, selected: T, label: @Composable (T) -> S
 fun WindCard(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
     // WN-65: card text without its own style reads at one size (bodyMedium), titles and notes keep theirs.
     androidx.compose.material3.ProvideTextStyle(MaterialTheme.typography.bodyMedium) {
-        Column(modifier.clip(RoundedCornerShape(20.dp)).background(MaterialTheme.colorScheme.surfaceVariant).padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp), content = content)
+        Column(modifier.clip(WindShapes.largeIncreased).background(MaterialTheme.colorScheme.surfaceContainerHigh).padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp), content = content)
     }
 }
 
@@ -145,8 +144,8 @@ fun WindField(value: String, onValueChange: (String) -> Unit, label: String, mod
         Text(label, style = MaterialTheme.typography.labelMedium, color = colors.onSurface)
         BasicTextField(value, onValueChange, modifier = modifier.fillMaxWidth().defaultMinSize(minHeight = 52.dp)
             .onFocusChanged { focused = it.isFocused }
-            .clip(RoundedCornerShape(12.dp)).background(colors.surfaceVariant)
-            .border(if (focused) 2.dp else 1.dp, edge, RoundedCornerShape(12.dp))
+            .clip(WindShapes.medium).background(colors.surfaceContainerHigh)
+            .border(if (focused) 2.dp else 1.dp, edge, WindShapes.medium)
             .semantics { if (errorText != null) error(errorText) },
             textStyle = MaterialTheme.typography.bodyMedium.copy(color = colors.onSurface),
             cursorBrush = SolidColor(colors.primary), singleLine = singleLine,
@@ -228,7 +227,7 @@ fun WindIcon(name: String, modifier: Modifier = Modifier, tint: Color? = null) {
 fun WindAction(title: String, subtitle: String, icon: String, onClick: (() -> Unit)?, modifier: Modifier = Modifier) {
     val colors = MaterialTheme.colorScheme
     val enabled = onClick != null
-    val shape = RoundedCornerShape(13.dp)
+    val shape = WindShapes.medium
     // WN-160: unavailable = clearly dimmed (no fill, faint edge and ink); the reason is said once on the computer's card,
     // not "Unavailable" on every tile. TalkBack still hears it as the tile's state.
     val unavailable = stringResource(R.string.unavailable)
@@ -252,7 +251,7 @@ fun WindTextArea(value: androidx.compose.ui.text.input.TextFieldValue, onValueCh
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(label, style = MaterialTheme.typography.labelMedium)
         BasicTextField(value, onValueChange, modifier = modifier.fillMaxWidth().defaultMinSize(minHeight = 72.dp)
-            .clip(RoundedCornerShape(12.dp)).background(colors.surface).border(1.dp, colors.outline, RoundedCornerShape(12.dp))
+            .clip(WindShapes.medium).background(colors.surface).border(1.dp, colors.outline, WindShapes.medium)
             .padding(12.dp), enabled = enabled,
             textStyle = MaterialTheme.typography.bodyMedium.copy(color = colors.onSurface), cursorBrush = SolidColor(colors.primary), minLines = 2, maxLines = 4)
     }
@@ -265,13 +264,14 @@ fun WindSection(title: String, modifier: Modifier = Modifier, content: @Composab
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(title.uppercase(), color = colors.primary, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(start = 8.dp).semantics { heading() })
         androidx.compose.material3.ProvideTextStyle(MaterialTheme.typography.bodyMedium) {
-            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(colors.surfaceVariant).padding(horizontal = 16.dp, vertical = 4.dp), content = content)
+            Column(Modifier.fillMaxWidth().clip(WindShapes.largeIncreased).background(colors.surfaceContainerHigh).padding(horizontal = 16.dp, vertical = 4.dp), content = content)
         }
     }
 }
 
 @Composable
-fun WindDivider() { Box(Modifier.fillMaxWidth().height(1.dp).background(MaterialTheme.colorScheme.outline)) }
+// WN-167: dividers are the quieter outlineVariant; outline stays for edges (fields, the strong WN-160 button borders).
+fun WindDivider() { Box(Modifier.fillMaxWidth().height(1.dp).background(MaterialTheme.colorScheme.outlineVariant)) }
 
 /**
  * WN-130/WN-160: one setting. Icon, name, one-line summary and (optionally) its switch on one line; the whole line toggles.
@@ -294,9 +294,9 @@ fun WindSettingRow(
             onClick != null -> Modifier.clickable(enabled = enabled, role = Role.Button, onClick = onClick)
             else -> Modifier
         }
-        Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).clip(RoundedCornerShape(12.dp)).then(line).then(if (switchTag.isNotEmpty()) Modifier.testTag(switchTag) else Modifier),
+        Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).clip(WindShapes.medium).then(line).then(if (switchTag.isNotEmpty()) Modifier.testTag(switchTag) else Modifier),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(ROW_GAP)) {
-            Box(Modifier.size(ROW_ICON).clip(RoundedCornerShape(10.dp)).background(colors.surface), contentAlignment = Alignment.Center) { WindIcon(icon, Modifier.size(20.dp)) }
+            Box(Modifier.size(ROW_ICON).clip(WindShapes.medium).background(colors.surface), contentAlignment = Alignment.Center) { WindIcon(icon, Modifier.size(20.dp)) }
             Column(Modifier.weight(1f)) {
                 Text(title, style = MaterialTheme.typography.titleSmall, color = if (enabled) colors.onSurface else colors.onSurfaceVariant)
                 if (summary != null) Text(summary, style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
@@ -314,7 +314,7 @@ fun WindSettingRow(
             }
         }
         if (status != null || actions != null || (more != null && open)) Column(Modifier.fillMaxWidth().padding(start = ROW_TEXT_START), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (more != null && open) Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(colors.surface).padding(12.dp),
+            if (more != null && open) Column(Modifier.fillMaxWidth().clip(WindShapes.medium).background(colors.surface).padding(12.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 androidx.compose.material3.ProvideTextStyle(MaterialTheme.typography.bodySmall.copy(color = colors.onSurface)) { more(this) }
             }
@@ -336,7 +336,7 @@ val ROW_TEXT_START = ROW_ICON + ROW_GAP
 @Composable
 fun WindNotice(text: String, modifier: Modifier = Modifier) {
     val colors = MaterialTheme.colorScheme
-    Row(modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(colors.errorContainer).padding(horizontal = 12.dp, vertical = 10.dp),
+    Row(modifier.fillMaxWidth().clip(WindShapes.medium).background(colors.errorContainer).padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         WindIcon("warning", Modifier.size(20.dp), tint = colors.onErrorContainer)
         Text(text, style = MaterialTheme.typography.bodySmall, color = colors.onErrorContainer, modifier = Modifier.weight(1f))
@@ -377,7 +377,7 @@ fun WindIconButton(icon: String, label: String, onClick: () -> Unit, modifier: M
     val colors = MaterialTheme.colorScheme
     val size = if (primary) 56.dp else 48.dp
     val fill = if (primary && enabled) colors.primary else if (primary) colors.onSurface.copy(alpha = .12f) else Color.Transparent
-    Box(modifier.size(size).clip(RoundedCornerShape(size / 2)).background(fill)
+    Box(modifier.size(size).clip(WindShapes.full).background(fill)
         .clickable(enabled = enabled, role = Role.Button, onClick = onClick).semantics { contentDescription = label }, contentAlignment = Alignment.Center) {
         WindIcon(icon, Modifier.size(22.dp), tint = when { !enabled -> colors.onSurfaceVariant; primary -> colors.onPrimary; else -> tint ?: colors.onSurface })
     }

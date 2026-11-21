@@ -5,7 +5,6 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -58,11 +57,11 @@ fun HomeScreen(state: PairingUi, onScan: () -> Unit, onDiagnostics: () -> Unit, 
     // WN-130: one card for the computer (the strip above it said the same): name, state and route under it, then its actions.
     WindCard(Modifier.fillMaxWidth().testTag("computerCard")) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Box(Modifier.size(44.dp).clip(RoundedCornerShape(13.dp)).background(if (connected != null) colors.primaryContainer else colors.surface), contentAlignment = Alignment.Center) { WindIcon("pc") }
+            Box(Modifier.size(44.dp).clip(WindShapes.medium).background(if (connected != null) colors.primaryContainer else colors.surface), contentAlignment = Alignment.Center) { WindIcon("pc") }
             Column(Modifier.weight(1f)) {
                 Text(name, modifier = Modifier.testTag("computerName"), style = MaterialTheme.typography.titleLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Box(Modifier.size(8.dp).clip(RoundedCornerShape(4.dp)).background(if (connected != null) colors.primary else colors.onSurfaceVariant))
+                    Box(Modifier.size(8.dp).clip(WindShapes.full).background(if (connected != null) colors.primary else colors.onSurfaceVariant))
                     val latency = connected?.let { String.format(Locale.getDefault(), "%.1f ms", it.roundTripMicros / 1000.0) }
                     val route = stringResource(if (connected?.route == "relay") R.string.home_via_relay else R.string.home_local_network)
                     val latencyDescription = if (latency != null) stringResource(R.string.home_latency_desc, latency) else status

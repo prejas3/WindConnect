@@ -22,7 +22,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.border
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
@@ -111,8 +110,8 @@ class TouchpadActivity : ComponentActivity() {
                     AndroidView(factory={PadView(it,{capture}, {active})},modifier=Modifier.fillMaxWidth().weight(1f).background(MaterialTheme.colorScheme.surfaceContainer).testTag("touchpadSurface"))
                     Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(12.dp)) {
                         // WN-130: own control (outlined, like WindButton Secondary); press and release stay separate for drag-and-hold.
-                        for(left in listOf(true,false)) Box(Modifier.weight(1f).heightIn(min=56.dp).clip(RoundedCornerShape(24.dp))
-                            .border(1.dp,if(active)MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.outline,RoundedCornerShape(24.dp))
+                        for(left in listOf(true,false)) Box(Modifier.weight(1f).heightIn(min=56.dp).clip(WindShapes.full)
+                            .border(1.dp,if(active)MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.outline,WindShapes.full)
                             .semantics(mergeDescendants=true){role=Role.Button;if(!active)disabled();onClick{capture?.button(left,true);capture?.button(left,false);active}}
                             .pointerInteropFilter { event ->
                                 if(active)when(event.actionMasked){MotionEvent.ACTION_DOWN->capture?.button(left,true);MotionEvent.ACTION_UP,MotionEvent.ACTION_CANCEL->capture?.button(left,false)}

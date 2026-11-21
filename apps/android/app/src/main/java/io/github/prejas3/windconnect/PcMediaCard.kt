@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -71,7 +70,7 @@ private fun PcMediaPart(shown: io.github.prejas3.windconnect.core.PcMedia, conne
     val can = { bit: Long -> shown.actions and bit != 0L }
     Column(Modifier.fillMaxWidth().testTag("pcMedia"), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            shown.art?.let { Image(it.asImageBitmap(), contentDescription = null, modifier = Modifier.size(56.dp).clip(RoundedCornerShape(8.dp))) }
+            shown.art?.let { Image(it.asImageBitmap(), contentDescription = null, modifier = Modifier.size(56.dp).clip(WindShapes.small)) }
             Column(Modifier.weight(1f)) {
                 Text(shown.title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.testTag("pcMediaTitle"))
                 listOfNotNull(shown.artist, shown.album).joinToString(" · ").takeIf { it.isNotEmpty() }?.let {

@@ -27,7 +27,6 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
@@ -119,8 +118,8 @@ internal fun NotifyAppsList(state: NotifyAppsState, label: (String) -> String, o
         // WN-160: the app's own icon beside its name (a neutral mark when it can't load).
         val image = remember(pkg) { icon(pkg)?.let { android.graphics.BitmapFactory.decodeByteArray(it, 0, it.size)?.asImageBitmap() } }
         WindSwitch(label, state.allows(pkg), { on -> onApp(pkg, on) }, Modifier.testTag("notifyApp:$pkg"), leading = {
-            if (image != null) Image(image, null, Modifier.size(28.dp).clip(RoundedCornerShape(7.dp)))
-            else Box(Modifier.size(28.dp).clip(RoundedCornerShape(7.dp)).background(MaterialTheme.colorScheme.surface), contentAlignment = Alignment.Center) {
+            if (image != null) Image(image, null, Modifier.size(28.dp).clip(WindShapes.small))
+            else Box(Modifier.size(28.dp).clip(WindShapes.small).background(MaterialTheme.colorScheme.surface), contentAlignment = Alignment.Center) {
                 Text(label.take(1).uppercase(), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         })

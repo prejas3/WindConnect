@@ -23,6 +23,7 @@ import androidx.glance.semantics.semantics
 import androidx.glance.text.*
 import io.github.prejas3.windconnect.ui.BrandDark
 import io.github.prejas3.windconnect.ui.BrandLight
+import io.github.prejas3.windconnect.ui.WindRadius
 import io.github.prejas3.windconnect.ui.readable
 import androidx.compose.ui.unit.DpSize
 import android.text.format.DateFormat
@@ -45,8 +46,8 @@ class WindWidget : GlanceAppWidget() {
             val data = snapshot.data
             // WN-160: the app's readable scheme (secondary text and accents at a sure contrast) on the widget too.
             val dynamic = data.dynamic && Build.VERSION.SDK_INT >= 31
-            val light = readable(if (dynamic) dynamicLightColorScheme(context) else BrandLight, dynamic)
-            val dark = readable(if (dynamic) dynamicDarkColorScheme(context) else BrandDark, dynamic)
+            val light = readable(if (dynamic) dynamicLightColorScheme(context) else BrandLight)
+            val dark = readable(if (dynamic) dynamicDarkColorScheme(context) else BrandDark)
             val colors = when (data.theme) {
                 "Light" -> ColorProviders(light, light)
                 "Dark" -> ColorProviders(dark, dark)
@@ -61,6 +62,8 @@ class WindWidget : GlanceAppWidget() {
 internal val WIDGET_SMALL = DpSize(180.dp, 100.dp)
 internal val WIDGET_MEDIUM = DpSize(180.dp, 150.dp)
 internal val WIDGET_LARGE = DpSize(240.dp, 250.dp)
+// The state dot; its corner is half its size (WindShapes.full: Glance takes a radius, not a shape).
+private val WIDGET_DOT = 10.dp
 
 /** [short]: the one-word label for the medium size at a large font (the full [label] stays the button's description). */
 private class WidgetAction(val label: String, val icon: Int, val intent: Intent, val short: String = label)
@@ -77,7 +80,7 @@ private fun WidgetContent(context: Context, snapshot: WidgetSnapshot) {
     val time = if (snapshot.updatedAt > 0) DateFormat.getTimeFormat(context).format(Date(snapshot.updatedAt)) else "—"
     val status = if (data.connected) context.getString(R.string.widget_connected_at, time) else data.status
     Column(GlanceModifier.fillMaxSize().appWidgetBackground().background(colors.surface)
-        .cornerRadius(24.dp).padding(horizontal = 14.dp, vertical = if (large) 14.dp else 10.dp)) {
+        .cornerRadius(WindRadius.ExtraLarge).padding(horizontal = 14.dp, vertical = if (large) 14.dp else 10.dp)) {
         val openIntent = Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         // Header: state dot, the computer's name, the phone's battery; tapping it opens the app (at every size).
         Column(GlanceModifier.fillMaxWidth().clickable(actionStartActivity(openIntent))) {
@@ -92,7 +95,7 @@ private fun WidgetContent(context: Context, snapshot: WidgetSnapshot) {
         }
         Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             val dot = when { data.connected -> colors.primary; data.connecting -> colors.tertiary; else -> colors.outline }
-            Box(GlanceModifier.size(10.dp).cornerRadius(5.dp).background(dot)) {}
+            Box(GlanceModifier.size(WIDGET_DOT).cornerRadius(WIDGET_DOT / 2).background(dot)) {}
             Spacer(GlanceModifier.width(8.dp))
             Text(data.name, modifier = GlanceModifier.defaultWeight(), style = TextStyle(color = colors.onSurface, fontSize = 16.sp, fontWeight = FontWeight.Bold), maxLines = 1)
             if (small || large) { Spacer(GlanceModifier.width(8.dp)); battery() }
@@ -133,7 +136,7 @@ private fun WidgetContent(context: Context, snapshot: WidgetSnapshot) {
 @Composable
 private fun WidgetButton(action: WidgetAction, modifier: GlanceModifier, small: Boolean, icon: Boolean = true) {
     val colors = GlanceTheme.colors
-    val base = modifier.background(colors.primaryContainer).cornerRadius(16.dp).padding(horizontal = 8.dp, vertical = 2.dp)
+    val base = modifier.background(colors.primaryContainer).cornerRadius(WindRadius.Large).padding(horizontal = 8.dp, vertical = 2.dp)
         .clickable(actionStartActivity(action.intent)).semantics { contentDescription = action.label }
     val label = TextStyle(color = colors.onPrimaryContainer, fontSize = 13.sp, fontWeight = FontWeight.Medium, textAlign = TextAlign.Center)
     if (small) Row(base, verticalAlignment = Alignment.CenterVertically, horizontalAlignment = Alignment.CenterHorizontally) {

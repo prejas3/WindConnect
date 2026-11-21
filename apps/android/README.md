@@ -570,14 +570,23 @@ a connection for 30 s windows. Looking for other PCs during a session (WN-90) ad
 no time with the lock: it goes through broadcast. Usage in mAh needs a measurement on a phone
 (S25 Ultra, Battery Historian) and belongs to WC-30.
 
-## Theme and components (WN-22, WN-160)
+## Theme and components (WN-22, WN-160, WN-167)
 
-`ui/Theme.kt` defines DM Sans and the palette from the accepted WN-20. By default
+`ui/Theme.kt` defines DM Sans, the corner scale and the theme. By default
 Android 12+ takes Material You from the wallpaper (`dynamicLightColorScheme` /
-`dynamicDarkColorScheme`); Android 10/11 keep the teal/graphite palette.
-WN-160: `readable()` gives the app and the widget one readable scheme: under Material You cards take
-`surfaceContainerHigh`, and secondary text on a card is pushed to at least 7:1 contrast,
-accents and errors to 4.5:1, lines to 1.8:1 (`ThemeContrastTest`).
+`dynamicDarkColorScheme`); Android 10/11, and Material You switched off, use the brand palette.
+WN-167: the brand palette `ui/BrandColors.kt` is generated from `assets/brand-tokens.json` by
+`node scripts/generate-brand-tokens.cjs` (the same source writes the colours of the Windows
+`frontend/tokens.css`; CI runs it with `--check`; never edit either output by hand). It sets every
+Material 3 role from the seed #0D7F74, fitted to the WN-20 values, so no baseline M3 purple or pink
+is left (the touchpad field, the widget's "connecting" dot, the warning banners); `ThemeContrastTest`
+fails on a role left at the baseline. Android's `errorContainer` is the Windows `--danger-bg`.
+WN-160/WN-167: `readable()` gives the app and the widget one readable scheme: cards are
+`surfaceContainerHigh` (brand and Material You), and secondary text on a card is pushed to at least 7:1 contrast,
+accents and errors to 4.5:1, outlines to 1.8:1, dividers (`WindDivider`, `outlineVariant`) to 1.5:1
+(`ThemeContrastTest`). Outlines stay for edges, including the strong WN-160 button borders.
+WN-167: corners take the M3 scale `WindRadius`/`WindShapes` (4/8/12/16/20/28/32/48/full, also
+`MaterialTheme.shapes`); `ShapeScaleTest` fails on a radius written by hand outside `Theme.kt`.
 The System theme follows the OS configuration, and the manual light/dark choice and the dynamic
 colour option are remembered in the app's private preferences.
 Changing the settings needs no restart. The content respects safe drawing/IME insets,

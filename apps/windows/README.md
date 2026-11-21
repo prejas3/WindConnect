@@ -112,7 +112,9 @@ is part of the device tests before a release.
 ## Windows controls (WN-21)
 
 `frontend/tokens.css` defines the light/dark palette, DM Sans, spacing,
-radii and motion from WN-20. `style.css` draws buttons, tiles, switches,
+radii and motion from WN-20. WN-167: its colours are a generated block from
+`assets/brand-tokens.json` (`node scripts/generate-brand-tokens.cjs`; CI checks it), the
+same source as Android's palette; edit the JSON, never the block. `style.css` draws buttons, tiles, switches,
 the checkbox, fields, the list, the dialog, progress and the scrollbar. Semantic HTML elements
 keep their keyboard handling; their look doesn't use the default controls.
 Focus is visible, Escape closes the dialog and restores focus, the list handles

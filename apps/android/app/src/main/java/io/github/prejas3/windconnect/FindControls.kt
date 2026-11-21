@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -41,7 +40,7 @@ fun FindControls() {
 fun StopRingingBar(onStop: () -> Unit, modifier: Modifier = Modifier) {
     Row(
         modifier.fillMaxWidth().statusBarsPadding().padding(12.dp)
-            .background(MaterialTheme.colorScheme.errorContainer, RoundedCornerShape(16.dp))
+            .background(MaterialTheme.colorScheme.errorContainer, WindShapes.large)
             .padding(horizontal = 16.dp, vertical = 10.dp)
             .semantics { liveRegion = LiveRegionMode.Polite }
             .testTag("ringingBar"),

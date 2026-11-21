@@ -1,10 +1,10 @@
 package io.github.prejas3.windconnect
 
+import io.github.prejas3.windconnect.ui.WindShapes
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import io.github.prejas3.windconnect.ui.ButtonKind
@@ -70,12 +70,12 @@ private fun HistoryRow(entry: ClipboardHistoryView, actions: ClipboardHistoryAct
     val origin = str(if (entry.fromPc) R.string.history_from_pc else R.string.history_from_phone)
     val preview = entry.preview.ifBlank { str(R.string.history_blank) }
     Row(Modifier.fillMaxWidth().heightIn(min = 60.dp).testTag("historyEntry${entry.id}"), verticalAlignment = Alignment.CenterVertically) {
-        Row(Modifier.weight(1f).clip(RoundedCornerShape(10.dp))
+        Row(Modifier.weight(1f).clip(WindShapes.medium)
             .clickable(role = Role.Button, onClickLabel = str(R.string.history_copy)) { actions.copy(entry.id) }
             .semantics(mergeDescendants = true) { contentDescription = if (entry.pinned) str(R.string.history_entry_pinned, preview, origin) else str(R.string.history_entry, preview, origin) }
             .padding(vertical = 8.dp).testTag("historyCopy${entry.id}"), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             val thumbnail = remember(entry.id) { entry.thumbnail?.let { BitmapFactory.decodeByteArray(it, 0, it.size)?.asImageBitmap() } }
-            Box(Modifier.size(HISTORY_LEAD).clip(RoundedCornerShape(8.dp)).background(colors.surface), contentAlignment = Alignment.Center) {
+            Box(Modifier.size(HISTORY_LEAD).clip(WindShapes.medium).background(colors.surface), contentAlignment = Alignment.Center) {
                 if (thumbnail != null) Image(thumbnail, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
                 else WindIcon(if (entry.image) "image" else "text", Modifier.size(20.dp), tint = colors.onSurfaceVariant)
             }

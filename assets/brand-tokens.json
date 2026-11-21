@@ -1,0 +1,49 @@
+{
+  "about": "WN-167: the one source of the brand colours. scripts/generate-brand-tokens.cjs writes apps/windows/frontend/tokens.css (the generated block) and apps/android/app/src/main/java/io/github/prejas3/windconnect/ui/BrandColors.kt; --check fails when either is out of date. Android roles are the full Material 3 set from the seed #0D7F74 (Material Theme Builder, tonal spot), fitted to the WN-20 palette: the WN-20 values are kept as they were, the roles WN-20 never had come from the seed. No role may keep a baseline M3 value (ThemeContrastTest).",
+  "seed": "#0D7F74",
+  "light": {
+    "roles": {
+      "primary": "#0D7F74", "onPrimary": "#FFFFFF", "primaryContainer": "#D7EFEB", "onPrimaryContainer": "#0B5E55", "inversePrimary": "#43C9B8",
+      "secondary": "#4A635F", "onSecondary": "#FFFFFF", "secondaryContainer": "#CCE8E3", "onSecondaryContainer": "#324B47",
+      "tertiary": "#46617A", "onTertiary": "#FFFFFF", "tertiaryContainer": "#CDE5FF", "onTertiaryContainer": "#2E4961",
+      "background": "#F8FBFB", "onBackground": "#15282F", "surface": "#F8FBFB", "onSurface": "#15282F",
+      "surfaceVariant": "#E8EFEF", "onSurfaceVariant": "#52686E", "surfaceTint": "#0D7F74",
+      "inverseSurface": "#2A3A40", "inverseOnSurface": "#E9F1F1",
+      "error": "#AD2838", "onError": "#FFFFFF", "errorContainer": "#FCE5E8", "onErrorContainer": "#7A1424",
+      "outline": "#CCDADB", "outlineVariant": "#B5C4C5", "scrim": "#000000",
+      "surfaceBright": "#F8FBFB", "surfaceDim": "#D5DFE0",
+      "surfaceContainerLowest": "#FFFFFF", "surfaceContainerLow": "#F1F6F6", "surfaceContainer": "#ECF3F3",
+      "surfaceContainerHigh": "#E8EFEF", "surfaceContainerHighest": "#E1EAEB"
+    },
+    "extra": {
+      "sink": "#F1F6F6", "accentText": "#0B6E64", "warning": "#805015", "success": "#096A60", "disabled": "#667B80",
+      "micaTint": "#F8FBFBE8", "shadow": "0 22px 45px -20px #254E5566"
+    }
+  },
+  "dark": {
+    "roles": {
+      "primary": "#43C9B8", "onPrimary": "#062E28", "primaryContainer": "#1F5C55", "onPrimaryContainer": "#DFF7F2", "inversePrimary": "#0D7F74",
+      "secondary": "#B1CCC7", "onSecondary": "#1C3531", "secondaryContainer": "#324B47", "onSecondaryContainer": "#CCE8E3",
+      "tertiary": "#ADCAE6", "onTertiary": "#153349", "tertiaryContainer": "#2E4961", "onTertiaryContainer": "#CDE5FF",
+      "background": "#16242B", "onBackground": "#E9F1F1", "surface": "#16242B", "onSurface": "#E9F1F1",
+      "surfaceVariant": "#22343C", "onSurfaceVariant": "#A1B2B6", "surfaceTint": "#43C9B8",
+      "inverseSurface": "#E9F1F1", "inverseOnSurface": "#22343C",
+      "error": "#FF9DA9", "onError": "#5A0F1C", "errorContainer": "#4D2832", "onErrorContainer": "#FFD9DE",
+      "outline": "#34454B", "outlineVariant": "#425257", "scrim": "#000000",
+      "surfaceBright": "#34474F", "surfaceDim": "#16242B",
+      "surfaceContainerLowest": "#101C22", "surfaceContainerLow": "#1A2A31", "surfaceContainer": "#1E2F36",
+      "surfaceContainerHigh": "#22343C", "surfaceContainerHighest": "#2A3D45"
+    },
+    "extra": {
+      "sink": "#132128", "accentText": "#43C9B8", "warning": "#EFBC7C", "success": "#70DFBA", "disabled": "#82979D",
+      "micaTint": "#16242BE8", "shadow": "0 22px 45px -20px #03101599"
+    }
+  },
+  "windows": {
+    "--surface": "surface", "--tile": "surfaceContainerHigh", "--sink": "extra.sink", "--text": "onSurface", "--sub": "onSurfaceVariant",
+    "--border": "outline", "--accent": "primary", "--accent-text": "extra.accentText", "--accent-bg": "primaryContainer",
+    "--accent-ink": "onPrimaryContainer", "--on-accent": "onPrimary", "--field": "surface", "--focus": "primary",
+    "--danger": "error", "--danger-bg": "errorContainer", "--warning": "extra.warning", "--success": "extra.success",
+    "--disabled": "extra.disabled", "--mica-tint": "extra.micaTint", "--shadow": "extra.shadow"
+  }
+}

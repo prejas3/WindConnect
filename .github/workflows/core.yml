@@ -27,6 +27,9 @@ jobs:
       # WN-114: one version in every manifest, and a v* tag on HEAD matches it.
       - name: Check versions and tags
         run: node scripts/check-version.cjs
+      # WN-167: tokens.css and Android's BrandColors.kt are generated from assets/brand-tokens.json.
+      - name: Check brand tokens
+        run: node scripts/generate-brand-tokens.cjs --check
       # WN-163: the Rust pinned in rust-toolchain.toml (with rustfmt and clippy), the same as local builds.
       - name: Install pinned Rust
         run: rustup toolchain install

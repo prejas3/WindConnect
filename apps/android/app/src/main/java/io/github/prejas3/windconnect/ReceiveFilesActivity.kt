@@ -10,7 +10,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -70,7 +69,7 @@ internal fun ReceiveFilesControls(state: ReceiveUi = FileReceiving.ui.collectAsS
         active.forEach { file ->
             Text(cleanName(file.name), style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
             val fraction = if (file.size == 0uL) 0f else (file.done.toDouble() / file.size.toDouble()).coerceIn(0.0, 1.0).toFloat()
-            Box(Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)).background(colors.outline).semantics {
+            Box(Modifier.fillMaxWidth().height(6.dp).clip(WindShapes.full).background(colors.outline).semantics {
                 progressBarRangeInfo = ProgressBarRangeInfo(fraction, 0f..1f)
                 contentDescription = str(R.string.receive_progress)
             }) { Box(Modifier.fillMaxWidth(fraction).fillMaxHeight().background(colors.primary)) }
@@ -106,10 +105,10 @@ private fun ReceivedRow(receipt: ReceivedFile, onOpen: () -> Unit) {
     val colors = MaterialTheme.colorScheme
     val name = cleanName(receipt.name)
     val openLabel = str(R.string.open_named, name)
-    Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).clip(RoundedCornerShape(12.dp)).clickable(role = Role.Button, onClickLabel = openLabel, onClick = onOpen)
+    Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).clip(WindShapes.medium).clickable(role = Role.Button, onClickLabel = openLabel, onClick = onOpen)
         .testTag("received-${receipt.key}").padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         val ext = name.substringAfterLast('.', "").uppercase().take(4)
-        Box(Modifier.size(40.dp).clip(RoundedCornerShape(10.dp)).background(colors.surface), contentAlignment = Alignment.Center) {
+        Box(Modifier.size(40.dp).clip(WindShapes.medium).background(colors.surface), contentAlignment = Alignment.Center) {
             if (ext.isNotEmpty()) Text(ext, style = MaterialTheme.typography.labelSmall, color = colors.primary) else WindIcon("file", Modifier.size(20.dp))
         }
         Column(Modifier.weight(1f)) {
