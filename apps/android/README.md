@@ -633,6 +633,18 @@ in sentence case. The touchpad's modes are a connected group with an entering sl
 surface), the surface is radius 28 on surfaceContainerHigh, the presenter's timer has tabular DM Sans digits
 and its slide/laser buttons are Expressive L/XL. `StructureTest` covers them.
 
+WN-171 (details): the M3 type scale in DM Sans (display/headline SemiBold); icons have a 1.8 line and
+filled pin/bell/play for the "on" state; action tiles are 16 dp on surfaceContainerLowest; settings rows are
+M3 list items (bodyLarge Medium, bodyMedium). "Connecting" is amber in the app (a 6 dp badge on the computer's
+icon) and the widget, as "searching" in the Windows tray (Szymon's decision). The window, status/navigation bars
+and the Android 12+ splash take `res/values{,-night}/brand_colors.xml`, generated from
+`assets/brand-tokens.json` with the rest. The QR scanner has a rounded preview with a viewfinder and its hint
+on it; the SAS code is in groups with tabular digits, the fingerprint in monospace groups; pairing's "Done"
+opens with a large check (hero). The widget takes the launcher's radii from Android 12, its picker preview
+follows dark mode and, from Android 15, is the widget itself (Glance `providePreview`). Notifications carry
+the brand colour, the link notification has its own icon, and the shortcuts have their own adaptive icons.
+`PolishDetailsTest` covers the scale, the amber and the grouping.
+
 In debug press **Preview** in the header. The screen demonstrates both themes, the system/brand
 palette, the SZYMON-PC card, four actions, a transfer, a switch and field validation.
 This is sample data: a click doesn't connect, doesn't lock the computer and doesn't send

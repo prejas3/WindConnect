@@ -25,6 +25,15 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import io.github.prejas3.windconnect.ui.ButtonKind
+import io.github.prejas3.windconnect.ui.LocalReduceMotion
+import io.github.prejas3.windconnect.ui.WindIcon
+import io.github.prejas3.windconnect.ui.WindMotion
+import io.github.prejas3.windconnect.ui.WindShapes
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import io.github.prejas3.windconnect.ui.WindButton
 import io.github.prejas3.windconnect.ui.WindCard
 
@@ -70,8 +79,12 @@ fun DoneScreen(name: String, status: String, onDone: () -> Unit) {
     val choice = BackgroundChoice(decided, keep, denied)
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted -> denied = !granted }
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        Text(stringResource(R.string.done), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.testTag("pairingSuccess").semantics { heading() })
-        Text(stringResource(R.string.paired_with, computerLabel(name)), style = MaterialTheme.typography.titleMedium)
+        // WN-171: the hero moment: a large check that grows in (Expressive), then the heading under it, centred.
+        DoneMark(Modifier.align(androidx.compose.ui.Alignment.CenterHorizontally).padding(top = 24.dp, bottom = 8.dp))
+        Text(stringResource(R.string.done), style = MaterialTheme.typography.headlineMedium, textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            modifier = Modifier.fillMaxWidth().testTag("pairingSuccess").semantics { heading() })
+        Text(stringResource(R.string.paired_with, computerLabel(name)), style = MaterialTheme.typography.titleMedium, textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            modifier = Modifier.fillMaxWidth())
         Text(status, modifier = Modifier.testTag("pairedConnectionStatus"))
         Text(stringResource(R.string.paired_key_saved), style = MaterialTheme.typography.bodySmall)
         WindCard(Modifier.fillMaxWidth().testTag("backgroundChoice")) {
@@ -96,4 +109,23 @@ fun DoneScreen(name: String, status: String, onDone: () -> Unit) {
         }
         WindButton(stringResource(R.string.done), onDone, Modifier.fillMaxWidth().testTag("pairingDone"), kind = if (choice.decided) ButtonKind.Primary else ButtonKind.Secondary)
     }
+}
+
+/** WN-171: the "Done" mark: a 96 dp primaryContainer circle with a check, growing in on the slow spatial spring. */
+@Composable
+private fun DoneMark(modifier: Modifier = Modifier) {
+    val colors = MaterialTheme.colorScheme
+    val reduce = LocalReduceMotion.current
+    val shown = androidx.compose.runtime.remember { androidx.compose.animation.core.Animatable(if (reduce) 1f else 0f) }
+    androidx.compose.runtime.LaunchedEffect(Unit) { shown.animateTo(1f, WindMotion.slowSpatial()) }
+    androidx.compose.foundation.layout.Box(modifier.size(96.dp).androidxGraphics(shown.value).clip(WindShapes.full).background(colors.primaryContainer).testTag("doneMark"),
+        contentAlignment = androidx.compose.ui.Alignment.Center) {
+        WindIcon("check", Modifier.size(52.dp), tint = colors.onPrimaryContainer)
+    }
+}
+
+private fun Modifier.androidxGraphics(progress: Float): Modifier = this.graphicsLayer {
+    alpha = progress.coerceIn(0f, 1f)
+    val scale = .5f + .5f * progress
+    scaleX = scale; scaleY = scale
 }

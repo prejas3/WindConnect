@@ -178,7 +178,7 @@ internal object FileReceiving {
         val message = if (busy) {
             if (done == size) str(R.string.receive_publishing) else str(R.string.bytes_of, transferBytes(done), transferBytes(size)) + (speed?.let { " · " + str(R.string.per_second, transferBytes(it)) } ?: "")
         } else lastResult.ifEmpty { state.receipts.firstOrNull()?.let { "${it.folder}${it.name}" } ?: str(R.string.receive_finished) }
-        val notification = Notification.Builder(context, CHANNEL).setSmallIcon(R.drawable.ic_connection)
+        val notification = Notification.Builder(context, CHANNEL).setSmallIcon(R.drawable.ic_connection).setColor(context.getColor(R.color.icon_background))
             .setContentTitle(when {
                 busy -> str(R.string.receive_receiving)
                 lastResult.isNotEmpty() -> str(R.string.receive_finished)
@@ -187,7 +187,7 @@ internal object FileReceiving {
                 else -> str(R.string.receive_in_downloads)
             }).setContentText(if (single != null) "${transferBytes(single.size)} · ${single.folder}" else message)
             .setContentIntent(open).setOnlyAlertOnce(true).setOngoing(busy).setVisibility(Notification.VISIBILITY_PRIVATE)
-            .setPublicVersion(Notification.Builder(context, CHANNEL).setSmallIcon(R.drawable.ic_connection).setContentTitle("WindConnect").setContentText(str(R.string.receive_unlock)).setContentIntent(open).build())
+            .setPublicVersion(Notification.Builder(context, CHANNEL).setSmallIcon(R.drawable.ic_connection).setColor(context.getColor(R.color.icon_background)).setContentTitle("WindConnect").setContentText(str(R.string.receive_unlock)).setContentIntent(open).build())
             .apply { if (single != null) {
                 addAction(Notification.Action.Builder(null, str(R.string.open), open).build())
                 addAction(Notification.Action.Builder(null, str(R.string.receive_all_files), list).build())
@@ -201,7 +201,7 @@ internal object FileReceiving {
     fun foregroundNotice(context: Context): Notification {
         val manager = context.getSystemService(NotificationManager::class.java)
         manager.createNotificationChannel(NotificationChannel("file-receiver-owner", str(R.string.receive_owner_channel), NotificationManager.IMPORTANCE_LOW).apply { setShowBadge(false) })
-        return Notification.Builder(context, "file-receiver-owner").setSmallIcon(R.drawable.ic_connection)
+        return Notification.Builder(context, "file-receiver-owner").setSmallIcon(R.drawable.ic_connection).setColor(context.getColor(R.color.icon_background))
             .setContentTitle(str(R.string.receive_owner_title)).setContentText(str(R.string.receive_owner_text))
             .setOnlyAlertOnce(true).setOngoing(true).setVisibility(Notification.VISIBILITY_PRIVATE).build()
     }

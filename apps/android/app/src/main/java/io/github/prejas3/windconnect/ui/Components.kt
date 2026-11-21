@@ -171,7 +171,7 @@ fun WindSlider(value: Float, onValueChange: (Float) -> Unit, modifier: Modifier 
             if (inActive || size.width - left - box > outer * 2) {
                 val tint = if (!enabled) colors.onSurface.copy(alpha = .38f) else if (inActive) colors.onPrimary else colors.onSurfaceVariant
                 translate(left, (size.height - box) / 2) {
-                    scale(box / 24f, box / 24f, pivot = Offset.Zero) { drawPath(glyph, tint, style = Stroke(1.65f, cap = StrokeCap.Round, join = StrokeJoin.Round)) }
+                    scale(box / 24f, box / 24f, pivot = Offset.Zero) { drawPath(glyph, tint, style = Stroke(ICON_STROKE, cap = StrokeCap.Round, join = StrokeJoin.Round)) }
                 }
             }
         }
@@ -280,6 +280,10 @@ fun WindSwitch(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Un
     }
 }
 
+/** WN-171: the icons' line width (24-unit grid) and the ones that have a filled variant. */
+const val ICON_STROKE = 1.8f
+private val FILLABLE = setOf("pin", "bell", "play")
+
 /** The 24-unit path of a [WindIcon] (also drawn inside the slider's track and the switch's thumb). */
 internal fun windIconData(name: String): String = when (name) {
         "send" -> "M12 16V4M7 9l5-5 5 5M5 17v3h14v-3"
@@ -326,22 +330,26 @@ internal fun windIconData(name: String): String = when (name) {
 
 // CCS/1 DEP:own SVG paths from accepted WN-20 | RULE:decorative; parent supplies accessible label.
 @Composable
-fun WindIcon(name: String, modifier: Modifier = Modifier, tint: Color? = null) {
+fun WindIcon(name: String, modifier: Modifier = Modifier, tint: Color? = null, filled: Boolean = false) {
     val color = tint ?: MaterialTheme.colorScheme.primary
     val data = windIconData(name)
     val path = remember(data) { PathParser().parsePathString(data).toPath() }
-    Canvas(modifier.size(24.dp)) { scale(size.width / 24f, size.height / 24f, pivot = Offset.Zero) { drawPath(path, color, style = Stroke(1.65f, cap = StrokeCap.Round, join = StrokeJoin.Round)) } }
+    // WN-171: a 1.8 line (Material Symbols weight); [filled] also fills the shape (pin, bell, play: the "on" state).
+    Canvas(modifier.size(24.dp)) { scale(size.width / 24f, size.height / 24f, pivot = Offset.Zero) {
+        if (filled && name in FILLABLE) drawPath(path, color)
+        drawPath(path, color, style = Stroke(ICON_STROKE, cap = StrokeCap.Round, join = StrokeJoin.Round))
+    } }
 }
 
 @Composable
 fun WindAction(title: String, subtitle: String, icon: String, onClick: (() -> Unit)?, modifier: Modifier = Modifier) {
     val colors = MaterialTheme.colorScheme
     val enabled = onClick != null
-    val shape = WindShapes.medium
+    val shape = WindShapes.large // WN-171: 16 dp, on surfaceContainerLowest (a tile on the card, not a card in a card)
     // WN-160: unavailable = clearly dimmed (no fill, faint edge and ink); the reason is said once on the computer's card,
     // not "Unavailable" on every tile. TalkBack still hears it as the tile's state.
     val unavailable = stringResource(R.string.unavailable)
-    val surface = if (enabled) colors.surface else Color.Transparent
+    val surface = if (enabled) colors.surfaceContainerLowest else Color.Transparent
     val ink = if (enabled) colors.onSurface else colors.onSurface.copy(alpha = .42f)
     val outline = if (enabled) Modifier else Modifier.border(1.dp, colors.outline.copy(alpha = .6f), shape)
     Column(modifier.heightIn(min = 88.dp).windFocus(shape).clip(shape).background(surface).then(outline)
@@ -415,10 +423,11 @@ fun WindSettingRow(
         }
         Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).windFocus(WindShapes.medium).clip(WindShapes.medium).then(line).then(if (switchTag.isNotEmpty()) Modifier.testTag(switchTag) else Modifier),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(ROW_GAP)) {
-            Box(Modifier.size(ROW_ICON).clip(WindShapes.medium).background(colors.surface), contentAlignment = Alignment.Center) { WindIcon(icon, Modifier.size(20.dp)) }
+            Box(Modifier.size(ROW_ICON).clip(WindShapes.medium).background(colors.surface), contentAlignment = Alignment.Center) { WindIcon(icon, Modifier.size(20.dp), filled = checked == true) }
             Column(Modifier.weight(1f)) {
-                Text(title, style = MaterialTheme.typography.titleSmall, color = if (enabled) colors.onSurface else colors.onSurfaceVariant)
-                if (summary != null) Text(summary, style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
+                // WN-171: an M3 list item: bodyLarge Medium title, bodyMedium summary.
+                Text(title, style = MaterialTheme.typography.bodyLarge.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Medium), color = if (enabled) colors.onSurface else colors.onSurfaceVariant)
+                if (summary != null) Text(summary, style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant)
             }
             // WN-160: the details open from an (i) beside the switch, not a "More" link under every row. The (i) and
             // the switch sit together (no gap between them), so the name keeps one line on a phone's width.
@@ -522,7 +531,7 @@ fun WindBackHeader(title: String, onBack: () -> Unit, backTag: String) {
  */
 @Composable
 fun WindIconButton(icon: String, label: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true, primary: Boolean = false, tint: Color? = null,
-                   selected: Boolean? = null, tooltip: Boolean = true) {
+                   selected: Boolean? = null, tooltip: Boolean = true, large: Boolean = false) {
     val colors = MaterialTheme.colorScheme
     val on = selected == true
     val fill = when { primary && enabled -> colors.primary; primary -> colors.onSurface.copy(alpha = .12f); on && enabled -> colors.secondaryContainer; else -> Color.Transparent }
@@ -530,12 +539,15 @@ fun WindIconButton(icon: String, label: String, onClick: () -> Unit, modifier: M
     // WN-170: a long press shows the label as a tooltip (the icon alone doesn't say what it does).
     var tip by remember { mutableStateOf(false) }
     if (tip) WindTooltip(label) { tip = false }
-    Box(modifier.size(if (primary) 56.dp else 48.dp).windFocus(WindShapes.full)
+    // WN-171: [large] (with [primary]) is the media group's wide play button, 96×64.
+    val outer = if (primary && large) Modifier.size(96.dp, 64.dp) else Modifier.size(if (primary) 56.dp else 48.dp)
+    Box(modifier.then(outer).windFocus(WindShapes.full)
         .combinedClickable(interactionSource = source, indication = null, enabled = enabled, role = Role.Button,
             onLongClick = if (tooltip) ({ tip = true }) else null, onLongClickLabel = null, onClick = onClick)
         .semantics { contentDescription = label; if (selected != null) this.selected = selected }, contentAlignment = Alignment.Center) {
-        Box(Modifier.size(if (primary) 56.dp else 40.dp).clip(WindShapes.full).background(fill).indication(source, LocalIndication.current), contentAlignment = Alignment.Center) {
-            WindIcon(icon, Modifier.size(24.dp), tint = when { !enabled -> colors.onSurfaceVariant; primary -> colors.onPrimary; on -> colors.onSecondaryContainer; else -> tint ?: colors.onSurface })
+        Box((if (primary) Modifier.fillMaxSize() else Modifier.size(40.dp)).clip(WindShapes.full).background(fill).indication(source, LocalIndication.current), contentAlignment = Alignment.Center) {
+            WindIcon(icon, Modifier.size(if (primary && large) 28.dp else 24.dp), tint = when { !enabled -> colors.onSurfaceVariant; primary -> colors.onPrimary; on -> colors.onSecondaryContainer; else -> tint ?: colors.onSurface },
+                filled = on || primary)
         }
     }
 }

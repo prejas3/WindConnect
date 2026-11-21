@@ -7,10 +7,11 @@ import android.content.pm.ShortcutInfo
 import android.content.pm.ShortcutManager
 import android.graphics.drawable.Icon
 
-internal enum class LauncherAction(val id: String, val action: String, val label: Int) {
-    Clipboard("send_clipboard", "io.github.prejas3.windconnect.shortcut.CLIPBOARD", R.string.shortcut_clipboard),
-    File("send_file", "io.github.prejas3.windconnect.shortcut.FILE", R.string.shortcut_file),
-    Touchpad("touchpad", "io.github.prejas3.windconnect.shortcut.TOUCHPAD", R.string.shortcut_touchpad);
+/** WN-171: [icon] is the shortcut's own adaptive icon (not the app's). */
+internal enum class LauncherAction(val id: String, val action: String, val label: Int, val icon: Int) {
+    Clipboard("send_clipboard", "io.github.prejas3.windconnect.shortcut.CLIPBOARD", R.string.shortcut_clipboard, R.drawable.ic_shortcut_clipboard),
+    File("send_file", "io.github.prejas3.windconnect.shortcut.FILE", R.string.shortcut_file, R.drawable.ic_shortcut_file),
+    Touchpad("touchpad", "io.github.prejas3.windconnect.shortcut.TOUCHPAD", R.string.shortcut_touchpad, R.drawable.ic_shortcut_touch);
 
     /** The shortcut's name in the phone's language (WN-63). */
     val title: String get() = str(label)
@@ -38,7 +39,7 @@ internal object LauncherShortcuts {
         .setActivity(ComponentName(context, MainActivity::class.java))
         .setShortLabel(context.getString(action.label))
         .setLongLabel(action.title)
-        .setIcon(Icon.createWithResource(context, R.mipmap.ic_launcher))
+        .setIcon(Icon.createWithResource(context, action.icon))
         .setIntent(intent(context, action)).setRank(rank).build()
 
     fun publish(context: Context) {

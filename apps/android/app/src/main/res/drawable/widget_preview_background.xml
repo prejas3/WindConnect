@@ -1,4 +1,5 @@
+<!-- WN-171: the widget's own surface (dark in dark mode, from brand_colors); the system radius from Android 12 (drawable-v31). -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
-    <solid android:color="#E8EFEF" />
+    <solid android:color="@color/brand_surface" />
     <corners android:radius="28dp" />
 </shape>

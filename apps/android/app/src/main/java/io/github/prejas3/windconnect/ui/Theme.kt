@@ -85,13 +85,17 @@ private val DmSans = FontFamily(
 private fun type(size: Int, line: Int, weight: FontWeight = FontWeight.Normal) = TextStyle(
     fontFamily = DmSans, fontWeight = weight, fontSize = size.sp, lineHeight = line.sp,
 )
+// WN-171: the M3 type scale in DM Sans; display and headline SemiBold (not Bold), titles keep their weight.
 val WindTypography = Typography(
-    displayLarge = type(40, 48, FontWeight.Bold), displayMedium = type(36, 44, FontWeight.Bold), displaySmall = type(32, 40, FontWeight.Bold),
-    headlineLarge = type(28, 36, FontWeight.Bold), headlineMedium = type(25, 32, FontWeight.Bold), headlineSmall = type(22, 30, FontWeight.Bold),
-    titleLarge = type(21, 28, FontWeight.Bold), titleMedium = type(16, 24, FontWeight.SemiBold), titleSmall = type(14, 20, FontWeight.SemiBold),
+    displayLarge = type(57, 64, FontWeight.SemiBold), displayMedium = type(45, 52, FontWeight.SemiBold), displaySmall = type(36, 44, FontWeight.SemiBold),
+    headlineLarge = type(32, 40, FontWeight.SemiBold), headlineMedium = type(28, 36, FontWeight.SemiBold), headlineSmall = type(24, 32, FontWeight.SemiBold),
+    titleLarge = type(22, 28, FontWeight.Bold), titleMedium = type(16, 24, FontWeight.SemiBold), titleSmall = type(14, 20, FontWeight.SemiBold),
     bodyLarge = type(16, 24), bodyMedium = type(14, 21), bodySmall = type(12, 18),
     labelLarge = type(14, 20, FontWeight.SemiBold), labelMedium = type(12, 18, FontWeight.SemiBold), labelSmall = type(11, 16, FontWeight.Medium),
 )
+
+/** WN-171: the amber of "connecting" (as "searching" in the Windows tray) for a scheme's light or dark. */
+fun connectingColor(scheme: ColorScheme): Color = if (scheme.background.luminance() > .5f) BrandConnectingLight else BrandConnectingDark
 
 /** WCAG contrast ratio of two opaque colours (1..21). */
 fun contrast(a: Color, b: Color): Double {

@@ -88,10 +88,11 @@ private fun PcMediaPart(shown: io.github.prejas3.windconnect.core.PcMedia, conne
                 Text(clock(position), style = MaterialTheme.typography.bodySmall); Text(clock(total), style = MaterialTheme.typography.bodySmall)
             }
         }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(24.dp, Alignment.CenterHorizontally), verticalAlignment = Alignment.CenterVertically) {
+        // WN-171: one button group (Expressive): previous and next beside a wide play button.
+        Row(Modifier.fillMaxWidth().testTag("pcMediaGroup"), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally), verticalAlignment = Alignment.CenterVertically) {
             WindIconButton("previous", str(R.string.media_previous), { connections.pcMediaCommand("previous") }, Modifier.testTag("pcMediaPrevious"), enabled = can(8))
             WindIconButton(if (shown.playing) "pause" else "play", if (shown.playing) str(R.string.media_pause) else str(R.string.media_play), { connections.pcMediaCommand(if (shown.playing) "pause" else "play") },
-                Modifier.testTag("pcMediaToggle"), enabled = can(if (shown.playing) 2 else 1), primary = true)
+                Modifier.testTag("pcMediaToggle"), enabled = can(if (shown.playing) 2 else 1), primary = true, large = true)
             WindIconButton("next", str(R.string.media_next), { connections.pcMediaCommand("next") }, Modifier.testTag("pcMediaNext"), enabled = can(4))
         }
     }

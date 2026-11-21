@@ -85,8 +85,9 @@ fun WindTopBar(title: String, navigationIcon: String?, navigationLabel: String, 
         if (onNavigate != null && navigationIcon != null) {
             WindIconButton(navigationIcon, navigationLabel, onNavigate, if (navigationTag.isNotEmpty()) Modifier.testTag(navigationTag) else Modifier, tint = colors.onSurface)
         } else Spacer(Modifier.width(20.dp))
+        // WN-171: 12 dp between the button and the title: room for the button's focus ring (5 dp outside it).
         Text(title, style = MaterialTheme.typography.titleLarge, color = colors.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f).padding(start = 4.dp, end = 8.dp).semantics { heading() })
+            modifier = Modifier.weight(1f).padding(start = if (onNavigate != null) 12.dp else 4.dp, end = 8.dp).semantics { heading() })
         actions()
     }
 }

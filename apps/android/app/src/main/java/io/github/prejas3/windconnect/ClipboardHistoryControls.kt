@@ -91,7 +91,7 @@ private fun HistoryRow(entry: ClipboardHistoryView, actions: ClipboardHistoryAct
         }
         WindIconButton("pin", if (entry.pinned) str(R.string.unpin) else str(R.string.pin), { actions.pin(entry.id, !entry.pinned) },
             Modifier.testTag("historyPin${entry.id}"), tint = colors.onSurfaceVariant, selected = entry.pinned)
-        WindIconButton("close", str(R.string.remove), { actions.remove(entry.id) }, Modifier.offset(x = 8.dp).testTag("historyRemove${entry.id}"),
+        WindIconButton("close", str(R.string.remove), { actions.remove(entry.id) }, Modifier.testTag("historyRemove${entry.id}"),
             tint = colors.onSurfaceVariant)
     }
 }

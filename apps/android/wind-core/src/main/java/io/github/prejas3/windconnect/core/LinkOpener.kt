@@ -50,7 +50,7 @@ class LinkOpener(context: Context) : UrlOpener {
         val open = PendingIntent.getActivity(app, id, view, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_ONE_SHOT)
         val host = uri.host ?: ""
         val notification = android.app.Notification.Builder(app, CHANNEL)
-            .setSmallIcon(android.R.drawable.ic_menu_view)
+            .setSmallIcon(R.drawable.ic_link_open).setColor(0xFF0D7F74.toInt()) // WN-171: own icon, brand colour
             .setContentTitle(app.getString(R.string.link_open_title))
             .setContentText(host)
             .setStyle(android.app.Notification.BigTextStyle().bigText(SmsRules.clean(uri.toString()).take(300)))

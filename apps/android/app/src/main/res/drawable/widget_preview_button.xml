@@ -1,0 +1,5 @@
+<!-- WN-171: the preview's action, as the widget draws it (primaryContainer, inner radius from Android 12 in drawable-v31). -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="@color/brand_primary_container" />
+    <corners android:radius="16dp" />
+</shape>

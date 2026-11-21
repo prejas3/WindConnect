@@ -112,8 +112,9 @@ private fun ReceivedRow(receipt: ReceivedFile, onOpen: () -> Unit) {
     Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).clip(WindShapes.medium).clickable(role = Role.Button, onClickLabel = openLabel, onClick = onOpen)
         .testTag("received-${receipt.key}").padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         val ext = name.substringAfterLast('.', "").uppercase().take(4)
-        Box(Modifier.size(40.dp).clip(WindShapes.medium).background(colors.surface), contentAlignment = Alignment.Center) {
-            if (ext.isNotEmpty()) Text(ext, style = MaterialTheme.typography.labelSmall, color = colors.primary) else WindIcon("file", Modifier.size(20.dp))
+        // WN-171: the type badge is a tonal container (secondaryContainer).
+        Box(Modifier.size(40.dp).clip(WindShapes.medium).background(colors.secondaryContainer).testTag("receivedBadge"), contentAlignment = Alignment.Center) {
+            if (ext.isNotEmpty()) Text(ext, style = MaterialTheme.typography.labelSmall, color = colors.onSecondaryContainer) else WindIcon("file", Modifier.size(20.dp), tint = colors.onSecondaryContainer)
         }
         Column(Modifier.weight(1f)) {
             Text(name, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)

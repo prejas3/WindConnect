@@ -82,3 +82,7 @@ val BrandDark = darkColorScheme(
     surfaceContainerLowest = Color(0xFF101C22),
     surfaceDim = Color(0xFF16242B),
 )
+
+// WN-171: "connecting" is amber in the app and the widget, as "searching" in the Windows tray (Szymon, 2026-11-21).
+val BrandConnectingLight = Color(0xFF805015)
+val BrandConnectingDark = Color(0xFFEFBC7C)

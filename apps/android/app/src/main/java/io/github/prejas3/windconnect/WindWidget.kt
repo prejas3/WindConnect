@@ -23,6 +23,8 @@ import androidx.glance.semantics.semantics
 import androidx.glance.text.*
 import io.github.prejas3.windconnect.ui.BrandDark
 import io.github.prejas3.windconnect.ui.BrandLight
+import io.github.prejas3.windconnect.ui.BrandConnectingDark
+import io.github.prejas3.windconnect.ui.BrandConnectingLight
 import io.github.prejas3.windconnect.ui.WindRadius
 import io.github.prejas3.windconnect.ui.readable
 import androidx.compose.ui.unit.DpSize
@@ -43,20 +45,41 @@ class WindWidget : GlanceAppWidget() {
                 val latest = WidgetUpdates.snapshot.value
                 if (latest.updatedAt == 0L || !WidgetUpdates.installed(context)) initial else latest
             }
-            val data = snapshot.data
-            // WN-160: the app's readable scheme (secondary text and accents at a sure contrast) on the widget too.
-            val dynamic = data.dynamic && Build.VERSION.SDK_INT >= 31
-            val light = readable(if (dynamic) dynamicLightColorScheme(context) else BrandLight)
-            val dark = readable(if (dynamic) dynamicDarkColorScheme(context) else BrandDark)
-            val colors = when (data.theme) {
-                "Light" -> ColorProviders(light, light)
-                "Dark" -> ColorProviders(dark, dark)
-                else -> ColorProviders(light, dark)
-            }
-            GlanceTheme(colors = colors) { WidgetContent(context, snapshot) }
+            GlanceTheme(colors = widgetColors(context, snapshot.data)) { WidgetContent(context, snapshot) }
         }
     }
+
+    /** WN-171: the picker's generated preview (Android 15+): the widget itself, connected, in the system's light/dark. */
+    override suspend fun providePreview(context: Context, widgetCategory: Int) {
+        val sample = WidgetSnapshot(WidgetData(name = context.getString(R.string.your_computer), status = context.getString(R.string.connected), connected = true,
+            battery = 80, dynamic = false), updatedAt = System.currentTimeMillis())
+        provideContent { GlanceTheme(colors = widgetColors(context, sample.data)) { WidgetContent(context, sample) } }
+    }
 }
+
+/** WN-160: the app's readable scheme (secondary text and accents at a sure contrast) on the widget too. */
+private fun widgetColors(context: Context, data: WidgetData): androidx.glance.color.ColorProviders {
+    val dynamic = data.dynamic && Build.VERSION.SDK_INT >= 31
+    val light = readable(if (dynamic) dynamicLightColorScheme(context) else BrandLight)
+    val dark = readable(if (dynamic) dynamicDarkColorScheme(context) else BrandDark)
+    return when (data.theme) {
+        "Light" -> ColorProviders(light, light)
+        "Dark" -> ColorProviders(dark, dark)
+        else -> ColorProviders(light, dark)
+    }
+}
+
+/** WN-171: the "connecting" dot is amber, as "searching" in the Windows tray, in the widget's light or dark. */
+private fun connectingColor(theme: String): androidx.glance.unit.ColorProvider = when (theme) {
+    "Light" -> androidx.glance.unit.ColorProvider(BrandConnectingLight)
+    "Dark" -> androidx.glance.unit.ColorProvider(BrandConnectingDark)
+    else -> androidx.glance.color.ColorProvider(day = BrandConnectingLight, night = BrandConnectingDark)
+}
+
+/** WN-171: the launcher's own widget radii from Android 12 (outer and inner), the M3 scale before. */
+private fun GlanceModifier.widgetCorner(inner: Boolean): GlanceModifier =
+    if (Build.VERSION.SDK_INT >= 31) cornerRadius(if (inner) android.R.dimen.system_app_widget_inner_radius else android.R.dimen.system_app_widget_background_radius)
+    else cornerRadius(if (inner) WindRadius.Large else WindRadius.ExtraLarge)
 
 // The host subtracts its own padding from the size it was given: steps by height, widths well under the 250 dp minimum.
 internal val WIDGET_SMALL = DpSize(180.dp, 100.dp)
@@ -80,7 +103,7 @@ private fun WidgetContent(context: Context, snapshot: WidgetSnapshot) {
     val time = if (snapshot.updatedAt > 0) DateFormat.getTimeFormat(context).format(Date(snapshot.updatedAt)) else "—"
     val status = if (data.connected) context.getString(R.string.widget_connected_at, time) else data.status
     Column(GlanceModifier.fillMaxSize().appWidgetBackground().background(colors.surface)
-        .cornerRadius(WindRadius.ExtraLarge).padding(horizontal = 14.dp, vertical = if (large) 14.dp else 10.dp)) {
+        .widgetCorner(inner = false).padding(horizontal = 14.dp, vertical = if (large) 14.dp else 10.dp)) {
         val openIntent = Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         // Header: state dot, the computer's name, the phone's battery; tapping it opens the app (at every size).
         Column(GlanceModifier.fillMaxWidth().clickable(actionStartActivity(openIntent))) {
@@ -94,7 +117,7 @@ private fun WidgetContent(context: Context, snapshot: WidgetSnapshot) {
             }
         }
         Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            val dot = when { data.connected -> colors.primary; data.connecting -> colors.tertiary; else -> colors.outline }
+            val dot = when { data.connected -> colors.primary; data.connecting -> connectingColor(data.theme); else -> colors.outline }
             Box(GlanceModifier.size(WIDGET_DOT).cornerRadius(WIDGET_DOT / 2).background(dot)) {}
             Spacer(GlanceModifier.width(8.dp))
             Text(data.name, modifier = GlanceModifier.defaultWeight(), style = TextStyle(color = colors.onSurface, fontSize = 16.sp, fontWeight = FontWeight.Bold), maxLines = 1)
@@ -136,7 +159,7 @@ private fun WidgetContent(context: Context, snapshot: WidgetSnapshot) {
 @Composable
 private fun WidgetButton(action: WidgetAction, modifier: GlanceModifier, small: Boolean, icon: Boolean = true) {
     val colors = GlanceTheme.colors
-    val base = modifier.background(colors.primaryContainer).cornerRadius(WindRadius.Large).padding(horizontal = 8.dp, vertical = 2.dp)
+    val base = modifier.background(colors.primaryContainer).widgetCorner(inner = true).padding(horizontal = 8.dp, vertical = 2.dp)
         .clickable(actionStartActivity(action.intent)).semantics { contentDescription = action.label }
     val label = TextStyle(color = colors.onPrimaryContainer, fontSize = 13.sp, fontWeight = FontWeight.Medium, textAlign = TextAlign.Center)
     if (small) Row(base, verticalAlignment = Alignment.CenterVertically, horizontalAlignment = Alignment.CenterHorizontally) {

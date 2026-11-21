@@ -132,11 +132,11 @@ class ConnectionService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         fun command(action: String, request: Int) = PendingIntent.getService(this, request, Intent(this, ConnectionService::class.java).setAction(action), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         return Notification.Builder(this, CHANNEL)
-            .setSmallIcon(R.drawable.ic_connection)
+            .setSmallIcon(R.drawable.ic_connection).setColor(getColor(R.color.icon_background))
             .setContentTitle(peerName).setContentText(text)
             .setContentIntent(open).setOngoing(true).setOnlyAlertOnce(true)
             .setVisibility(Notification.VISIBILITY_PRIVATE).setCategory(Notification.CATEGORY_SERVICE)
-            .setPublicVersion(Notification.Builder(this, CHANNEL).setSmallIcon(R.drawable.ic_connection)
+            .setPublicVersion(Notification.Builder(this, CHANNEL).setSmallIcon(R.drawable.ic_connection).setColor(getColor(R.color.icon_background))
                 .setContentTitle("WindConnect").setContentText(str(R.string.conn_unlock))
                 .setContentIntent(open).build())
             .apply { if (!connected) addAction(Notification.Action.Builder(null, str(R.string.conn_open_device), open).build()) }

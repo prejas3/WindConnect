@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- GENERATED from assets/brand-tokens.json by scripts/generate-brand-tokens.cjs; do not edit by hand. -->
+<resources>
+    <color name="brand_surface">#16242B</color>
+    <color name="brand_on_surface">#E9F1F1</color>
+    <color name="brand_on_surface_variant">#A1B2B6</color>
+    <color name="brand_card">#22343C</color>
+    <color name="brand_primary">#43C9B8</color>
+    <color name="brand_primary_container">#1F5C55</color>
+    <color name="brand_on_primary_container">#DFF7F2</color>
+    <color name="brand_connecting">#EFBC7C</color>
+</resources>

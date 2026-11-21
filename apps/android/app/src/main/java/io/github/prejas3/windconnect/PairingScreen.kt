@@ -154,7 +154,14 @@ fun PairingScreen(model: PairingViewModel, diagnostic: @Composable () -> Unit) {
         "scanner" -> WindScreen(stringResource(R.string.scan_title), model::cancel, cancel, "cancelPairing", step, close = true) {
             Text(stringResource(R.string.scan_about))
             if (hasCamera) {
-                QrCamera(Modifier.fillMaxWidth().height(320.dp).testTag("cameraPreview"), model::offerLink, model::cameraError)
+                // WN-171: the preview rounded (28 dp), a viewfinder over a dimmed surround, the hint on the preview itself.
+                Box(Modifier.fillMaxWidth().height(320.dp).clip(WindShapes.extraLarge)) {
+                    QrCamera(Modifier.matchParentSize().testTag("cameraPreview"), model::offerLink, model::cameraError)
+                    QrViewfinder(Modifier.matchParentSize())
+                    Text(stringResource(R.string.scan_aim), style = MaterialTheme.typography.bodyMedium, color = androidx.compose.ui.graphics.Color.White,
+                        modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp).clip(WindShapes.full)
+                            .background(androidx.compose.ui.graphics.Color.Black.copy(alpha = .55f)).padding(horizontal = 12.dp, vertical = 6.dp).testTag("scanHint"))
+                }
             } else {
                 Text(if (denied) stringResource(R.string.scan_denied) else stringResource(R.string.scan_consent))
                 WindButton(stringResource(R.string.camera_allow), { permission.launch(Manifest.permission.CAMERA) }, Modifier.testTag("cameraPermission"))
@@ -166,7 +173,9 @@ fun PairingScreen(model: PairingViewModel, diagnostic: @Composable () -> Unit) {
             WindCard(Modifier.fillMaxWidth()) {
                 Text(state.name, style = MaterialTheme.typography.titleLarge, modifier = Modifier.testTag("pairingPeer"))
                 Text(stringResource(R.string.confirm_fingerprint), style = MaterialTheme.typography.labelMedium)
-                Text(state.fingerprint, style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("pairingFingerprint"))
+                // WN-171: the key's fingerprint in monospace groups of four, easy to compare by eye.
+                Text(groupFingerprint(state.fingerprint), style = MaterialTheme.typography.bodyMedium.copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace, letterSpacing = androidx.compose.ui.unit.TextUnit(0.5f, androidx.compose.ui.unit.TextUnitType.Sp)),
+                    modifier = Modifier.testTag("pairingFingerprint"))
             }
             Text(stringResource(R.string.confirm_about))
             WindButton(if (state.screen == "pairing") stringResource(R.string.pairing_progress) else stringResource(R.string.pair_devices), model::confirm, Modifier.fillMaxWidth().testTag("confirmPairing"), enabled = state.ready && state.screen == "confirm")
@@ -190,7 +199,8 @@ fun PairingScreen(model: PairingViewModel, diagnostic: @Composable () -> Unit) {
         "sas-code", "sas-rejected", "sas-confirming" -> WindScreen(stringResource(R.string.sas_compare), model::cancel, cancel, "cancelPairing", step, close = true) {
             WindCard(Modifier.fillMaxWidth()) {
                 Text(state.name, style = MaterialTheme.typography.titleMedium, modifier = Modifier.testTag("pairingPeer"))
-                Text(state.code, style = MaterialTheme.typography.displayMedium, modifier = Modifier.testTag("sasCode"))
+                // WN-171: the code in groups of three with tabular digits (each digit the same width, as on the PC).
+                Text(groupCode(state.code), style = MaterialTheme.typography.displayMedium.copy(fontFeatureSettings = "tnum"), modifier = Modifier.testTag("sasCode"))
             }
             Text(stringResource(R.string.sas_about))
             WindButton(stringResource(R.string.sas_same), { model.decide(true) }, Modifier.fillMaxWidth().testTag("sasSame"), enabled = state.screen == "sas-code")
@@ -273,6 +283,37 @@ internal fun SettingsPage(groups: List<Pair<String, @Composable ColumnScope.() -
                 val (name, rows) = groups[chosen.coerceIn(groups.indices)]
                 Box(Modifier.widthIn(max = MAX_CONTENT_WIDTH)) { WindSection(name) { rows() } }
             }
+        }
+    }
+}
+
+/** WN-171: "123456" → "123 456"; other shapes are shown as they are. */
+internal fun groupCode(code: String): String = if (code.length > 4 && code.all { it.isDigit() }) code.chunked(3).joinToString(" ") else code
+
+/** WN-171: a fingerprint without its own spacing in groups of four (as the PC shows it). */
+internal fun groupFingerprint(fingerprint: String): String =
+    if (fingerprint.any { it.isWhitespace() || it == ':' }) fingerprint else fingerprint.chunked(4).joinToString(" ")
+
+/** WN-171: the QR viewfinder: the surround dimmed, a clear rounded square with white corner marks in the middle. */
+@Composable
+private fun QrViewfinder(modifier: Modifier) {
+    androidx.compose.foundation.Canvas(modifier) {
+        val side = minOf(size.width, size.height) * .66f
+        val left = (size.width - side) / 2; val top = (size.height - side) / 2
+        val radius = 20.dp.toPx()
+        val hole = androidx.compose.ui.geometry.RoundRect(left, top, left + side, top + side, androidx.compose.ui.geometry.CornerRadius(radius))
+        val dim = androidx.compose.ui.graphics.Path().apply {
+            fillType = androidx.compose.ui.graphics.PathFillType.EvenOdd
+            addRect(androidx.compose.ui.geometry.Rect(0f, 0f, size.width, size.height)); addRoundRect(hole)
+        }
+        drawPath(dim, androidx.compose.ui.graphics.Color.Black.copy(alpha = .45f))
+        val mark = 28.dp.toPx(); val stroke = androidx.compose.ui.graphics.drawscope.Stroke(4.dp.toPx(), cap = androidx.compose.ui.graphics.StrokeCap.Round)
+        for ((x, y, dx, dy) in listOf(listOf(left, top, 1f, 1f), listOf(left + side, top, -1f, 1f), listOf(left, top + side, 1f, -1f), listOf(left + side, top + side, -1f, -1f))) {
+            val corner = androidx.compose.ui.graphics.Path().apply {
+                moveTo(x, y + dy * mark); lineTo(x, y + dy * radius)
+                quadraticTo(x, y, x + dx * radius, y); lineTo(x + dx * mark, y)
+            }
+            drawPath(corner, androidx.compose.ui.graphics.Color.White, style = stroke)
         }
     }
 }

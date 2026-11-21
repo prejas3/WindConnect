@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // CCS/1 IO:WN-167 assets/brand-tokens.json -> the generated block of apps/windows/frontend/tokens.css and
-// apps/android/.../ui/BrandColors.kt. --check: exit 1 when an output differs from what the source gives (CI).
+// apps/android/.../ui/BrandColors.kt and res/values{,-night}/brand_colors.xml. --check: exit 1 when an output differs from what the source gives (CI).
 'use strict';
 const fs = require('fs');
 const path = require('path');
@@ -9,6 +9,8 @@ const root = path.resolve(__dirname, '..');
 const source = path.join(root, 'assets', 'brand-tokens.json');
 const css = path.join(root, 'apps', 'windows', 'frontend', 'tokens.css');
 const kotlin = path.join(root, 'apps', 'android', 'app', 'src', 'main', 'java', 'io', 'github', 'prejas3', 'windconnect', 'ui', 'BrandColors.kt');
+const res = path.join(root, 'apps', 'android', 'app', 'src', 'main', 'res');
+const androidColors = { light: path.join(res, 'values', 'brand_colors.xml'), dark: path.join(res, 'values-night', 'brand_colors.xml') };
 const BEGIN = '/* BRAND-TOKENS:BEGIN generated from assets/brand-tokens.json by scripts/generate-brand-tokens.cjs; do not edit by hand */';
 const END = '/* BRAND-TOKENS:END */';
 // The roles of material3's lightColorScheme()/darkColorScheme(), in their order; each must be set.
@@ -58,7 +60,23 @@ function kotlinFile() {
     scheme('BrandLight', 'lightColorScheme', 'light'),
     scheme('BrandDark', 'darkColorScheme', 'dark'),
     '',
+    '// WN-171: "connecting" is amber in the app and the widget, as "searching" in the Windows tray (Szymon, 2026-11-21).',
+    `val BrandConnectingLight = Color(0xFF${tokens.light.extra.warning.slice(1)})`,
+    `val BrandConnectingDark = Color(0xFF${tokens.dark.extra.warning.slice(1)})`,
+    '',
   ].join('\n');
+}
+// WN-171: the window, splash and widget preview colours as Android resources (values/ and values-night/).
+function colorsXml(theme) {
+  const roles = tokens[theme].roles;
+  const entries = { brand_surface: roles.surface, brand_on_surface: roles.onSurface, brand_on_surface_variant: roles.onSurfaceVariant,
+    brand_card: roles.surfaceContainerHigh, brand_primary: roles.primary, brand_primary_container: roles.primaryContainer,
+    brand_on_primary_container: roles.onPrimaryContainer, brand_connecting: tokens[theme].extra.warning };
+  return ['<?xml version="1.0" encoding="utf-8"?>',
+    '<!-- GENERATED from assets/brand-tokens.json by scripts/generate-brand-tokens.cjs; do not edit by hand. -->',
+    '<resources>',
+    ...Object.entries(entries).map(([name, value]) => `    <color name="${name}">${value}</color>`),
+    '</resources>', ''].join('\n');
 }
 
 const norm = (text) => text.replace(/\r\n/g, '\n');
@@ -70,7 +88,9 @@ const end = plain.indexOf(END);
 if (start < 0 || end < start) { console.error(`${path.relative(root, css)}: no ${BEGIN} … ${END} block`); process.exit(1); }
 const wantedCss = plain.slice(0, start) + cssBlock() + plain.slice(end + END.length);
 const wantedKotlin = kotlinFile();
-const outputs = [[css, wantedCss, eol], [kotlin, wantedKotlin, fs.existsSync(kotlin) && fs.readFileSync(kotlin, 'utf8').includes('\r\n') ? '\r\n' : '\n']];
+const nl = (file) => (fs.existsSync(file) && fs.readFileSync(file, 'utf8').includes('\r\n') ? '\r\n' : '\n');
+const outputs = [[css, wantedCss, eol], [kotlin, wantedKotlin, nl(kotlin)],
+  [androidColors.light, colorsXml('light'), nl(androidColors.light)], [androidColors.dark, colorsXml('dark'), nl(androidColors.dark)]];
 
 if (process.argv.includes('--check')) {
   const stale = outputs.filter(([file, wanted]) => !fs.existsSync(file) || norm(fs.readFileSync(file, 'utf8')) !== wanted);

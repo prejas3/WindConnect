@@ -223,7 +223,7 @@ class SendFilesService : Service() {
         val progress = FileSending.status.value
         val detail = if (busy) (progress.total?.let { str(R.string.bytes_of, transferBytes(progress.done), transferBytes(it)) } ?: transferBytes(progress.done)) +
             " · " + (progress.rate?.let { str(R.string.per_second, transferBytes(it)) } ?: "—") else text
-        return Notification.Builder(this, CHANNEL).setSmallIcon(R.drawable.ic_connection).setContentTitle(str(R.string.send_channel))
+        return Notification.Builder(this, CHANNEL).setSmallIcon(R.drawable.ic_connection).setColor(getColor(R.color.icon_background)).setContentTitle(str(R.string.send_channel))
             .setContentText(detail).setSubText(text).setContentIntent(open).setOnlyAlertOnce(true).setOngoing(busy).setVisibility(Notification.VISIBILITY_PRIVATE)
             .apply { if (busy) {
                 val total = progress.total

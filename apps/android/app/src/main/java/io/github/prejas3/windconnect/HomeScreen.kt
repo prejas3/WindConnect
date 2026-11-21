@@ -57,11 +57,17 @@ fun HomeScreen(state: PairingUi, onScan: () -> Unit, onDiagnostics: () -> Unit, 
     // WN-130: one card for the computer (the strip above it said the same): name, state and route under it, then its actions.
     WindCard(Modifier.fillMaxWidth().testTag("computerCard")) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Box(Modifier.size(44.dp).clip(WindShapes.medium).background(if (connected != null) colors.primaryContainer else colors.surface), contentAlignment = Alignment.Center) { WindIcon("pc") }
+            // WN-171: the state is a 6 dp badge on the computer's icon (ringed in the card's colour): connected = accent,
+            // connecting = amber (as "searching" in the Windows tray), otherwise neutral.
+            val dot = when { connected != null -> colors.primary; state.connection is ConnectionState.Connecting -> connectingColor(colors); else -> colors.onSurfaceVariant }
+            Box(Modifier.size(44.dp)) {
+                Box(Modifier.matchParentSize().clip(WindShapes.medium).background(if (connected != null) colors.primaryContainer else colors.surfaceContainerLowest), contentAlignment = Alignment.Center) { WindIcon("pc") }
+                Box(Modifier.align(Alignment.BottomEnd).offset(3.dp, 3.dp).size(10.dp).clip(WindShapes.full).background(colors.surfaceContainerHigh).padding(2.dp)
+                    .clip(WindShapes.full).background(dot).testTag("statusBadge"))
+            }
             Column(Modifier.weight(1f)) {
                 Text(name, modifier = Modifier.testTag("computerName"), style = MaterialTheme.typography.titleLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Box(Modifier.size(8.dp).clip(WindShapes.full).background(if (connected != null) colors.primary else colors.onSurfaceVariant))
                     val latency = connected?.let { String.format(Locale.getDefault(), "%.1f ms", it.roundTripMicros / 1000.0) }
                     val route = stringResource(if (connected?.route == "relay") R.string.home_via_relay else R.string.home_local_network)
                     val latencyDescription = if (latency != null) stringResource(R.string.home_latency_desc, latency) else status

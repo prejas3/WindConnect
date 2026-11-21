@@ -1,9 +1,10 @@
 <resources>
-    <style name="Theme.WindConnect" parent="android:style/Theme.Material.NoActionBar">
+    <style name="Base.Theme.WindConnect" parent="android:style/Theme.Material.NoActionBar">
+        <item name="android:colorBackground">@color/brand_surface</item>
+        <item name="android:windowBackground">?android:attr/colorBackground</item>
+        <item name="android:statusBarColor">?android:attr/colorBackground</item>
+        <item name="android:navigationBarColor">?android:attr/colorBackground</item>
         <item name="android:windowLightStatusBar">false</item>
         <item name="android:windowLightNavigationBar">false</item>
-        <item name="android:windowBackground">#16242B</item>
-        <item name="android:statusBarColor">#16242B</item>
-        <item name="android:navigationBarColor">#16242B</item>
     </style>
 </resources>

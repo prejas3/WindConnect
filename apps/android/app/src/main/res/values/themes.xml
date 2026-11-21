@@ -1,9 +1,14 @@
 <resources>
-    <style name="Theme.WindConnect" parent="android:style/Theme.Material.Light.NoActionBar">
+    <!-- WN-171: window colours from the generated brand_colors (values-night has the dark ones), read through
+         colorBackground, so the window, the bars and the splash agree; WindConnectTheme then paints the chosen palette. -->
+    <style name="Base.Theme.WindConnect" parent="android:style/Theme.Material.Light.NoActionBar">
         <item name="android:fontFamily">sans</item>
+        <item name="android:colorBackground">@color/brand_surface</item>
+        <item name="android:windowBackground">?android:attr/colorBackground</item>
+        <item name="android:statusBarColor">?android:attr/colorBackground</item>
+        <item name="android:navigationBarColor">?android:attr/colorBackground</item>
         <item name="android:windowLightStatusBar">true</item>
-        <item name="android:windowBackground">#F8FBFB</item>
-        <item name="android:statusBarColor">#F8FBFB</item>
-        <item name="android:navigationBarColor">#F8FBFB</item>
+        <item name="android:windowLightNavigationBar">true</item>
     </style>
+    <style name="Theme.WindConnect" parent="Base.Theme.WindConnect" />
 </resources>

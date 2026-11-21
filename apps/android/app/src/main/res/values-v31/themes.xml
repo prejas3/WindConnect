@@ -1,0 +1,8 @@
+<resources>
+    <!-- WN-171: the Android 12+ splash in the brand's colours: the surface, the mark on its teal background. -->
+    <style name="Theme.WindConnect" parent="Base.Theme.WindConnect">
+        <item name="android:windowSplashScreenBackground">@color/brand_surface</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">@color/icon_background</item>
+    </style>
+</resources>

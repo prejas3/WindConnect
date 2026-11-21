@@ -18,6 +18,7 @@ class WindApplication : Application() {
         Strings.context = this
         LauncherShortcuts.publish(this)
         WidgetUpdates.start(this)
+        publishWidgetPreview()
         registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
             override fun onActivityStarted(activity: android.app.Activity) { visibleActivities++; FileReceiving.visibilityChanged(activity) }
             override fun onActivityStopped(activity: android.app.Activity) { visibleActivities = (visibleActivities - 1).coerceAtLeast(0); FileReceiving.visibilityChanged(activity) }
@@ -27,6 +28,21 @@ class WindApplication : Application() {
             override fun onActivitySaveInstanceState(activity: android.app.Activity, state: android.os.Bundle) = Unit
             override fun onActivityDestroyed(activity: android.app.Activity) = Unit
         })
+    }
+}
+
+/**
+ * WN-171: on Android 15+ the widget picker shows a generated preview (the widget itself); published once per app
+ * version, as the system limits how often it may change.
+ */
+private fun WindApplication.publishWidgetPreview() {
+    if (android.os.Build.VERSION.SDK_INT < 35) return
+    val prefs = getSharedPreferences("widget", android.content.Context.MODE_PRIVATE)
+    val version = BuildConfig.VERSION_CODE
+    if (prefs.getInt("preview_version", 0) == version) return
+    kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Default).launch {
+        val result = runCatching { androidx.glance.appwidget.GlanceAppWidgetManager(this@publishWidgetPreview).setWidgetPreviews(WindWidgetReceiver::class) }.getOrNull()
+        if (result == androidx.glance.appwidget.GlanceAppWidgetManager.SET_WIDGET_PREVIEWS_RESULT_SUCCESS) prefs.edit().putInt("preview_version", version).apply()
     }
 }
 
