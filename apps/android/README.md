@@ -620,6 +620,19 @@ and `WindCircularProgress` (pairing waits). Back is predictive (`enableOnBackInv
 `PredictiveBackHandler`: the screen shrinks and shifts while swiping; cancelling restores it).
 `MotionTest` and `PredictiveBackTest` cover them.
 
+WN-170 (structure, `ui/Structure.kt`): every screen but home and "Done" is a `WindScreen`: the pinned
+`WindTopBar` (64 dp, back or close at its start, titleLarge, surfaceContainer once the content scrolls) over
+content at most 640 dp wide, centred; home uses the same bar without back. Pairing steps cancel from the bar
+(close icon, `cancelPairing`); Touchpad, Share files and Send clipboard close from it. On an expanded window
+(≥ 840 dp) Settings are a list of groups and a panel; the touchpad in landscape (≥ 600 dp) puts its settings
+in a panel beside the surface. `Modifier.windFocus()` draws the M3 focus ring (3 dp secondary, 2 dp out) on
+every Wind control for keyboards; icon buttons show their label as a `WindTooltip` on long press. Own
+`WindMenuButton` (the computers' Rename/Remove), `WindRadioRow` (which computer gets the files) and
+`WindDialog` (Open on PC, with its outcome in the dialog: no Toast anywhere). Section headings are titleSmall
+in sentence case. The touchpad's modes are a connected group with an entering slide (never around the touch
+surface), the surface is radius 28 on surfaceContainerHigh, the presenter's timer has tabular DM Sans digits
+and its slide/laser buttons are Expressive L/XL. `StructureTest` covers them.
+
 In debug press **Preview** in the header. The screen demonstrates both themes, the system/brand
 palette, the SZYMON-PC card, four actions, a transfer, a switch and field validation.
 This is sample data: a click doesn't connect, doesn't lock the computer and doesn't send

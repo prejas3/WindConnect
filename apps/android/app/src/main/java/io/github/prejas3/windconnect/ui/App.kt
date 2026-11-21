@@ -34,8 +34,8 @@ fun WindApp(forceContent: Boolean = false, onSettings: (() -> Unit)? = null, con
             val settingsLabel = stringResource(R.string.settings)
             // WN-160: the app's name is the home screen's header only; Settings and the other screens have their own
             // (one header per screen). The settings button is a neutral icon like the text, 48 dp to touch.
-            if (!forceContent) Row(Modifier.fillMaxWidth().padding(start = 24.dp, end = 12.dp, top = 8.dp, bottom = 4.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                Text(stringResource(R.string.app_name), modifier = Modifier.weight(1f).padding(end = 12.dp, top = 10.dp, bottom = 10.dp).semantics { heading() }, style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            // WN-170: the same top bar as every other screen, without a back button.
+            if (!forceContent) WindTopBar(stringResource(R.string.app_name), null, "", null) {
                 if (BuildConfig.DEBUG) WindButton(if (preview) stringResource(R.string.preview_connection) else stringResource(R.string.preview_toggle), onClick = { preview = !preview }, modifier = Modifier.testTag("previewToggle"), kind = ButtonKind.Quiet)
                 if (onSettings != null) WindIconButton("gear", settingsLabel, onSettings, Modifier.testTag("openSettings"), tint = MaterialTheme.colorScheme.onSurface)
             }

@@ -523,4 +523,5 @@
     <string name="widget_open_app">Open the app</string>
     <string name="widget_short_clipboard">Clipboard</string>
     <string name="widget_short_app">App</string>
+    <string name="more_options">More options: %1$s</string>
 </resources>

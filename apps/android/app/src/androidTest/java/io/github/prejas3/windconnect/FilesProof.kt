@@ -53,7 +53,7 @@ object FilesProof {
                 Thread.sleep(100)
             }
         }
-        fun closeShare() { compose.onNodeWithText("Zamknij").performScrollTo().performClick() }
+        fun closeShare() { compose.onNodeWithTag("closeShare").performClick() }
         fun awaitComplete(before: Set<String>, count: Int) {
             runBlocking { withTimeout(90_000) {
                 while (true) {

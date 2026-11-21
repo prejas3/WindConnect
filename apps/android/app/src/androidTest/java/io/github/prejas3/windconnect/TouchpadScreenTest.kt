@@ -31,7 +31,7 @@ class TouchpadScreenTest {
                     activity.moveToState(Lifecycle.State.CREATED);activity.moveToState(Lifecycle.State.RESUMED);activity.recreate()
                     compose.onNodeWithText("Lewy · przytrzymaj").assertIsNotEnabled()
                     compose.onNodeWithTag("remoteKeyboardToggle").assertIsNotEnabled()
-                    compose.onNodeWithText("Zamknij").assertIsDisplayed()
+                    compose.onNodeWithTag("closeTouchpad").assertIsDisplayed()
                     // CCS/1 CHECK:WN-53 disconnected: presenter is off and volume keys still reach the system.
                     compose.onNodeWithTag("presenterToggle").assertIsNotEnabled()
                     activity.onActivity { a ->

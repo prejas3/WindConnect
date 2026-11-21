@@ -3,6 +3,7 @@ package io.github.prejas3.windconnect
 import android.content.Intent
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.core.app.ActivityScenario
@@ -53,11 +54,24 @@ class OpenOnPcTest {
         }
     }
 
+    @Test fun noLinkIsSaidInTheDialog() {
+        val intent = Intent(InstrumentationRegistry.getInstrumentation().targetContext, OpenOnPcActivity::class.java)
+            .setAction(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, "bez adresu")
+        ActivityScenario.launch<OpenOnPcActivity>(intent).use {
+            compose.onNodeWithTag("openOnPcResult").assertExists()
+            compose.onNodeWithTag("openOnPcConfirm").assertDoesNotExist()
+            assertTrue(sent.isEmpty())
+        }
+    }
+
     @Test fun theTapSendsTheLink() {
         ActivityScenario.launch<OpenOnPcActivity>(explicitShare()).use {
             compose.onNodeWithTag("openOnPcConfirm").performClick()
             compose.waitUntil(5_000) { sent.isNotEmpty() }
             assertEquals(listOf("https://example.com/wn100?x=1"), sent.toList())
+            // WN-170: the outcome stays in the dialog (no Toast) until closed.
+            compose.waitUntil(5_000) { compose.onAllNodesWithTag("openOnPcResult").fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithTag("openOnPcDone").assertExists()
         }
     }
 }

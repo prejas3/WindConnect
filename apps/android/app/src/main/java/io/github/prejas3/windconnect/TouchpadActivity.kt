@@ -1,5 +1,10 @@
 package io.github.prejas3.windconnect
 
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.width
+import androidx.compose.runtime.key
+import androidx.compose.ui.platform.LocalConfiguration
+import android.content.res.Configuration
 import android.app.KeyguardManager
 import android.os.Bundle
 import android.hardware.SensorManager
@@ -84,17 +89,20 @@ class TouchpadActivity : ComponentActivity() {
         }
         setContent {
             WindApp(forceContent=true) {
-                Column(Modifier.fillMaxSize().imePadding().padding(20.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
-                    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
-                        Text(str(R.string.action_touchpad),style=MaterialTheme.typography.headlineSmall)
-                        WindButton(str(R.string.close),{finish()},kind=ButtonKind.Quiet)
-                    }
-                    Row(horizontalArrangement=Arrangement.spacedBy(4.dp)) {
-                        WindButton(if(typing)str(R.string.action_touchpad) else str(R.string.touchpad_keyboard),{showPresenter(false);typing=!typing},Modifier.testTag("remoteKeyboardToggle"),enabled=active && keyboardSupported,kind=ButtonKind.Quiet)
-                        WindButton(if(presenting)str(R.string.action_touchpad) else str(R.string.touchpad_presentation),{typing=false;showPresenter(!presenting)},Modifier.testTag("presenterToggle"),enabled=active && keyboardSupported,kind=ButtonKind.Quiet)
-                    }
+                // WN-170: the shared top bar (close at its start); the three modes are one connected group, so it is
+                // always visible which one is on. A mode's content fades and slides in; the touch surface is never put
+                // in a transition (its pointer capture must not restart).
+                val wide = windowWidthDp() >= 600 && LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+                WindScreen(str(R.string.action_touchpad),{finish()},str(R.string.close),"closeTouchpad",close=true,scrollable=false,maxWidth=if(wide)1200.dp else MAX_CONTENT_WIDTH) {
+                    val mode=when{presenting->PadMode.Presenter;typing->PadMode.Keyboard;else->PadMode.Pad}
+                    WindSegmented(PadMode.entries,mode,{when(it){PadMode.Pad->str(R.string.action_touchpad);PadMode.Keyboard->str(R.string.touchpad_keyboard);PadMode.Presenter->str(R.string.touchpad_presentation)}},
+                        {when(it){PadMode.Pad->{showPresenter(false);typing=false};PadMode.Keyboard->{showPresenter(false);typing=true};PadMode.Presenter->{typing=false;showPresenter(true)}}},
+                        tag={when(it){PadMode.Pad->"touchpadMode";PadMode.Keyboard->"remoteKeyboardToggle";PadMode.Presenter->"presenterToggle"}},
+                        enabled={it==PadMode.Pad || (active && keyboardSupported)})
                     Text(status,Modifier.testTag("touchpadStatus"),style=MaterialTheme.typography.bodyMedium)
                     if(active && !keyboardSupported)Text(str(R.string.touchpad_keyboard_old),style=MaterialTheme.typography.bodySmall)
+                    key(mode) {
+                    Column(Modifier.weight(1f).fillMaxWidth().enterFrom()) {
                     if(presenting) {
                         Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
                             PresenterPanel(active && keyboardSupported,laserSupported,gyro.available,timer,timerTick,{slide(it)}){on->
@@ -107,23 +115,36 @@ class TouchpadActivity : ComponentActivity() {
                             RemoteKeyboard(draft,{draft=it},active && keyboardSupported){capture?.keyboard(it)==true}
                         }
                     } else {
-                    AndroidView(factory={PadView(it,{capture}, {active})},modifier=Modifier.fillMaxWidth().weight(1f).background(MaterialTheme.colorScheme.surfaceContainer).testTag("touchpadSurface"))
-                    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(12.dp)) {
-                        // WN-130: own control (outlined, like WindButton Secondary); press and release stay separate for drag-and-hold.
-                        for(left in listOf(true,false)) Box(Modifier.weight(1f).heightIn(min=56.dp).clip(WindShapes.full)
-                            .border(1.dp,if(active)MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.outline,WindShapes.full)
-                            .semantics(mergeDescendants=true){role=Role.Button;if(!active)disabled();onClick{capture?.button(left,true);capture?.button(left,false);active}}
-                            .pointerInteropFilter { event ->
-                                if(active)when(event.actionMasked){MotionEvent.ACTION_DOWN->capture?.button(left,true);MotionEvent.ACTION_UP,MotionEvent.ACTION_CANCEL->capture?.button(left,false)}
-                                active
-                            },contentAlignment=Alignment.Center){Text(if(left)str(R.string.touchpad_left_hold) else str(R.string.touchpad_right),style=MaterialTheme.typography.labelLarge,color=if(active)MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)}
+                    // WN-170: landscape on a wide window: the surface and its buttons, the settings in a panel beside them.
+                    val pad = @Composable { m: Modifier ->
+                        Column(m, verticalArrangement=Arrangement.spacedBy(12.dp)) {
+                            AndroidView(factory={PadView(it,{capture}, {active})},modifier=Modifier.fillMaxWidth().weight(1f).clip(WindShapes.extraLarge)
+                                .background(MaterialTheme.colorScheme.surfaceContainerHigh).testTag("touchpadSurface"))
+                            Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(12.dp)) {
+                                // WN-130: own control (outlined, like WindButton Secondary); press and release stay separate for drag-and-hold.
+                                for(left in listOf(true,false)) Box(Modifier.weight(1f).heightIn(min=56.dp).clip(WindShapes.full)
+                                    .border(1.dp,if(active)MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.outline,WindShapes.full)
+                                    .semantics(mergeDescendants=true){role=Role.Button;if(!active)disabled();onClick{capture?.button(left,true);capture?.button(left,false);active}}
+                                    .pointerInteropFilter { event ->
+                                        if(active)when(event.actionMasked){MotionEvent.ACTION_DOWN->capture?.button(left,true);MotionEvent.ACTION_UP,MotionEvent.ACTION_CANCEL->capture?.button(left,false)}
+                                        active
+                                    },contentAlignment=Alignment.Center){Text(if(left)str(R.string.touchpad_left_hold) else str(R.string.touchpad_right),style=MaterialTheme.typography.labelLarge,color=if(active)MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)}
+                            }
+                        }
                     }
-                    Column(Modifier.heightIn(max=270.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(8.dp)) {
-                    Text(str(R.string.touchpad_sensitivity),style=MaterialTheme.typography.labelLarge)
-                    WindSlider(value=sensitivity,step=0.125f,valueLabel={"%.2f×".format(it)},onValueChange={sensitivity=it;capture?.engine?.sensitivity=it},onValueChangeFinished={settings.edit().putFloat("sensitivity",sensitivity).apply()},valueRange=0.5f..3f)
-                    WindSwitch(str(R.string.touchpad_natural),natural,{natural=it;capture?.engine?.natural=it;settings.edit().putBoolean("natural",it).apply()})
-                    Text(str(R.string.touchpad_help),style=MaterialTheme.typography.bodySmall)
-                    Text(if(gestures) str(R.string.touchpad_gestures) else str(R.string.touchpad_gestures_old),style=MaterialTheme.typography.bodySmall)
+                    val options = @Composable { m: Modifier ->
+                        Column(m.verticalScroll(rememberScrollState()).testTag("touchpadOptions"),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                            Text(str(R.string.touchpad_sensitivity),style=MaterialTheme.typography.labelLarge)
+                            WindSlider(value=sensitivity,step=0.125f,valueLabel={"%.2f×".format(it)},onValueChange={sensitivity=it;capture?.engine?.sensitivity=it},onValueChangeFinished={settings.edit().putFloat("sensitivity",sensitivity).apply()},valueRange=0.5f..3f)
+                            WindSwitch(str(R.string.touchpad_natural),natural,{natural=it;capture?.engine?.natural=it;settings.edit().putBoolean("natural",it).apply()})
+                            Text(str(R.string.touchpad_help),style=MaterialTheme.typography.bodySmall)
+                            Text(if(gestures) str(R.string.touchpad_gestures) else str(R.string.touchpad_gestures_old),style=MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                    if(wide) Row(Modifier.weight(1f).fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(24.dp)) {
+                        pad(Modifier.weight(1f).fillMaxHeight()); options(Modifier.width(320.dp).fillMaxHeight())
+                    } else { pad(Modifier.weight(1f).fillMaxWidth()); options(Modifier.heightIn(max=270.dp)) }
+                    }
                     }
                     }
                 }
@@ -253,3 +274,6 @@ private class PadCapture(private val handle:TouchpadSession,private val failed:(
     private fun flush(){if(pending.isEmpty()||closed)return;val batch=pending.toList();pending.clear();if(batches.trySend(batch).isFailure){close();failed(str(R.string.touchpad_slow))}}
     fun close(){if(closed)return;closed=true;choreographer.removeFrameCallback(this);pending.clear();engine.cancel();batches.close();scope.cancel()}
 }
+
+/** WN-170: the touchpad screen's three modes. */
+private enum class PadMode { Pad, Keyboard, Presenter }

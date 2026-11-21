@@ -48,7 +48,7 @@ object TransferProgressProof {
             withTimeout(15_000) { FileSending.status.first { !it.busy && it.completed == 3 } }
             assertEquals(5, core.files.value.count { it.id !in before && it.state == "done" })
             assertNull(FileRetry.selection)
-            compose.onNodeWithText("Zamknij").performScrollTo().performClick()
+            compose.onNodeWithTag("closeShare").performClick()
             // A missing grant is checked by opening the source before any retry confirmation.
             FileRetry.selection = RetrySelection(listOf(android.net.Uri.parse("content://${app.packageName}.test.files_fixture/denied/0")), target)
             FileSending.update(FileSendStatus(message = "Test ponawiania", canRetry = true))

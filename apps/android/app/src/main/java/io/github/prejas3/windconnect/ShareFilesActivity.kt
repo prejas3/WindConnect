@@ -1,5 +1,6 @@
 package io.github.prejas3.windconnect
 
+import androidx.compose.foundation.selection.selectableGroup
 import android.app.Application
 import android.content.Intent
 import android.net.Uri
@@ -117,9 +118,8 @@ class ShareFilesActivity : ComponentActivity() {
         setContent {
             val sending by FileSending.status.collectAsStateWithLifecycle()
             WindApp(forceContent = true) {
-                Column(Modifier.fillMaxSize().padding(24.dp).testTag("shareFiles"),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    Text(str(R.string.share_title), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.semantics { heading() })
+                // WN-170: the shared top bar (close at its start) instead of a title and a "Close" button at the bottom.
+                WindScreen(str(R.string.share_title), { finish() }, str(R.string.close), "closeShare", Modifier.testTag("shareFiles"), close = true) {
                     if (sending.message.isNotEmpty()) WindCard(Modifier.fillMaxWidth()) {
                         Text(if (sending.busy) str(R.string.share_sending) else str(R.string.share_last), style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
                         Text(sending.message, Modifier.testTag("fileSendStatus"))
@@ -128,7 +128,6 @@ class ShareFilesActivity : ComponentActivity() {
                         }, Modifier.testTag("retryFiles"), kind = ButtonKind.Secondary)
                         if (sending.busy) WindButton(str(R.string.share_cancel), { SendFilesService.cancel(this@ShareFilesActivity) }, Modifier.testTag("cancelFiles"), kind = ButtonKind.Secondary)
                     }
-                    Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     if (sending.busy) {
                         if (sending.target.isNotEmpty()) Text(str(R.string.share_to, sending.target))
                         Text(str(R.string.share_counts, sending.count, sending.completed))
@@ -144,10 +143,13 @@ class ShareFilesActivity : ComponentActivity() {
                     Text(str(R.string.share_selected, selectedUris.size), Modifier.testTag("selectedFileCount"))
                     Text(str(R.string.share_target), style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
                     if (model.peers.isEmpty()) Text(str(R.string.share_pair_first))
-                    model.peers.forEach { peer ->
-                        WindButton("${computerLabel(peer.name)} · ${peer.fingerprint.take(8)}", { model.selected = peer.fingerprint },
-                            Modifier.fillMaxWidth().semantics { selected = model.selected == peer.fingerprint }, enabled = !sending.busy && (model.retryTarget == null || model.retryTarget == peer.fingerprint),
-                            kind = if (model.selected == peer.fingerprint) ButtonKind.Primary else ButtonKind.Secondary)
+                    // WN-170: the computer is a choice (own radio), not buttons that pretend to be selected.
+                    Column(Modifier.selectableGroup()) {
+                        model.peers.forEach { peer ->
+                            WindRadioRow(computerLabel(peer.name), model.selected == peer.fingerprint, { model.selected = peer.fingerprint },
+                                Modifier.testTag("sharePeer:${peer.fingerprint.take(8)}"), enabled = !sending.busy && (model.retryTarget == null || model.retryTarget == peer.fingerprint),
+                                supporting = peer.fingerprint.take(8))
+                        }
                     }
                     if (model.error.isNotEmpty()) Text(model.error, color = MaterialTheme.colorScheme.error, modifier = Modifier.testTag("fileShareError"))
                     WindButton(str(R.string.send), {
@@ -156,8 +158,6 @@ class ShareFilesActivity : ComponentActivity() {
                     }, Modifier.fillMaxWidth().testTag("confirmSendFiles"), enabled = !sending.busy && model.previewReady && model.peers.any { it.fingerprint == model.selected })
                     Text(str(R.string.share_where), style = MaterialTheme.typography.bodySmall)
                     model.names.forEach { Text(it, Modifier.fillMaxWidth(), style = MaterialTheme.typography.bodySmall) }
-                    }
-                    WindButton(str(R.string.close), { finish() }, kind = ButtonKind.Quiet)
                     }
                 }
             }

@@ -31,12 +31,18 @@ import kotlinx.coroutines.launch
 class ReceiveFilesActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // WN-170: a file no app could open is said here, on the list (no Toast).
+        val problem = intent?.getStringExtra(PROBLEM)
         setContent { WindApp(forceContent = true) {
-            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                WindBackHeader(str(R.string.received_files), { finish() }, "closeReceived")
+            WindScreen(str(R.string.received_files), { finish() }, str(R.string.back), "closeReceived") {
+                if (!problem.isNullOrEmpty()) WindNotice(problem, Modifier.testTag("receivedProblem"))
                 ReceiveFilesControls(compact = false)
             }
         } }
+    }
+    companion object {
+        /** A message to show over the list (a received file no app can open). */
+        const val PROBLEM = "problem"
     }
 }
 

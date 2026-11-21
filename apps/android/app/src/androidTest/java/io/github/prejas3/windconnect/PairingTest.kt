@@ -56,7 +56,7 @@ class PairingTest {
         assertEquals(before, trust())
         compose.activityRule.scenario.recreate()
         waitFor("confirmPairing")
-        compose.onNodeWithTag("cancelPairing").performScrollTo().performClick()
+        compose.onNodeWithTag("cancelPairing").performClick() // WN-170: in the pinned top bar
         compose.onNodeWithTag("computerCard").assertExists()
         assertEquals(before, trust())
         deliver(link("Drugi%20PC"))
@@ -71,7 +71,7 @@ class PairingTest {
             waitFor("pairingError")
             assertTrue(compose.onAllNodesWithText(secret, substring = true).fetchSemanticsNodes().isEmpty())
             assertEquals(before, trust())
-            compose.onNodeWithTag("cancelPairing").performScrollTo().performClick()
+            compose.onNodeWithTag("cancelPairing").performClick() // WN-170: in the pinned top bar
         }
     }
 
@@ -91,7 +91,7 @@ class PairingTest {
     @Test fun scannerEntryAndCancelRemainAvailable() {
         openScanner()
         compose.onNodeWithText("Zeskanuj kod QR").assertExists() // the scanner screen's heading, not the Welcome button
-        compose.onNodeWithTag("cancelPairing").performScrollTo().performClick()
+        compose.onNodeWithTag("cancelPairing").performClick() // WN-170: in the pinned top bar
         compose.onNodeWithTag("computerCard").assertExists()
     }
 
@@ -358,7 +358,7 @@ class PairingTest {
             compose.waitUntil(5_000) { available.get() }
             compose.activityRule.scenario.moveToState(androidx.lifecycle.Lifecycle.State.RESUMED)
             compose.waitUntil(5_000) { !available.get() }
-            compose.onNodeWithTag("cancelPairing").performScrollTo().performClick()
+            compose.onNodeWithTag("cancelPairing").performClick() // WN-170: in the pinned top bar
             compose.waitUntil(5_000) { available.get() }
             compose.waitUntil(5_000) { Thread.getAllStackTraces().keys.none { it.name.startsWith("WindConnect QR") && it.isAlive } }
         } finally { manager.unregisterAvailabilityCallback(callback) }

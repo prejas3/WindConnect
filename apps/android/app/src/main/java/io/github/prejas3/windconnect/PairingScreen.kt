@@ -21,6 +21,11 @@ import kotlin.coroutines.cancellation.CancellationException
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.background
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
@@ -82,19 +87,25 @@ fun PairingScreen(model: PairingViewModel, diagnostic: @Composable () -> Unit) {
     }, transitionSpec = { sharedAxisX(pairingDepth(targetState) >= pairingDepth(initialState), reduce, density) },
         contentKey = ::pairingStep, label = "pairingStep") { screen ->
     if (screen == "diagnostics") { diagnostic(); return@AnimatedContent }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp).testTag("pairingScreen"), verticalArrangement = Arrangement.spacedBy(18.dp)) {
-        when (screen) {
-            "home" -> {
-                // WC-34: the Welcome card explained the camera, so the system asks right after the tap.
-                val scan = { if (!hasCamera) permission.launch(Manifest.permission.CAMERA); model.scan() }
-                HomeScreen(state, scan, onDiagnostics = { diagnostics = true }, onNearby = model::nearby, onClipboard = model::sendClipboard, onClipboardEnabled = model::setClipboardEnabled,
-                    onSendFile = { context.startActivity(Intent(context, ShareFilesActivity::class.java).setAction(ShareFilesActivity.PICK)) }, history = model.clipboardHistoryActions)
-            }
-            "devices" -> DevicesScreen(state, onBack = model::cancel, onConnect = model::connectDevice, onRename = model::renameDevice, onUnpair = model::unpairDevice)
-            "settings" -> {
-                // WN-130: four groups of short rows instead of fourteen same-looking cards; details under "More" in each row.
-                WindBackHeader(stringResource(R.string.settings), model::cancel, "closeSettings")
-                WindSection(stringResource(R.string.group_computer)) {
+    // WN-170: every screen but home and the final "Done" is a WindScreen: the pinned top bar with back (or close for a
+    // pairing step, which cancels it), content at most 640 dp wide.
+    val cancel = stringResource(R.string.cancel)
+    val back = stringResource(R.string.back)
+    val step = Modifier.testTag("pairingScreen")
+    when (screen) {
+        "home" -> HomePage {
+            // WC-34: the Welcome card explained the camera, so the system asks right after the tap.
+            val scan = { if (!hasCamera) permission.launch(Manifest.permission.CAMERA); model.scan() }
+            HomeScreen(state, scan, onDiagnostics = { diagnostics = true }, onNearby = model::nearby, onClipboard = model::sendClipboard, onClipboardEnabled = model::setClipboardEnabled,
+                onSendFile = { context.startActivity(Intent(context, ShareFilesActivity::class.java).setAction(ShareFilesActivity.PICK)) }, history = model.clipboardHistoryActions)
+        }
+        "devices" -> WindScreen(stringResource(R.string.devices_paired), model::cancel, back, "closeDevices", step) {
+            DevicesScreen(state, onBack = model::cancel, onConnect = model::connectDevice, onRename = model::renameDevice, onUnpair = model::unpairDevice)
+        }
+        "settings" -> {
+            // WN-130: four groups of short rows instead of fourteen same-looking cards; details under (i) in each row.
+            val groups: List<Pair<String, @Composable ColumnScope.() -> Unit>> = listOf(
+                stringResource(R.string.group_computer) to {
                     if (state.devices.isNotEmpty()) {
                         val connectedName = state.devices.firstOrNull { (state.connection as? ConnectionState.Connected)?.fingerprint == it.fingerprint }?.let { computerLabel(it.name) }
                         WindSettingRow("pc", stringResource(R.string.devices_paired),
@@ -104,8 +115,8 @@ fun PairingScreen(model: PairingViewModel, diagnostic: @Composable () -> Unit) {
                     }
                     // WN-160: one way in; the QR screen itself offers pairing without the camera.
                     WindSettingRow("plus", stringResource(R.string.pair_another), stringResource(R.string.sum_pair), switchTag = "scanQr", onClick = model::scan, enabled = state.ready)
-                }
-                WindSection(stringResource(R.string.group_phone_on_pc)) {
+                },
+                stringResource(R.string.group_phone_on_pc) to {
                     NotifyControls()
                     WindDivider()
                     // WN-124: the Play build declares no SMS / Call Log permissions, so these settings aren't there.
@@ -114,8 +125,8 @@ fun PairingScreen(model: PairingViewModel, diagnostic: @Composable () -> Unit) {
                     GalleryControls()
                     WindDivider()
                     MediaControls()
-                }
-                WindSection(stringResource(R.string.group_pc_on_phone)) {
+                },
+                stringResource(R.string.group_pc_on_phone) to {
                     PcMediaControls()
                     WindDivider()
                     LinkControls()
@@ -123,8 +134,8 @@ fun PairingScreen(model: PairingViewModel, diagnostic: @Composable () -> Unit) {
                     FindControls()
                     WindDivider()
                     ReceiveSettingRow()
-                }
-                WindSection(stringResource(R.string.group_shortcuts)) {
+                },
+                stringResource(R.string.group_shortcuts) to {
                     ClipboardSettingRows(state, model::setClipboardEnabled, model::setClipboardImageLimit)
                     WindDivider()
                     BackgroundControls(state.hasPairedDevice)
@@ -136,70 +147,60 @@ fun PairingScreen(model: PairingViewModel, diagnostic: @Composable () -> Unit) {
                     WidgetControls()
                     WindDivider()
                     RelayControls()
+                },
+            )
+            SettingsPage(groups, model::cancel, step)
+        }
+        "scanner" -> WindScreen(stringResource(R.string.scan_title), model::cancel, cancel, "cancelPairing", step, close = true) {
+            Text(stringResource(R.string.scan_about))
+            if (hasCamera) {
+                QrCamera(Modifier.fillMaxWidth().height(320.dp).testTag("cameraPreview"), model::offerLink, model::cameraError)
+            } else {
+                Text(if (denied) stringResource(R.string.scan_denied) else stringResource(R.string.scan_consent))
+                WindButton(stringResource(R.string.camera_allow), { permission.launch(Manifest.permission.CAMERA) }, Modifier.testTag("cameraPermission"))
+                if (denied) WindButton(stringResource(R.string.permission_settings), { context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}"))) }, kind = ButtonKind.Secondary)
+            }
+            WindButton(stringResource(R.string.pair_without_camera), model::nearby, Modifier.fillMaxWidth().testTag("pairNearby"), enabled = state.ready, kind = ButtonKind.Secondary)
+        }
+        "confirm", "pairing" -> WindScreen(stringResource(R.string.confirm_title), model::cancel, cancel, "cancelPairing", step, close = true) {
+            WindCard(Modifier.fillMaxWidth()) {
+                Text(state.name, style = MaterialTheme.typography.titleLarge, modifier = Modifier.testTag("pairingPeer"))
+                Text(stringResource(R.string.confirm_fingerprint), style = MaterialTheme.typography.labelMedium)
+                Text(state.fingerprint, style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("pairingFingerprint"))
+            }
+            Text(stringResource(R.string.confirm_about))
+            WindButton(if (state.screen == "pairing") stringResource(R.string.pairing_progress) else stringResource(R.string.pair_devices), model::confirm, Modifier.fillMaxWidth().testTag("confirmPairing"), enabled = state.ready && state.screen == "confirm")
+            if (state.screen == "pairing") Waiting(stringResource(R.string.pairing_verifying), "pairingProgress")
+        }
+        "nearby" -> WindScreen(stringResource(R.string.nearby_title), model::cancel, cancel, "cancelPairing", step, close = true) {
+            Text(stringResource(R.string.nearby_about))
+            if (state.nearby.isEmpty()) Waiting(stringResource(R.string.nearby_searching), "nearbyEmpty")
+            state.nearby.forEach { device ->
+                WindCard(Modifier.fillMaxWidth().testTag("nearbyDevice")) {
+                    Text(stringResource(R.string.nearby_ready), style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
+                    Text(shortFingerprint(device.fingerprint), style = MaterialTheme.typography.bodySmall)
+                    WindButton(stringResource(R.string.pair), { model.pairWith(device) }, Modifier.fillMaxWidth())
                 }
             }
-            "scanner" -> {
-                Text(stringResource(R.string.scan_title), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.semantics { heading() })
-                Text(stringResource(R.string.scan_about))
-                if (hasCamera) {
-                    QrCamera(Modifier.fillMaxWidth().height(320.dp).testTag("cameraPreview"), model::offerLink, model::cameraError)
-                } else {
-                    Text(if (denied) stringResource(R.string.scan_denied) else stringResource(R.string.scan_consent))
-                    WindButton(stringResource(R.string.camera_allow), { permission.launch(Manifest.permission.CAMERA) }, Modifier.testTag("cameraPermission"))
-                    if (denied) WindButton(stringResource(R.string.permission_settings), { context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}"))) }, kind = ButtonKind.Secondary)
-                }
-                WindButton(stringResource(R.string.pair_without_camera), model::nearby, Modifier.fillMaxWidth().testTag("pairNearby"), enabled = state.ready, kind = ButtonKind.Secondary)
-                WindButton(stringResource(R.string.cancel), model::cancel, Modifier.fillMaxWidth().testTag("cancelPairing"), kind = ButtonKind.Quiet)
+            Text(stringResource(R.string.nearby_note), style = MaterialTheme.typography.bodySmall)
+        }
+        "sas-connecting" -> WindScreen(stringResource(R.string.sas_connecting), model::cancel, cancel, "cancelPairing", step, close = true) {
+            Waiting(stringResource(R.string.sas_soon), "sasConnecting")
+        }
+        "sas-code", "sas-rejected", "sas-confirming" -> WindScreen(stringResource(R.string.sas_compare), model::cancel, cancel, "cancelPairing", step, close = true) {
+            WindCard(Modifier.fillMaxWidth()) {
+                Text(state.name, style = MaterialTheme.typography.titleMedium, modifier = Modifier.testTag("pairingPeer"))
+                Text(state.code, style = MaterialTheme.typography.displayMedium, modifier = Modifier.testTag("sasCode"))
             }
-            "confirm", "pairing" -> {
-                Text(stringResource(R.string.confirm_title), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.semantics { heading() })
-                WindCard(Modifier.fillMaxWidth()) {
-                    Text(state.name, style = MaterialTheme.typography.titleLarge, modifier = Modifier.testTag("pairingPeer"))
-                    Text(stringResource(R.string.confirm_fingerprint), style = MaterialTheme.typography.labelMedium)
-                    Text(state.fingerprint, style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("pairingFingerprint"))
-                }
-                Text(stringResource(R.string.confirm_about))
-                WindButton(if (state.screen == "pairing") stringResource(R.string.pairing_progress) else stringResource(R.string.pair_devices), model::confirm, Modifier.fillMaxWidth().testTag("confirmPairing"), enabled = state.ready && state.screen == "confirm")
-                if (state.screen == "confirm") WindButton(stringResource(R.string.cancel), model::cancel, Modifier.testTag("cancelPairing"), kind = ButtonKind.Secondary)
-                else Waiting(stringResource(R.string.pairing_verifying), "pairingProgress")
-            }
-            "nearby" -> {
-                Text(stringResource(R.string.nearby_title), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.semantics { heading() })
-                Text(stringResource(R.string.nearby_about))
-                if (state.nearby.isEmpty()) Waiting(stringResource(R.string.nearby_searching), "nearbyEmpty")
-                state.nearby.forEach { device ->
-                    WindCard(Modifier.fillMaxWidth().testTag("nearbyDevice")) {
-                        Text(stringResource(R.string.nearby_ready), style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
-                        Text(shortFingerprint(device.fingerprint), style = MaterialTheme.typography.bodySmall)
-                        WindButton(stringResource(R.string.pair), { model.pairWith(device) }, Modifier.fillMaxWidth())
-                    }
-                }
-                Text(stringResource(R.string.nearby_note), style = MaterialTheme.typography.bodySmall)
-                WindButton(stringResource(R.string.cancel), model::cancel, Modifier.testTag("cancelPairing"), kind = ButtonKind.Secondary)
-            }
-            "sas-connecting" -> {
-                Text(stringResource(R.string.sas_connecting), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.semantics { heading() })
-                Waiting(stringResource(R.string.sas_soon), "sasConnecting")
-                WindButton(stringResource(R.string.cancel), model::cancel, Modifier.testTag("cancelPairing"), kind = ButtonKind.Secondary)
-            }
-            "sas-code", "sas-rejected", "sas-confirming" -> {
-                Text(stringResource(R.string.sas_compare), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.semantics { heading() })
-                WindCard(Modifier.fillMaxWidth()) {
-                    Text(state.name, style = MaterialTheme.typography.titleMedium, modifier = Modifier.testTag("pairingPeer"))
-                    Text(state.code, style = MaterialTheme.typography.displayMedium, modifier = Modifier.testTag("sasCode"))
-                }
-                Text(stringResource(R.string.sas_about))
-                WindButton(stringResource(R.string.sas_same), { model.decide(true) }, Modifier.fillMaxWidth().testTag("sasSame"), enabled = state.screen == "sas-code")
-                WindButton(stringResource(R.string.sas_different), { model.decide(false) }, Modifier.fillMaxWidth().testTag("sasDifferent"), enabled = state.screen == "sas-code", kind = ButtonKind.Secondary)
-                if (state.screen == "sas-confirming") Waiting(stringResource(R.string.sas_waiting), "pairingProgress")
-            }
-            "paired" -> DoneScreen(state.name, state.message, onDone = model::cancel)
-            else -> {
-                Text(stringResource(R.string.pair_failed), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.semantics { heading() })
-                Text(state.message, modifier = Modifier.testTag("pairingError"), color = MaterialTheme.colorScheme.error)
-                WindButton(stringResource(R.string.scan_new), model::scan)
-                WindButton(stringResource(R.string.go_back), model::cancel, Modifier.testTag("cancelPairing"), kind = ButtonKind.Secondary)
-            }
+            Text(stringResource(R.string.sas_about))
+            WindButton(stringResource(R.string.sas_same), { model.decide(true) }, Modifier.fillMaxWidth().testTag("sasSame"), enabled = state.screen == "sas-code")
+            WindButton(stringResource(R.string.sas_different), { model.decide(false) }, Modifier.fillMaxWidth().testTag("sasDifferent"), enabled = state.screen == "sas-code", kind = ButtonKind.Secondary)
+            if (state.screen == "sas-confirming") Waiting(stringResource(R.string.sas_waiting), "pairingProgress")
+        }
+        "paired" -> HomePage { DoneScreen(state.name, state.message, onDone = model::cancel) }
+        else -> WindScreen(stringResource(R.string.pair_failed), model::cancel, back, "cancelPairing", step) {
+            Text(state.message, modifier = Modifier.testTag("pairingError"), color = MaterialTheme.colorScheme.error)
+            WindButton(stringResource(R.string.scan_new), model::scan, Modifier.fillMaxWidth())
         }
     }
     }
@@ -227,5 +228,51 @@ private fun Waiting(text: String, tag: String) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         WindCircularProgress(diameter = 24.dp)
         Text(text, modifier = Modifier.testTag(tag).weight(1f))
+    }
+}
+
+/** WN-170: home and the final "Done": no top bar of their own (home has the app's), the same 640 dp centred column. */
+@Composable
+private fun HomePage(content: @Composable ColumnScope.() -> Unit) {
+    Box(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), contentAlignment = Alignment.TopCenter) {
+        Column(Modifier.widthIn(max = MAX_CONTENT_WIDTH).fillMaxWidth().padding(24.dp).testTag("pairingScreen"), verticalArrangement = Arrangement.spacedBy(18.dp), content = content)
+    }
+}
+
+/**
+ * WN-170: Settings. Compact and medium windows: the groups one under another. Expanded (≥ 840 dp): a list of the groups
+ * at the start and the chosen group in a panel beside it.
+ */
+@Composable
+internal fun SettingsPage(groups: List<Pair<String, @Composable ColumnScope.() -> Unit>>, onBack: () -> Unit, modifier: Modifier = Modifier) {
+    val title = stringResource(R.string.settings)
+    val back = stringResource(R.string.back)
+    if (!expandedWidth()) {
+        WindScreen(title, onBack, back, "closeSettings", modifier) { groups.forEach { (name, rows) -> WindSection(name) { rows() } } }
+        return
+    }
+    val colors = MaterialTheme.colorScheme
+    var chosen by rememberSaveable { mutableIntStateOf(0) }
+    val panel = rememberScrollState()
+    Column(modifier.fillMaxSize()) {
+        WindTopBar(title, "back", back, onBack, "closeSettings", scrolled = panel.value > 0)
+        Row(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 24.dp), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+            Column(Modifier.width(280.dp).fillMaxHeight().verticalScroll(rememberScrollState()).padding(vertical = 8.dp).testTag("settingsList"),
+                verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                groups.forEachIndexed { index, (name, _) ->
+                    val on = index == chosen
+                    Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).windFocus(WindShapes.full).clip(WindShapes.full)
+                        .background(if (on) colors.secondaryContainer else androidx.compose.ui.graphics.Color.Transparent)
+                        .selectable(selected = on, role = Role.Tab) { chosen = index }.testTag("settingsGroup$index").padding(horizontal = 16.dp),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        Text(name, style = MaterialTheme.typography.labelLarge, color = if (on) colors.onSecondaryContainer else colors.onSurfaceVariant)
+                    }
+                }
+            }
+            Column(Modifier.weight(1f).fillMaxHeight().verticalScroll(panel).padding(vertical = 8.dp).testTag("settingsPanel"), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                val (name, rows) = groups[chosen.coerceIn(groups.indices)]
+                Box(Modifier.widthIn(max = MAX_CONTENT_WIDTH)) { WindSection(name) { rows() } }
+            }
+        }
     }
 }

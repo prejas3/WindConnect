@@ -15,7 +15,6 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInteropFilter
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import io.github.prejas3.windconnect.bindings.TouchpadCommand
 import kotlinx.coroutines.delay
@@ -101,25 +100,26 @@ internal fun PresenterPanel(active: Boolean, laserSupported: Boolean, gyro: Bool
     LaunchedEffect(tick) { running = timer.running; now = timer.elapsed() }
     LaunchedEffect(running) { while (running) { now = timer.elapsed(); delay(250) } ; now = timer.elapsed() }
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text(PresentationTimer.format(now), Modifier.testTag("presenterTimer"), style = MaterialTheme.typography.displayMedium.copy(fontFamily = FontFamily.Monospace))
+        Text(PresentationTimer.format(now), Modifier.testTag("presenterTimer"), style = MaterialTheme.typography.displayMedium.copy(fontFeatureSettings = "tnum")) // WN-170: DM Sans, tabular digits
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             WindButton(if (running) str(R.string.presenter_pause) else str(R.string.presenter_start), { if (timer.running) timer.pause() else timer.start(); running = timer.running }, Modifier.testTag("presenterTimerToggle"), kind = ButtonKind.Secondary)
             WindButton(str(R.string.presenter_reset), { timer.reset(); running = false; now = 0L }, kind = ButtonKind.Quiet)
         }
+        // WN-170: slides as Expressive L buttons (96 dp), the laser as XL (136 dp).
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            WindButton(str(R.string.presenter_previous), { slide(PresenterKeys.PREVIOUS) }, Modifier.weight(1f).heightIn(min = 72.dp).testTag("presenterPrevious"), enabled = active, kind = ButtonKind.Tonal)
-            WindButton(str(R.string.presenter_next), { slide(PresenterKeys.NEXT) }, Modifier.weight(1f).heightIn(min = 72.dp).testTag("presenterNext"), enabled = active)
+            WindButton(str(R.string.presenter_previous), { slide(PresenterKeys.PREVIOUS) }, Modifier.weight(1f).heightIn(min = 96.dp).testTag("presenterPrevious"), enabled = active, kind = ButtonKind.Tonal, textStyle = MaterialTheme.typography.titleLarge)
+            WindButton(str(R.string.presenter_next), { slide(PresenterKeys.NEXT) }, Modifier.weight(1f).heightIn(min = 96.dp).testTag("presenterNext"), enabled = active, textStyle = MaterialTheme.typography.titleLarge)
         }
         val laserReady = active && laserSupported && gyro
         var held by remember { mutableStateOf(false) }
-        WindButton(if (held) str(R.string.presenter_laser_on) else str(R.string.presenter_laser_hold), {}, Modifier.fillMaxWidth().heightIn(min = 96.dp).testTag("presenterLaser").pointerInteropFilter { e ->
+        WindButton(if (held) str(R.string.presenter_laser_on) else str(R.string.presenter_laser_hold), {}, Modifier.fillMaxWidth().heightIn(min = 136.dp).testTag("presenterLaser").pointerInteropFilter { e ->
             if (!laserReady) return@pointerInteropFilter false
             when (e.actionMasked) {
                 MotionEvent.ACTION_DOWN -> { held = true; laser(true) }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> { held = false; laser(false) }
             }
             true
-        }, enabled = laserReady, kind = ButtonKind.Secondary)
+        }, enabled = laserReady, kind = ButtonKind.Secondary, textStyle = MaterialTheme.typography.headlineSmall)
         Text(str(R.string.presenter_help), style = MaterialTheme.typography.bodySmall)
         when {
             !gyro -> Text(str(R.string.presenter_no_gyro), style = MaterialTheme.typography.bodySmall)

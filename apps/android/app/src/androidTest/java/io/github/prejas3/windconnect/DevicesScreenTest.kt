@@ -42,7 +42,9 @@ class DevicesScreenTest {
         compose.onAllNodesWithTag("deviceConnect")[0].performScrollTo().performClick()
         assertEquals("connect Laptop", calls.last())
 
-        compose.onAllNodesWithTag("deviceRename")[1].performScrollTo().performClick()
+        // WN-170: rename and remove are in the ⋮ menu of each computer.
+        compose.onAllNodesWithTag("deviceMenu")[1].performScrollTo().performClick()
+        compose.onNodeWithTag("deviceRename").performClick()
         compose.onNodeWithTag("renameField").performTextReplacement("   ")
         compose.onNodeWithTag("renameSave").performClick()
         compose.onNodeWithText("Nazwa nie może być pusta").assertExists()
@@ -50,11 +52,13 @@ class DevicesScreenTest {
         compose.onNodeWithTag("renameSave").performClick()
         assertEquals("rename Laptop Laptop Oli", calls.last())
 
-        compose.onAllNodesWithTag("deviceUnpair")[0].performScrollTo().performClick()
+        compose.onAllNodesWithTag("deviceMenu")[0].performScrollTo().performClick()
+        compose.onNodeWithTag("deviceUnpair").performClick()
         compose.onNodeWithTag("unpairQuestion").assertTextContains("Komputer też je usunie.", substring = true)
         compose.onNodeWithText("Anuluj").performClick()
         assert(calls.none { it.startsWith("unpair") }) { "Anuluj removes nothing: $calls" }
-        compose.onAllNodesWithTag("deviceUnpair")[1].performScrollTo().performClick()
+        compose.onAllNodesWithTag("deviceMenu")[1].performScrollTo().performClick()
+        compose.onNodeWithTag("deviceUnpair").performClick()
         compose.onNodeWithTag("unpairQuestion").assertTextContains("gdy znajdzie się w tej samej sieci", substring = true)
         compose.onNodeWithTag("unpairConfirm").performClick()
         assertEquals("unpair Laptop", calls.last())

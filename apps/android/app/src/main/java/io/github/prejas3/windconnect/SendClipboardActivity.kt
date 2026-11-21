@@ -29,10 +29,8 @@ class SendClipboardActivity : ComponentActivity() {
         (application as WindApplication).connections.clipboardFocus(false)
         enableEdgeToEdge()
         setContent { WindApp(forceContent = true) {
-            Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
-                Text(str(R.string.send_clipboard), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.semantics { heading() })
+            WindScreen(str(R.string.send_clipboard), { finish() }, str(R.string.close), "closeSendClipboard", close = true) {
                 Text(status.value)
-                WindButton(str(R.string.close), { finish() }, kind = ButtonKind.Secondary)
             }
         } }
         lifecycleScope.launch {

@@ -3,7 +3,6 @@ package io.github.prejas3.windconnect
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.os.Bundle
-import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
@@ -24,8 +23,8 @@ class OpenReceivedActivity : ComponentActivity() {
                 startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri, contentResolver.getType(uri) ?: "application/octet-stream")
                     .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
             } catch (_: ActivityNotFoundException) {
-                Toast.makeText(applicationContext, str(R.string.receive_no_app), Toast.LENGTH_SHORT).show()
-                startActivity(Intent(this@OpenReceivedActivity, ReceiveFilesActivity::class.java))
+                // WN-170: said on the received-files list (no Toast).
+                startActivity(Intent(this@OpenReceivedActivity, ReceiveFilesActivity::class.java).putExtra(ReceiveFilesActivity.PROBLEM, str(R.string.receive_no_app)))
             }
             finish()
         }

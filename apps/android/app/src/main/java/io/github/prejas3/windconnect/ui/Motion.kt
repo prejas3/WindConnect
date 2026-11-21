@@ -25,6 +25,8 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.composed
 
 /**
  * WN-169: the M3 motion springs (material-components-android docs/theming/Motion.md). Spatial (position, size): damping
@@ -68,3 +70,17 @@ fun expandIn(reduce: Boolean): EnterTransition =
 
 fun shrinkOut(reduce: Boolean): ExitTransition =
     if (reduce) ExitTransition.None else shrinkVertically(WindMotion.defaultSpatial<IntSize>()) + fadeOut(WindMotion.fastEffects())
+
+/**
+ * WN-170: a pane that slides in by 24 dp and fades in when it first appears (switching the touchpad's mode). It is
+ * only a graphics layer: what is inside is not recreated or put in a transition. No motion when animations are off.
+ */
+fun androidx.compose.ui.Modifier.enterFrom(): androidx.compose.ui.Modifier = composed {
+    val reduce = LocalReduceMotion.current
+    val shown = androidx.compose.runtime.remember { androidx.compose.animation.core.Animatable(if (reduce) 1f else 0f) }
+    androidx.compose.runtime.LaunchedEffect(Unit) { shown.animateTo(1f, WindMotion.defaultSpatial()) }
+    graphicsLayer {
+        alpha = shown.value.coerceIn(0f, 1f)
+        translationX = (1f - shown.value) * 24.dp.toPx()
+    }
+}

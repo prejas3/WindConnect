@@ -94,7 +94,7 @@ object ConnectionNotificationProof {
             val ids = core.files.value.map { it.id }.toSet()
             compose.onNodeWithTag("confirmSendFiles").performScrollTo().performClick()
             await("file delivered") { core.files.value.any { it.id !in ids && it.state == "done" } && !FileSending.status.value.busy }
-            compose.onNodeWithText("Zamknij").performScrollTo().performClick()
+            compose.onNodeWithTag("closeShare").performClick()
             val completedIds = core.files.value.map { it.id }.toSet()
             for (mode in listOf("Light", "Dark")) {
                 app.getSharedPreferences("appearance", android.content.Context.MODE_PRIVATE).edit().putString("theme", mode).putBoolean("dynamic", false).commit()
@@ -107,7 +107,7 @@ object ConnectionNotificationProof {
                 assertEquals("cancel sends nothing", completedIds, core.files.value.map { it.id }.toSet())
                 val bitmap = compose.onNodeWithTag("shareFiles").captureToImage().asAndroidBitmap()
                 java.io.File(app.cacheDir, "wn97-$mode-150.png").outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }; bitmap.recycle()
-                compose.onNodeWithText("Zamknij").performScrollTo().performClick()
+                compose.onNodeWithTag("closeShare").performClick()
             }
             // CCS/1 CHECK:screen lifecycle with an active batch; transfer correctness is checked above.
             val terminal = FileSending.status.value
@@ -117,7 +117,7 @@ object ConnectionNotificationProof {
                 await("active batch screen instead of picker") { compose.onAllNodesWithTag("cancelFiles").fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty() }
                 compose.onNodeWithTag("cancelFiles").assertHasClickAction()
                 compose.onNodeWithTag("pickFiles").assertDoesNotExist()
-                compose.onNodeWithText("Zamknij").performScrollTo().performClick()
+                compose.onNodeWithTag("closeShare").performClick()
             } finally { FileSending.update(terminal) }
             instrumentation.sendStatus(0, Bundle().apply { putString("withdrawFiles", "true") })
             await("capability withdrawal updates notification") { actions() == listOf("Wyślij schowek", "Zatrzymaj") }

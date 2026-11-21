@@ -9,6 +9,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.Alignment
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -46,7 +49,6 @@ fun DevicesScreen(
     onRename: (PairedEntry, String) -> Unit,
     onUnpair: (PairedEntry) -> Unit,
 ) {
-    WindBackHeader(stringResource(R.string.devices_paired), onBack, "closeDevices")
     if (state.message.isNotEmpty()) Text(state.message, modifier = Modifier.testTag("devicesMessage").semantics { liveRegion = LiveRegionMode.Polite }, style = MaterialTheme.typography.bodyMedium)
     val connected = state.connection as? ConnectionState.Connected
     var editing by rememberSaveable { mutableStateOf<String?>(null) }
@@ -55,7 +57,15 @@ fun DevicesScreen(
         val isConnected = connected?.fingerprint == entry.fingerprint
         val label = computerLabel(entry.name)
         WindCard(Modifier.fillMaxWidth().testTag("device-${entry.fingerprint.take(8)}")) {
-            Text(if (entry.owed) stringResource(R.string.device_removed) else label, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            // WN-170: the name, and "Rename" / "Remove" in the ⋮ menu beside it (not three text buttons in a row).
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(if (entry.owed) stringResource(R.string.device_removed) else label, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f))
+                if (!entry.owed) WindMenuButton(stringResource(R.string.more_options, label), listOf(
+                    WindMenuItem(stringResource(R.string.rename), "deviceRename") { editing = entry.fingerprint; asking = null },
+                    WindMenuItem(stringResource(R.string.remove), "deviceUnpair", danger = true) { asking = entry.fingerprint; editing = null },
+                ), Modifier.offset(x = 12.dp).testTag("deviceMenu"))
+            }
             val date = DateFormat.getDateInstance(DateFormat.MEDIUM).format(Date(entry.pairedAt.toLong() * 1000))
             Text(
                 when {
@@ -85,15 +95,11 @@ fun DevicesScreen(
                         modifier = Modifier.testTag("unpairQuestion"),
                     )
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        WindButton(stringResource(R.string.unpair), { asking = null; onUnpair(entry) }, Modifier.testTag("unpairConfirm"))
+                        WindButton(stringResource(R.string.unpair), { asking = null; onUnpair(entry) }, Modifier.testTag("unpairConfirm"), kind = ButtonKind.Danger)
                         WindButton(stringResource(R.string.cancel), { asking = null }, kind = ButtonKind.Quiet)
                     }
                 }
-                else -> FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (!isConnected) WindButton(stringResource(R.string.connect), { onConnect(entry) }, Modifier.testTag("deviceConnect"), kind = ButtonKind.Secondary)
-                    WindButton(stringResource(R.string.rename), { editing = entry.fingerprint; asking = null }, Modifier.testTag("deviceRename"), kind = ButtonKind.Quiet)
-                    WindButton(stringResource(R.string.remove), { asking = entry.fingerprint; editing = null }, Modifier.testTag("deviceUnpair"), kind = ButtonKind.Quiet)
-                }
+                !isConnected -> WindButton(stringResource(R.string.connect), { onConnect(entry) }, Modifier.testTag("deviceConnect"), kind = ButtonKind.Secondary)
             }
         }
     }
