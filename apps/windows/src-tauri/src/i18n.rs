@@ -1,7 +1,8 @@
-//! WN-63: the app's native texts (tray, toasts, Explorer menu, statuses and errors the UI shows) in Polish and
-//! English. The language is the Windows display language, the same one WebView2 gives the frontend
+//! WN-63: the app's native texts (tray, toasts, Explorer menu, statuses and errors the UI shows) in English and
+//! Polish. The language is the Windows display language, the same one WebView2 gives the frontend
 //! (`navigator.language`): Polish for Polish, English for anything else. `WINDCONNECT_LANG=pl|en` overrides it.
-//! Texts live in `locales/{pl,en}.json`; `{name}` placeholders are filled by [`trf`].
+//! WN-174: English is the source language: `locales/en.json` is the reference table and the fallback for a missing
+//! key; `locales/pl.json` is its translation. `{name}` placeholders are filled by [`trf`].
 
 use std::{collections::HashMap, sync::OnceLock};
 
@@ -51,10 +52,10 @@ fn system() -> Lang {
     }
 }
 
-/// Unit tests check the Polish texts (as the frontend checks do); the English table is checked by `tests::*`.
+/// WN-174: unit tests and non-Windows builds run in English, the source language; Polish is checked by `tests::*`.
 #[cfg(any(not(windows), test))]
 fn system() -> Lang {
-    Lang::Pl
+    Lang::En
 }
 
 pub fn lang() -> Lang {
@@ -93,16 +94,21 @@ pub fn trf(key: &str, values: &[(&str, &dyn std::fmt::Display)]) -> String {
     text
 }
 
-/// `key.one|few|many|other` for `count` (Polish: 1 plik, 2 pliki, 5 plików, English: one/other), `{count}` filled.
+/// `key.one|few|many|other` for `count` (Polish one/few/many as in 1/2/5 files, English one/other), `{count}` filled.
 pub fn trp(key: &str, count: u64) -> String {
-    let form = match lang() {
+    trp_in(lang(), key, count)
+}
+
+/// [`trp`] in `lang` (tests check the Polish forms with it).
+pub(crate) fn trp_in(lang: Lang, key: &str, count: u64) -> String {
+    let form = match lang {
         Lang::Pl if count == 1 => "one",
         Lang::Pl if (2..=4).contains(&(count % 10)) && !(12..=14).contains(&(count % 100)) => "few",
         Lang::Pl => "many",
         Lang::En if count == 1 => "one",
         Lang::En => "other",
     };
-    trf(&format!("{key}.{form}"), &[("count", &count)])
+    lookup(lang, &format!("{key}.{form}")).replace("{count}", &count.to_string())
 }
 
 #[cfg(test)]
@@ -142,11 +148,12 @@ mod tests {
         assert_eq!(from_tag("pl-PL"), Some(Lang::Pl));
         assert_eq!(from_tag("en-GB"), Some(Lang::En));
         assert_eq!(from_tag("de"), None);
-        assert_eq!(lang(), Lang::Pl);
+        assert_eq!(lang(), Lang::En);
         assert_eq!(lookup(Lang::En, "tray.connected"), "Connected");
+        assert_eq!(lookup(Lang::Pl, "tray.connected"), "Połączono"); // i18n: pl
         assert_eq!(
             trf("battery.toast_title", &[("level", &15)]),
-            "Bateria telefonu: 15%"
+            "Phone battery: 15%"
         );
     }
 }

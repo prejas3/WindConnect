@@ -9,7 +9,7 @@ const server = http.createServer(async (req, res) => {
   const name = new URL(req.url, 'http://x').pathname;
   if (name === '/') {
     res.setHeader('Content-Type', 'text/html');
-    res.end('<html><head><link rel="stylesheet" href="/tokens.css"><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/panel.css"><link rel="stylesheet" href="/transfers.css"></head><body><section id="transfers"><h2 id="transfers-title"></h2><p id="transfers-summary"></p><div id="transfers-total"></div><button id="transfers-clear">Wyczyść</button><ul id="transfers-list" class="transfer-list"></ul></section><script type="module">import {createTransfers} from "/transfers.js";window.render=createTransfers(document,()=>{});</script></body></html>'); return;
+    res.end('<html><head><link rel="stylesheet" href="/tokens.css"><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/panel.css"><link rel="stylesheet" href="/transfers.css"></head><body><section id="transfers"><h2 id="transfers-title"></h2><p id="transfers-summary"></p><div id="transfers-total"></div><button id="transfers-clear">Clear</button><ul id="transfers-list" class="transfer-list"></ul></section><script type="module">import {createTransfers} from "/transfers.js";window.render=createTransfers(document,()=>{});</script></body></html>'); return;
   }
   const file = path.resolve(frontend, '.' + name);
   if (!file.startsWith(frontend + path.sep)) { res.writeHead(403).end(); return; }
@@ -20,7 +20,7 @@ let browser, child;
 (async () => { try {
   await fs.mkdir(root, {recursive:true});
   await new Promise(r => server.listen(0,'127.0.0.1',r));
-  browser = await chromium.launch({headless:true}); const page = await browser.newPage({ locale: 'pl-PL', viewport:{width:420,height:640}});
+  browser = await chromium.launch({headless:true}); const page = await browser.newPage({ locale: 'en-US', viewport:{width:420,height:640}});
   await page.goto(`http://127.0.0.1:${server.address().port}`); await page.waitForFunction(() => !!window.render);
   const errors=[];page.on('pageerror',e=>errors.push(e.message));
   child = spawn(path.resolve('target/release/examples/transfers_bench.exe'),[root],{windowsHide:true,stdio:['ignore','pipe','pipe']});

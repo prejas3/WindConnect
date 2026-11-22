@@ -43,7 +43,7 @@ class OpenOnPcTest {
 
     @Test fun nothingGoesOutWithoutATap() {
         ActivityScenario.launch<OpenOnPcActivity>(explicitShare()).use {
-            compose.onNodeWithText("Otworzyć na Test PC?").assertExists()
+            compose.onNodeWithText("Open on Test PC?").assertExists()
             compose.onNodeWithTag("openOnPcLink").assertExists()
             Thread.sleep(1_500)
             assertTrue("sent before any tap: $sent", sent.isEmpty())

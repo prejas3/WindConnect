@@ -25,7 +25,7 @@ const stub = (start = null) => {
   window.__TAURI__ = {
     core: { invoke: async (cmd, args) => {
       window.__calls.push([cmd, args]);
-      if (cmd === 'pairing_snapshot') { const q = structuredClone(qr); window.__lastQr = q; return { phase: 'waiting', phone: null, qr: q, message: 'Zeskanuj kod w WindConnect na telefonie', skipped_records: 0, code: null, connected: false, devices: [], paired: false, ...start }; }
+      if (cmd === 'pairing_snapshot') { const q = structuredClone(qr); window.__lastQr = q; return { phase: 'waiting', phone: null, qr: q, message: 'Scan the code in WindConnect on the phone', skipped_records: 0, code: null, connected: false, devices: [], paired: false, ...start }; }
       if (cmd === 'autostart_enabled') return window.__autostart;
       if (cmd === 'set_autostart') { window.__autostart = args.enabled; return args.enabled; }
       if (cmd === 'actions_snapshot') return { builtins: [], custom: [], last: null, problems: [] };
@@ -45,7 +45,7 @@ const phone = { key: 'a'.repeat(64), name: 'Galaxy S25 Ultra', fingerprint: 'K4T
   await new Promise(r => server.listen(0, '127.0.0.1', r));
   const browser = await chromium.launch({ headless: true });
   try {
-    const page = await browser.newPage({ locale: 'pl-PL', viewport: { width: 920, height: 720 } });
+    const page = await browser.newPage({ locale: 'en-US', viewport: { width: 920, height: 720 } });
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
     await page.addInitScript(stub);
@@ -59,18 +59,18 @@ const phone = { key: 'a'.repeat(64), name: 'Galaxy S25 Ultra', fingerprint: 'K4T
     assert.equal(await page.locator('#home').isVisible(), false, 'empty state replaced');
     const canvas = page.locator('#onboarding-qr');
     assert.equal(await canvas.isVisible(), true);
-    assert.equal(await canvas.getAttribute('aria-label'), 'Kod parowania');
+    assert.equal(await canvas.getAttribute('aria-label'), 'Pairing code');
     assert.equal(await page.evaluate(() => window.__lastQr.dark.every(v => v === false)), true, 'modules zeroed after drawing (WN-94)');
     assert.equal(await page.evaluate(l => document.documentElement.outerHTML.includes(l), LINK), false);
     assert.equal(await page.evaluate(() => document.activeElement?.id), 'onboarding-title');
-    assert.match(await page.locator('.onboarding-steps > li.current').textContent(), /Zeskanuj ten kod/);
-    assert.equal(await page.getByRole('button', { name: 'Paruj bez aparatu' }).isVisible(), true);
+    assert.match(await page.locator('.onboarding-steps > li.current').textContent(), /Scan this code/);
+    assert.equal(await page.getByRole('button', { name: 'Pair without the camera' }).isVisible(), true);
     assert.equal(await page.locator('#actions').isVisible(), false, 'settings that need a phone wait');
 
     // 2. SAS: code + decision; the accept button takes focus.
-    await page.getByRole('button', { name: 'Paruj bez aparatu' }).click();
+    await page.getByRole('button', { name: 'Pair without the camera' }).click();
     assert.deepEqual((await calls('pairing_action')).at(-1), ['pairing_action', { action: 'sas' }]);
-    await emit({ ...base, phase: 'sas-code', code: '042 917', phone: 'Galaxy S25 Ultra', message: 'Czy Galaxy S25 Ultra pokazuje ten sam kod?' });
+    await emit({ ...base, phase: 'sas-code', code: '042 917', phone: 'Galaxy S25 Ultra', message: 'Does Galaxy S25 Ultra show the same code?' });
     assert.equal(await page.locator('#onboarding-code').textContent(), '042 917');
     assert.equal(await canvas.isVisible(), false);
     assert.equal(await page.evaluate(() => document.activeElement?.id), 'onboarding-accept');
@@ -79,18 +79,18 @@ const phone = { key: 'a'.repeat(64), name: 'Galaxy S25 Ultra', fingerprint: 'K4T
 
     // 3. Expired: a message and "Show a new code", no new code on its own.
     const before = (await calls('pairing_action')).length;
-    await emit({ ...base, phase: 'expired', message: 'Parowanie wygasło lub osiągnięto limit prób. Zacznij od nowa.' });
-    assert.equal(await page.getByRole('button', { name: 'Wyświetl nowy kod' }).isVisible(), true);
+    await emit({ ...base, phase: 'expired', message: 'Pairing expired or the attempt limit was reached. Start again.' });
+    assert.equal(await page.getByRole('button', { name: 'Show a new code' }).isVisible(), true);
     await page.waitForTimeout(300);
     assert.equal((await calls('pairing_action')).length, before, 'nothing refreshes by itself');
-    await page.getByRole('button', { name: 'Wyświetl nowy kod' }).click();
+    await page.getByRole('button', { name: 'Show a new code' }).click();
     assert.deepEqual((await calls('pairing_action')).at(-1), ['pairing_action', { action: 'refresh' }]);
 
     // 4. Paired here: "Done" with the phone, autostart, focus on the finish button.
     await emit({ ...base, phase: 'connected', phone: 'Galaxy S25 Ultra', connected: true, devices: [phone], paired: true });
-    assert.match(await page.locator('#onboarding-done-title').textContent(), /Galaxy S25 Ultra połączony/);
+    assert.match(await page.locator('#onboarding-done-title').textContent(), /Galaxy S25 Ultra connected/);
     assert.equal(await page.evaluate(() => document.activeElement?.id), 'onboarding-finish');
-    assert.match(await page.locator('.onboarding-steps > li.current').textContent(), /Gotowe/);
+    assert.match(await page.locator('.onboarding-steps > li.current').textContent(), /Done/);
     for (const theme of ['light', 'dark']) {
       for (const text of ['100%', '150%']) {
         await page.evaluate(([t, f]) => { document.documentElement.dataset.theme = t; document.documentElement.style.fontSize = f; }, [theme, text]);
@@ -100,14 +100,14 @@ const phone = { key: 'a'.repeat(64), name: 'Galaxy S25 Ultra', fingerprint: 'K4T
       }
     }
     await page.evaluate(() => { document.documentElement.style.fontSize = ''; });
-    await page.getByRole('switch', { name: 'Uruchamiaj z Windows' }).click();
-    assert.equal(await page.getByRole('switch', { name: 'Uruchamiaj z Windows' }).getAttribute('aria-checked'), 'true');
-    await page.getByRole('button', { name: 'Przejdź do aplikacji' }).click();
+    await page.getByRole('switch', { name: 'Start with Windows' }).click();
+    assert.equal(await page.getByRole('switch', { name: 'Start with Windows' }).getAttribute('aria-checked'), 'true');
+    await page.getByRole('button', { name: 'Go to the app' }).click();
     await page.locator('#onboarding').waitFor({ state: 'hidden' });
     assert.equal(await page.locator('#home').isVisible(), true, 'the ordinary main window after onboarding');
 
     // 5. Waiting state screenshots (QR) in both themes and at 150% text.
-    const fresh = await browser.newPage({ locale: 'pl-PL', viewport: { width: 920, height: 720 } });
+    const fresh = await browser.newPage({ locale: 'en-US', viewport: { width: 920, height: 720 } });
     fresh.on('pageerror', e => errors.push(e.message));
     await fresh.addInitScript(stub);
     await fresh.goto(`http://127.0.0.1:${server.address().port}/index.html`);
@@ -123,9 +123,9 @@ const phone = { key: 'a'.repeat(64), name: 'Galaxy S25 Ultra', fingerprint: 'K4T
 
     // 6. WN-113: only a phone owed its unpair notice left. The backend's rule (paired: false, as has_paired() at start)
     // opens onboarding; the owed row itself doesn't count. And the reverse: paired at start, no onboarding.
-    const owedPhone = { ...phone, key: 'b'.repeat(64), name: 'Usunięty telefon', connected: false, owed: true };
+    const owedPhone = { ...phone, key: 'b'.repeat(64), name: 'Removed phone', connected: false, owed: true };
     const opened = async start => {
-      const p = await browser.newPage({ locale: 'pl-PL', viewport: { width: 920, height: 720 } });
+      const p = await browser.newPage({ locale: 'en-US', viewport: { width: 920, height: 720 } });
       p.on('pageerror', e => errors.push(e.message));
       await p.addInitScript(stub, start);
       await p.goto(`http://127.0.0.1:${server.address().port}/index.html`);

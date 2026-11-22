@@ -26,7 +26,7 @@ class LauncherShortcutsTest {
         LauncherShortcuts.publish(context)
         assertEquals(setOf("send_file", "touchpad"), manager.dynamicShortcuts.map { it.id }.toSet())
         manager.dynamicShortcuts.forEach {
-            assertFalse(it.shortLabel.toString().contains("niedostępne", ignoreCase = true))
+            assertFalse(it.shortLabel.toString().contains("unavailable", ignoreCase = true))
             assertEquals(LauncherAction.entries.single { a -> a.id == it.id }.title, it.longLabel.toString())
             assertEquals(ComponentName(context, LauncherShortcutActivity::class.java), it.intent?.component)
             assertEquals(ComponentName(context, MainActivity::class.java), it.activity)
@@ -67,7 +67,7 @@ class LauncherShortcutsTest {
                 assertNotNull("Shortcut must open the existing focused sender", activity)
                 try {
                     compose.waitUntil(15_000) {
-                        compose.onAllNodesWithText("Schowek niedostępny — sprawdź połączenie z komputerem").fetchSemanticsNodes().isNotEmpty()
+                        compose.onAllNodesWithText("Clipboard unavailable — check the connection to the computer").fetchSemanticsNodes().isNotEmpty()
                     }
                     compose.onNodeWithTag("computerCard").assertDoesNotExist()
                     assertEquals(0, main.hits)

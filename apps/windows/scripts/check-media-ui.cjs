@@ -20,8 +20,8 @@ const server = http.createServer(async (req, res) => {
 const ART = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
 const ALL = 1 | 2 | 4 | 8 | 16;
 const phone = { key: 'a'.repeat(64), name: 'Pixel 9', fingerprint: 'K4TQ-9WZM-2HXP', paired_at: 1794300000, connected: true, owed: false };
-const song = (over = {}) => ({ title: 'Kaonashi (wersja bardzo długa, która musi się skończyć wielokropkiem w panelu)', artist: 'Daria Zawiałow', album: 'Wojny i noce', app: 'Spotify', duration_ms: 200_000, position_ms: 60_000, received_ms: Date.now(), playing: true, speed_permille: 1000, actions: ALL, art: ART, ...over });
-const state = media => ({ phase: 'connected', phone: phone.name, qr: null, message: 'Połączono · Wi-Fi', skipped_records: 0, code: null, connected: true, devices: [phone], paired: true, battery: null, find: { available: false, state: 'idle', last: null, ring_ms: null }, media });
+const song = (over = {}) => ({ title: 'Kaonashi (a very long version that has to end with an ellipsis in the panel)', artist: 'Daria Zawiałow', album: 'Wojny i noce', app: 'Spotify', duration_ms: 200_000, position_ms: 60_000, received_ms: Date.now(), playing: true, speed_permille: 1000, actions: ALL, art: ART, ...over }); // i18n: data
+const state = media => ({ phase: 'connected', phone: phone.name, qr: null, message: 'Connected · Wi-Fi', skipped_records: 0, code: null, connected: true, devices: [phone], paired: true, battery: null, find: { available: false, state: 'idle', last: null, ring_ms: null }, media });
 const stub = first => {
   window.__calls = [];
   window.__listeners = {};
@@ -41,7 +41,7 @@ const stub = first => {
   await new Promise(r => server.listen(0, '127.0.0.1', r));
   const browser = await chromium.launch({ headless: true });
   try {
-    const page = await browser.newPage({ locale: 'pl-PL', viewport: { width: 380, height: 760 } });
+    const page = await browser.newPage({ locale: 'en-US', viewport: { width: 380, height: 760 } });
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
     await page.addInitScript(stub, state(song()));
@@ -54,12 +54,12 @@ const stub = first => {
     const snapshots = () => page.evaluate(() => window.__calls.filter(([c]) => c === 'pairing_snapshot').length);
 
     // 1. What the phone plays: texts, art, the app, progress ~1:00 of 3:20, pause available.
-    assert.equal(await page.locator('#media-app').textContent(), 'Na telefonie · Spotify');
-    assert.equal(await page.locator('#media-sub').textContent(), 'Daria Zawiałow · Wojny i noce');
+    assert.equal(await page.locator('#media-app').textContent(), 'On the phone · Spotify');
+    assert.equal(await page.locator('#media-sub').textContent(), 'Daria Zawiałow · Wojny i noce'); // i18n: data
     assert.equal(await page.locator('#media-art').isVisible(), true);
     assert.equal(await page.locator('#media-art').evaluate(i => i.complete && i.naturalWidth > 0), true, 'art decoded');
     assert.equal(await page.locator('#media-total').textContent(), '3:20');
-    assert.equal(await page.locator('#media-toggle').getAttribute('aria-label'), 'Wstrzymaj');
+    assert.equal(await page.locator('#media-toggle').getAttribute('aria-label'), 'Pause');
     assert.equal(await page.locator('#media-title').evaluate(e => e.scrollWidth > e.clientWidth), true, 'long title cut with an ellipsis');
     // 2. Progress moves by itself, without asking the PC.
     const before = await snapshots();
@@ -82,7 +82,7 @@ const stub = first => {
     assert.equal(calls[4].action, 'seek'); assert(calls[4].positionMs > 70_000, 'ArrowRight +10 s');
     // 4. Paused, only play allowed: next/previous/seek disabled, the bar doesn't seek.
     await emit(state(song({ playing: false, actions: 1 })));
-    assert.equal(await page.locator('#media-toggle').getAttribute('aria-label'), 'Odtwórz');
+    assert.equal(await page.locator('#media-toggle').getAttribute('aria-label'), 'Play');
     assert.equal(await page.locator('#media-next').isDisabled(), true);
     assert.equal(await page.locator('#media-previous').isDisabled(), true);
     assert.equal(await page.locator('#media-progress').getAttribute('aria-disabled'), 'true');

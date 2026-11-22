@@ -248,7 +248,7 @@ function renderFind(find, connected) {
   const active = !!find && (find.state === 'starting' || find.state === 'ringing');
   button.disabled = !connected || !find || (!find.available && !active);
   button.setAttribute('aria-pressed', String(active));
-  button.querySelector('.find-label').textContent = active ? t('find.stop') : t('panel.dzwon');
+  button.querySelector('.find-label').textContent = active ? t('find.stop') : t('panel.ring');
   button.setAttribute('aria-label', active ? t('find.stop_label') : t('find.ring_label'));
   const line = !connected ? '' : active ? (find.state === 'ringing' ? t('find.ringing') : t('find.connecting'))
     : find?.last || (find && !find.available ? t('find.unavailable') : '');

@@ -26,7 +26,7 @@ const server = http.createServer(async (request, response) => {
   let browser;
   try {
     browser = await chromium.launch({ headless: true });
-    const page = await browser.newPage({ locale: 'pl-PL', viewport: { width: 1024, height: 900 } });
+    const page = await browser.newPage({ locale: 'en-US', viewport: { width: 1024, height: 900 } });
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
     await page.goto(url);
@@ -57,7 +57,7 @@ const server = http.createServer(async (request, response) => {
     await page.locator('#sample-form button').click();
     assert.equal(await page.locator('#device-name').getAttribute('aria-invalid'), 'true');
     assert.equal(await page.locator('#device-name').evaluate(element => element === document.activeElement), true);
-    await page.locator('#device-name').fill('Zażółć gęślą jaźń');
+    await page.locator('#device-name').fill('Zażółć gęślą jaźń'); // i18n: data
     await page.locator('#sample-form button').click();
     assert.equal(await page.locator('#device-name').getAttribute('aria-invalid'), 'false');
     assert.equal(await page.locator('#name-error').isHidden(), true);
@@ -86,7 +86,7 @@ const server = http.createServer(async (request, response) => {
     await page.emulateMedia({ forcedColors: 'active' });
     await page.screenshot({ path: path.join(artifacts, 'forced-colors.png'), fullPage: true });
     // Native release reply wins over localhost and the query parameter.
-    const release = await browser.newPage({ locale: 'pl-PL' });
+    const release = await browser.newPage({ locale: 'en-US' });
     // WN-163: the app's modules also subscribe to events (event.listen), as in Tauri; without it the page stopped early.
     await release.addInitScript(() => { window.__TAURI__ = { core: { invoke: async command => command === 'ui_dev_mode' ? false : command === 'core_version' ? 'release-test' : false }, event: { listen: async () => () => {} } }; });
     await release.goto(url);
@@ -96,10 +96,10 @@ const server = http.createServer(async (request, response) => {
     assert.equal(await release.locator('#gallery').textContent(), '');
     assert.equal(await release.locator('#home').isVisible(), true);
     assert.deepEqual(errors, []);
-    const menu = await browser.newPage({ locale: 'pl-PL', viewport: { width: 280, height: 250 } });
+    const menu = await browser.newPage({ locale: 'en-US', viewport: { width: 280, height: 250 } });
     await menu.addInitScript(() => { window.menuCalls = []; window.__TAURI__ = { core: { invoke: async (command,args) => { window.menuCalls.push([command,args]); if (command === 'tray_snapshot') return { phase:'searching' }; if (command === 'autostart_enabled') return false; if (command === 'set_autostart') return args.enabled; } }, event: { listen: async () => () => {} } }; });
     await menu.goto(url.replace('/?gallery','/tray-menu.html'));
-    await menu.waitForFunction(() => document.querySelector('#tray-state').textContent === 'Szukam urządzenia');
+    await menu.waitForFunction(() => document.querySelector('#tray-state').textContent === 'Looking for the device');
     await menu.locator('[data-action="open"]').focus(); await menu.keyboard.press('ArrowDown');
     assert.equal(await menu.locator('#autostart').evaluate(e => e === document.activeElement),true);
     await menu.keyboard.press('Space');

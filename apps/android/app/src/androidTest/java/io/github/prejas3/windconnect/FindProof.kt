@@ -17,7 +17,7 @@ import org.junit.Assert.assertTrue
 
 /**
  * CCS/1 PURPOSE:WN-50 phone side of check-find-android.cjs. Ring 1 is stopped from the PC; then each `findStops` entry stops
- * the next ring: "notification" (the notification's own "Zatrzymaj" PendingIntent, the receiver a tap reaches), "bar" (the
+ * the next ring: "notification" (the notification's own "Stop" PendingIntent, the receiver a tap reaches), "bar" (the
  * app's bar, with POST_NOTIFICATIONS refused for the run), "volume" (a volume key in the app).
  */
 object FindProof {
@@ -56,7 +56,7 @@ object FindProof {
                     assertEquals(NotificationManager.IMPORTANCE_HIGH, channel.importance)
                     assertNull("no sound of its own (AudioTrack plays)", channel.sound)
                     assertTrue("ongoing", posted.isOngoing)
-                    assertEquals("Zatrzymaj", posted.notification.actions.single().title.toString())
+                    assertEquals("Stop", posted.notification.actions.single().title.toString())
                     posted.notification.actions.single().actionIntent.send()
                 }
                 // Notifications refused: nothing is posted; the app's bar stops it.

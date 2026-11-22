@@ -17,7 +17,7 @@ const server = http.createServer(async (req, res) => {
   catch { res.writeHead(404).end(); }
 });
 const phone = { key: 'a'.repeat(64), name: 'Pixel 9', fingerprint: 'K4TQ-9WZM-2HXP', paired_at: 1794300000, connected: true, owed: false };
-const state = (volume, extra = {}) => ({ phase: 'connected', phone: 'Pixel 9', qr: null, message: 'Połączono · Wi-Fi', skipped_records: 0, code: null, connected: true, devices: [phone], paired: true, battery: null, find: { available: false, state: 'idle', last: null, ring_ms: null }, media: null, share_media: true, phone_notifications: true, quiet_hours: { on: false, from: 1320, to: 420 }, notifications: [], pause_on_call: true, volume_remote: true, phone_volume: volume, ...extra });
+const state = (volume, extra = {}) => ({ phase: 'connected', phone: 'Pixel 9', qr: null, message: 'Connected · Wi-Fi', skipped_records: 0, code: null, connected: true, devices: [phone], paired: true, battery: null, find: { available: false, state: 'idle', last: null, ring_ms: null }, media: null, share_media: true, phone_notifications: true, quiet_hours: { on: false, from: 1320, to: 420 }, notifications: [], pause_on_call: true, volume_remote: true, phone_volume: volume, ...extra });
 const stub = first => {
   window.__calls = [];
   window.__listeners = {};
@@ -43,12 +43,12 @@ const push = (page, v) => page.evaluate(v => window.__listeners['pairing-state']
   const browser = await chromium.launch({ headless: true });
   try {
     // The panel.
-    const page = await browser.newPage({ locale: 'pl-PL', viewport: { width: 380, height: 760 } });
+    const page = await browser.newPage({ locale: 'en-US', viewport: { width: 380, height: 760 } });
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
     await page.addInitScript(stub, state({ level: 40, muted: false, controllable: true }));
     await page.goto(`http://127.0.0.1:${server.address().port}/panel.html`);
-    const slider = page.getByRole('slider', { name: 'Głośność telefonu' });
+    const slider = page.getByRole('slider', { name: 'Phone volume' });
     await page.locator('#phone-volume:not([hidden])').waitFor();
     assert.equal(await slider.getAttribute('aria-valuenow'), '40');
     const sent = () => page.evaluate(() => window.__calls.filter(([c]) => c === 'phone_volume').map(([, a]) => a));
@@ -79,7 +79,7 @@ const push = (page, v) => page.evaluate(v => window.__listeners['pairing-state']
     await page.waitForTimeout(600);
     assert.equal(await slider.getAttribute('aria-valuenow'), '10', 'released: the latest pushed wins');
     // Mute sends only muted (a level alone never unmutes; mute never touches the level).
-    await page.getByRole('button', { name: 'Wycisz telefon' }).click();
+    await page.getByRole('button', { name: 'Mute the phone' }).click();
     await page.waitForTimeout(150);
     assert.deepEqual((await sent()).at(-1), { level: null, muted: true });
     for (const theme of ['light', 'dark']) {
@@ -99,12 +99,12 @@ const push = (page, v) => page.evaluate(v => window.__listeners['pairing-state']
     assert.equal(await page.locator('#phone-volume').isHidden(), true);
 
     // The main window's switches.
-    const main = await browser.newPage({ locale: 'pl-PL', viewport: { width: 920, height: 900 } });
+    const main = await browser.newPage({ locale: 'en-US', viewport: { width: 920, height: 900 } });
     main.on('pageerror', e => errors.push(e.message));
     await main.addInitScript(stub, state(null));
     await main.goto(`http://127.0.0.1:${server.address().port}/index.html`);
-    const pause = main.getByRole('switch', { name: 'Wstrzymaj odtwarzanie przy połączeniu' });
-    const volume = main.getByRole('switch', { name: 'Głośność z telefonu' });
+    const pause = main.getByRole('switch', { name: 'Pause playback during calls' });
+    const volume = main.getByRole('switch', { name: 'Volume from the phone' });
     await main.locator('#media-settings:not([hidden])').waitFor();
     assert.equal(await pause.getAttribute('aria-checked'), 'true');
     await pause.click();

@@ -10,7 +10,7 @@ import org.junit.Test
 
 /** WN-142: when the background reconnect stops waiting for its backoff. */
 class PcReturnTest {
-    init { StringsForTests.usePolish() }
+    init { StringsForTests.useEnglish() }
     private val old = setOf("192.168.0.10:50001")
     private val restarted = setOf("192.168.0.10:50077")
 

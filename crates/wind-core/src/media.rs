@@ -399,7 +399,7 @@ mod tests {
     pub(crate) fn song() -> Now {
         Now {
             title: "Kaonashi".into(),
-            artist: Some("Daria Zawiałow".into()),
+            artist: Some("Daria Zawiałow".into()), // i18n: data
             album: None,
             app: "Spotify".into(),
             duration_ms: Some(200_000),

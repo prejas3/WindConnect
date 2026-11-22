@@ -4,7 +4,7 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class TransferProgressTest {
-    init { StringsForTests.usePolish() }
+    init { StringsForTests.useEnglish() }
     @Test fun rateUsesFullWindowsAndResetsAfterPauseAndRetry() {
         val rate = TransferRate()
         assertNull(rate.update(0, 0, true))

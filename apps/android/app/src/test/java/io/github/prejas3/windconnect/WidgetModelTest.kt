@@ -5,19 +5,19 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class WidgetModelTest {
-    init { StringsForTests.usePolish() }
+    init { StringsForTests.useEnglish() }
     @Test fun backgroundOffNeverClaimsLiveConnected() {
         val data = widgetData(ConnectionState.Connected("PC", "secret", 1), false, 80, false)
         assertFalse(data.connected)
-        assertEquals("Połączenie w tle wyłączone", data.status)
-        assertEquals("Telefon: 80%", data.batteryText)
+        assertEquals("Background connection off", data.status)
+        assertEquals("Phone: 80%", data.batteryText)
         assertEquals("PC", data.name)
         val offline = widgetData(ConnectionState.Stopped, true, 80, false, pairedName = "SZYMON")
         assertEquals("SZYMON", offline.name)
         assertFalse(offline.connected)
         // WN-160: the app's words: a paired computer that isn't connected is out of reach; none paired says so.
-        assertEquals("Komputer poza zasięgiem", offline.status)
-        assertEquals("Brak sparowanego komputera", widgetData(ConnectionState.Stopped, true, 80, false).status)
+        assertEquals("Computer out of reach", offline.status)
+        assertEquals("No paired computer", widgetData(ConnectionState.Stopped, true, 80, false).status)
         assertTrue(widgetData(ConnectionState.Connecting, true, 80, false, pairedName = "SZYMON").connecting)
         assertFalse(widgetData(ConnectionState.Connecting, false, 80, false, pairedName = "SZYMON").connecting)
     }
@@ -32,7 +32,7 @@ class WidgetModelTest {
 
     @Test fun percentAndChargingChangesAreDistinctButUnknownIsNotZero() {
         val data = widgetData(ConnectionState.Ready, true, null, false)
-        assertEquals("Telefon: —", data.batteryText)
+        assertEquals("Phone: —", data.batteryText)
         assertEquals(data, widgetData(ConnectionState.Ready, true, -1, false))
         assertEquals(data, widgetData(ConnectionState.Ready, true, 101, false))
         assertNotEquals(data, widgetData(ConnectionState.Ready, true, 0, false))
@@ -59,7 +59,7 @@ class WidgetModelTest {
         assertEquals(null to false, widget(50, 0, 0, charging))
         assertEquals(null to false, widget(150, 100, 0, discharging))
         assertEquals(null to false, widgetBattery(null))
-        assertEquals("Telefon: —", widgetData(ConnectionState.Ready, true, null, false).batteryText)
+        assertEquals("Phone: —", widgetData(ConnectionState.Ready, true, null, false).batteryText)
     }
 
     @Test fun unchangedPercentAndChargingMeanNoNewData() {

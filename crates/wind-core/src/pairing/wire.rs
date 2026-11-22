@@ -746,10 +746,10 @@ mod tests {
             Some("EvilCP-NOMYZSx".into())
         );
         assert_eq!(clean_name("\u{0007}\u{202A}  "), None);
-        let long = "ż".repeat(40); // 80 bytes
+        let long = "ż".repeat(40); // 80 bytes // i18n: data
         let cut = clean_name(&long).unwrap();
         assert_eq!(cut.len(), 64);
-        assert!(cut.chars().all(|c| c == 'ż'));
+        assert!(cut.chars().all(|c| c == 'ż')); // i18n: data
     }
 
     #[test]

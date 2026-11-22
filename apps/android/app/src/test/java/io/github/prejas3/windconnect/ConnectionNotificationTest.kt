@@ -5,7 +5,7 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class ConnectionNotificationTest {
-    init { StringsForTests.usePolish() }
+    init { StringsForTests.useEnglish() }
     @Test fun rttTicksDoNotRebuildNotificationButCapabilitiesAndRouteDo() {
         val connected = ConnectionState.Connected("PC", "trusted", 10)
         assertEquals(ConnectionService.notificationState(connected, true),

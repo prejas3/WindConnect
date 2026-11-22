@@ -200,7 +200,7 @@ mod tests {
     fn good_paths_pass() {
         for path in [
             "photo.jpg",
-            "Zdjęcia/2026/IMG 1.jpg",
+            "Zdjęcia/2026/IMG 1.jpg", // i18n: data
             "console.txt",
             "com10",
             "lpt",

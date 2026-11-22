@@ -98,7 +98,7 @@ class WidgetHostTest {
                 })
             }
             waitFor("phone battery visible") { textExists(view, "77%") }
-            waitFor("background-off label visible") { textExists(view, "Połączenie w tle wyłączone") }
+            waitFor("background-off label visible") { textExists(view, "Background connection off") }
             for (mode in listOf("Light", "Dark")) {
                 appearance.edit().putString("theme", mode).commit()
                 waitFor("theme model update") { WidgetUpdates.snapshot.value.data.theme == mode }
@@ -107,7 +107,7 @@ class WidgetHostTest {
                     var ready = false
                     instrumentation.runOnMainSync {
                         ready = !view.isLayoutRequested && texts(view).any {
-                            it.text.toString() == "Twój komputer" && it.currentTextColor == expectedInk && it.width > 0 && it.height > 0
+                            it.text.toString() == "Your computer" && it.currentTextColor == expectedInk && it.width > 0 && it.height > 0
                         }
                     }
                     ready
@@ -115,13 +115,13 @@ class WidgetHostTest {
                 waitFor("all widget actions laid out") {
                     var ready = false
                     // WN-160: laid out means a layout and a width, not only present (the labels now sit in a responsive layout).
-                    instrumentation.runOnMainSync { ready = !view.isLayoutRequested && texts(view).filter { it.text.toString() in listOf("Wyślij schowek", "Otwórz aplikację") }
+                    instrumentation.runOnMainSync { ready = !view.isLayoutRequested && texts(view).filter { it.text.toString() in listOf("Send clipboard", "Open the app") }
                         .let { labels -> labels.size == 2 && labels.all { it.layout != null && it.width > 0 } } }
                     ready
                 }
                 var bounds = android.graphics.Rect()
                 instrumentation.runOnMainSync {
-                    texts(view).filter { it.text.toString() in listOf("Wyślij schowek", "Otwórz aplikację") }.forEach {
+                    texts(view).filter { it.text.toString() in listOf("Send clipboard", "Open the app") }.forEach {
                         assertNotNull(it.layout)
                         for (line in 0 until it.layout.lineCount) assertEquals("action clipped at150%: ${it.text}", 0, it.layout.getEllipsisCount(line))
                         assertTrue("text taller than its view", it.layout.height <= it.height)
@@ -148,7 +148,7 @@ class WidgetHostTest {
             }
             waitFor("resized widget laid out") {
                 var ready = false
-                instrumentation.runOnMainSync { ready = !view.isLayoutRequested && texts(view).any { it.text.toString() == "Otwórz aplikację" && it.width > 0 } }
+                instrumentation.runOnMainSync { ready = !view.isLayoutRequested && texts(view).any { it.text.toString() == "Open the app" && it.width > 0 } }
                 ready
             }
             instrumentation.runOnMainSync {
@@ -160,7 +160,7 @@ class WidgetHostTest {
                 }
             }
             preferences.edit().putBoolean("enabled", true).commit()
-            waitFor("background enabled becomes offline") { textExists(view, "Brak sparowanego komputera") }
+            waitFor("background enabled becomes offline") { textExists(view, "No paired computer") }
             assertTrue("fixture explicitly uses AC power", WidgetUpdates.snapshot.value.data.charging)
             view.events.clear()
             val batteryBefore = view.count.get()
@@ -192,11 +192,11 @@ class WidgetHostTest {
             }
             instrumentation.sendStatus(0, results)
             preferences.edit().putBoolean("enabled", false).commit()
-            waitFor("background-off after stopping") { textExists(view, "Połączenie w tle wyłączone") }
+            waitFor("background-off after stopping") { textExists(view, "Background connection off") }
             val sender = instrumentation.addMonitor(SendClipboardActivity::class.java.name, null, false)
             try {
                 instrumentation.runOnMainSync {
-                    val label = texts(view).first { it.text.toString() == "Wyślij schowek" }
+                    val label = texts(view).first { it.text.toString() == "Send clipboard" }
                     var clickable: View = label
                     while (!clickable.isClickable && clickable.parent is View) clickable = clickable.parent as View
                     assertTrue(clickable.performClick())
@@ -209,7 +209,7 @@ class WidgetHostTest {
             try {
                 opened.close()
                 instrumentation.runOnMainSync {
-                    var clickable: View = texts(view).first { it.text.toString() == "Otwórz aplikację" }
+                    var clickable: View = texts(view).first { it.text.toString() == "Open the app" }
                     while (!clickable.isClickable && clickable.parent is View) clickable = clickable.parent as View
                     assertTrue(clickable.performClick())
                 }

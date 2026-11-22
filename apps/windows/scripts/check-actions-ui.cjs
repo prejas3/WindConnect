@@ -17,16 +17,16 @@ const server = http.createServer(async (req, res) => {
 const stub = () => {
   const snapshot = {
     builtins: [
-      { id: 'lock', label: 'Zablokuj', detail: 'Ekran blokady, jak Win+L', enabled: true, problem: null },
-      { id: 'sleep', label: 'Uśpij', detail: 'Uśpienie komputera', enabled: false, problem: null },
-      { id: 'open-url', label: 'Otwórz link', detail: 'Tylko adresy http i https, w domyślnej przeglądarce', enabled: true, problem: null },
+      { id: 'lock', label: 'Lock', detail: 'The lock screen, like Win+L', enabled: true, problem: null },
+      { id: 'sleep', label: 'Sleep', detail: 'Put the computer to sleep', enabled: false, problem: null },
+      { id: 'open-url', label: 'Open link', detail: 'Only http and https addresses, in the default browser', enabled: true, problem: null },
     ],
     custom: [
       { id: 'x-kopia', label: 'Kopia zapasowa', detail: 'C:\\Program Files\\Backup Tools Very Long Folder Name\\backup.exe --teraz --bez-pytania', enabled: true, problem: null },
-      { id: 'x-bat', label: 'Skrypt', detail: 'C:\\Tools\\b.bat', enabled: true, problem: 'Program musi być pełną ścieżką do pliku .exe.' },
+      { id: 'x-bat', label: 'Script', detail: 'C:\\Tools\\b.bat', enabled: true, problem: 'The program must be a full path to an .exe file.' },
     ],
     error: null,
-    last: { peer: 'Galaxy S25 Ultra', label: 'Zablokuj', status: 'done', atMs: Date.now() },
+    last: { peer: 'Galaxy S25 Ultra', label: 'Lock', status: 'done', atMs: Date.now() },
   };
   window.__calls = [];
   window.__TAURI__ = {
@@ -53,7 +53,7 @@ const stub = () => {
   const url = `http://127.0.0.1:${server.address().port}/`;
   const browser = await chromium.launch({ headless: true });
   try {
-    const page = await browser.newPage({ locale: 'pl-PL', viewport: { width: 1024, height: 1000 } });
+    const page = await browser.newPage({ locale: 'en-US', viewport: { width: 1024, height: 1000 } });
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
     await page.addInitScript(stub);
@@ -68,13 +68,13 @@ const stub = () => {
         await page.locator('#actions').screenshot({ path: path.join(out, `actions-${theme}-${width}.png`) });
       }
     }
-    const sleep = page.getByRole('switch', { name: 'Uśpij' });
+    const sleep = page.getByRole('switch', { name: 'Sleep' });
     assert.equal(await sleep.getAttribute('aria-checked'), 'false');
     await sleep.focus(); await page.keyboard.press('Space');
     await page.waitForFunction(() => window.__calls.some(c => c[0] === 'set_action_enabled'));
-    assert.equal(await page.getByRole('switch', { name: 'Uśpij' }).getAttribute('aria-checked'), 'true');
-    assert.equal(await page.getByRole('switch', { name: 'Skrypt' }).isDisabled(), true);
-    assert.match(await page.locator('#actions-last').textContent(), /Galaxy S25 Ultra · Zablokuj · wykonano/);
+    assert.equal(await page.getByRole('switch', { name: 'Sleep' }).getAttribute('aria-checked'), 'true');
+    assert.equal(await page.getByRole('switch', { name: 'Script' }).isDisabled(), true);
+    assert.match(await page.locator('#actions-last').textContent(), /Galaxy S25 Ultra · Lock · done/);
     assert.deepEqual(errors, []);
     console.log(`PASS: actions section, themes, 6 layouts, keyboard, problems; screenshots: ${out}`);
   } finally { await browser.close(); server.close(); }

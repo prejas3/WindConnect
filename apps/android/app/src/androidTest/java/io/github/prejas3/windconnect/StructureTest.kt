@@ -44,13 +44,13 @@ class StructureTest {
     @Test fun screenHasThePinnedBarAndSentenceCaseSections() {
         var back = 0
         show {
-            WindScreen("Ustawienia", { back++ }, "Wstecz", "screenBack") {
-                WindSection("Telefon na komputerze") { Text("wiersz") }
+            WindScreen("Settings", { back++ }, "Wstecz", "screenBack") {
+                WindSection("Phone on the computer") { Text("wiersz") }
             }
         }
         compose.onNodeWithTag("topBar").assertHeightIsEqualTo(64.dp)
-        compose.onNodeWithText("Ustawienia").assert(SemanticsMatcher.keyIsDefined(androidx.compose.ui.semantics.SemanticsProperties.Heading))
-        compose.onNodeWithText("Telefon na komputerze").assertExists()
+        compose.onNodeWithText("Settings").assert(SemanticsMatcher.keyIsDefined(androidx.compose.ui.semantics.SemanticsProperties.Heading))
+        compose.onNodeWithText("Phone on the computer").assertExists()
         compose.onNodeWithTag("screenBack").performClick()
         compose.runOnIdle { assertEquals(1, back) }
     }
@@ -61,7 +61,7 @@ class StructureTest {
         show {
             input = androidx.compose.ui.platform.LocalInputModeManager.current
             secondary = MaterialTheme.colorScheme.secondary.toArgb()
-            Column(Modifier.padding(24.dp).testTag("area")) { WindButton("Wyślij", {}, Modifier.testTag("button")) }
+            Column(Modifier.padding(24.dp).testTag("area")) { WindButton("Send", {}, Modifier.testTag("button")) }
         }
         fun ringPixels(): Int {
             val image = compose.onNodeWithTag("area").captureToImage().asAndroidBitmap()
@@ -78,9 +78,9 @@ class StructureTest {
     }
 
     @Test fun longPressShowsTheTooltip() {
-        show { WindIconButton("pin", "Przypnij", {}, Modifier.padding(80.dp).testTag("pin")) }
+        show { WindIconButton("pin", "Pin", {}, Modifier.padding(80.dp).testTag("pin")) }
         compose.onNodeWithTag("pin").performTouchInput { longClick() }
-        compose.onNodeWithTag("tooltip").assertTextEquals("Przypnij")
+        compose.onNodeWithTag("tooltip").assertTextEquals("Pin")
     }
 
     @Test fun menuRadioAndDialogWork() {
@@ -89,21 +89,21 @@ class StructureTest {
         var dialog by mutableStateOf(true)
         show {
             Column {
-                WindMenuButton("Więcej", listOf(WindMenuItem("Zmień nazwę", "rename") { picked = "rename" }, WindMenuItem("Usuń", "remove", danger = true) { picked = "remove" }),
+                WindMenuButton("More", listOf(WindMenuItem("Rename", "rename") { picked = "rename" }, WindMenuItem("Remove", "remove", danger = true) { picked = "remove" }),
                     Modifier.testTag("menuButton"))
                 WindRadioRow("Biurko", chosen == "a", { chosen = "a" }, Modifier.testTag("radioA"))
                 WindRadioRow("Laptop", chosen == "b", { chosen = "b" }, Modifier.testTag("radioB"), supporting = "1a2b3c4d")
-                if (dialog) WindDialog({ dialog = false }, "Otworzyć na PC?", actions = { WindButton("Anuluj", { dialog = false }, Modifier.testTag("dialogCancel")) }) {
+                if (dialog) WindDialog({ dialog = false }, "Open on PC?", actions = { WindButton("Cancel", { dialog = false }, Modifier.testTag("dialogCancel")) }) {
                     Text("example.com")
                 }
             }
         }
         compose.onNodeWithTag("windDialog").assertExists()
-        compose.onNodeWithText("Otworzyć na PC?").assertExists()
+        compose.onNodeWithText("Open on PC?").assertExists()
         compose.onNodeWithTag("dialogCancel").performClick()
         compose.onNodeWithTag("windDialog").assertDoesNotExist()
 
-        compose.onNodeWithContentDescription("Więcej").performClick()
+        compose.onNodeWithContentDescription("More").performClick()
         compose.onNodeWithTag("remove").performClick()
         compose.runOnIdle { assertEquals("remove", picked) }
         compose.onNodeWithTag("menu").assertDoesNotExist()
@@ -118,14 +118,14 @@ class StructureTest {
         show {
             val wide = Configuration(LocalConfiguration.current).apply { screenWidthDp = 900 }
             CompositionLocalProvider(LocalConfiguration provides wide) {
-                SettingsPage(listOf("Komputer" to { Text("wiersz komputera") }, "Skróty" to { Text("wiersz skrótów") }), {})
+                SettingsPage(listOf("Computer" to { Text("computer row") }, "Shortcuts" to { Text("shortcuts row") }), {})
             }
         }
         compose.onNodeWithTag("settingsList").assertExists()
-        compose.onNodeWithText("wiersz komputera").assertExists()
-        compose.onNodeWithText("wiersz skrótów").assertDoesNotExist()
+        compose.onNodeWithText("computer row").assertExists()
+        compose.onNodeWithText("shortcuts row").assertDoesNotExist()
         compose.onNodeWithTag("settingsGroup1").performClick()
-        compose.onNodeWithText("wiersz skrótów").assertExists()
+        compose.onNodeWithText("shortcuts row").assertExists()
         compose.onNodeWithTag("settingsGroup1").assertIsSelected()
     }
 
@@ -133,11 +133,11 @@ class StructureTest {
         show {
             val narrow = Configuration(LocalConfiguration.current).apply { screenWidthDp = 400 }
             CompositionLocalProvider(LocalConfiguration provides narrow) {
-                SettingsPage(listOf("Komputer" to { Text("wiersz komputera") }, "Skróty" to { Text("wiersz skrótów") }), {})
+                SettingsPage(listOf("Computer" to { Text("computer row") }, "Shortcuts" to { Text("shortcuts row") }), {})
             }
         }
         compose.onNodeWithTag("settingsList").assertDoesNotExist()
-        compose.onNodeWithText("wiersz komputera").assertExists()
-        compose.onNodeWithText("wiersz skrótów").assertExists()
+        compose.onNodeWithText("computer row").assertExists()
+        compose.onNodeWithText("shortcuts row").assertExists()
     }
 }

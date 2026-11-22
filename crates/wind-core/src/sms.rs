@@ -1514,7 +1514,7 @@ mod tests {
         let thread = Thread {
             id: 3,
             date_ms: 1_700_000_000_000,
-            snippet: "Będziesz o 19?".into(),
+            snippet: "Coming at 7?".into(),
             people: vec![
                 Person {
                     address: "+48600100200".into(),
@@ -1554,12 +1554,12 @@ mod tests {
 
     #[test]
     fn fitting_cuts_at_character_boundaries() {
-        assert_eq!(clip("ąę", 3), "ą");
+        assert_eq!(clip("ąę", 3), "ą"); // i18n: data
         assert_eq!(clip("abc", 3), "abc");
         let t = fit_thread(Thread {
             id: 1,
             date_ms: 0,
-            snippet: "ż".repeat(MAX_SNIPPET),
+            snippet: "ż".repeat(MAX_SNIPPET), // i18n: data
             people: (0..30)
                 .map(|i| Person {
                     address: if i == 0 {
@@ -1567,7 +1567,7 @@ mod tests {
                     } else {
                         format!("{i}")
                     },
-                    name: Some("ł".repeat(100)),
+                    name: Some("ł".repeat(100)), // i18n: data
                     photo: false,
                 })
                 .collect(),

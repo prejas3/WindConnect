@@ -69,7 +69,7 @@ async fn pair(pc_shows: bool, phone_controlled: bool) -> Pair {
 fn song(position_ms: u64) -> Now {
     Now {
         title: "Kaonashi".into(),
-        artist: Some("Daria Zawiałow".into()),
+        artist: Some("Daria Zawiałow".into()), // i18n: data
         album: None,
         app: "Spotify".into(),
         duration_ms: Some(200_000),

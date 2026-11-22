@@ -24,10 +24,10 @@ class MmsPduTest {
 
     @Test fun partsCarryTextAndPicture() {
         val jpeg = byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 1, 2, 3)
-        val pdu = MmsPdu.sendRequest(listOf("1", "2"), "Zażółć", MmsPdu.Image("image/jpeg", jpeg), "T2")
+        val pdu = MmsPdu.sendRequest(listOf("1", "2"), "Zażółć", MmsPdu.Image("image/jpeg", jpeg), "T2") // i18n: data
         assertEquals(2, Regex("/TYPE=PLMN").findAll(String(pdu, Charsets.ISO_8859_1)).count())
         assertTrue(pdu.indexOf(jpeg) > 0)
-        assertTrue(pdu.indexOf("Zażółć".toByteArray()) > 0)
+        assertTrue(pdu.indexOf("Zażółć".toByteArray()) > 0) // i18n: data
         // Text part: value-length 3, text/plain, charset=utf-8.
         assertTrue(pdu.indexOf(byteArrayOf(3, 0x83.toByte(), 0x81.toByte(), 0xEA.toByte())) > 0)
         assertTrue(pdu.indexOf("<img src=\"image.jpg\"".toByteArray()) > 0)

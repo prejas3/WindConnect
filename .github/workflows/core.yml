@@ -27,6 +27,9 @@ jobs:
       # WN-114: one version in every manifest, and a v* tag on HEAD matches it.
       - name: Check versions and tags
         run: node scripts/check-version.cjs
+      # WN-174: English is the source language; Polish only in the Polish tables, with the same keys.
+      - name: Check languages
+        run: node scripts/check-language.cjs
       # WN-167: tokens.css and Android's BrandColors.kt are generated from assets/brand-tokens.json.
       - name: Check brand tokens
         run: node scripts/generate-brand-tokens.cjs --check

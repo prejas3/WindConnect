@@ -23,7 +23,7 @@ class CoreConnectionTest {
 
     private fun identity(): String {
         if (compose.onAllNodesWithTag("localKey").fetchSemanticsNodes().isEmpty()) {
-            compose.onNodeWithText("Test połączenia z PC").performScrollTo().performClick()
+            compose.onNodeWithText("PC connection test").performScrollTo().performClick()
         }
         compose.waitUntil(15_000) { text("localKey").length == 64 }
         return text("localKey")
@@ -48,7 +48,7 @@ class CoreConnectionTest {
         compose.onNodeWithTag("peerAddress").performScrollTo().performTextInput(address!!)
         compose.onNodeWithTag("peerKey").performScrollTo().performTextInput(key!!)
         compose.onNodeWithTag("connect").performScrollTo().performClick()
-        compose.waitUntil(20_000) { text("connectionStatus").startsWith("Połączono:") }
+        compose.waitUntil(20_000) { text("connectionStatus").startsWith("Connected:") }
         InstrumentationRegistry.getInstrumentation().sendStatus(0, Bundle().apply {
             putString("pcConnected", text("connectionStatus"))
         })

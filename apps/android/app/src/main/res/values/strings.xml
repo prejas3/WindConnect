@@ -39,7 +39,7 @@
     <string name="preview_pc_name">Computer name</string>
     <string name="preview_name_required">Enter the computer\'s name.</string>
     <string name="unavailable_m">Unavailable</string>
-    <string name="preview_font">Zażółć gęślą jaźń. 0123456789 · DM Sans</string>
+    <string name="preview_font">The quick brown fox jumps over the lazy dog. 0123456789 · DM Sans</string>
     <string name="preview_note">The preview doesn\'t connect to a computer or send files.</string>
     <string name="unavailable">Unavailable</string>
     <string name="your_computer">Your computer</string>

@@ -289,7 +289,7 @@ fn round_trip_every_control_type() {
                 major: 1,
                 minor: u64::MAX,
             },
-            name: "ż".repeat(32),
+            name: "ż".repeat(32), // i18n: data
             kind: DeviceKind::Tablet,
             caps: long_caps.clone(),
             app: None,

@@ -591,7 +591,7 @@ mod tests {
             "https://exa mple.com/",
             "https://example.com/\"onload",
             "https://example.com/\u{202e}",
-            "https://łódź.pl/",
+            "https://łódź.pl/", // i18n: data
             "https://example.com:0/",
             "https://example.com:99999/",
             "https://example.com:/",

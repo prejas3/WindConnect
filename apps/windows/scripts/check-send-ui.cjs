@@ -19,10 +19,10 @@ const stub = () => {
   const files = {
     phone: 'Galaxy S25 Ultra', active: 3, activeSize: 900 * MB, activeDone: 310 * MB,
     rows: [
-      { id: '0'.repeat(32), name: 'Wakacje 2026/IMG_2041 bardzo długa nazwa pliku z wakacji nad morzem.jpg', size: 6 * MB, done: 2 * MB, state: 'running', reason: null },
-      { id: '1'.repeat(32), name: 'Prezentacja.pptx', size: 880 * MB, done: 300 * MB, state: 'running', reason: null },
-      { id: '2'.repeat(32), name: 'notatki.txt', size: 14 * MB, done: 0, state: 'queued', reason: null },
-      { id: '3'.repeat(32), name: 'film.mkv', size: 4000 * MB, done: 0, state: 'failed', reason: 'Brak miejsca na telefonie' },
+      { id: '0'.repeat(32), name: 'Holidays 2026/IMG_2041 a very long file name from the holidays by the sea.jpg', size: 6 * MB, done: 2 * MB, state: 'running', reason: null },
+      { id: '1'.repeat(32), name: 'Presentation.pptx', size: 880 * MB, done: 300 * MB, state: 'running', reason: null },
+      { id: '2'.repeat(32), name: 'notes.txt', size: 14 * MB, done: 0, state: 'queued', reason: null },
+      { id: '3'.repeat(32), name: 'film.mkv', size: 4000 * MB, done: 0, state: 'failed', reason: 'No space on the phone' },
       { id: '4'.repeat(32), name: 'a.txt', size: 5, done: 5, state: 'done', reason: null },
     ],
   };
@@ -33,7 +33,7 @@ const stub = () => {
   window.__TAURI__ = {
     core: { invoke: async (cmd, args) => {
       window.__calls.push([cmd, args]);
-      if (cmd === 'pairing_snapshot') return { phase: 'connected', phone: 'Galaxy S25 Ultra', qr: null, message: 'Połączono · Wi-Fi', skipped_records: 0 };
+      if (cmd === 'pairing_snapshot') return { phase: 'connected', phone: 'Galaxy S25 Ultra', qr: null, message: 'Connected · Wi-Fi', skipped_records: 0 };
       if (cmd === 'files_snapshot') return files;
       if (cmd === 'panel_snapshot') return { shortcut_error: null };
       return null;
@@ -47,7 +47,7 @@ const stub = () => {
   const url = `http://127.0.0.1:${server.address().port}/panel.html`;
   const browser = await chromium.launch({ headless: true });
   try {
-    const page = await browser.newPage({ locale: 'pl-PL', viewport: { width: 380, height: 540 } });
+    const page = await browser.newPage({ locale: 'en-US', viewport: { width: 380, height: 540 } });
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
     await page.addInitScript(stub);
@@ -55,9 +55,9 @@ const stub = () => {
     await page.locator('#transfers:not([hidden])').waitFor();
     await page.evaluate(() => document.fonts.ready);
     assert.equal(await page.locator('#transfers-list li').count(), 5, JSON.stringify({errors,html:await page.locator('#transfers-list').innerHTML()}));
-    assert.match(await page.locator('#transfers-title').textContent(), /Transfery plików/);
-    assert.match(await page.locator('#transfers-summary').textContent(), /3 w toku/);
-    await page.getByRole('button', { name: 'Anuluj: Prezentacja.pptx' }).focus();
+    assert.match(await page.locator('#transfers-title').textContent(), /File transfers/);
+    assert.match(await page.locator('#transfers-summary').textContent(), /3 in progress/);
+    await page.getByRole('button', { name: 'Cancel: Presentation.pptx' }).focus();
     await page.evaluate(() => { window.__focusedTransfer = document.activeElement; for(let i=0;i<100;i++){window.__files.rows[0].done++;window.__listeners['files-state']({payload:window.__files});} });
     assert(await page.evaluate(() => document.activeElement === window.__focusedTransfer), 'progress updates preserve keyboard focus');
     await page.evaluate(() => { const fonts=[...document.querySelectorAll('body *')].map(e=>[e,parseFloat(getComputedStyle(e).fontSize)]); for(const [element,pixels] of fonts) element.style.fontSize=(pixels*1.5)+'px'; });
@@ -72,12 +72,12 @@ const stub = () => {
       await page.evaluate(() => window.__listeners['files-drag']({ payload: false }));
       assert.equal(await page.locator('#drop-zone').isVisible(), false);
     }
-    await page.evaluate(() => window.__listeners['files-notice']({ payload: { message: 'Wysyłanie na Galaxy S25 Ultra: 3 pliki', error: false } }));
+    await page.evaluate(() => window.__listeners['files-notice']({ payload: { message: 'Sending to Galaxy S25 Ultra: 3 files', error: false } }));
     assert.equal(await page.locator('#files-notice').isVisible(), true);
     await page.locator('#send-files').focus();
     await page.keyboard.press('Enter');
-    await page.getByRole('button', { name: 'Anuluj: Prezentacja.pptx' }).click();
-    await page.getByRole('button', { name: 'Ponów: film.mkv' }).click();
+    await page.getByRole('button', { name: 'Cancel: Presentation.pptx' }).click();
+    await page.getByRole('button', { name: 'Retry: film.mkv' }).click();
     await page.locator('#transfers-clear').click();
     const calls = await page.evaluate(() => window.__calls.filter(c => c[0] === 'files_action').map(c => [c[1].action, c[1].id || null]));
     assert.deepEqual(calls, [['pick', null], ['cancel', '1'.repeat(32)], ['retry', '3'.repeat(32)], ['clear', null]]);
@@ -86,13 +86,13 @@ const stub = () => {
     await page.evaluate(() => { const rows = [...'abcde'].map(c => ({ id: c.repeat(32), direction: 'incoming', name: `${c}.txt`, size: 5, done: 5, state: 'done', reason: null, canOpen: true })); window.__listeners['files-state']({ payload: { rows } }); });
     const more = page.locator('#transfers-more');
     assert.equal(await page.locator('#transfers-list li').count(), 3);
-    assert.equal(await more.textContent(), 'Pokaż wszystkie (5)');
+    assert.equal(await more.textContent(), 'Show all (5)');
     assert.equal(await more.getAttribute('aria-expanded'), 'false');
     assert.equal(await more.getAttribute('aria-controls'), 'transfers-list');
     await more.click();
     assert.equal(await page.locator('#transfers-list li').count(), 5);
     assert.equal(await more.getAttribute('aria-expanded'), 'true');
-    assert.equal(await more.textContent(), 'Pokaż mniej');
+    assert.equal(await more.textContent(), 'Show less');
     await more.click();
     assert.equal(await page.locator('#transfers-list li').count(), 3);
     await more.click();
@@ -103,7 +103,7 @@ const stub = () => {
     assert.equal(await page.locator('#transfers-list img').count(),0);
     assert.equal(await page.locator('#transfers-list [role=progressbar]').getAttribute('aria-valuenow'),null);
     assert.match(await page.locator('#transfers-list small').textContent(),/123 B/);
-    assert.equal(await page.getByRole('button',{name:/Ponów:/}).count(),0);
+    assert.equal(await page.getByRole('button',{name:/Retry:/}).count(),0);
     await page.evaluate(() => window.__listeners['files-state']({ payload: { phone: 'Galaxy S25 Ultra', active: 0, activeSize: 0, activeDone: 0, rows: [] } }));
     assert.equal(await page.locator('#transfers').isVisible(), false);
     assert.deepEqual(errors, []);

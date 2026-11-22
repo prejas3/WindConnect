@@ -27,9 +27,9 @@ class OnboardingTest {
             }
         } }
         // TalkBack: the card starts with a heading; the camera note precedes the system prompt.
-        compose.onNode(hasText("Witaj w WindConnect") and SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading)).assertExists()
-        compose.onNodeWithTag("cameraNote").assertTextContains("obraz nie opuszcza telefonu", substring = true)
-        compose.onNodeWithTag("scanQr").assertTextEquals("Zeskanuj kod z komputera").performClick()
+        compose.onNode(hasText("Welcome to WindConnect") and SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading)).assertExists()
+        compose.onNodeWithTag("cameraNote").assertTextContains("the image never leaves the phone", substring = true)
+        compose.onNodeWithTag("scanQr").assertTextEquals("Scan the code from the computer").performClick()
         assertTrue(scanned)
         compose.onNodeWithTag("pairNearby").assertExists()
         // The Welcome card is the first thing on the screen.
@@ -42,12 +42,12 @@ class OnboardingTest {
         var done = false
         compose.setContent { WindConnectTheme(ThemeMode.Dark, false) {
             Column(Modifier.verticalScroll(rememberScrollState())) {
-                DoneScreen("Biurko", "Połączono z komputerem") { done = true }
+                DoneScreen("Biurko", "Connected to the computer") { done = true }
             }
         } }
-        compose.onNode(hasText("Gotowe") and SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading)).assertExists()
+        compose.onNode(hasText("Done") and SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading)).assertExists()
         compose.onNodeWithTag("backgroundLater").performScrollTo().performClick()
-        compose.onNodeWithTag("backgroundOutcome").assertTextContains("później w Ustawieniach", substring = true)
+        compose.onNodeWithTag("backgroundOutcome").assertTextContains("later in Settings", substring = true)
         compose.onAllNodesWithTag("keepBackground").assertCountEquals(0)
         compose.onNodeWithTag("pairingDone").performScrollTo().performClick()
         assertTrue(done)
@@ -55,11 +55,11 @@ class OnboardingTest {
 
     @Test fun backgroundOutcomeSentences() {
         assertNull(backgroundOutcome(BackgroundChoice()))
-        assertTrue(backgroundOutcome(BackgroundChoice(decided = true, keep = true))!!.startsWith("Włączone"))
+        assertTrue(backgroundOutcome(BackgroundChoice(decided = true, keep = true))!!.startsWith("On."))
         assertEquals(
-            "Połączenie działa w tle, ale bez powiadomień nie zobaczysz stanu komputera ani akcji „Wyślij schowek”. Zmienisz to w Ustawieniach.",
+            "The connection runs in the background, but without notifications you won't see the computer's state or the “Send clipboard” action. You can change this in Settings.",
             backgroundOutcome(BackgroundChoice(decided = true, keep = true, notificationsDenied = true)),
         )
-        assertTrue(backgroundOutcome(BackgroundChoice(decided = true, keep = false))!!.contains("później"))
+        assertTrue(backgroundOutcome(BackgroundChoice(decided = true, keep = false))!!.contains("later"))
     }
 }

@@ -34,10 +34,10 @@ class MotionTest {
     private fun rowHeight() = compose.onNodeWithTag("row").fetchSemanticsNode().size.height
 
     private fun detailsOpen(reduce: Boolean): Pair<Int, Int> {
-        show(reduce) { WindSettingRow("pc", "Wiersz", "Opis", Modifier.testTag("row"), more = { Text("Szczegóły\nw dwóch liniach") }) }
+        show(reduce) { WindSettingRow("pc", "Row", "Description", Modifier.testTag("row"), more = { Text("Details\non two lines") }) }
         compose.waitForIdle()
         compose.mainClock.autoAdvance = false
-        compose.onNodeWithTag("more:Wiersz").performClick()
+        compose.onNodeWithTag("more:Row").performClick()
         compose.mainClock.advanceTimeByFrame(); compose.mainClock.advanceTimeByFrame()
         val early = rowHeight()
         compose.mainClock.advanceTimeBy(3_000)

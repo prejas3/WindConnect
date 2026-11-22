@@ -6,8 +6,9 @@ import javax.xml.parsers.DocumentBuilderFactory
 import org.w3c.dom.Element
 
 /**
- * WN-63: JVM tests have no Android resources, so [str] reads the app's strings from res/values-pl (or values for
- * English) here. The tests keep checking the Polish texts the person reads.
+ * WN-63: JVM tests have no Android resources, so [str] reads the app's strings from res/values (English) or
+ * res/values-pl (Polish, English for a missing key) here. WN-174: tests run in English, the source language
+ * ([useEnglish] in each test's init); [usePolish] is for the checks of the Polish texts.
  */
 internal object StringsForTests {
     private fun unescape(raw: String): String {

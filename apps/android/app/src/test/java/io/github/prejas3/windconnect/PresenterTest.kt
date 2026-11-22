@@ -6,7 +6,7 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class PresenterTest {
-    init { StringsForTests.usePolish() }
+    init { StringsForTests.useEnglish() }
     @Test fun volumeKeysMapToArrowSlideKeysOnly() {
         assertEquals(39L, PresenterKeys.slide(KeyEvent.KEYCODE_VOLUME_UP))
         assertEquals(37L, PresenterKeys.slide(KeyEvent.KEYCODE_VOLUME_DOWN))

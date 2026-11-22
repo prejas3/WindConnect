@@ -66,7 +66,7 @@ object ConnectionNotificationProof {
             assertEquals("1", shell("getprop ro.kernel.qemu").trim())
             assertTrue(core.state.value is ConnectionState.Connected)
             instrumentation.runOnMainSync { assertTrue(ConnectionService.start(app, enable = true)) }
-            await("three connected actions") { actions() == listOf("Wyślij schowek", "Wyślij plik", "Zatrzymaj") }
+            await("three connected actions") { actions() == listOf("Send clipboard", "Send a file", "Stop") }
             val first = notification()!!
             assertNotNull(first.contentIntent)
             assertTrue(first.publicVersion.actions.isNullOrEmpty())
@@ -77,11 +77,11 @@ object ConnectionNotificationProof {
                 app.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("WN97", "WN97-NOTIFICATION-CLIPBOARD"))
             }
             val before = core.clipboardUi.value.delivered
-            tapAction("Wyślij schowek")
+            tapAction("Send clipboard")
             await("manual clipboard applied") { core.clipboardUi.value.delivered > before }
             await("main focus restored") { compose.activity.hasWindowFocus() }
             shell("am start -W -n ${app.packageName}.test/io.github.prejas3.windconnect.FileShareSourceActivity --es case picker")
-            tapAction("Wyślij plik")
+            tapAction("Send a file")
             await("DocumentsUI picker") { click("wn40-picker.pdf") || run { click("Downloads"); false } }
             await("file confirmation screen") {
                 click("Open")
@@ -89,7 +89,7 @@ object ConnectionNotificationProof {
             }
             val fileAction = first.actions[1].actionIntent
             instrumentation.runOnMainSync { fileAction.send(); fileAction.send() }
-            compose.onNodeWithTag("selectedFileCount").assertTextEquals("Wybrane pliki: 1")
+            compose.onNodeWithTag("selectedFileCount").assertTextEquals("Chosen files: 1")
             compose.waitUntil(10_000) { !compose.onNodeWithTag("confirmSendFiles").fetchSemanticsNode().config.contains(androidx.compose.ui.semantics.SemanticsProperties.Disabled) }
             val ids = core.files.value.map { it.id }.toSet()
             compose.onNodeWithTag("confirmSendFiles").performScrollTo().performClick()
@@ -102,7 +102,7 @@ object ConnectionNotificationProof {
                 await("picker reopened after close") { instrumentation.uiAutomation.rootInActiveWindow?.packageName?.toString()?.contains("documentsui") == true }
                 shell("input keyevent 4")
                 await("cancel returns to own screen") { compose.onAllNodesWithTag("shareFiles").fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty() }
-                compose.onNodeWithTag("selectedFileCount").assertTextEquals("Wybrane pliki: 0")
+                compose.onNodeWithTag("selectedFileCount").assertTextEquals("Chosen files: 0")
                 compose.onNodeWithTag("confirmSendFiles").performScrollTo().assertIsNotEnabled()
                 assertEquals("cancel sends nothing", completedIds, core.files.value.map { it.id }.toSet())
                 val bitmap = compose.onNodeWithTag("shareFiles").captureToImage().asAndroidBitmap()
@@ -112,7 +112,7 @@ object ConnectionNotificationProof {
             // CCS/1 CHECK:screen lifecycle with an active batch; transfer correctness is checked above.
             val terminal = FileSending.status.value
             try {
-                FileSending.update(FileSendStatus(busy = true, message = "Test aktywnej wysyłki", count = 1, target = "Test PC"))
+                FileSending.update(FileSendStatus(busy = true, message = "Active sending test", count = 1, target = "Test PC"))
                 instrumentation.runOnMainSync { fileAction.send(); fileAction.send() }
                 await("active batch screen instead of picker") { compose.onAllNodesWithTag("cancelFiles").fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty() }
                 compose.onNodeWithTag("cancelFiles").assertHasClickAction()
@@ -120,12 +120,12 @@ object ConnectionNotificationProof {
                 compose.onNodeWithTag("closeShare").performClick()
             } finally { FileSending.update(terminal) }
             instrumentation.sendStatus(0, Bundle().apply { putString("withdrawFiles", "true") })
-            await("capability withdrawal updates notification") { actions() == listOf("Wyślij schowek", "Zatrzymaj") }
+            await("capability withdrawal updates notification") { actions() == listOf("Send clipboard", "Stop") }
             instrumentation.sendStatus(0, Bundle().apply { putString("restoreFiles", "true") })
-            await("capability reenabled") { actions() == listOf("Wyślij schowek", "Wyślij plik", "Zatrzymaj") }
+            await("capability reenabled") { actions() == listOf("Send clipboard", "Send a file", "Stop") }
             instrumentation.runOnMainSync { ConnectionService.preferences(app).edit().putBoolean("enabled", false).commit() }
             core.disconnect()
-            await("no send actions disconnected") { actions() == listOf("Otwórz urządzenie", "Połącz ponownie", "Zatrzymaj") }
+            await("no send actions disconnected") { actions() == listOf("Open the device", "Reconnect", "Stop") }
             instrumentation.sendStatus(0, Bundle().apply { putString("connectionNotificationProof", "true") })
         } catch (failure: Throwable) {
             val tree = StringBuilder()

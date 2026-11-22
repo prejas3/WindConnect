@@ -79,7 +79,7 @@ public class FileShareSourceActivity extends Activity {
         for (int index = 1; index < uris.size(); index++) clip.addItem(new ClipData.Item(uris.get(index)));
         send.setClipData(clip);
         if (!kind.equals("denied")) send.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-        if (getIntent().getBooleanExtra("chooser", true)) startActivity(Intent.createChooser(send, "Udostępnij pliki WN40"));
+        if (getIntent().getBooleanExtra("chooser", true)) startActivity(Intent.createChooser(send, "Share files WN40"));
         else startActivity(send.setClassName("io.github.prejas3.windconnect", "io.github.prejas3.windconnect.ShareFilesActivity"));
     }
 }

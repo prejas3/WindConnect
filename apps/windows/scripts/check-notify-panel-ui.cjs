@@ -18,8 +18,8 @@ const server = http.createServer(async (req, res) => {
   catch { res.writeHead(404).end(); }
 });
 const A = 'ab'.repeat(16), B = 'cd'.repeat(16);
-const row = (tag, extra = {}) => ({ tag, app: 'Signal', title: 'Ola', text: 'Będziesz o 19?', reply: 'Odpowiedz', status: null, draft: null, ...extra });
-const state = notifications => ({ phase: 'connected', phone: 'Pixel 9', qr: null, message: 'Połączono · Wi-Fi', skipped_records: 0, code: null, connected: true, devices: [], paired: true, battery: null, find: { available: false, state: 'idle', last: null, ring_ms: null }, media: null, share_media: true, phone_notifications: true, notifications });
+const row = (tag, extra = {}) => ({ tag, app: 'Signal', title: 'Ola', text: 'Coming at 7?', reply: 'Reply', status: null, draft: null, ...extra });
+const state = notifications => ({ phase: 'connected', phone: 'Pixel 9', qr: null, message: 'Connected · Wi-Fi', skipped_records: 0, code: null, connected: true, devices: [], paired: true, battery: null, find: { available: false, state: 'idle', last: null, ring_ms: null }, media: null, share_media: true, phone_notifications: true, notifications });
 const stub = first => {
   window.__calls = [];
   window.__listeners = {};
@@ -40,7 +40,7 @@ const stub = first => {
   await new Promise(r => server.listen(0, '127.0.0.1', r));
   const browser = await chromium.launch({ headless: true });
   try {
-    const page = await browser.newPage({ locale: 'pl-PL', viewport: { width: 380, height: 760 } });
+    const page = await browser.newPage({ locale: 'en-US', viewport: { width: 380, height: 760 } });
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
     const hostile = row(B, { app: '<img src=x onerror=alert(1)>', title: '<b>x</b>', reply: null });
@@ -53,38 +53,38 @@ const stub = first => {
     assert.equal(await page.locator('#notification-list img').count(), 0, 'text only');
     assert.equal(await page.locator('#notification-list li').nth(1).locator('.name').textContent(), '<b>x</b>');
     assert.equal(await page.locator('#notification-list li').nth(1).locator('input').count(), 0, 'no reply action: no field');
-    const field = page.getByRole('textbox', { name: 'Odpowiedz: Ola' });
+    const field = page.getByRole('textbox', { name: 'Reply: Ola' });
     // Typing survives a push, focus too.
-    await field.fill('Tak, o 19');
-    await push([row(A, { text: 'Będziesz o 19? Daj znać' }), hostile]);
-    assert.equal(await field.inputValue(), 'Tak, o 19');
+    await field.fill('Yes, at 7');
+    await push([row(A, { text: 'Coming at 7? Let me know' }), hostile]);
+    assert.equal(await field.inputValue(), 'Yes, at 7');
     assert.equal(await field.evaluate(e => e === document.activeElement), true, 'focus kept');
     await field.press('Enter');
-    assert.deepEqual((await calls()).at(-1), { action: 'reply', tag: A, text: 'Tak, o 19' });
+    assert.deepEqual((await calls()).at(-1), { action: 'reply', tag: A, text: 'Yes, at 7' });
     // A stale 'sent' doesn't clear it; 'sending' then 'sent' does.
     await push([row(A, { status: 'sent' }), hostile]);
-    assert.equal(await field.inputValue(), 'Tak, o 19');
+    assert.equal(await field.inputValue(), 'Yes, at 7');
     await push([row(A, { status: 'sending' }), hostile]);
-    assert.equal(await page.locator('.notification-status').first().textContent(), 'Wysyłanie…');
+    assert.equal(await page.locator('.notification-status').first().textContent(), 'Sending…');
     await push([row(A, { status: 'sent' }), hostile]);
     assert.equal(await field.inputValue(), '', 'cleared after Replied ok');
-    assert.equal(await page.locator('.notification-status').first().textContent(), 'Wysłano');
+    assert.equal(await page.locator('.notification-status').first().textContent(), 'Sent');
     // A failure keeps the text.
     await field.fill('Druga');
-    await page.getByRole('button', { name: 'Wyślij odpowiedź: Ola' }).click();
+    await page.getByRole('button', { name: 'Send the reply: Ola' }).click();
     await push([row(A, { status: 'sending' }), hostile]);
     await push([row(A, { status: 'failed' }), hostile]);
     assert.equal(await field.inputValue(), 'Druga', 'kept after Replied ok=false');
-    assert.match(await page.locator('.notification-status').first().textContent(), /Nie udało się/);
+    assert.match(await page.locator('.notification-status').first().textContent(), /Couldn't/);
     // Over 1024 bytes: blocked, not trimmed, nothing sent.
     const before = (await calls()).length;
-    const long = 'ą'.repeat(513);
+    const long = 'ą'.repeat(513); // i18n: data
     await field.fill(long);
     await field.press('Enter');
     assert.equal((await calls()).length, before, 'not sent');
     assert.equal(await field.inputValue(), long, 'not trimmed');
     assert.equal(await field.getAttribute('aria-invalid'), 'true');
-    assert.match(await page.locator('.notification-status').first().textContent(), /za długa \(1026 z 1024/);
+    assert.match(await page.locator('.notification-status').first().textContent(), /too long \(1026 of 1024/);
     for (const theme of ['light', 'dark']) {
       await page.evaluate(t => { document.documentElement.dataset.theme = t; }, theme);
       await page.locator('#notifications').screenshot({ path: path.join(out, `notify-panel-${theme}.png`) });
@@ -94,7 +94,7 @@ const stub = first => {
     await push([row(A, { status: 'too-long', draft: 'x'.repeat(1100) }), hostile]);
     assert.equal(await field.inputValue(), 'x'.repeat(1100));
     // ✕: dismiss; the row goes when the PC says so.
-    await page.getByRole('button', { name: 'Odrzuć powiadomienie: <b>x</b>' }).click();
+    await page.getByRole('button', { name: 'Dismiss the notification: <b>x</b>' }).click();
     assert.deepEqual((await calls()).at(-1), { action: 'dismiss', tag: B });
     await push([row(A)]);
     assert.equal(await page.locator('#notification-list li').count(), 1);

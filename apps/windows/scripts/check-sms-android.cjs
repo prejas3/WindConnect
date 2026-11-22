@@ -105,7 +105,7 @@ let app, instrument, browser, socket, timer, redirected = false, output = '';
     const incomingMs = Date.now() - sent;
     // The phone's setting: off -> the window says so, on -> available again.
     command('off');
-    await until(() => sms.evaluate(() => document.querySelector('#threads-status').textContent.includes('nie udostępnia')), 'setting off shown');
+    await until(() => sms.evaluate(() => document.querySelector('#threads-status').textContent.includes("doesn't share")), 'setting off shown');
     command('on');
     await until(() => sms.evaluate(() => document.querySelector('#threads-status').textContent === ''), 'setting on again');
     await sms.screenshot({ path: path.join(root, 'pc-sms-window.png') });

@@ -14,7 +14,7 @@ import org.junit.Test
  * suspending made it spin after a successful reconnect (WN-148).
  */
 class ReconnectWaitTest {
-    init { StringsForTests.usePolish() }
+    init { StringsForTests.useEnglish() }
     private val old = setOf("192.168.0.10:50001")
     private val now = setOf("192.168.0.10:50077")
 

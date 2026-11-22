@@ -4,16 +4,16 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class RelaySettingTest {
-    init { StringsForTests.usePolish() }
+    init { StringsForTests.useEnglish() }
     @Test fun refusedUrlBecomesTheFieldErrorAndOffAlwaysPasses() {
         val calls = mutableListOf<String?>()
         val set: (String?) -> Unit = { url -> calls += url; if (url?.startsWith("wss://") == false) throw IllegalArgumentException("must start with wss://") }
         assertNull(RelaySetting.apply(set, "wss://windconnect-relay.example.workers.dev"))
-        assertEquals("Nieprawidłowy adres: must start with wss://", RelaySetting.apply(set, "http://x"))
-        assertEquals("Podaj adres przekaźnika", RelaySetting.apply(set, " "))
+        assertEquals("Invalid address: must start with wss://", RelaySetting.apply(set, "http://x"))
+        assertEquals("Enter the relay's address", RelaySetting.apply(set, " "))
         assertNull(RelaySetting.apply(set, null))
-        assertEquals("WindConnect jeszcze się uruchamia",
-            RelaySetting.apply({ error("WindConnect jeszcze się uruchamia") }, "wss://windconnect-relay.example.workers.dev"))
+        assertEquals("WindConnect is still starting",
+            RelaySetting.apply({ error("WindConnect is still starting") }, "wss://windconnect-relay.example.workers.dev"))
         assertEquals(listOf("wss://windconnect-relay.example.workers.dev", "http://x", null), calls)
     }
 }

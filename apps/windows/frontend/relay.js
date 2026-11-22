@@ -21,9 +21,10 @@ async function apply(url) {
   toggle.disabled = true;
   try { show(await invoke('set_relay', { url })); fail(''); }
   catch (e) {
-    // Only a refused URL is "Invalid address"; still starting or a failed save say what they are (WN-139).
+    // Only a refused URL ("invalid:…", WN-174) is "Invalid address"; still starting or a failed save say what they
+    // are (WN-139), already in the UI language.
     const text = String(e);
-    fail(/^(WindConnect jeszcze|nie udało się zapisać|WindConnect is still|couldn't save)/.test(text) ? text : t('relay.invalid', { error: text }));
+    fail(text.startsWith('invalid:') ? t('relay.invalid', { error: text.slice('invalid:'.length) }) : text);
     show(await invoke('relay_setting').catch(() => null));
   }
 }

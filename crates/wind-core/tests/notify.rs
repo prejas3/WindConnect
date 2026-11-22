@@ -100,7 +100,7 @@ async fn notifications_reach_the_pc() {
 
     assert_eq!(
         sender
-            .posted(note(1, "Będziesz o 19?"), Some(icon.clone()), false)
+            .posted(note(1, "Coming at 7?"), Some(icon.clone()), false)
             .await
             .unwrap(),
         Outcome::Sent
@@ -117,13 +117,13 @@ async fn notifications_reach_the_pc() {
         next(shown).await,
         Message::Posted(Posted {
             icon: Some(key),
-            ..note(1, "Będziesz o 19?")
+            ..note(1, "Coming at 7?")
         })
     );
     // Another notification of the same app: no second Icon.
     assert_eq!(
         sender
-            .posted(note(2, "Biorę klucze"), Some(icon.clone()), false)
+            .posted(note(2, "Picking up the keys"), Some(icon.clone()), false)
             .await
             .unwrap(),
         Outcome::Sent
@@ -198,7 +198,7 @@ async fn notifications_reach_the_pc() {
     loop {
         id += 1;
         if sender
-            .posted(note(id, "znów"), Some(icon.clone()), false)
+            .posted(note(id, "again"), Some(icon.clone()), false)
             .await
             .unwrap()
             == Outcome::Sent
@@ -254,7 +254,7 @@ async fn the_pc_dismisses_and_replies() {
             .posted(
                 Posted {
                     reply: Some("Odpowiedz".into()),
-                    ..note(1, "Będziesz?")
+                    ..note(1, "Coming?")
                 },
                 None,
                 false

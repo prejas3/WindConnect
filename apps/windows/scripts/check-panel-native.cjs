@@ -82,7 +82,7 @@ function native(action) {
     // Debug builds start with an empty store (WINDCONNECT_TEST_DATA_DIR); a release build reads the real one,
     // so with a phone connected there the group is shown and only the disabled list is checked.
     if ((await invoke('pairing_snapshot')).phase !== 'connected') assert.equal(await panel.locator('#quick-actions').isHidden(), true, 'unpaired: no quick actions');
-    assert.deepEqual(await panel.locator('.quick-actions button:disabled').allTextContents(), ['Dzwoń', 'Touchpad'], 'only unbuilt actions are disabled');
+    assert.deepEqual(await panel.locator('.quick-actions button:disabled').allTextContents(), ['Ring', 'Touchpad'], 'only unbuilt actions are disabled');
     assert.equal(await panel.locator('.quick-actions button:not(:disabled)').count(), 2, 'Send and Clipboard are live once connected');
     assert.deepEqual(errors, []);
     const report = { executable, samplesUs: samples, maxUs: Math.max(...samples), preloaded: true, escape: true, shortcut: !shortcutError, shortcutError, blur: true, themes: true, reducedMotion: true, stderr };

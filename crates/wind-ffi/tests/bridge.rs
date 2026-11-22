@@ -167,7 +167,7 @@ async fn touchpad_handles_release_on_replacement_and_cannot_replay_after_off_on(
     third
         .send(vec![
             TouchpadCommand::Text {
-                text: "Zażółć gęślą jaźń 😀".into(),
+                text: "Zażółć gęślą jaźń 😀".into(), // i18n: data
             },
             TouchpadCommand::Key {
                 code: 67,
@@ -179,7 +179,7 @@ async fn touchpad_handles_release_on_replacement_and_cannot_replay_after_off_on(
     assert_eq!(
         rx.recv().await,
         Some(InputEvent::Keyboard(
-            wind_core::protocol::KeyboardAction::Text("Zażółć gęślą jaźń 😀".into())
+            wind_core::protocol::KeyboardAction::Text("Zażółć gęślą jaźń 😀".into()) // i18n: data
         ))
     );
     assert_eq!(
@@ -592,13 +592,13 @@ async fn ffi_clipboard_uses_sink_and_applied_ack_in_both_directions() {
     );
     assert_eq!(*remote.0.lock().unwrap(), "telefon 👩‍💻");
     assert_eq!(
-        pc.send("https://example.com/ż".into(), false, false).await,
+        pc.send("https://example.com/ż".into(), false, false).await, // i18n: data
         wind_core::clipboard::Status::Applied
     );
-    assert_eq!(*local.0.lock().unwrap(), "https://example.com/ż");
+    assert_eq!(*local.0.lock().unwrap(), "https://example.com/ż"); // i18n: data
     assert_eq!(
         connection
-            .send_clipboard("https://example.com/ż".into(), false, false)
+            .send_clipboard("https://example.com/ż".into(), false, false) // i18n: data
             .await,
         "unchanged"
     );

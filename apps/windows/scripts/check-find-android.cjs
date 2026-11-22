@@ -99,11 +99,11 @@ let app, instrument, browser, socket, timer, redirected = false, touched = false
     if (!playing) await fs.writeFile(path.join(root, 'dumpsys-audio.txt'), sh('dumpsys audio'));
     assert(playing, 'an alarm player is started on the phone (dumpsys-audio.txt)');
     assert.equal(alarm(), max, 'alarm volume raised to max');
-    assert.equal((await tile.textContent()).trim(), 'Zatrzymaj');
+    assert.equal((await tile.textContent()).trim(), 'Stop');
     await panel.screenshot({ path: path.join(root, 'pc-find-ringing.png') });
     await tile.click();
     const stopped = await find(f => f.state === 'idle' && f.last, 'stop from the PC');
-    assert.equal(stopped.last, 'Zatrzymano');
+    assert.equal(stopped.last, 'Stopped');
     await delay(300);
     assert(!alarmPlaying(), 'sound stopped');
     assert.equal(alarm(), 1, 'alarm volume restored');
@@ -115,7 +115,7 @@ let app, instrument, browser, socket, timer, redirected = false, touched = false
       await tile.click();
       const ringing = await find(f => f.state === 'ringing', `ring ${index + 2}`);
       const ended = await find(f => f.state === 'idle' && f.last, `ring ${index + 2} stopped by ${stoppedBy}`);
-      assert.equal(ended.last, 'Zatrzymano na telefonie', stoppedBy);
+      assert.equal(ended.last, 'Stopped on the phone', stoppedBy);
       await delay(300);
       assert(!alarmPlaying(), `sound stopped (${stoppedBy})`);
       assert.equal(alarm(), 1, `alarm volume restored (${stoppedBy})`);

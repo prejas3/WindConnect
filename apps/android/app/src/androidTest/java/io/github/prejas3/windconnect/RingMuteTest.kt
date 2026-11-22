@@ -14,7 +14,7 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 
-/** WN-57 review: "Wycisz" from the PC never leaves the phone's ring stream muted, and a mute the person set stays theirs. */
+/** WN-57 review: "Silence" from the PC never leaves the phone's ring stream muted, and a mute the person set stays theirs. */
 @RunWith(AndroidJUnit4::class)
 class RingMuteTest {
     private val context = InstrumentationRegistry.getInstrumentation().targetContext

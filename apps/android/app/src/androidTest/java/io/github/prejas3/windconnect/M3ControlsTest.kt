@@ -41,12 +41,12 @@ class M3ControlsTest {
             WindConnectTheme(mode = ThemeMode.Light, dynamicColor = false) {
                 Column {
                     WindButton("Tonal", { clicks++ }, Modifier.testTag("tonal"), kind = ButtonKind.Tonal)
-                    WindSwitch("Przełącznik", on, { on = it }, Modifier.testTag("switch"))
+                    WindSwitch("Switch", on, { on = it }, Modifier.testTag("switch"))
                     WindSegmented(listOf(5, 16, 32), limit, { "$it MB" }, { limit = it }, tag = { "seg$it" })
-                    WindIconButton("pin", "Przypnij", { pinned = !pinned }, Modifier.testTag("pin"), selected = pinned)
-                    WindField(name, { name = it }, "Nazwa", Modifier.testTag("name"), maxLength = 64, errorText = if (name.isEmpty()) "Wpisz nazwę" else null)
+                    WindIconButton("pin", "Pin", { pinned = !pinned }, Modifier.testTag("pin"), selected = pinned)
+                    WindField(name, { name = it }, "Name", Modifier.testTag("name"), maxLength = 64, errorText = if (name.isEmpty()) "Enter a name" else null)
                     WindSlider(level, { level = it }, Modifier.testTag("volume"), icon = "volume", valueLabel = { "${(it * 100).toInt()}%" })
-                    WindTextArea(androidx.compose.ui.text.input.TextFieldValue("x"), {}, "Klawiatura", Modifier.testTag("area"), enabled = false)
+                    WindTextArea(androidx.compose.ui.text.input.TextFieldValue("x"), {}, "Keyboard", Modifier.testTag("area"), enabled = false)
                 }
             }
         }

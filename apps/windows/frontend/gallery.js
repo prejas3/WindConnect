@@ -14,45 +14,45 @@ const icon = name => `<svg viewBox="0 0 24 24" aria-hidden="true">${paths[name]}
 export function mountGallery(toast) {
   const gallery = document.querySelector('#gallery');
   gallery.innerHTML = `
-    <div class="gallery-intro"><h2 id="gallery-title" data-i18n="gallery.gallery-title" data-i18n-pos="start"><span class="dev-badge" data-i18n="gallery.dev"></span></h2><p data-i18n="gallery.stany_i_zachowanie_elementow"></p></div>
+    <div class="gallery-intro"><h2 id="gallery-title" data-i18n="gallery.gallery-title" data-i18n-pos="start"><span class="dev-badge" data-i18n="gallery.dev"></span></h2><p data-i18n="gallery.states_and_behaviour_of_the"></p></div>
     <div class="gallery-grid">
-      <section class="surface sample"><h3 data-i18n="gallery.przyciski"></h3><div class="button-row">
-        <button class="button primary" data-feedback="gallery.przyklad_przycisk_glowny" data-i18n="gallery.wyslij">${icon('send')}</button>
-        <button class="button" data-feedback="gallery.przyklad_przycisk_drugorzedny" data-i18n="gallery.dodaj_urzadzenie"></button>
-        <button class="button quiet" data-feedback="gallery.przyklad_przycisk_tekstowy" data-i18n="gallery.wiecej"></button>
-        <button class="button danger" id="open-dialog" data-i18n="gallery.open-dialog"></button><button class="button" disabled data-i18n="gallery.niedostepny"></button>
+      <section class="surface sample"><h3 data-i18n="gallery.buttons"></h3><div class="button-row">
+        <button class="button primary" data-feedback="gallery.sample_primary_button" data-i18n="gallery.send">${icon('send')}</button>
+        <button class="button" data-feedback="gallery.sample_secondary_button" data-i18n="gallery.add_a_device"></button>
+        <button class="button quiet" data-feedback="gallery.sample_text_button" data-i18n="gallery.more"></button>
+        <button class="button danger" id="open-dialog" data-i18n="gallery.open-dialog"></button><button class="button" disabled data-i18n="gallery.unavailable"></button>
       </div><div class="tiles">
-        <button class="tile" data-feedback="gallery.przyklad_wysylanie_pliku" data-i18n="gallery.wyslij">${icon('send')}</button>
+        <button class="tile" data-feedback="gallery.sample_sending_a_file" data-i18n="gallery.send">${icon('send')}</button>
         <button class="tile" id="clipboard-tile" aria-pressed="true" data-i18n="gallery.clipboard-tile">${icon('clipboard')}</button>
-        <button class="tile" data-feedback="gallery.przyklad_sygnal_telefonu" data-i18n="gallery.dzwon">${icon('bell')}</button>
+        <button class="tile" data-feedback="gallery.sample_phone_signal" data-i18n="gallery.ring">${icon('bell')}</button>
         <button class="tile" disabled data-i18n="gallery.touchpad">${icon('touch')}</button>
-      </div><p data-i18n="gallery.wlasne_ikony_z_makiety"></p></section>
-      <section class="surface sample"><h3 data-i18n="gallery.przelaczniki_i_wybor"></h3>
-        <div class="control-row"><div id="clipboard-label" data-i18n="gallery.clipboard-label" data-i18n-pos="start"><small data-i18n="gallery.tylko_przyklad_stanu_kontrolki"></small></div><button class="switch" role="switch" aria-checked="true" aria-labelledby="clipboard-label"></button></div>
+      </div><p data-i18n="gallery.custom_icons_from_the_wn"></p></section>
+      <section class="surface sample"><h3 data-i18n="gallery.switches_and_choices"></h3>
+        <div class="control-row"><div id="clipboard-label" data-i18n="gallery.clipboard-label" data-i18n-pos="start"><small data-i18n="gallery.only_a_sample_of_the"></small></div><button class="switch" role="switch" aria-checked="true" aria-labelledby="clipboard-label"></button></div>
         <div class="control-row"><span id="notifications-label" data-i18n="gallery.notifications-label"></span><button class="switch" role="switch" aria-checked="false" aria-labelledby="notifications-label"></button></div>
         <div class="control-row"><span id="disabled-label" data-i18n="gallery.disabled-label"></span><button class="switch" role="switch" aria-checked="false" aria-labelledby="disabled-label" disabled></button></div>
-        <label class="check-label" data-i18n="gallery.uruchamiaj_razem_z_systemem"><input class="checkbox" type="checkbox" checked></label>
+        <label class="check-label" data-i18n="gallery.start_with_the_system_sample"><input class="checkbox" type="checkbox" checked></label>
       </section>
-      <section class="surface sample"><h3 data-i18n="gallery.pola_i_walidacja"></h3><form id="sample-form" novalidate>
-        <label class="field" for="device-name" data-i18n="gallery.nazwa_urzadzenia" data-i18n-pos="start"><input id="device-name" data-i18n-placeholder="gallery.device-name_placeholder" maxlength="64" autocomplete="off" aria-describedby="name-hint name-error"><span class="field-hint" id="name-hint" data-i18n="gallery.name-hint"></span><span id="name-error" class="field-hint field-error" hidden data-i18n="gallery.name-error"></span></label>
-        <label class="field" for="device-id" data-i18n="gallery.identyfikator_tylko_odczyt" data-i18n-pos="start"><input id="device-id" data-i18n-value="gallery.device-id_value" readonly></label>
-        <label class="field" for="disabled-field" data-i18n="gallery.pole_niedostepne" data-i18n-pos="start"><input id="disabled-field" data-i18n-value="gallery.disabled-field_value" disabled></label>
-        <label class="field" for="sample-note" data-i18n="gallery.wiadomosc" data-i18n-pos="start"><textarea id="sample-note" data-i18n-placeholder="gallery.sample-note_placeholder" maxlength="500"></textarea></label>
-        <button class="button primary" type="submit" data-i18n="gallery.sprawdz_nazwe"></button>
+      <section class="surface sample"><h3 data-i18n="gallery.fields_and_validation"></h3><form id="sample-form" novalidate>
+        <label class="field" for="device-name" data-i18n="gallery.device_name" data-i18n-pos="start"><input id="device-name" data-i18n-placeholder="gallery.device-name_placeholder" maxlength="64" autocomplete="off" aria-describedby="name-hint name-error"><span class="field-hint" id="name-hint" data-i18n="gallery.name-hint"></span><span id="name-error" class="field-hint field-error" hidden data-i18n="gallery.name-error"></span></label>
+        <label class="field" for="device-id" data-i18n="gallery.identifier_read_only" data-i18n-pos="start"><input id="device-id" data-i18n-value="gallery.device-id_value" readonly></label>
+        <label class="field" for="disabled-field" data-i18n="gallery.unavailable_field" data-i18n-pos="start"><input id="disabled-field" data-i18n-value="gallery.disabled-field_value" disabled></label>
+        <label class="field" for="sample-note" data-i18n="gallery.message" data-i18n-pos="start"><textarea id="sample-note" data-i18n-placeholder="gallery.sample-note_placeholder" maxlength="500"></textarea></label>
+        <button class="button primary" type="submit" data-i18n="gallery.check_the_name"></button>
       </form></section>
-      <section class="surface sample"><h3 data-i18n="gallery.lista_urzadzen"></h3>
-        <div class="device-list" role="listbox" data-i18n-aria-label="gallery.przykladowe_urzadzenia">
-          <div class="device-option" role="option" tabindex="0" aria-selected="true">${icon('phone')}<span><strong data-i18n="gallery.galaxy_s25_ultra"></strong><small data-i18n="gallery.przyklad_telefon"></small></span><span class="selection">${icon('check')}</span></div>
-          <div class="device-option" role="option" tabindex="-1" aria-selected="false">${icon('pc')}<span><strong data-i18n="gallery.komputer_w_domu"></strong><small data-i18n="gallery.przyklad_windows_11"></small></span><span class="selection">${icon('check')}</span></div>
-          <div class="device-option" role="option" tabindex="-1" aria-selected="false" aria-disabled="true">${icon('pc')}<span><strong data-i18n="gallery.niedostepne_urzadzenie"></strong><small data-i18n="gallery.opcja_wylaczona"></small></span></div>
-        </div><p data-i18n="gallery.strzalki_home_end_wybieraja"></p>
+      <section class="surface sample"><h3 data-i18n="gallery.device_list"></h3>
+        <div class="device-list" role="listbox" data-i18n-aria-label="gallery.sample_devices">
+          <div class="device-option" role="option" tabindex="0" aria-selected="true">${icon('phone')}<span><strong data-i18n="gallery.galaxy_s25_ultra"></strong><small data-i18n="gallery.sample_phone"></small></span><span class="selection">${icon('check')}</span></div>
+          <div class="device-option" role="option" tabindex="-1" aria-selected="false">${icon('pc')}<span><strong data-i18n="gallery.home_computer"></strong><small data-i18n="gallery.sample_windows_11"></small></span><span class="selection">${icon('check')}</span></div>
+          <div class="device-option" role="option" tabindex="-1" aria-selected="false" aria-disabled="true">${icon('pc')}<span><strong data-i18n="gallery.unavailable_device"></strong><small data-i18n="gallery.option_turned_off"></small></span></div>
+        </div><p data-i18n="gallery.arrows_and_home_end_choose"></p>
       </section>
-      <section class="surface sample"><h3 data-i18n="gallery.status_i_postep"></h3><div class="button-row"><span class="status-pill success" data-i18n="gallery.polaczono"></span><span class="status-pill warning" data-i18n="gallery.szukam_telefonu"></span><span class="status-pill offline" data-i18n="gallery.poza_zasiegiem"></span></div>
+      <section class="surface sample"><h3 data-i18n="gallery.status_and_progress"></h3><div class="button-row"><span class="status-pill success" data-i18n="gallery.connected"></span><span class="status-pill warning" data-i18n="gallery.looking_for_the_phone"></span><span class="status-pill offline" data-i18n="gallery.out_of_reach"></span></div>
         <div id="sample-progress" class="progress" role="progressbar" data-i18n-aria-label="gallery.sample-progress_label" aria-valuemin="0" aria-valuemax="100" aria-valuenow="64"><span></span></div>
         <p id="progress-label" data-i18n="gallery.progress-label"></p><div class="button-row"><button class="button small" id="complete-progress" data-i18n="gallery.complete-progress"></button><button class="button quiet small" id="reset-progress" data-i18n="gallery.reset-progress"></button></div>
       </section>
-      <section class="surface sample"><h3 data-i18n="gallery.ruch_i_typografia"></h3><div class="motion-preview" id="motion-preview"><strong data-i18n="gallery.galaxy_s25_ultra"></strong><p data-i18n="gallery.zazolc_gesla_jazn_0123456789"></p></div><button class="button" id="replay-motion" data-i18n="gallery.replay-motion"></button><p data-i18n="gallery.dm_sans_wejscie_160"></p></section>
-      <section class="surface sample wide"><h3 data-i18n="gallery.tokeny_kolorow"></h3><div class="token-grid"><div class="swatch surface-token"><i></i><span data-i18n="gallery.powierzchnia"></span></div><div class="swatch tile-token"><i></i><span data-i18n="gallery.kafelki"></span></div><div class="swatch accent-token"><i></i><span data-i18n="gallery.akcent"></span></div><div class="swatch text-token"><i></i><span data-i18n="gallery.tekst"></span></div></div><p data-i18n="gallery.paleta_morska_i_grafitowa"></p></section>
+      <section class="surface sample"><h3 data-i18n="gallery.motion_and_type"></h3><div class="motion-preview" id="motion-preview"><strong data-i18n="gallery.galaxy_s25_ultra"></strong><p data-i18n="gallery.the_quick_brown_fox_jumps"></p></div><button class="button" id="replay-motion" data-i18n="gallery.replay-motion"></button><p data-i18n="gallery.dm_sans_entrance_160_ms"></p></section>
+      <section class="surface sample wide"><h3 data-i18n="gallery.color_tokens"></h3><div class="token-grid"><div class="swatch surface-token"><i></i><span data-i18n="gallery.surface"></span></div><div class="swatch tile-token"><i></i><span data-i18n="gallery.tiles"></span></div><div class="swatch accent-token"><i></i><span data-i18n="gallery.accent"></span></div><div class="swatch text-token"><i></i><span data-i18n="gallery.text"></span></div></div><p data-i18n="gallery.sea_and_graphite_palette_from"></p></section>
     </div>`;
 
   applyI18n(gallery);
@@ -75,7 +75,7 @@ export function mountGallery(toast) {
   input.addEventListener('input', () => { if (input.hasAttribute('aria-invalid')) validate(); });
   gallery.querySelector('#sample-form').addEventListener('submit', event => {
     event.preventDefault();
-    if (!validate()) input.focus(); else toast(t('gallery.name_ok'));
+    if (!validate()) input.focus(); else toast(t('gallery.sample_the_name_is_valid'));
   });
   const list = gallery.querySelector('[role="listbox"]');
   const options = [...list.querySelectorAll('[role="option"]:not([aria-disabled="true"])')];
@@ -94,7 +94,7 @@ export function mountGallery(toast) {
   const progress = gallery.querySelector('#sample-progress');
   const label = gallery.querySelector('#progress-label');
   gallery.querySelector('#complete-progress').addEventListener('click', () => {
-    progress.dataset.complete = 'true'; progress.setAttribute('aria-valuenow', '100'); label.textContent = t('gallery.progress_done');
+    progress.dataset.complete = 'true'; progress.setAttribute('aria-valuenow', '100'); label.textContent = t('gallery.sample_finished_240_mb_100');
   });
   gallery.querySelector('#reset-progress').addEventListener('click', () => {
     progress.dataset.complete = 'false'; progress.setAttribute('aria-valuenow', '64'); label.textContent = t('gallery.progress');

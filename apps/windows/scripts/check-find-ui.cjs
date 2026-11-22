@@ -1,5 +1,5 @@
 // CCS/1 PURPOSE:WN-50 "Ring" tile with a stubbed IPC: disabled without find/1 or offline, ring -> starting -> ringing ->
-// "Zatrzymaj" sends ring-stop, outcomes in the status line, keyboard, Light/Dark, 150% text | DEP:external dev-only Playwright 1.61.1.
+// "Stop" sends ring-stop, outcomes in the status line, keyboard, Light/Dark, 150% text | DEP:external dev-only Playwright 1.61.1.
 const assert = require('node:assert/strict');
 const http = require('node:http');
 const fs = require('node:fs/promises');
@@ -15,8 +15,8 @@ const server = http.createServer(async (req, res) => {
   try { res.setHeader('Content-Type', types[path.extname(f)] || 'text/plain'); res.end(await fs.readFile(f)); }
   catch { res.writeHead(404).end(); }
 });
-const phone = { key: 'a'.repeat(64), name: 'Galaxy S25 Ultra z bardzo długą nazwą telefonu', fingerprint: 'K4TQ-9WZM-2HXP', paired_at: 1794300000, connected: true, owed: false };
-const state = find => ({ phase: 'connected', phone: phone.name, qr: null, message: 'Połączono · Wi-Fi', skipped_records: 0, code: null, connected: true, devices: [phone], paired: true, battery: null, find: { available: true, state: 'idle', last: null, ring_ms: null, ...find } });
+const phone = { key: 'a'.repeat(64), name: 'Galaxy S25 Ultra with a very long phone name that has to wrap', fingerprint: 'K4TQ-9WZM-2HXP', paired_at: 1794300000, connected: true, owed: false };
+const state = find => ({ phase: 'connected', phone: phone.name, qr: null, message: 'Connected · Wi-Fi', skipped_records: 0, code: null, connected: true, devices: [phone], paired: true, battery: null, find: { available: true, state: 'idle', last: null, ring_ms: null, ...find } });
 const stub = first => {
   window.__calls = [];
   window.__listeners = {};
@@ -36,7 +36,7 @@ const stub = first => {
   await new Promise(r => server.listen(0, '127.0.0.1', r));
   const browser = await chromium.launch({ headless: true });
   try {
-    const page = await browser.newPage({ locale: 'pl-PL', viewport: { width: 380, height: 640 } });
+    const page = await browser.newPage({ locale: 'en-US', viewport: { width: 380, height: 640 } });
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
     await page.addInitScript(stub, state({}));
@@ -49,28 +49,28 @@ const stub = first => {
     const look = async () => ({ disabled: await tile.isDisabled(), pressed: await tile.getAttribute('aria-pressed'), label: (await tile.textContent()).trim(), status: (await page.locator('#find-status').textContent()).trim() });
 
     // 1. Available and idle: "Ring", enabled; a click (and the keyboard) asks to ring.
-    assert.deepEqual(await look(), { disabled: false, pressed: 'false', label: 'Dzwoń', status: '' });
+    assert.deepEqual(await look(), { disabled: false, pressed: 'false', label: 'Ring', status: '' });
     await tile.click();
     assert.deepEqual(await sent(), ['ring']);
-    // 2. Starting, then ringing: "Zatrzymaj", pressed; the click stops.
+    // 2. Starting, then ringing: "Stop", pressed; the click stops.
     await emit(state({ state: 'starting' }));
-    assert.deepEqual(await look(), { disabled: false, pressed: 'true', label: 'Zatrzymaj', status: 'Łączenie z telefonem…' });
+    assert.deepEqual(await look(), { disabled: false, pressed: 'true', label: 'Stop', status: 'Connecting to the phone…' });
     await emit(state({ state: 'ringing', ring_ms: 180 }));
-    assert.equal((await look()).status, 'Telefon dzwoni, także w trybie cichym');
+    assert.equal((await look()).status, 'The phone is ringing, even in silent mode');
     await page.screenshot({ path: path.join(out, 'panel-find-ringing.png'), clip: { x: 0, y: 0, width: 380, height: 200 } });
     await tile.focus(); await page.keyboard.press('Enter');
     assert.deepEqual(await sent(), ['ring', 'ring-stop']);
     // 3. Outcomes in the status line, the tile back to "Ring".
-    await emit(state({ last: 'Zatrzymano na telefonie' }));
-    assert.deepEqual(await look(), { disabled: false, pressed: 'false', label: 'Dzwoń', status: 'Zatrzymano na telefonie' });
-    await emit(state({ last: 'Połączenie przerwane — telefon może nadal dzwonić (do 60 s)' }));
-    assert.match((await look()).status, /może nadal dzwonić/);
+    await emit(state({ last: 'Stopped on the phone' }));
+    assert.deepEqual(await look(), { disabled: false, pressed: 'false', label: 'Ring', status: 'Stopped on the phone' });
+    await emit(state({ last: 'Connection lost — the phone may still be ringing (up to 60 s)' }));
+    assert.match((await look()).status, /may still be ringing/);
     // 4. Not allowed on the phone: disabled with an explanation. Offline: disabled, no line.
     await emit(state({ available: false }));
     const off = await look();
-    assert.equal(off.disabled, true); assert.match(off.status, /włącz je w ustawieniach/);
+    assert.equal(off.disabled, true); assert.match(off.status, /turn it on in WindConnect/);
     await emit({ ...state({}), phase: 'offline', connected: false });
-    assert.deepEqual(await look(), { disabled: true, pressed: 'false', label: 'Dzwoń', status: '' });
+    assert.deepEqual(await look(), { disabled: true, pressed: 'false', label: 'Ring', status: '' });
     // 5. Themes and 150% text while ringing: nothing overflows.
     await emit(state({ state: 'ringing' }));
     for (const theme of ['light', 'dark']) {

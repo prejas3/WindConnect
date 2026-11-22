@@ -1068,7 +1068,7 @@ mod tests {
             app: "Signal".into(),
             package: "org.thoughtcrime.securesms".into(),
             title: Some("Ola".into()),
-            text: Some("Będziesz o 19?".into()),
+            text: Some("Coming at 7?".into()),
             time_ms: 0,
             icon: Some([1; 8]),
             reply: None,
@@ -1086,7 +1086,7 @@ mod tests {
             Some(Path::new(r"C:\Users\a b\icons\0101010101010101.png")),
         );
         assert!(
-            x.contains("<text>Ola</text><text>Będziesz o 19?</text>"),
+            x.contains("<text>Ola</text><text>Coming at 7?</text>"),
             "{x}"
         );
         assert!(
@@ -1104,7 +1104,7 @@ mod tests {
     fn release_clicks_open_the_panel_by_uri_and_reply_stays_in_process() {
         // WN-144: body and header launch the panel URI (works after a restart); the reply is a background action.
         let mut n = posted();
-        n.reply = Some("Odpowiedz".into());
+        n.reply = Some("Reply".into());
         let x = toast_xml_for(&ToastView::new(&n, "Pixel 9"), None, true);
         assert!(
             x.starts_with(r#"<toast launch="windconnect-panel:" activationType="protocol">"#),
@@ -1273,7 +1273,7 @@ mod tests {
         };
         let x = toast_xml(&ToastView::new(&untitled, ""), None);
         assert!(
-            x.contains("<text>Signal</text><text>Będziesz o 19?</text>"),
+            x.contains("<text>Signal</text><text>Coming at 7?</text>"),
             "{x}"
         );
         assert!(!x.contains("attribution"), "{x}");
@@ -1294,18 +1294,18 @@ mod tests {
         let plain = toast_xml(&ToastView::new(&posted(), "Pixel 9"), None);
         assert!(!plain.contains("<actions>"), "{plain}");
         let n = Posted {
-            reply: Some("Odpowiedz\u{202E}<x>".into()),
+            reply: Some("Reply\u{202E}<x>".into()),
             ..posted()
         };
         let view = ToastView::new(&n, "Pixel 9");
         assert_eq!(
             view.reply.as_deref(),
-            Some("Odpowiedz <x>"),
+            Some("Reply <x>"),
             "bidi control becomes a space"
         );
         let x = toast_xml(&view, None);
         assert!(
-            x.contains(r#"<input id="reply" type="text" placeHolderContent="Odpowiedz…"/>"#),
+            x.contains(r#"<input id="reply" type="text" placeHolderContent="Reply…"/>"#),
             "{x}"
         );
         assert!(
@@ -1336,7 +1336,7 @@ mod tests {
         );
         assert_eq!(activation("reply", Some(" \t")), Activation::Empty);
         assert_eq!(activation("reply", None), Activation::Empty);
-        let max = "ą".repeat(wind_core::notify::MAX_REPLY / 2);
+        let max = "ą".repeat(wind_core::notify::MAX_REPLY / 2); // i18n: data
         assert_eq!(
             activation("reply", Some(&max)),
             Activation::Reply(max.clone())
@@ -1371,7 +1371,7 @@ mod tests {
         let mut n = Notifications::new(tx, "Pixel 9");
         let with = |i: u8, reply: bool| Posted {
             id: [i; 16],
-            reply: reply.then(|| "Odpowiedz".into()),
+            reply: reply.then(|| "Reply".into()),
             ..posted()
         };
         for i in 0..(PANEL_ITEMS as u8 + 5) {
@@ -1384,7 +1384,7 @@ mod tests {
             hex(&[PANEL_ITEMS as u8 + 4; 16]),
             "newest first"
         );
-        assert_eq!(items[0].reply.as_deref(), Some("Odpowiedz"));
+        assert_eq!(items[0].reply.as_deref(), Some("Reply"));
         assert_eq!(items[1].reply, None);
         // Only ids shown in this session are acted on.
         let tag = hex(&[24; 16]);
@@ -1406,8 +1406,8 @@ mod tests {
         });
         assert_eq!(n.items()[0].status, Some("failed"));
         // Too long from a toast: kept as a draft for the panel.
-        n.too_long(&tag, "długi".into());
-        assert_eq!(n.items()[0].draft.as_deref(), Some("długi"));
+        n.too_long(&tag, "long".into());
+        assert_eq!(n.items()[0].draft.as_deref(), Some("long"));
         assert_eq!(n.items()[0].status, Some("too-long"));
         n.reply_sent(&tag, true);
         assert_eq!(n.items()[0].draft, None, "not kept after sending");

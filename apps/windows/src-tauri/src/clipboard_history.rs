@@ -659,7 +659,7 @@ mod tests {
     #[test]
     fn pins_encode_and_load_and_reject_garbage() {
         let mut h = History::default();
-        let t = h.record_text("zażółć\ngęślą", Direction::FromPhone, 7);
+        let t = h.record_text("zażółć\ngęślą", Direction::FromPhone, 7); // i18n: data
         let i = h.record_image(vec![9, 8], Some(image(10, 5)), 3, 4, Direction::ToPhone, 8);
         h.record_text("not pinned", Direction::ToPhone, 9);
         h.pin(t, true).unwrap();
@@ -677,12 +677,12 @@ mod tests {
             (views[0].width, views[0].height, views[0].at),
             (Some(3), Some(4), 8)
         );
-        assert_eq!(views[1].preview.as_deref(), Some("zażółć gęślą"));
+        assert_eq!(views[1].preview.as_deref(), Some("zażółć gęślą")); // i18n: data
         assert_eq!(views[1].direction, Direction::FromPhone);
         let Some((Item::Text(text), Direction::FromPhone)) = loaded.get(views[1].id) else {
             panic!()
         };
-        assert_eq!(text.as_str(), "zażółć\ngęślą");
+        assert_eq!(text.as_str(), "zażółć\ngęślą"); // i18n: data
         let Some((Item::Image { png, thumbnail, .. }, _)) = loaded.get(views[0].id) else {
             panic!()
         };
@@ -709,7 +709,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("clipboard-pins.bin");
         let mut h = History::default();
-        let t = h.record_text("hasło-nie-tu WN37 pin", Direction::ToPhone, 1);
+        let t = h.record_text("password-not-here WN37 pin", Direction::ToPhone, 1);
         h.pin(t, true).unwrap();
         save_pins(&path, &h.encode_pins()).unwrap();
         let file = std::fs::read(&path).unwrap();
@@ -720,7 +720,7 @@ mod tests {
         loaded.load_pins(&plain).unwrap();
         assert_eq!(
             loaded.views()[0].preview.as_deref(),
-            Some("hasło-nie-tu WN37 pin")
+            Some("password-not-here WN37 pin")
         );
         // The identity key's purpose can't open it, nor can a broken file be read.
         assert!(wind_core::identity::dpapi::unprotect(&file[5..]).is_err());

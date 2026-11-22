@@ -519,7 +519,7 @@ mod tests {
     fn keyboard_unicode_prefix_cleanup_and_physical_shortcut_guard() {
         use wind_core::protocol::KeyboardAction;
         use windows_sys::Win32::UI::Input::KeyboardAndMouse::*;
-        let text = "ą😀ą😀";
+        let text = "ą😀ą😀"; // i18n: data
         let units: Vec<_> = text.encode_utf16().collect();
         let events = keyboard_action(&KeyboardAction::Text(text.into())).unwrap();
         assert_eq!(events.len(), units.len() * 2);
@@ -649,7 +649,7 @@ mod tests {
             window,
             "test must own foreground before any input"
         );
-        let expected = "Zażółć gęślą jaźń 😀 ąą";
+        let expected = "Zażółć gęślą jaźń 😀 ąą"; // i18n: data
         Native::default()
             .apply(InputEvent::Keyboard(
                 wind_core::protocol::KeyboardAction::Text(expected.into()),
@@ -780,7 +780,7 @@ mod tests {
         .await
         .unwrap();
         assert!(!control.view().active);
-        assert!(control.view().message.contains("wyłączony"));
+        assert!(control.view().message.contains("Touchpad turned off"));
         assert!(output.lock().unwrap().contains(&None));
         control.stop().await;
         phone

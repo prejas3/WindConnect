@@ -44,10 +44,10 @@ class NotifyAppsTest {
         compose.onNodeWithTag("notifyAppMode${NotifyAppMode.OnlyChosen}").performClick()
         assertEquals("mode OnlyChosen", calls.last())
         compose.onNodeWithText("Signal").assertIsOff()
-        compose.onNodeWithText("Nie wysyłasz żadnych powiadomień. Wybierz aplikacje poniżej.").assertExists()
+        compose.onNodeWithText("You're not sending any notifications. Choose apps below.").assertExists()
         state = state.copy(chosen = setOf("com.whatsapp"))
         compose.onNodeWithText("WhatsApp").assertIsOn()
-        compose.onNodeWithText("Nie wysyłasz żadnych powiadomień. Wybierz aplikacje poniżej.").assertDoesNotExist()
+        compose.onNodeWithText("You're not sending any notifications. Choose apps below.").assertDoesNotExist()
     }
 
     @Test fun searchOnceTheListIsLong() {

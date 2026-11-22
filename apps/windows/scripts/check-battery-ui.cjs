@@ -15,8 +15,8 @@ const server = http.createServer(async (req, res) => {
   try { res.setHeader('Content-Type', types[path.extname(f)] || 'text/plain'); res.end(await fs.readFile(f)); }
   catch { res.writeHead(404).end(); }
 });
-const phone = { key: 'a'.repeat(64), name: 'Galaxy S25 Ultra z bardzo długą nazwą telefonu', fingerprint: 'K4TQ-9WZM-2HXP', paired_at: 1794300000, connected: true, owed: false };
-const state = battery => ({ phase: 'connected', phone: phone.name, qr: null, message: 'Połączono · Wi-Fi', skipped_records: 0, code: null, connected: true, devices: [phone], paired: true, battery });
+const phone = { key: 'a'.repeat(64), name: 'Galaxy S25 Ultra with a very long phone name that has to wrap', fingerprint: 'K4TQ-9WZM-2HXP', paired_at: 1794300000, connected: true, owed: false };
+const state = battery => ({ phase: 'connected', phone: phone.name, qr: null, message: 'Connected · Wi-Fi', skipped_records: 0, code: null, connected: true, devices: [phone], paired: true, battery });
 const stub = first => {
   window.__calls = [];
   window.__listeners = {};
@@ -36,7 +36,7 @@ const stub = first => {
   await new Promise(r => server.listen(0, '127.0.0.1', r));
   const browser = await chromium.launch({ headless: true });
   try {
-    const page = await browser.newPage({ locale: 'pl-PL', viewport: { width: 380, height: 640 } });
+    const page = await browser.newPage({ locale: 'en-US', viewport: { width: 380, height: 640 } });
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
     await page.addInitScript(stub, state({ level: 82, charging: false }));
@@ -49,14 +49,14 @@ const stub = first => {
     const snapshots = () => page.evaluate(() => window.__calls.filter(([c]) => c === 'pairing_snapshot').length);
 
     // 1. From the snapshot: 82%, not charging.
-    assert.deepEqual(await read(), { text: '82%', label: 'Bateria telefonu 82%', low: false, charging: false, hidden: false, width: 16 * 0.82 });
+    assert.deepEqual(await read(), { text: '82%', label: 'Phone battery 82%', low: false, charging: false, hidden: false, width: 16 * 0.82 });
     assert.equal(await box.getAttribute('role'), 'img');
     assert.equal(await box.evaluate(b => b.closest('[aria-live],[role="status"]')), null, 'no announcement on each change');
     const before = await snapshots();
 
     // 2. Pushed changes (no IPC call): charging, then low, then full.
     await emit(state({ level: 81, charging: true }));
-    assert.deepEqual(await read(), { text: '81%', label: 'Bateria telefonu 81%, ładuje się', low: false, charging: true, hidden: false, width: 16 * 0.81 });
+    assert.deepEqual(await read(), { text: '81%', label: 'Phone battery 81%, charging', low: false, charging: true, hidden: false, width: 16 * 0.81 });
     await emit(state({ level: 15, charging: false }));
     const low = await read();
     assert.equal(low.low, true); assert.equal(low.text, '15%');

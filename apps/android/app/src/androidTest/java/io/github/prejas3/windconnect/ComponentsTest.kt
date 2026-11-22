@@ -28,7 +28,7 @@ class ComponentsTest {
         compose.runOnIdle {
             val measurer = TextMeasurer(createFontFamilyResolver(compose.activity), Density(compose.activity), LayoutDirection.Ltr)
             val base = WindTypography.bodyLarge.copy(fontSize = 24.sp, lineHeight = 32.sp)
-            val text = "WindConnect SZYMON-PC Zażółć 0123456789"
+            val text = "WindConnect SZYMON-PC Zażółć 0123456789" // i18n: data
             val regular = measurer.measure(text, style = base.copy(fontWeight = FontWeight.Normal), softWrap = false).size.width
             val medium = measurer.measure(text, style = base.copy(fontWeight = FontWeight.Medium), softWrap = false).size.width
             val semibold = measurer.measure(text, style = base.copy(fontWeight = FontWeight.SemiBold), softWrap = false).size.width
@@ -45,26 +45,26 @@ class ComponentsTest {
         if (Build.VERSION.SDK_INT >= 31) {
             val dynamic = compose.onNodeWithTag("dynamicColor")
             // CCS/1 RULE:preferences survive other tests; normalize before checking both sources.
-            if (compose.onNodeWithTag("paletteSource").fetchSemanticsNode().config[androidx.compose.ui.semantics.SemanticsProperties.Text].first().text.contains("systemowy")) dynamic.performClick()
+            if (compose.onNodeWithTag("paletteSource").fetchSemanticsNode().config[androidx.compose.ui.semantics.SemanticsProperties.Text].first().text.contains("system color")) dynamic.performClick()
             compose.onNodeWithTag("paletteSource").assertTextContains("WN-20", substring = true)
             dynamic.performClick()
-            compose.onNodeWithTag("paletteSource").assertTextContains("systemowy", substring = true)
+            compose.onNodeWithTag("paletteSource").assertTextContains("system color", substring = true)
             dynamic.performClick()
         }
         compose.onNodeWithTag("actionSend").performScrollTo().performClick()
-        compose.onNodeWithTag("previewFeedback").performScrollTo().assertTextEquals("Przykład: wyślij plik")
+        compose.onNodeWithTag("previewFeedback").performScrollTo().assertTextEquals("Sample: send a file")
         compose.onNodeWithTag("sampleSwitch").performScrollTo().assertIsOn().performClick().assertIsOff()
         compose.onNodeWithTag("validateName").performScrollTo().performClick()
-        compose.onNodeWithText("Wpisz nazwę komputera.").assertExists()
-        compose.onNodeWithTag("sampleName").performScrollTo().performTextInput("Zażółć gęślą jaźń")
+        compose.onNodeWithText("Enter the computer's name.").assertExists()
+        compose.onNodeWithTag("sampleName").performScrollTo().performTextInput("Zażółć gęślą jaźń") // i18n: data
         compose.onNodeWithTag("validateName").performScrollTo().performClick()
-        compose.onNodeWithText("Wpisz nazwę komputera.").assertDoesNotExist()
-        compose.onNodeWithText("Niedostępny").assertIsNotEnabled()
+        compose.onNodeWithText("Enter the computer's name.").assertDoesNotExist()
+        compose.onNodeWithText("Unavailable").assertIsNotEnabled()
         compose.activityRule.scenario.recreate()
         compose.onNodeWithTag("componentPreview").assertExists()
         compose.onNodeWithTag("theme-Dark").performScrollTo().assertIsSelected()
         compose.onNodeWithTag("previewToggle").performClick()
-        compose.onNodeWithText("Test połączenia z PC").performScrollTo().performClick()
+        compose.onNodeWithText("PC connection test").performScrollTo().performClick()
         compose.onNodeWithTag("peerAddress").performScrollTo().assertExists()
         compose.onNodeWithTag("localKey").assertExists()
     }
@@ -73,7 +73,7 @@ class ComponentsTest {
         compose.onNodeWithTag("previewToggle").performClick()
         if (Build.VERSION.SDK_INT >= 31) {
             val source = compose.onNodeWithTag("paletteSource").fetchSemanticsNode().config[androidx.compose.ui.semantics.SemanticsProperties.Text].first().text
-            if (source.contains("systemowy")) compose.onNodeWithTag("dynamicColor").performClick()
+            if (source.contains("system color")) compose.onNodeWithTag("dynamicColor").performClick()
         }
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         for (theme in listOf("Light", "Dark")) {
@@ -87,7 +87,7 @@ class ComponentsTest {
                 assertEquals(theme == "Light", controller.isAppearanceLightStatusBars)
                 assertEquals(theme == "Light", controller.isAppearanceLightNavigationBars)
             }
-            compose.onNodeWithText("Podgląd komponentów").performSemanticsAction(SemanticsActions.GetTextLayoutResult) { action ->
+            compose.onNodeWithText("Component preview").performSemanticsAction(SemanticsActions.GetTextLayoutResult) { action ->
                 val layouts = mutableListOf<TextLayoutResult>()
                 action(layouts)
                 assertEquals(if (theme == "Dark") BrandDark.onBackground else BrandLight.onBackground, layouts.single().layoutInput.style.color)

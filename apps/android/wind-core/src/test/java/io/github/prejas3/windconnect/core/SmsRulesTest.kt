@@ -23,7 +23,7 @@ class SmsRulesTest {
 
     @Test fun cleanDropsControlAndBidiButKeepsText() {
         assertEquals("ab\nc", SmsRules.clean("a\u202Eb\u0007\nc\u200F"))
-        assertEquals("Zażółć 👋", SmsRules.clean("Zażółć 👋"))
+        assertEquals("Zażółć 👋", SmsRules.clean("Zażółć 👋")) // i18n: data
         assertEquals("x", SmsRules.clean("\u2066x\u2069"))
     }
 }

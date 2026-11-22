@@ -37,7 +37,7 @@ class HomeScreenTest {
         compose.setContent { WindConnectTheme(ThemeMode.Light, false) {
             Column(Modifier.verticalScroll(rememberScrollState())) { HomeScreen(ui.value, {}, {}, onSendFile = { clicked = true }) }
         } }
-        compose.onNodeWithTag("homeSend").assertIsNotEnabled().assert(SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.StateDescription, "Niedostępne"))
+        compose.onNodeWithTag("homeSend").assertIsNotEnabled().assert(SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.StateDescription, "Unavailable"))
         compose.runOnIdle { ui.value = ui.value.copy(filesAccepted = true) }
         compose.onNodeWithTag("homeSend").assertIsEnabled().performScrollTo().performClick()
         assertTrue(clicked)
@@ -52,13 +52,13 @@ class HomeScreenTest {
                 HomeScreen(PairingUi(ready = true, initialized = true), { scan = true }, onDiagnostics = {})
             }
         } }
-        compose.onNodeWithTag("computerName").assertTextEquals("Twój komputer")
-        compose.onNodeWithTag("pairingStatus").assertTextEquals("Brak sparowanego komputera")
+        compose.onNodeWithTag("computerName").assertTextEquals("Your computer")
+        compose.onNodeWithTag("pairingStatus").assertTextEquals("No paired computer")
         for (tag in listOf("homeSend", "homeTouchpad", "homeLock", "homeLink"))
-            compose.onNodeWithTag(tag).assertIsNotEnabled().assert(SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.StateDescription, "Niedostępne"))
+            compose.onNodeWithTag(tag).assertIsNotEnabled().assert(SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.StateDescription, "Unavailable"))
         // WN-160: the reason once on the card, not on each tile.
-        compose.onNodeWithTag("actionsOffline").assertTextEquals("Sparuj komputer, aby korzystać z akcji.")
-        compose.onAllNodesWithText("Niedostępne", useUnmergedTree = true).assertCountEquals(0)
+        compose.onNodeWithTag("actionsOffline").assertTextEquals("Pair a computer to use the actions.")
+        compose.onAllNodesWithText("Unavailable", useUnmergedTree = true).assertCountEquals(0)
         // WN-130: no received-files card before pairing, and no placeholder transfers.
         compose.onNodeWithTag("receiveFilesControls").assertDoesNotExist()
         compose.onNodeWithTag("scanQr").performScrollTo().performClick()
@@ -67,16 +67,16 @@ class HomeScreenTest {
 
     @Test fun disconnectKeepsComputerNameButRemovesStaleLatency() {
         val state = mutableStateOf(PairingUi(ready = true, initialized = true, hasPairedDevice = true,
-            computerName = "Mój PC", connection = ConnectionState.Connected("Mój PC", "test", 1234)))
+            computerName = "My PC", connection = ConnectionState.Connected("My PC", "test", 1234)))
         compose.setContent { WindConnectTheme(ThemeMode.Dark, false) {
             Column(Modifier.verticalScroll(rememberScrollState())) { HomeScreen(state.value, {}, onDiagnostics = {}) }
         } }
-        compose.onNodeWithTag("computerName").assertTextEquals("Mój PC")
+        compose.onNodeWithTag("computerName").assertTextEquals("My PC")
         compose.onNodeWithTag("computerLatency").assertTextContains("ms", substring = true)
         compose.runOnIdle { state.value = state.value.copy(connection = ConnectionState.Disconnected("test")) }
-        compose.onNodeWithTag("computerName").assertTextEquals("Mój PC")
-        compose.onNodeWithTag("pairingStatus").assertTextEquals("Komputer poza zasięgiem")
-        compose.onNodeWithTag("actionsOffline").assertTextEquals("Akcje będą dostępne, gdy komputer się połączy.")
+        compose.onNodeWithTag("computerName").assertTextEquals("My PC")
+        compose.onNodeWithTag("pairingStatus").assertTextEquals("Computer out of reach")
+        compose.onNodeWithTag("actionsOffline").assertTextEquals("Actions become available once the computer connects.")
     }
 
     @Test fun unavailableActionAtLargeFontDoesNotRunAndBecomesNormalWhenAvailable() {
@@ -89,7 +89,7 @@ class HomeScreenTest {
                 WindConnectTheme(mode.value, false) {
                     WindCard(Modifier.fillMaxWidth().testTag("actionComparison")) {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            WindAction("Wyślij plik", "Do komputera", "send", { calls++ }, Modifier.weight(1f).testTag("availableAction"))
+                            WindAction("Send a file", "To the computer", "send", { calls++ }, Modifier.weight(1f).testTag("availableAction"))
                             WindAction("Touchpad", "i klawiatura", "touch", if (available.value) ({ calls++ }) else null,
                                 Modifier.weight(1f).testTag("unavailableAction"))
                         }
@@ -99,7 +99,7 @@ class HomeScreenTest {
         }
         for (theme in listOf(ThemeMode.Light, ThemeMode.Dark)) {
             compose.runOnIdle { mode.value = theme }
-            compose.onNodeWithTag("unavailableAction").assertIsNotEnabled().assert(SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.StateDescription, "Niedostępne"))
+            compose.onNodeWithTag("unavailableAction").assertIsNotEnabled().assert(SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.StateDescription, "Unavailable"))
                 .performTouchInput { click() }
             compose.runOnIdle { assertEquals(0, calls) }
             compose.onNodeWithTag("availableAction").assertIsEnabled()

@@ -64,11 +64,11 @@ class RelaySettingsTest {
         compose.setContent { WindConnectTheme(ThemeMode.Light, false) {
             Column(Modifier.verticalScroll(rememberScrollState())) { HomeScreen(state.value, {}, onDiagnostics = {}) }
         } }
-        compose.onNodeWithTag("pairingStatus").assertTextEquals("Połączono przez przekaźnik")
-        compose.onNodeWithTag("computerLatency").assertTextContains("przez przekaźnik (E2E)", substring = true)
+        compose.onNodeWithTag("pairingStatus").assertTextEquals("Connected through the relay")
+        compose.onNodeWithTag("computerLatency").assertTextContains("via relay (E2E)", substring = true)
         compose.runOnIdle { state.value = state.value.copy(connection = ConnectionState.Connected("PC", "f", 900)) }
-        compose.onNodeWithTag("pairingStatus").assertTextEquals("Połączono")
-        compose.onNodeWithTag("computerLatency").assertTextContains("sieć lokalna", substring = true)
+        compose.onNodeWithTag("pairingStatus").assertTextEquals("Connected")
+        compose.onNodeWithTag("computerLatency").assertTextContains("local network", substring = true)
     }
 
     @Test fun addressSurvivesARestartAndARefusedOneIsNotSaved() = runBlocking {

@@ -5,16 +5,16 @@
     <header class="panel-heading"><div><h1><span class="state-dot" aria-hidden="true"></span><span id="phone-name" data-i18n="panel.phone-name"></span></h1><p id="connection-state" role="status" data-i18n="panel.connection-state"></p></div><p id="phone-battery" class="phone-battery" role="img" hidden><svg viewBox="0 0 24 12" aria-hidden="true"><rect class="shell" x="0.75" y="0.75" width="19.5" height="10.5" rx="2.5"/><rect class="tip" x="21" y="4" width="2" height="4" rx="1"/><rect class="level" x="2.5" y="2.5" width="16" height="7" rx="1.25"/><path class="bolt" d="M11.5 1.5 7.5 6.6h3l-1 3.9 4-5.1h-3z"/></svg><span class="battery-text"></span></p><button class="button quiet small" id="dismiss" data-i18n-aria-label="panel.dismiss_label"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button></header>
     <div id="quick-actions" class="quick-actions" data-i18n-aria-label="panel.quick-actions_label">
       <button id="send-files" data-i18n-aria-label="panel.send-files_label" data-i18n="panel.send-files"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V3m-5 5 5-5 5 5M5 16v5h14v-5"/></svg></button>
-      <button data-clipboard-send data-i18n-aria-label="panel.wyslij_schowek_na_telefon" data-i18n="panel.schowek"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="12" height="16" rx="2"/><rect x="9" y="2" width="6" height="5" rx="1"/><path d="M9 12h6m-6 4h6"/></svg></button>
-      <button id="find-phone" disabled aria-pressed="false" aria-describedby="find-status"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 17h14l-2-3V9a5 5 0 0 0-10 0v5zm5 4h4"/></svg><span class="find-label" data-i18n="panel.dzwon"></span></button>
+      <button data-clipboard-send data-i18n-aria-label="panel.send_the_clipboard_to_the" data-i18n="panel.clipboard"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="12" height="16" rx="2"/><rect x="9" y="2" width="6" height="5" rx="1"/><path d="M9 12h6m-6 4h6"/></svg></button>
+      <button id="find-phone" disabled aria-pressed="false" aria-describedby="find-status"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 17h14l-2-3V9a5 5 0 0 0-10 0v5zm5 4h4"/></svg><span class="find-label" data-i18n="panel.ring"></span></button>
       <button id="touchpad-toggle" aria-describedby="touchpad-status" data-i18n="panel.touchpad-toggle"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="m8 9 3 3 5-5M5 16h14m-7 0v5"/></svg></button>
     </div>
     <p id="find-status" class="find-status subtle" role="status"></p>
-    <form id="open-on-phone" class="open-on-phone" hidden><input id="phone-url" type="url" inputmode="url" placeholder="https://…" data-i18n-aria-label="panel.phone-url_label" autocomplete="off"><button class="button small" type="submit" data-i18n="panel.otworz_na_telefonie"></button></form>
+    <form id="open-on-phone" class="open-on-phone" hidden><input id="phone-url" type="url" inputmode="url" placeholder="https://…" data-i18n-aria-label="panel.phone-url_label" autocomplete="off"><button class="button small" type="submit" data-i18n="panel.open_on_the_phone"></button></form>
     <p id="open-on-phone-status" class="find-status subtle" role="status"></p>
     <button id="open-sms" class="button small sms-open" hidden data-i18n="panel.open-sms"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8m-8 3h5"/></svg></button>
     <section id="gallery" class="transfers gallery" aria-labelledby="gallery-title" hidden>
-      <div class="transfers-head"><h2 id="gallery-title" data-i18n="panel.gallery-title"></h2><span class="subtle" data-i18n="panel.przeciagnij_na_pulpit"></span></div>
+      <div class="transfers-head"><h2 id="gallery-title" data-i18n="panel.gallery-title"></h2><span class="subtle" data-i18n="panel.drag_to_the_desktop"></span></div>
       <ul id="gallery-list" class="gallery-list"></ul>
       <p id="gallery-status" class="find-status subtle" role="status"></p>
     </section>
@@ -44,7 +44,7 @@
     </section>
     <section id="notifications" class="transfers notifications" aria-labelledby="notifications-title" hidden>
       <div class="transfers-head"><h2 id="notifications-title" data-i18n="panel.notifications-title"></h2></div>
-      <p class="subtle notifications-note" data-i18n="panel.odrzucenie_tutaj_albo_zamkniecie"></p>
+      <p class="subtle notifications-note" data-i18n="panel.dismissing_here_or_closing_the"></p>
       <ul id="notification-list" class="transfer-list notification-list"></ul>
     </section>
     <section id="transfers" class="transfers" aria-labelledby="transfers-title" hidden>
@@ -54,11 +54,11 @@
       <ul id="transfers-list" class="transfer-list"></ul>
     </section>
     <section class="transfers clipboard-card" data-clipboard-controls hidden aria-labelledby="clipboard-title-panel">
-      <div class="transfers-head"><h2 id="clipboard-title-panel" data-i18n="panel.wspolny_schowek"></h2></div>
+      <div class="transfers-head"><h2 id="clipboard-title-panel" data-i18n="panel.shared_clipboard"></h2></div>
       <div class="control-row"><span id="clipboard-label" data-i18n="panel.clipboard-label"></span><button class="switch" role="switch" aria-checked="true" aria-labelledby="clipboard-label" data-clipboard-toggle></button></div>
       <div class="control-row"><span id="clipboard-limit-panel" data-i18n="panel.clipboard-limit-panel"></span><div class="segmented" role="group" aria-labelledby="clipboard-limit-panel" data-clipboard-limit><button data-limit="5" aria-pressed="false">5 MB</button><button data-limit="16" aria-pressed="true">16 MB</button><button data-limit="50" aria-pressed="false">50 MB</button></div></div><p data-clipboard-status role="status"></p><p class="subtle" data-clipboard-shortcut></p>
     </section>
-    <section class="history" data-clipboard-history hidden aria-labelledby="history-title-panel"><div class="transfers-head"><h2 id="history-title-panel" data-i18n="panel.history-title-panel"></h2><button class="button quiet small" data-history-clear data-i18n="panel.wyczysc"></button></div><p class="subtle" data-history-empty data-i18n="panel.tu_pojawia_sie_ostatnio"></p><ul class="history-list" data-history-list></ul></section>
+    <section class="history" data-clipboard-history hidden aria-labelledby="history-title-panel"><div class="transfers-head"><h2 id="history-title-panel" data-i18n="panel.history-title-panel"></h2><button class="button quiet small" data-history-clear data-i18n="panel.clear"></button></div><p class="subtle" data-history-empty data-i18n="panel.recently_shared_clipboards_show_up"></p><ul class="history-list" data-history-list></ul></section>
     <p id="files-notice" class="files-notice" role="status" hidden></p>
     <section id="devices" class="transfers devices" aria-labelledby="devices-title" hidden>
       <div class="transfers-head"><h2 id="devices-title" data-i18n="panel.devices-title"></h2><button id="device-add" class="button small device-add"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span data-i18n="panel.device-add"></span></button></div>
@@ -77,6 +77,6 @@
     <footer><button id="settings" class="button quiet small" data-i18n="panel.settings"></button><span id="shortcut" class="subtle">Win + Shift + W</span></footer>
     <p id="shortcut-error" class="subtle" role="status" hidden data-i18n="panel.shortcut-error"></p>
     <p id="panel-error" role="alert" hidden data-i18n="panel.panel-error"></p>
-    <div id="drop-zone" class="drop-zone" aria-hidden="true" hidden><svg viewBox="0 0 24 24"><path d="M12 16V3m-5 5 5-5 5 5M5 16v5h14v-5"/></svg><strong id="drop-title" data-i18n="panel.drop-title"></strong><span data-i18n="panel.pliki_i_foldery"></span></div>
+    <div id="drop-zone" class="drop-zone" aria-hidden="true" hidden><svg viewBox="0 0 24 24"><path d="M12 16V3m-5 5 5-5 5 5M5 16v5h14v-5"/></svg><strong id="drop-title" data-i18n="panel.drop-title"></strong><span data-i18n="panel.files_and_folders"></span></div>
   </main>
 </body></html>

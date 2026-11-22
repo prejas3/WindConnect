@@ -33,13 +33,13 @@ class ReceiveFilesUiTest {
                 Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp)) { ReceiveFilesControls(state, compact = false) }
             }
         } }
-        compose.onNodeWithText("Gotowy · Pobrane/WindConnect").assertExists()
-        compose.onNodeWithText("Anuluj odbiór").performScrollTo().assertIsEnabled()
+        compose.onNodeWithText("Ready · Downloads/WindConnect").assertExists()
+        compose.onNodeWithText("Cancel receiving").performScrollTo().assertIsEnabled()
         val progress = compose.onNode(SemanticsMatcher.keyIsDefined(SemanticsProperties.ProgressBarRangeInfo)).fetchSemanticsNode()
         assertEquals(.5f, progress.config[SemanticsProperties.ProgressBarRangeInfo].current)
         val image = compose.onRoot().captureToImage().asAndroidBitmap()
         File(InstrumentationRegistry.getInstrumentation().targetContext.cacheDir, "wn120-${mode.name}-150.png").outputStream().use { image.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }; image.recycle()
-        compose.onNodeWithText("Otwórz Pobrane").performScrollTo().assertIsEnabled()
+        compose.onNodeWithText("Open Downloads").performScrollTo().assertIsEnabled()
         compose.onNodeWithTag("received-receipt").performScrollTo().assertIsEnabled().assertTextContains("data (1).json", substring = true)
     }
 }

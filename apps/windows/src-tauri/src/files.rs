@@ -563,9 +563,9 @@ mod tests {
         std::fs::remove_file(file).unwrap();
         assert_eq!(
             checked_open_path(&row, &inbox).unwrap_err(),
-            "Plik został przeniesiony lub usunięty"
+            "The file was moved or deleted"
         );
-        assert!(parse_id(Some("ąąąąąąąąąąąąąąąą")).is_err());
+        assert!(parse_id(Some("ąąąąąąąąąąąąąąąą")).is_err()); // i18n: data
     }
 
     #[cfg(windows)]
@@ -690,12 +690,16 @@ mod tests {
     }
 
     #[test]
-    fn polish_counts() {
-        assert_eq!(files_word(1), "1 plik");
-        assert_eq!(files_word(3), "3 pliki");
-        assert_eq!(files_word(5), "5 plików");
-        assert_eq!(files_word(12), "12 plików");
-        assert_eq!(files_word(22), "22 pliki");
+    fn file_counts_in_english_and_polish() {
+        assert_eq!(files_word(1), "1 file");
+        assert_eq!(files_word(5), "5 files");
+        use crate::i18n::{trp_in, Lang::Pl};
+        let pl = |n| trp_in(Pl, "files.count", n);
+        assert_eq!(pl(1), "1 plik");
+        assert_eq!(pl(3), "3 pliki");
+        assert_eq!(pl(5), "5 plików"); // i18n: pl
+        assert_eq!(pl(12), "12 plików"); // i18n: pl
+        assert_eq!(pl(22), "22 pliki");
     }
 
     /// Files and a folder picked on the PC arrive on a receiving peer.

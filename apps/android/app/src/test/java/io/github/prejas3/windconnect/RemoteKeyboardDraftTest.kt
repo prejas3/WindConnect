@@ -6,13 +6,13 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class RemoteKeyboardDraftTest {
-    init { StringsForTests.usePolish() }
+    init { StringsForTests.useEnglish() }
     @Test fun onlyExplicitCompleteAndBoundedTextCanBeSubmitted() {
-        assertTrue(RemoteKeyboardDraft.canSend(TextFieldValue("Zażółć gęślą jaźń 😀")))
-        assertFalse(RemoteKeyboardDraft.canSend(TextFieldValue("ą",composition=TextRange(0,1))))
+        assertTrue(RemoteKeyboardDraft.canSend(TextFieldValue("Zażółć gęślą jaźń 😀"))) // i18n: data
+        assertFalse(RemoteKeyboardDraft.canSend(TextFieldValue("ą",composition=TextRange(0,1)))) // i18n: data
         assertFalse(RemoteKeyboardDraft.canSend(TextFieldValue()))
-        assertTrue(RemoteKeyboardDraft.canSend(TextFieldValue("ą".repeat(2048))))
-        assertFalse(RemoteKeyboardDraft.canSend(TextFieldValue("ą".repeat(2049))))
+        assertTrue(RemoteKeyboardDraft.canSend(TextFieldValue("ą".repeat(2048)))) // i18n: data
+        assertFalse(RemoteKeyboardDraft.canSend(TextFieldValue("ą".repeat(2049)))) // i18n: data
         assertFalse(RemoteKeyboardDraft.canSend(TextFieldValue("nul\u0000text")))
         assertFalse(RemoteKeyboardDraft.canSend(TextFieldValue("\uD83D")))
     }

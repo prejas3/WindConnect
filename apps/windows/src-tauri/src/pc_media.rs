@@ -508,9 +508,9 @@ mod tests {
             "ZuneMusic"
         );
         assert_eq!(app_name("C:\\Program Files\\VideoLAN\\VLC\\vlc.exe"), "vlc");
-        assert_eq!(app_name(""), "Komputer");
-        let polish = "ż".repeat(200);
+        assert_eq!(app_name(""), "Computer");
+        let polish = "ż".repeat(200); // i18n: data
         let cut = bounded(&polish, 256);
-        assert!(cut.len() <= 256 && cut.chars().all(|c| c == 'ż'));
+        assert!(cut.len() <= 256 && cut.chars().all(|c| c == 'ż')); // i18n: data
     }
 }

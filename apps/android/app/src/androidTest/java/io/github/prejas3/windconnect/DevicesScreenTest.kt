@@ -23,7 +23,7 @@ class DevicesScreenTest {
 
     private val desk = PairedEntry(ByteArray(32) { 1 }, "Biurko", "aaaa1111bbbb2222", 1_794_300_000uL, false)
     private val laptop = PairedEntry(ByteArray(32) { 2 }, "Laptop", "cccc3333dddd4444", 1_794_390_000uL, false)
-    private val gone = PairedEntry(ByteArray(32) { 3 }, "Komputer", "eeee5555ffff6666", 1_794_400_000uL, true)
+    private val gone = PairedEntry(ByteArray(32) { 3 }, "Computer", "eeee5555ffff6666", 1_794_400_000uL, true)
 
     @Test fun listRenameAndUnpairStayInTheCard() {
         val calls = mutableListOf<String>()
@@ -35,8 +35,8 @@ class DevicesScreenTest {
                     onRename = { e, n -> calls += "rename ${e.name} $n" }, onUnpair = { calls += "unpair ${it.name}" })
             }
         } }
-        compose.onNodeWithText("Połączony", substring = true).assertExists()
-        compose.onNodeWithText("komputer dowie się", substring = true).assertExists()
+        compose.onNodeWithText("Connected", substring = true).assertExists()
+        compose.onNodeWithText("the computer learns of it", substring = true).assertExists()
         // Connected computer: no "Connect"; the other one has it.
         compose.onAllNodesWithTag("deviceConnect").assertCountEquals(1)
         compose.onAllNodesWithTag("deviceConnect")[0].performScrollTo().performClick()
@@ -47,28 +47,28 @@ class DevicesScreenTest {
         compose.onNodeWithTag("deviceRename").performClick()
         compose.onNodeWithTag("renameField").performTextReplacement("   ")
         compose.onNodeWithTag("renameSave").performClick()
-        compose.onNodeWithText("Nazwa nie może być pusta").assertExists()
+        compose.onNodeWithText("The name can't be empty").assertExists()
         compose.onNodeWithTag("renameField").performTextReplacement("  Laptop Oli ")
         compose.onNodeWithTag("renameSave").performClick()
         assertEquals("rename Laptop Laptop Oli", calls.last())
 
         compose.onAllNodesWithTag("deviceMenu")[0].performScrollTo().performClick()
         compose.onNodeWithTag("deviceUnpair").performClick()
-        compose.onNodeWithTag("unpairQuestion").assertTextContains("Komputer też je usunie.", substring = true)
-        compose.onNodeWithText("Anuluj").performClick()
+        compose.onNodeWithTag("unpairQuestion").assertTextContains("The computer removes it too.", substring = true)
+        compose.onNodeWithText("Cancel").performClick()
         assert(calls.none { it.startsWith("unpair") }) { "Anuluj removes nothing: $calls" }
         compose.onAllNodesWithTag("deviceMenu")[1].performScrollTo().performClick()
         compose.onNodeWithTag("deviceUnpair").performClick()
-        compose.onNodeWithTag("unpairQuestion").assertTextContains("gdy znajdzie się w tej samej sieci", substring = true)
+        compose.onNodeWithTag("unpairQuestion").assertTextContains("once it's on the same network", substring = true)
         compose.onNodeWithTag("unpairConfirm").performClick()
         assertEquals("unpair Laptop", calls.last())
     }
 
     @Test fun endMessagesForUnpairBusyAndRefusal() {
-        assertEquals("Komputer usunął parowanie z tym telefonem", endMessage(ConnectionState.Disconnected("unpaired")))
-        assertEquals("Usunięto parowanie z komputerem", endMessage(ConnectionState.Disconnected(END_UNPAIRED_HERE)))
-        assert(endMessage(ConnectionState.Disconnected("busy"))!!.startsWith("Komputer jest połączony z innym telefonem"))
-        assertEquals("Komputer odrzuca połączenie — sparuj ponownie", endMessage(ConnectionState.Disconnected("untrusted")))
+        assertEquals("The computer removed its pairing with this phone", endMessage(ConnectionState.Disconnected("unpaired")))
+        assertEquals("Pairing with the computer removed", endMessage(ConnectionState.Disconnected(END_UNPAIRED_HERE)))
+        assert(endMessage(ConnectionState.Disconnected("busy"))!!.startsWith("The computer is connected to another phone"))
+        assertEquals("The computer refuses the connection — pair again", endMessage(ConnectionState.Disconnected("untrusted")))
         assertEquals(R.string.end_refused, endMessageRes(ConnectionState.Failed(REFUSED)))
         assertNull(endMessage(ConnectionState.Disconnected("going-away")))
     }

@@ -611,7 +611,7 @@ mod tests {
             Action::Dismiss { id: [7; 16] },
             Action::Reply {
                 id: [7; 16],
-                text: "Będę o 19 \u{1F44D}".into(),
+                text: "Be there at 7 \u{1F44D}".into(),
             },
             Action::Reply {
                 id: [7; 16],
@@ -673,7 +673,7 @@ mod tests {
     fn round_trips() {
         let png = vec![0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
         for m in [
-            Message::Posted(note("Będziesz o 19?")),
+            Message::Posted(note("Coming at 7?")),
             Message::Posted(Posted {
                 title: None,
                 text: None,

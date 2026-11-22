@@ -141,7 +141,7 @@ async fn reconnect_after_peer_restart_accepts_new_changes_and_stops_old_session(
 #[tokio::test]
 async fn real_bidirectional_text_links_and_echo() {
     let p = pair().await;
-    let text = "Zażółć 👩‍💻\nhttps://example.com/a?b=ż";
+    let text = "Zażółć 👩‍💻\nhttps://example.com/a?b=ż"; // i18n: data
     assert_eq!(p.a.send(text.into(), false, false).await, Status::Applied);
     assert_eq!(*p.mb.value.lock().unwrap(), text);
     assert_eq!(p.b.send(text.into(), false, false).await, Status::Unchanged);

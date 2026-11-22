@@ -24,7 +24,7 @@ async fn keyboard_v3_real_session_and_old_peer_refusal() {
         let mut rx = router.route_input_version(version, 8);
         let (phone, pc) = pair(router, true).await;
         let input = phone.input().unwrap();
-        let action = KeyboardAction::Text("Zażółć gęślą jaźń 😀".into());
+        let action = KeyboardAction::Text("Zażółć gęślą jaźń 😀".into()); // i18n: data
         assert_eq!(input.supports_keyboard(), version == 3);
         if version < 3 {
             assert!(input.keyboard(action).await.is_err());

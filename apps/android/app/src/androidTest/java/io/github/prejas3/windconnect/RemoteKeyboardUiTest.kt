@@ -16,29 +16,29 @@ class RemoteKeyboardUiTest {
     @get:Rule val compose=createComposeRule()
 
     @Test fun compositionBoundsAndDuplicateClicksKeepDraftLocal() {
-        var draft by mutableStateOf(TextFieldValue("ą",composition=TextRange(0,1)))
+        var draft by mutableStateOf(TextFieldValue("ą",composition=TextRange(0,1))) // i18n: data
         var active by mutableStateOf(true)
         val sent=mutableListOf<TouchpadCommand>()
         compose.setContent {MaterialTheme {RemoteKeyboard(draft,{draft=it},active){sent.add(it);true}}}
         compose.onNodeWithTag("remoteKeyboardSend").assertIsNotEnabled()
-        compose.runOnIdle {assertTrue(sent.isEmpty());draft=TextFieldValue("ą".repeat(2049))}
+        compose.runOnIdle {assertTrue(sent.isEmpty());draft=TextFieldValue("ą".repeat(2049))} // i18n: data
         compose.onNodeWithTag("remoteKeyboardSend").assertIsNotEnabled()
-        compose.runOnIdle {draft=TextFieldValue("Zażółć gęślą jaźń 😀")}
+        compose.runOnIdle {draft=TextFieldValue("Zażółć gęślą jaźń 😀")} // i18n: data
         val click=compose.onNodeWithTag("remoteKeyboardSend").assertIsEnabled().fetchSemanticsNode().config[SemanticsActions.OnClick].action!!
         compose.runOnIdle {click();click()}
-        compose.runOnIdle {assertEquals(1,sent.size);assertEquals("Zażółć gęślą jaźń 😀",(sent.single() as TouchpadCommand.Text).text);assertEquals("",draft.text);active=false}
+        compose.runOnIdle {assertEquals(1,sent.size);assertEquals("Zażółć gęślą jaźń 😀",(sent.single() as TouchpadCommand.Text).text);assertEquals("",draft.text);active=false} // i18n: data
         compose.onNodeWithTag("remoteKeyboardSend").assertIsNotEnabled()
     }
 
     @Test fun failedSubmissionRetainsDraftAndEditingAllowsAnIdenticalNextSubmission() {
-        var draft by mutableStateOf(TextFieldValue("ą"))
+        var draft by mutableStateOf(TextFieldValue("ą")) // i18n: data
         var allow=false
         val sent=mutableListOf<TouchpadCommand>()
         compose.setContent {MaterialTheme {RemoteKeyboard(draft,{draft=it},true){if(allow){sent.add(it);true}else false}}}
         compose.onNodeWithTag("remoteKeyboardSend").performClick()
-        compose.runOnIdle {assertEquals("ą",draft.text);assertTrue(sent.isEmpty());allow=true}
+        compose.runOnIdle {assertEquals("ą",draft.text);assertTrue(sent.isEmpty());allow=true} // i18n: data
         compose.onNodeWithTag("remoteKeyboardSend").performClick()
-        compose.onNodeWithTag("remoteKeyboardDraft").performTextInput("ą")
+        compose.onNodeWithTag("remoteKeyboardDraft").performTextInput("ą") // i18n: data
         compose.onNodeWithTag("remoteKeyboardSend").performClick()
         compose.runOnIdle {assertEquals(2,sent.size)}
     }

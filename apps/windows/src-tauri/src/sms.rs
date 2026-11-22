@@ -692,7 +692,7 @@ mod tests {
     #[test]
     fn clean_keeps_text_and_newlines() {
         assert_eq!(clean("a\u{202E}b\u{0007}c\nd\u{200F}"), "abc\nd");
-        assert_eq!(clean("Zażółć 👋"), "Zażółć 👋");
+        assert_eq!(clean("Zażółć 👋"), "Zażółć 👋"); // i18n: data
     }
 
     #[test]

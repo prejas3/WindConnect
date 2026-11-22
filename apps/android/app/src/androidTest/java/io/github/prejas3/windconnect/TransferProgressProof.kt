@@ -42,7 +42,7 @@ object TransferProgressProof {
             assertEquals(3, FileRetry.selection!!.uris.size)
             val target = FileRetry.selection!!.target
             compose.onNodeWithTag("retryFiles").performClick()
-            ready(); compose.onNodeWithTag("selectedFileCount").assertTextEquals("Wybrane pliki: 3")
+            ready(); compose.onNodeWithTag("selectedFileCount").assertTextEquals("Chosen files: 3")
             assertEquals(target, FileRetry.selection!!.target)
             compose.onNodeWithTag("confirmSendFiles").performScrollTo().performClick()
             withTimeout(15_000) { FileSending.status.first { !it.busy && it.completed == 3 } }

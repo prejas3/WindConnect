@@ -27,17 +27,17 @@ const full = {
   phase: 'connected', phone: 'Pixel 9', qr: null, message: '', skipped_records: 0, code: null, connected: true, devices,
   battery: { level: 64, charging: true },
   find: { available: true, state: 'idle', last: null, ring_ms: null },
-  media: { app: 'Spotify', title: 'Kaonashi', artist: 'Daria Zawiałow', album: 'Helsinki', art: pixel, playing: true, position_ms: 61000, duration_ms: 214000, actions: 15, speed: 1, at_ms: Date.now() },
+  media: { app: 'Spotify', title: 'Kaonashi', artist: 'Daria Zawiałow', album: 'Helsinki', art: pixel, playing: true, position_ms: 61000, duration_ms: 214000, actions: 15, speed: 1, at_ms: Date.now() }, // i18n: data
   phone_volume: { level: 40, muted: false, controllable: true },
   call_toasts: true,
   missed_calls: [{ who: 'Ola', number: '+48 600 100 200', date_ms: 1794300000000 }],
-  notifications: [{ tag: 'n1', app: 'Signal', title: 'Ola', text: 'Będziesz o 19?', reply: 'Odpowiedz', status: null }],
+  notifications: [{ tag: 'n1', app: 'Signal', title: 'Ola', text: 'Coming at 7?', reply: 'Reply', status: null }],
   sms: true, open_links: true,
   touchpad: { allowed: true, active: false, message: '' },
 };
 const files = { phone: 'Pixel 9', active: 1, activeSize: 100, activeDone: 40, rows: [
   { key: 'o:1', id: 1, direction: 'outgoing', name: 'raport.pdf', state: 'running', done: 40, size: 100, rate: 10, canRetry: false, canOpen: false },
-  { key: 'i:2', id: 2, direction: 'incoming', name: 'zdjęcie.jpg', state: 'done', done: 10, size: 10, rate: null, canRetry: false, canOpen: true },
+  { key: 'i:2', id: 2, direction: 'incoming', name: 'photo.jpg', state: 'done', done: 10, size: 10, rate: null, canRetry: false, canOpen: true },
 ] };
 const history = [{ id: 1, kind: 'text', preview: 'https://example.com', direction: 'to-phone', at: 1794300000000, pinned: false, ready: true }];
 const gallery = { available: true, photos: [{ id: 1, name: 'IMG_2041.jpg', date_ms: 1794300000000, screenshot: false, thumb: pixel }] };
@@ -47,7 +47,7 @@ function stub({ state, files, history, gallery }) {
   window.__TAURI__ = {
     core: { invoke: async cmd => ({
       pairing_snapshot: state, files_snapshot: files, panel_snapshot: { shortcut_error: null },
-      clipboard_snapshot: { enabled: true, status: 'Synchronizacja automatyczna', shortcut_error: false, image_limit_mb: 16 },
+      clipboard_snapshot: { enabled: true, status: 'Automatic sync', shortcut_error: false, image_limit_mb: 16 },
       clipboard_history: history, gallery_state: gallery, core_version: '0.75.0', ui_dev_mode: false,
       autostart_state: { enabled: true, available: true }, actions_snapshot: null,
     })[cmd] ?? null },
@@ -124,7 +124,7 @@ async function walk(page, label) {
   const problems = [];
   try {
     for (const theme of ['light', 'dark']) {
-      const page = await browser.newPage({ locale: 'pl-PL', viewport: { width: 380, height: 760 }, colorScheme: theme });
+      const page = await browser.newPage({ locale: 'en-US', viewport: { width: 380, height: 760 }, colorScheme: theme });
       const errors = []; page.on('pageerror', e => errors.push(e.message));
       await page.addInitScript(stub, { state: full, files: files, history: history, gallery: gallery });
       await page.goto(`${base}/panel.html`);
@@ -137,7 +137,7 @@ async function walk(page, label) {
         assert.ok(ids.includes(must), `panel ${theme}: ${must} reachable by Tab (order: ${ids})`);
       // Enter/Space work on the reached controls: the device menu opens and Escape closes it, focus stays on the panel.
       // WN-161: rename is in the row's "…" menu: Enter opens it with the first entry focused, Enter on it opens rename.
-      await page.locator('button[aria-label^="Więcej działań"]').first().focus();
+      await page.locator('button[aria-label^="More actions"]').first().focus();
       await page.keyboard.press('Enter');
       assert.equal(await page.evaluate(() => document.activeElement.getAttribute('role')), 'menuitem', 'menu opened by keyboard');
       await page.keyboard.press('Enter');
@@ -155,7 +155,7 @@ async function walk(page, label) {
       assert.deepEqual(errors, [], `panel ${theme}: page errors`);
       await page.close();
       for (const file of ['index.html', 'sms.html', 'tray-menu.html']) {
-        const other = await browser.newPage({ locale: 'pl-PL', viewport: { width: 920, height: 800 }, colorScheme: theme });
+        const other = await browser.newPage({ locale: 'en-US', viewport: { width: 920, height: 800 }, colorScheme: theme });
         await other.addInitScript(stub, { state: full, files: files, history: history, gallery: gallery });
         await other.goto(`${base}/${file}`);
         await other.waitForTimeout(400);
@@ -165,7 +165,7 @@ async function walk(page, label) {
       }
     }
     // Forced colors (Windows contrast themes): controls keep visible borders and the focus ring.
-    const hc = await browser.newPage({ locale: 'pl-PL', viewport: { width: 380, height: 760 }, forcedColors: 'active' });
+    const hc = await browser.newPage({ locale: 'en-US', viewport: { width: 380, height: 760 }, forcedColors: 'active' });
     await hc.addInitScript(stub, { state: full, files: files, history: history, gallery: gallery });
     await hc.goto(`${base}/panel.html`);
     await hc.locator('#media:not([hidden])').waitFor();

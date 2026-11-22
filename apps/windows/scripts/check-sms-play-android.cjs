@@ -78,7 +78,7 @@ let app, instrument, browser, socket, timer, redirected = false, output = '';
     await until(async () => (sms = browser.contexts().flatMap(c => c.pages()).find(p => p.url().includes('sms.html'))), 'sms window');
     await sms.waitForLoadState();
     const text = await until(() => sms.evaluate(() => document.querySelector('#threads-status')?.textContent || ''), 'status text');
-    assert(text.includes('nie udostępnia SMS') && text.includes('Google Play'), text);
+    assert(text.includes("doesn't share SMS") && text.includes('Google Play'), text);
     await sms.screenshot({ path: path.join(root, 'pc-sms-window-play.png') });
     const report = { playPermissions: 'no SMS, Call Log, contacts', storeVariantTest: 'play', smsOffered: false, smsStatus: { connected: true, available: false }, windowText: text, artifacts: root };
     await fs.writeFile(path.join(root, 'run.json'), JSON.stringify(report, null, 2));

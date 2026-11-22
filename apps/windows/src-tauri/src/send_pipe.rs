@@ -150,7 +150,7 @@ mod tests {
     #[test]
     fn messages_round_trip_and_bad_ones_are_void() {
         let paths = vec![
-            PathBuf::from(r"C:\Users\a\Zdjęcia\IMG 1.jpg"),
+            PathBuf::from(r"C:\Users\a\Zdjęcia\IMG 1.jpg"), // i18n: data
             PathBuf::from(r"D:\Projekt"),
         ];
         assert_eq!(decode(&encode(&paths).unwrap()), Some(paths));

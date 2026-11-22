@@ -285,7 +285,8 @@ mod tests {
 
     #[test]
     fn rejects_bad_ids_and_lengths() {
-        for id in ["", "Lock", "lock now", "lock;rm", "x/y", "zażółć"] {
+        let ids = ["", "Lock", "lock now", "lock;rm", "x/y", "zażółć"]; // i18n: data
+        for id in ids {
             let m = RawMessage::new(0, map(vec![(0, Value::Text(id.into()))]));
             assert!(Request::decode(m).is_err(), "{id:?}");
         }

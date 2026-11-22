@@ -9,14 +9,14 @@ fn action(text: &str) -> KeyboardAction {
 
 #[test]
 fn keyboard_codec_limits_and_datagram_refusal() {
-    let vector = encode_payload(&Message::Input(SenderCore::new(0).keyboard(action("ą")))).unwrap();
+    let vector = encode_payload(&Message::Input(SenderCore::new(0).keyboard(action("ą")))).unwrap(); // i18n: data
     assert_eq!(
         vector,
         vec![0x82, 5, 0xa7, 0, 1, 1, 0x62, 0xc4, 0x85, 2, 0, 3, 0, 4, 1, 5, 0, 6, 0]
     );
     for value in [
-        action("Zażółć gęślą jaźń 😀"),
-        action(&"ą".repeat(2048)),
+        action("Zażółć gęślą jaźń 😀"), // i18n: data
+        action(&"ą".repeat(2048)),      // i18n: data
         KeyboardAction::Key {
             code: 67,
             modifiers: 1,
@@ -41,7 +41,7 @@ fn keyboard_codec_limits_and_datagram_refusal() {
     for value in [
         action(""),
         action("nul\0text"),
-        action(&"ą".repeat(2049)),
+        action(&"ą".repeat(2049)), // i18n: data
         KeyboardAction::Key {
             code: 67,
             modifiers: 8,
@@ -107,7 +107,7 @@ fn keyboard_barriers_order_totals_unknown_keys_and_old_versions() {
     let mut sender = SenderCore::new(0);
     sender.pointer(100, 0, None);
     sender.scroll(0, 200, None);
-    let text = sender.keyboard(action("ą😀ą"));
+    let text = sender.keyboard(action("ą😀ą")); // i18n: data
     let future = sender.pointer(50, 0, None);
     let mut out = vec![];
     let mut receiver = InputReceiver::with_version(true, 3);
@@ -128,7 +128,7 @@ fn keyboard_barriers_order_totals_unknown_keys_and_old_versions() {
             InputEvent::Pointer { dx: 50, .. }
         ]
     ));
-    assert_eq!(out[2], InputEvent::Keyboard(action("ą😀ą")));
+    assert_eq!(out[2], InputEvent::Keyboard(action("ą😀ą"))); // i18n: data
     out.clear();
     receiver
         .stream_frame(

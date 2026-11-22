@@ -71,7 +71,7 @@ let app, instrument, browser, socket, timer, redirected = false, batterySet = fa
     set('unplug'); set('set', 'status', '3'); set('set', 'level', '42');
     steps.discharging42Ms = await battery({ level: 42, charging: false }, '42%');
     assert.equal(await panel.locator('#phone-battery .battery-text').textContent(), '42%');
-    assert.equal(await panel.locator('#phone-battery').getAttribute('aria-label'), 'Bateria telefonu 42%');
+    assert.equal(await panel.locator('#phone-battery').getAttribute('aria-label'), 'Phone battery 42%');
     set('set', 'level', '14');
     steps.low14Ms = await battery({ level: 14, charging: false }, '14%');
     assert.equal(await panel.locator('#phone-battery.low').count(), 1, 'low look in the panel');
@@ -82,7 +82,7 @@ let app, instrument, browser, socket, timer, redirected = false, batterySet = fa
     steps.full100Ms = await battery({ level: 100, charging: true }, 'full');
     await delay(300);
     const alerts = await invoke('dev_battery_alerts');
-    assert.deepEqual(alerts, ['Bateria telefonu: 14%', 'Telefon naładowany'], 'one low and one full alert; none for the first value');
+    assert.deepEqual(alerts, ['Phone battery: 14%', 'Phone charged'], 'one low and one full alert; none for the first value');
     await panel.screenshot({ path: path.join(root, 'pc-battery-full.png') });
     for (let attempt = 0; attempt < 1200 && instrument.exitCode === null; attempt++) await delay(50);
     await fs.writeFile(path.join(root, 'instrumentation.log'), output);

@@ -18,11 +18,11 @@ const server = http.createServer(async (req, res) => {
     await fs.mkdir(out,{recursive:true});await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
     browser=await chromium.launch({headless:true});
     for(const theme of ['light','dark']) {
-      const page=await browser.newPage({ locale: 'pl-PL', viewport:{width:480,height:900}});
+      const page=await browser.newPage({ locale: 'en-US', viewport:{width:480,height:900}});
       const errors=[];page.on('pageerror',e=>errors.push(e.message));
       await page.addInitScript(({theme})=>{
         localStorage.setItem('windconnect-theme',theme);
-        const state={phase:'connected',phone:'S25',connected:true,devices:[],notifications:[],missed_calls:[],qr:null,code:null,message:'Połączono',paired:true,find:{available:false,state:'idle'},touchpad:{allowed:true,active:true,message:'Telefon steruje kursorem · <img src=x>'}};
+        const state={phase:'connected',phone:'S25',connected:true,devices:[],notifications:[],missed_calls:[],qr:null,code:null,message:'Connected',paired:true,find:{available:false,state:'idle'},touchpad:{allowed:true,active:true,message:'Telefon steruje kursorem · <img src=x>'}};
         window.__calls=[];window.__listeners={};
         window.__TAURI__={core:{invoke:async(cmd,args)=>{
           window.__calls.push([cmd,args]);
@@ -42,11 +42,11 @@ const server = http.createServer(async (req, res) => {
       assert.equal(await page.locator('#touchpad-status img').count(),0);
       await page.addStyleTag({content:'html {font-size:150%}'});
       await page.screenshot({path:path.join(out,`${theme}-150.png`),fullPage:true});
-      await page.getByRole('button',{name:'Wyłącz sterowanie',exact:true}).click();
-      await page.getByRole('button',{name:'Włącz sterowanie',exact:true}).waitFor();
-      assert.equal(await page.locator('#touchpad-status').textContent(),'Touchpad i klawiatura z telefonu są wyłączone');
+      await page.getByRole('button',{name:'Turn control off',exact:true}).click();
+      await page.getByRole('button',{name:'Turn control on',exact:true}).waitFor();
+      assert.equal(await page.locator('#touchpad-status').textContent(),'Touchpad and keyboard from the phone are off');
       await page.locator('#touchpad-toggle').click();
-      await page.getByRole('button',{name:'Wyłącz sterowanie',exact:true}).waitFor();
+      await page.getByRole('button',{name:'Turn control off',exact:true}).waitFor();
       const calls=await page.evaluate(()=>window.__calls.filter(([c])=>c==='pairing_action'));
       assert.deepEqual(calls.map(([,a])=>a.action),['touchpad-off','touchpad-on']);assert.deepEqual(errors,[]);
       assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);

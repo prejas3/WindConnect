@@ -103,27 +103,27 @@ let app, instrument, browser, socket, timer, redirected = false, output = '';
     await field.fill(url);
     const sent = Date.now();
     await panel.locator('#open-on-phone button').click();
-    await until(async () => (await statusText()) === 'Otwarto na telefonie' || null, 'opened (panel status)');
+    await until(async () => (await statusText()) === 'Opened on the phone' || null, 'opened (panel status)');
     report.panelToDoneMs = Date.now() - sent;
     const resumed = () => sh('dumpsys activity activities').split('\n').filter(l => /topResumedActivity|mResumedActivity/.test(l)).join(' ');
     report.frontActivity = await until(() => { const r = resumed(); return /chrome|browser|webview/i.test(r) ? r.trim().slice(0, 160) : null; }, 'a browser in front on the phone', 15000);
     // 3. Not a web address: refused before it leaves the PC.
     await field.fill('file:///etc/hosts');
     await panel.locator('#open-on-phone button').click();
-    await until(async () => (await statusText()) === 'To nie jest adres http(s)' || null, 'bad argument');
+    await until(async () => (await statusText()) === 'This isn\'t an http(s) address' || null, 'bad argument');
     // 4. In the background: a notification to tap, not an activity.
     sh('input keyevent KEYCODE_HOME');
     await delay(1000);
     await field.fill('https://example.com/?wn100=background');
     await panel.locator('#open-on-phone button').click();
-    await until(async () => (await statusText()) === 'Otwarto na telefonie' || null, 'offered in the background');
+    await until(async () => (await statusText()) === 'Opened on the phone' || null, 'offered in the background');
     report.backgroundNotification = await until(() => /links_from_pc/.test(sh('dumpsys notification --noredact')) || null, 'link notification on the phone', 10000);
     // 5. "Open links from the computer" off: refused.
     command('links-off');
     await delay(800);
     await field.fill('https://example.com/?wn100=off');
     await panel.locator('#open-on-phone button').click();
-    await until(async () => (await statusText()).startsWith('Telefon odrzucił') || null, 'refused with links off');
+    await until(async () => (await statusText()).startsWith('The phone refused') || null, 'refused with links off');
     report.linksOffRefused = true;
     await panel.screenshot({ path: path.join(root, 'pc-panel-open-on-phone.png') });
     command('done');

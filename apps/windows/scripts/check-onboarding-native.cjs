@@ -1,5 +1,5 @@
 // CCS/1 PURPOSE:WC-34 first start of the real app with an empty store: the main window (not the panel) shows the QR
-// without a click; a phone stand-in pairs from the decoded canvas; step 3 "Gotowe" shows. Reports what the system adds:
+// without a click; a phone stand-in pairs from the decoded canvas; step 3 "Done" shows. Reports what the system adds:
 // launch -> QR on screen, QR decoded -> Gotowe. The "< 60 s for a new user" verdict comes from a person, not this script.
 // DEP:Playwright 1.61.1 (PLAYWRIGHT_MODULE), JAVA_HOME + ZXING_CORE_JAR, `cargo build -p windconnect-windows`,
 // `cargo build -p wind-ffi --example desktop_pairing_peer`; the installed WindConnect closed (single instance).
@@ -41,7 +41,7 @@ async function waitState(predicate, timeout = 10000) {
     assert.equal(visible.main_visible, true, 'the main window opened itself');
     assert.equal((await invoke('panel_snapshot')).visible, false, 'not the panel');
     assert.equal(await main.locator('#home').isVisible(), false);
-    assert.equal(await main.locator('#onboarding-qr').getAttribute('aria-label'), 'Kod parowania');
+    assert.equal(await main.locator('#onboarding-qr').getAttribute('aria-label'), 'Pairing code');
     for (const theme of ['light', 'dark']) {
       await main.evaluate(t => { localStorage.setItem('windconnect-theme', t); document.documentElement.dataset.theme = t; }, theme);
       await main.screenshot({ path: path.join(root, `onboarding-qr-${theme}.png`) });
@@ -57,7 +57,7 @@ async function waitState(predicate, timeout = 10000) {
     peer = spawn(peerExe, [offerFile, await invoke('dev_pairing_address'), path.join(root, 'phone')], { windowsHide: true, stdio: 'ignore' });
     await main.locator('#onboarding-done').waitFor({ state: 'visible', timeout: 15000 });
     const qrToDoneMs = performance.now() - scanned;
-    assert.match(await main.locator('#onboarding-done-title').textContent(), /Testowy telefon połączony/);
+    assert.match(await main.locator('#onboarding-done-title').textContent(), /Testowy telefon connected/);
     assert.equal(await main.evaluate(() => document.activeElement?.id), 'onboarding-finish');
     for (const theme of ['light', 'dark']) {
       await main.evaluate(t => { document.documentElement.dataset.theme = t; }, theme);

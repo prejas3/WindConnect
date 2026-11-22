@@ -65,7 +65,7 @@ object PcActionText {
 
     /**
      * WN-173: [link] as the PC takes it (wind-core `check_url`: printable ASCII only, no `"<>\^`{|}`, an ASCII host).
-     * CCS/1 M:WN-173 cause (one of two): a link copied as text keeps its letters (https://pl.wikipedia.org/wiki/Łódź,
+     * CCS/1 M:WN-173 cause (one of two): a link copied as text keeps its letters (a Polish letter in the path,
      * an IDN host, a `|` in a query), the PC answered bad-argument and nothing opened. Here the host goes to punycode and
      * every other byte the PC refuses is percent-encoded as UTF-8; an existing %XX stays as it is.
      */

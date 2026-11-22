@@ -154,8 +154,8 @@ mod tests {
     fn tooltip_and_badge() {
         assert_eq!(tooltip(None), "");
         let b = |level, charging| Some(Battery { level, charging });
-        assert_eq!(tooltip(b(82, false)), " · bateria 82%");
-        assert_eq!(tooltip(b(82, true)), " · bateria 82%, ładuje się");
+        assert_eq!(tooltip(b(82, false)), " · battery 82%");
+        assert_eq!(tooltip(b(82, true)), " · battery 82%, charging");
         assert!(is_low(b(15, false)));
         assert!(!is_low(b(15, true)), "charging: no badge");
         assert!(!is_low(b(16, false)));
@@ -179,10 +179,10 @@ mod tests {
         assert_eq!(
             alert_text(Alert::Low(14), "Pixel 9"),
             (
-                "Bateria telefonu: 14%".into(),
-                "Pixel 9 · podłącz ładowarkę.".into()
+                "Phone battery: 14%".into(),
+                "Pixel 9 · plug in the charger.".into()
             )
         );
-        assert_eq!(alert_text(Alert::Full, "Pixel 9").0, "Telefon naładowany");
+        assert_eq!(alert_text(Alert::Full, "Pixel 9").0, "Phone charged");
     }
 }

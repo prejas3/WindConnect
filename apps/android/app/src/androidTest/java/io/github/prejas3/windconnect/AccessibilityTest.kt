@@ -95,9 +95,9 @@ class AccessibilityTest {
     @Test fun settings() {
         // WN-130: the settings screen's groups, as PairingScreen lays them out.
         everyCase {
-            io.github.prejas3.windconnect.ui.WindSection("Telefon na komputerze") { NotifyControls(); SmsControls(); CallControls(); GalleryControls(); MediaControls() }
-            io.github.prejas3.windconnect.ui.WindSection("Komputer na telefonie") { PcMediaControls(); LinkControls(); FindControls(); ReceiveSettingRow() }
-            io.github.prejas3.windconnect.ui.WindSection("Schowek, skróty i praca w tle") { BackgroundControls(true); ClipboardTileControls(); LauncherShortcutControls(); WidgetControls(); RelayControls() }
+            io.github.prejas3.windconnect.ui.WindSection("Phone on the computer") { NotifyControls(); SmsControls(); CallControls(); GalleryControls(); MediaControls() }
+            io.github.prejas3.windconnect.ui.WindSection("Computer on the phone") { PcMediaControls(); LinkControls(); FindControls(); ReceiveSettingRow() }
+            io.github.prejas3.windconnect.ui.WindSection("Clipboard, shortcuts and background") { BackgroundControls(true); ClipboardTileControls(); LauncherShortcutControls(); WidgetControls(); RelayControls() }
         }
         // TalkBack's heading navigation jumps between the settings groups.
         val headings = compose.onAllNodes(isHeading(), useUnmergedTree = true).fetchSemanticsNodes().size
@@ -109,14 +109,14 @@ class AccessibilityTest {
         screen {
             io.github.prejas3.windconnect.ui.WindSlider(0.4f, {}, Modifier.testTag("slider"))
             io.github.prejas3.windconnect.ui.WindSegmented(listOf(5, 16), 5, { "$it MB" }, {}, tag = { "seg$it" })
-            io.github.prejas3.windconnect.ui.WindSettingRow("pc", "Wiersz", "Opis", more = { androidx.compose.material3.Text("Szczegóły") })
+            io.github.prejas3.windconnect.ui.WindSettingRow("pc", "Row", "Description", more = { androidx.compose.material3.Text("Details") })
         }
         compose.onNodeWithTag("slider").assertHeightIsAtLeast(48.dp)
         compose.onNodeWithTag("seg16").assertHeightIsAtLeast(48.dp)
-        compose.onNodeWithContentDescription("Więcej: Wiersz").assertHeightIsAtLeast(48.dp)
+        compose.onNodeWithContentDescription("More: Row").assertHeightIsAtLeast(48.dp)
     }
 
-    @Test fun pairedAndReceiving() = everyCase { DoneScreen("Biurko", "Połączono z komputerem", onDone = {}); ReceiveFilesControls() }
+    @Test fun pairedAndReceiving() = everyCase { DoneScreen("Biurko", "Connected to the computer", onDone = {}); ReceiveFilesControls() }
 
     /** The harness itself: an unlabeled 10 dp button must fail the checks, or the passes above prove nothing. */
     @Test fun checksCatchABadControl() {

@@ -14,7 +14,7 @@ class NotificationRulesTest {
 
     private fun parts(
         title: CharSequence? = "Ola",
-        text: CharSequence? = "Będziesz o 19?",
+        text: CharSequence? = "Coming at 7?",
         flags: Int = 0,
         category: String? = null,
         visibility: Int = Notification.VISIBILITY_PRIVATE,
@@ -30,7 +30,7 @@ class NotificationRulesTest {
         bigText, text, progressMax, indeterminate)
 
     @Test fun anOrdinaryNotificationGoes() {
-        assertEquals(NotificationContent("Ola", "Będziesz o 19?", false), NotificationRules.content(parts(), own))
+        assertEquals(NotificationContent("Ola", "Coming at 7?", false), NotificationRules.content(parts(), own))
     }
 
     @Test fun persistentAndOtherKindsAreSkipped() {
@@ -55,16 +55,16 @@ class NotificationRulesTest {
     }
 
     @Test fun titlesAndTextsComeFromTheRightExtras() {
-        assertEquals("Rodzina", NotificationRules.content(parts(conversationTitle = "Rodzina", bigTitle = "x"), own)!!.title)
-        assertEquals("Długi tytuł", NotificationRules.content(parts(bigTitle = "Długi tytuł"), own)!!.title)
-        assertEquals("cały tekst", NotificationRules.content(parts(bigText = "cały tekst"), own)!!.text)
+        assertEquals("Family", NotificationRules.content(parts(conversationTitle = "Family", bigTitle = "x"), own)!!.title)
+        assertEquals("Long title", NotificationRules.content(parts(bigTitle = "Long title"), own)!!.title)
+        assertEquals("whole text", NotificationRules.content(parts(bigText = "whole text"), own)!!.text)
         // Messaging: the last message; who wrote it when that isn't already the title.
-        val chat = parts(title = "Ola", text = "2 nowe wiadomości", messages = listOf("Ola" to "pierwsza", "Ola" to "druga"))
-        assertEquals("druga", NotificationRules.content(chat, own)!!.text)
-        val group = parts(conversationTitle = "Rodzina", messages = listOf("Ola" to "hej", "Piotr" to "Biorę klucze"))
-        assertEquals(NotificationContent("Rodzina", "Piotr: Biorę klucze", false), NotificationRules.content(group, own))
-        val lastEmpty = parts(title = "Ola", messages = listOf("Ola" to "tekst", "Ola" to ""))
-        assertEquals("tekst", NotificationRules.content(lastEmpty, own)!!.text)
+        val chat = parts(title = "Ola", text = "2 new messages", messages = listOf("Ola" to "first", "Ola" to "second"))
+        assertEquals("second", NotificationRules.content(chat, own)!!.text)
+        val group = parts(conversationTitle = "Family", messages = listOf("Ola" to "hi", "Piotr" to "Picking up the keys"))
+        assertEquals(NotificationContent("Family", "Piotr: Picking up the keys", false), NotificationRules.content(group, own))
+        val lastEmpty = parts(title = "Ola", messages = listOf("Ola" to "text", "Ola" to ""))
+        assertEquals("text", NotificationRules.content(lastEmpty, own)!!.text)
     }
 
     @Test fun progressIsMarked() {
@@ -79,7 +79,7 @@ class NotificationRulesTest {
         assertEquals("evil.exe", NotificationRules.clean("‮evil⁦.exe‏", 100))
         assertEquals("bell", NotificationRules.clean("be\u0007ll\u0000", 100))
         assertEquals("👨‍👩‍👧", NotificationRules.clean("👨‍👩‍👧", 100))
-        val long = NotificationRules.clean("ż".repeat(2000), NotificationRules.MAX_TEXT)!!
+        val long = NotificationRules.clean("ż".repeat(2000), NotificationRules.MAX_TEXT)!! // i18n: data
         assertTrue(long.toByteArray().size <= NotificationRules.MAX_TEXT)
         assertNull(NotificationRules.clean(null, 10))
         assertNull(NotificationRules.clean("\n \t", 10))
@@ -93,9 +93,9 @@ class NotificationRulesTest {
         // Mark as read (no input), then Reply (free-form): the reply.
         assertEquals(1, NotificationRules.replyAction(listOf(a("Przeczytane"), a("Odpowiedz", none, false, true))))
         // Two with free-form input: SEMANTIC_ACTION_REPLY wins over the first.
-        assertEquals(2, NotificationRules.replyAction(listOf(a("Notatka", none, false, true), a("x"), a("Odpowiedz", reply, false, true))))
+        assertEquals(2, NotificationRules.replyAction(listOf(a("Note", none, false, true), a("x"), a("Reply", reply, false, true))))
         // Contextual (system smart replies) and data-only / choice-only inputs don't count.
-        assertEquals(null, NotificationRules.replyAction(listOf(a("Smart", reply, true, true), a("Wybór", reply, false, false))))
+        assertEquals(null, NotificationRules.replyAction(listOf(a("Smart", reply, true, true), a("Choice", reply, false, false))))
         assertEquals(null, NotificationRules.replyAction(emptyList()))
         // The label goes to the PC (cleaned, bounded); a reply action without one gets a default.
         val withReply = NotificationRules.content(parts().copy(actions = listOf(a("Przeczytane"), a("  Odpowiedz\n", none, false, true))), own)!!

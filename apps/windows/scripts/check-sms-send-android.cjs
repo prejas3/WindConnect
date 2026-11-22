@@ -81,23 +81,23 @@ let app, instrument, browser, socket, timer, redirected = false, output = '';
     command('send-off');
     await sms.locator('#new-message').waitFor({ state: 'visible' });
     await sms.locator('#new-message').click();
-    await until(() => sms.evaluate(() => document.querySelector('#composer-note').textContent.includes('Wysyłanie z komputera')), 'sending off explained');
+    await until(() => sms.evaluate(() => document.querySelector('#composer-note').textContent.includes('Sending from the computer')), 'sending off explained');
     assert(await sms.locator('#send').isDisabled(), 'send disabled while off');
     command('send-on');
     await until(() => sms.evaluate(() => !document.querySelector('#send').disabled), 'sending on', 15000);
     const report = { sims: await sms.evaluate(() => [...document.querySelectorAll('#sim option')].length || 1) };
     // 1. SMS to the emulator's own number: sent, then back as a received message in the same thread.
-    const marker = `WN56 ${Date.now()} zażółć`;
+    const marker = `WN56 ${Date.now()} zażółć`; // i18n: data
     await sms.locator('#to').fill(OWN);
     await sms.locator('#body').fill(marker);
     const clicked = Date.now();
     await sms.locator('#body').press('Enter');
-    await until(() => sms.evaluate(() => [...document.querySelectorAll('.bubble.local .meta')].some(m => /wysyłanie/.test(m.textContent))), 'local bubble shown', 5000);
+    await until(() => sms.evaluate(() => [...document.querySelectorAll('.bubble.local .meta')].some(m => /sending/.test(m.textContent))), 'local bubble shown', 5000);
     const outgoing = await until(() => sms.evaluate(m => [...document.querySelectorAll('.bubble.out:not(.local)')].some(b => b.textContent.includes(m)), marker), 'sent message from the phone in its thread', 30000);
     report.clickToSentShownMs = Date.now() - clicked;
     assert(outgoing);
     // The delivery report (the emulator's modem sends one) reaches the provider and the window through the watch.
-    await until(() => sms.evaluate(m => [...document.querySelectorAll('.bubble.out:not(.local)')].find(b => b.textContent.includes(m))?.querySelector('.meta')?.textContent.includes('dostarczono'), marker), 'delivered shown', 30000);
+    await until(() => sms.evaluate(m => [...document.querySelectorAll('.bubble.out:not(.local)')].find(b => b.textContent.includes(m))?.querySelector('.meta')?.textContent.includes('delivered'), marker), 'delivered shown', 30000);
     report.clickToDeliveredShownMs = Date.now() - clicked;
     const stored = device('shell', 'content', 'query', '--uri', 'content://sms/sent', '--projection', '_id:status', '--where', `"body='${marker}'"`);
     assert(/Row:.*status=0/.test(stored), 'Android recorded the sent SMS as delivered (non-default app)');
@@ -107,13 +107,13 @@ let app, instrument, browser, socket, timer, redirected = false, output = '';
     await fs.writeFile(png, Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAFklEQVR4nGP8z8DAwMDAxMDAwMDAAAANHQEDasKb6QAAAABJRU5ErkJggg==', 'base64'));
     await sms.locator('#attach-file').setInputFiles(png);
     await sms.locator('#attachment').waitFor({ state: 'visible' });
-    assert.equal(await sms.locator('#body').getAttribute('placeholder'), 'Wiadomość MMS');
+    assert.equal(await sms.locator('#body').getAttribute('placeholder'), 'MMS message');
     await sms.locator('#body').fill('WN56 MMS');
     await sms.locator('#send').click();
     report.mms = await until(() => sms.evaluate(() => {
       const note = document.querySelector('#composer-note').textContent;
       const meta = [...document.querySelectorAll('.bubble.local .meta')].map(m => m.textContent).pop();
-      return /Nie wysłano/.test(note) ? 'failed (no MMSC on the emulator)' : meta === 'wysłano' ? 'sent' : null;
+      return /wasn't sent|Not sent/.test(note) ? 'failed (no MMSC on the emulator)' : meta === 'sent' ? 'sent' : null;
     }) .then(v => v) , 'MMS outcome', 150000).catch(e => 'no outcome: ' + e.message);
     // 3. Sending off on the phone: the composer turns off again.
     command('send-off');

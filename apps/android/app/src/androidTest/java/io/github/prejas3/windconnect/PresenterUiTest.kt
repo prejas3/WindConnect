@@ -19,7 +19,7 @@ class PresenterUiTest {
         compose.onNodeWithTag("presenterNext").performClick()
         compose.onNodeWithTag("presenterPrevious").performClick()
         compose.onNodeWithTag("presenterLaser").assertIsEnabled().performTouchInput { down(center) }
-        compose.onNodeWithText("Wskaźnik włączony · celuj telefonem").assertExists()
+        compose.onNodeWithText("Pointer on · aim with the phone").assertExists()
         compose.onNodeWithTag("presenterLaser").performTouchInput { up() }
         compose.runOnIdle {
             assertEquals(listOf(PresenterKeys.NEXT, PresenterKeys.PREVIOUS), slides)
@@ -27,7 +27,7 @@ class PresenterUiTest {
         }
         compose.onNodeWithTag("presenterTimer").assertTextEquals("00:00")
         compose.onNodeWithTag("presenterTimerToggle").performClick()
-        compose.onNodeWithText("Pauza").assertExists()
+        compose.onNodeWithText("Pause").assertExists()
     }
 
     @Test fun oldPcKeepsSlidesButDisablesLaser() {
@@ -35,7 +35,7 @@ class PresenterUiTest {
         compose.setContent { MaterialTheme { PresenterPanel(true, false, true, PresentationTimer(), 0, {}) { laser += it } } }
         compose.onNodeWithTag("presenterNext").assertIsEnabled()
         compose.onNodeWithTag("presenterLaser").assertIsNotEnabled()
-        compose.onNodeWithText("Wskaźnik laserowy wymaga nowszej wersji WindConnect na komputerze.").assertExists()
+        compose.onNodeWithText("The laser pointer needs a newer WindConnect on the computer.").assertExists()
         compose.runOnIdle { assertTrue(laser.isEmpty()) }
     }
 }

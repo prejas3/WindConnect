@@ -46,10 +46,10 @@ class PcVolumeTest {
         Thread.sleep(VOLUME_HOLD_MS + 200)
         compose.waitUntil(2_000) { runCatching { valueIs("45%") }.isSuccess }
         // Mute sends only muted.
-        compose.onNodeWithContentDescription("Wycisz komputer").performClick()
+        compose.onNodeWithContentDescription("Mute the computer").performClick()
         assertEquals(listOf(true), mutes)
         assertEquals(1, levels.size)
-        valueIs("Wyciszony")
+        valueIs("Muted")
     }
 
     /** WN-156: a drag sets the PC's volume to the percent (1% steps); only TalkBack moves it by 5%. */

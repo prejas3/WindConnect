@@ -48,7 +48,7 @@ fn msg(id: u64) -> Message {
         } else {
             MessageBox::Inbox
         },
-        body: format!("Wiadomość numer {id} — ąęłżź"),
+        body: format!("Message number {id} — ąęłżź"), // i18n: data
         address: None,
         read: true,
         attachments: 0,
@@ -66,7 +66,7 @@ impl Source for Store {
             Thread {
                 id: 1,
                 date_ms: 1000,
-                snippet: "Wiadomość numer 1000".into(),
+                snippet: "Message number 1000".into(),
                 people: vec![Person {
                     address: "+48600100200".into(),
                     name: Some("Ola".into()),
@@ -227,7 +227,7 @@ async fn threads_and_a_thousand_messages() {
     let took = start.elapsed();
     assert_eq!(all.len(), 1000);
     assert_eq!(all[0].id, 1000, "newest first");
-    assert_eq!(all[999].body, "Wiadomość numer 1 — ąęłżź");
+    assert_eq!(all[999].body, "Message number 1 — ąęłżź"); // i18n: data
     assert!(all[0].folder.outgoing());
     // The wire's share of the < 300 ms budget, on loopback in a debug build.
     assert!(took < Duration::from_millis(300), "took {took:?}");

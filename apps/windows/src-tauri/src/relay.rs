@@ -195,7 +195,8 @@ pub fn set_relay(
     }
     let url = url.map(|u| u.trim().to_string()).filter(|u| !u.is_empty());
     if let Some(url) = &url {
-        check_url(url).map_err(|e| e.to_string())?;
+        // WN-174: "invalid:" marks a refused address for the page (any language); other errors are shown as they are.
+        check_url(url).map_err(|e| format!("invalid:{e}"))?;
     }
     if let Some(path) = state.path.lock().unwrap().as_ref() {
         let saved = match &url {

@@ -7,7 +7,7 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class ClipboardTileTest {
-    init { StringsForTests.usePolish() }
+    init { StringsForTests.useEnglish() }
     @Test fun addResultsDistinguishSuccessRefusalAndErrors() {
         assertEquals(TileAddState.Added, tileAddResult(StatusBarManager.TILE_ADD_REQUEST_RESULT_TILE_ADDED))
         assertEquals(TileAddState.Added, tileAddResult(StatusBarManager.TILE_ADD_REQUEST_RESULT_TILE_ALREADY_ADDED))
@@ -22,17 +22,17 @@ class ClipboardTileTest {
     @Test fun connectionLossNeverLeavesAnActiveTileOrExposesErrors() {
         val connected = clipboardTileState(ConnectionState.Connected("PC", "private-key", 50))
         assertEquals(Tile.STATE_ACTIVE, connected.first)
-        assertEquals("Połączono · PC", connected.second)
+        assertEquals("Connected · PC", connected.second)
         listOf(ConnectionState.Ready, ConnectionState.Stopped,
             ConnectionState.Disconnected("private transport detail"),
             ConnectionState.Failed("private error")).forEach {
-            assertEquals(Tile.STATE_INACTIVE to "Brak połączenia", clipboardTileState(it))
+            assertEquals(Tile.STATE_INACTIVE to "Not connected", clipboardTileState(it))
         }
-        assertEquals(Tile.STATE_INACTIVE to "Łączenie…", clipboardTileState(ConnectionState.Connecting))
+        assertEquals(Tile.STATE_INACTIVE to "Connecting…", clipboardTileState(ConnectionState.Connecting))
     }
 
     @Test fun longPeerNameIsBounded() {
         val state = clipboardTileState(ConnectionState.Connected("x".repeat(200), "", 1))
-        assertEquals("Połączono · " + "x".repeat(64), state.second)
+        assertEquals("Connected · " + "x".repeat(64), state.second)
     }
 }

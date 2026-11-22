@@ -1609,11 +1609,14 @@ mod tests {
         use wind_core::find::State;
         assert_eq!(
             find_outcome(Some(State::StoppedHere)),
-            "Zatrzymano na telefonie"
+            "Stopped on the phone"
         );
-        assert_eq!(find_outcome(Some(State::TimedOut)), "Telefon dzwonił 60 s");
+        assert_eq!(
+            find_outcome(Some(State::TimedOut)),
+            "The phone rang for 60 s"
+        );
         // A broken stream isn't "stopped": the phone may still ring (WN-50 review, point 5).
-        assert!(find_outcome(None).contains("może nadal dzwonić"));
+        assert!(find_outcome(None).contains("may still be ringing"));
         assert_eq!(FindView::default().state, "idle");
     }
 

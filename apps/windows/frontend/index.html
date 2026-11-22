@@ -12,23 +12,23 @@
 <body>
   <header class="titlebar" id="titlebar">
     <span class="brand"><span class="brand-mark" aria-hidden="true"></span>WindConnect</span>
-    <div class="window-actions" data-i18n-aria-label="main.okno">
-      <button class="caption" data-window="minimize" data-i18n-aria-label="main.minimalizuj"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 16h14"/></svg></button>
-      <button class="caption" data-window="maximize" data-i18n-aria-label="main.maksymalizuj_lub_przywroc"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="1"/></svg></button>
-      <button class="caption close" data-window="close" data-i18n-aria-label="main.zamknij"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
+    <div class="window-actions" data-i18n-aria-label="main.window">
+      <button class="caption" data-window="minimize" data-i18n-aria-label="main.minimize"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 16h14"/></svg></button>
+      <button class="caption" data-window="maximize" data-i18n-aria-label="main.maximize_or_restore"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="1"/></svg></button>
+      <button class="caption close" data-window="close" data-i18n-aria-label="main.close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
     </div>
   </header>
   <main id="main">
-    <div class="page-heading"><div><p class="eyebrow">Windows ⇄ Android</p><h1 data-i18n="main.twoje_urzadzenia"></h1></div>
-      <div class="segmented" role="group" data-i18n-aria-label="main.motyw">
-        <button data-theme-choice="system" aria-pressed="true" data-i18n="main.system"></button><button data-theme-choice="light" aria-pressed="false" data-i18n="main.jasny"></button><button data-theme-choice="dark" aria-pressed="false" data-i18n="main.ciemny"></button>
+    <div class="page-heading"><div><p class="eyebrow">Windows ⇄ Android</p><h1 data-i18n="main.your_devices"></h1></div>
+      <div class="segmented" role="group" data-i18n-aria-label="main.theme">
+        <button data-theme-choice="system" aria-pressed="true" data-i18n="main.system"></button><button data-theme-choice="light" aria-pressed="false" data-i18n="main.light"></button><button data-theme-choice="dark" aria-pressed="false" data-i18n="main.dark"></button>
       </div>
     </div>
     <section id="onboarding" class="surface onboarding" aria-labelledby="onboarding-title" hidden>
       <h2 id="onboarding-title" tabindex="-1" data-i18n="main.onboarding-title"></h2>
-      <p class="lead" data-i18n="main.zajmie_to_mniej_niz"></p>
+      <p class="lead" data-i18n="main.it_takes_less_than_a"></p>
       <ol class="onboarding-steps">
-        <li data-step="1"><strong data-i18n="main.otworz_windconnect_na_telefonie"></strong><span data-i18n="main.nie_masz_aplikacji_pobierz"></span></li>
+        <li data-step="1"><strong data-i18n="main.otworz_windconnect_na_telefonie"></strong><span data-i18n="main.don_t_have_the_app"></span></li>
         <li data-step="2"><strong id="onboarding-step-title" data-i18n="main.onboarding-step-title"></strong><span id="onboarding-hint" data-i18n="main.onboarding-hint"></span>
           <canvas id="onboarding-qr" role="img" data-i18n-aria-label="main.onboarding-qr_label" hidden></canvas>
           <p id="onboarding-code" class="pairing-code" data-i18n-aria-label="main.onboarding-code_label" hidden></p>
@@ -42,51 +42,51 @@
         </li>
         <li data-step="3"><strong id="onboarding-done-title" data-i18n="main.onboarding-done-title"></strong><span id="onboarding-done-text" data-i18n="main.onboarding-done-text"></span>
           <div id="onboarding-done" hidden>
-            <div class="control-row"><div><span id="onboarding-autostart-label" data-i18n="main.onboarding-autostart-label"></span><small data-i18n="main.telefon_polaczy_sie_po"></small></div><button id="onboarding-autostart" class="switch" role="switch" aria-checked="false" aria-labelledby="onboarding-autostart-label"></button></div>
+            <div class="control-row"><div><span id="onboarding-autostart-label" data-i18n="main.onboarding-autostart-label"></span><small data-i18n="main.the_phone_connects_after_the"></small></div><button id="onboarding-autostart" class="switch" role="switch" aria-checked="false" aria-labelledby="onboarding-autostart-label"></button></div>
             <button id="onboarding-finish" class="button primary" data-i18n="main.onboarding-finish"></button>
           </div>
         </li>
       </ol>
-      <p class="subtle" data-i18n="main.instalator_dodal_juz_regule"></p>
+      <p class="subtle" data-i18n="main.the_installer_already_added_a"></p>
     </section>
     <section id="home" aria-labelledby="empty-title" class="surface empty-state">
       <span class="empty-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="6" y="2" width="12" height="20" rx="3"/><path d="M10 5h4M11 19h2"/></svg></span>
       <h2 id="empty-title" data-i18n="main.empty-title"></h2>
-      <p data-i18n="main.polacz_urzadzenia_aby_miec"></p>
+      <p data-i18n="main.connect_your_devices_to_have"></p>
       <button id="open-pairing" class="button primary" data-i18n="main.open-pairing"></button>
     </section>
     <section id="actions" aria-labelledby="actions-title" class="surface settings" hidden>
-      <div class="settings-head"><div><h2 id="actions-title" data-i18n="main.actions-title"></h2><p data-i18n="main.co_sparowany_telefon_moze"></p></div></div>
+      <div class="settings-head"><div><h2 id="actions-title" data-i18n="main.actions-title"></h2><p data-i18n="main.what_the_paired_phone_can"></p></div></div>
       <p id="actions-error" class="notice danger" role="alert" hidden></p>
       <div id="actions-builtins" role="group" data-i18n-aria-label="main.actions-builtins_label"></div>
-      <h3 class="settings-sub" data-i18n="main.wlasne_akcje"></h3>
+      <h3 class="settings-sub" data-i18n="main.custom_actions"></h3>
       <div id="actions-custom" role="group" data-i18n-aria-label="main.actions-custom_label"></div>
       <p id="actions-empty" class="subtle" hidden data-i18n="main.actions-empty"></p>
       <div class="settings-foot"><span id="actions-last" class="subtle" role="status"></span><button id="actions-edit" class="button small" data-i18n="main.actions-edit"></button></div>
     </section>
     <section class="surface settings" data-clipboard-controls hidden aria-labelledby="clipboard-title">
       <h2 id="clipboard-title" data-i18n="main.clipboard-title"></h2>
-      <div class="control-row"><div><span id="clipboard-sync-label" data-i18n="main.clipboard-sync-label"></span><small data-i18n="main.tekst_linki_i_obrazy"></small></div><button class="switch" role="switch" aria-checked="true" aria-labelledby="clipboard-sync-label" data-clipboard-toggle></button></div>
-      <div class="control-row"><div><span id="clipboard-limit-label" data-i18n="main.clipboard-limit-label"></span><small data-i18n="main.wieksze_obrazy_nie_sa"></small></div><div class="segmented" role="group" aria-labelledby="clipboard-limit-label" data-clipboard-limit><button data-limit="5" aria-pressed="false">5 MB</button><button data-limit="16" aria-pressed="true">16 MB</button><button data-limit="50" aria-pressed="false">50 MB</button></div></div><p data-clipboard-status role="status"></p><div class="settings-foot"><span class="subtle" data-clipboard-shortcut></span><button class="button small" data-clipboard-send data-i18n="main.wyslij_schowek_na_telefon"></button></div><section class="history" data-clipboard-history hidden aria-labelledby="history-title-settings"><div class="transfers-head"><h2 id="history-title-settings" data-i18n="main.history-title-settings"></h2><button class="button quiet small" data-history-clear data-i18n="main.wyczysc"></button></div><p class="subtle" data-history-empty data-i18n="main.tu_pojawia_sie_ostatnio"></p><ul class="history-list" data-history-list></ul></section>
-      <p class="subtle" data-i18n="main.pc_telefon_automatycznie_takze"></p>
+      <div class="control-row"><div><span id="clipboard-sync-label" data-i18n="main.clipboard-sync-label"></span><small data-i18n="main.text_links_and_images_content"></small></div><button class="switch" role="switch" aria-checked="true" aria-labelledby="clipboard-sync-label" data-clipboard-toggle></button></div>
+      <div class="control-row"><div><span id="clipboard-limit-label" data-i18n="main.clipboard-limit-label"></span><small data-i18n="main.larger_images_are_neither_sent"></small></div><div class="segmented" role="group" aria-labelledby="clipboard-limit-label" data-clipboard-limit><button data-limit="5" aria-pressed="false">5 MB</button><button data-limit="16" aria-pressed="true">16 MB</button><button data-limit="50" aria-pressed="false">50 MB</button></div></div><p data-clipboard-status role="status"></p><div class="settings-foot"><span class="subtle" data-clipboard-shortcut></span><button class="button small" data-clipboard-send data-i18n="main.send_the_clipboard_to_the"></button></div><section class="history" data-clipboard-history hidden aria-labelledby="history-title-settings"><div class="transfers-head"><h2 id="history-title-settings" data-i18n="main.history-title-settings"></h2><button class="button quiet small" data-history-clear data-i18n="main.clear"></button></div><p class="subtle" data-history-empty data-i18n="main.recently_shared_clipboards_show_up"></p><ul class="history-list" data-history-list></ul></section>
+      <p class="subtle" data-i18n="main.pc_phone_automatically_also_in"></p>
     </section>
     <section id="media-settings" class="surface settings" hidden aria-labelledby="media-settings-title">
       <h2 id="media-settings-title" data-i18n="main.media-settings-title"></h2>
-      <div class="control-row"><div><span id="share-media-label" data-i18n="main.share-media-label"></span><small data-i18n="main.telefon_pokazuje_co_gra"></small></div><button id="share-media" class="switch" role="switch" aria-checked="true" aria-labelledby="share-media-label" disabled></button></div>
-      <div class="control-row"><div><span id="pause-on-call-label" data-i18n="main.pause-on-call-label"></span><small data-i18n="main.gdy_telefon_dzwoni_albo"></small></div><button id="pause-on-call" class="switch" role="switch" aria-checked="true" aria-labelledby="pause-on-call-label" disabled></button></div>
-      <div class="control-row"><div><span id="volume-remote-label" data-i18n="main.volume-remote-label"></span><small data-i18n="main.telefon_pokazuje_i_zmienia"></small></div><button id="volume-remote" class="switch" role="switch" aria-checked="true" aria-labelledby="volume-remote-label" disabled></button></div>
-      <div class="control-row"><div><span id="call-toasts-label" data-i18n="main.call-toasts-label"></span><small data-i18n="main.powiadomienie_o_polaczeniu_przychodzacym"></small></div><button id="call-toasts" class="switch" role="switch" aria-checked="true" aria-labelledby="call-toasts-label" disabled></button></div>
+      <div class="control-row"><div><span id="share-media-label" data-i18n="main.share-media-label"></span><small data-i18n="main.the_phone_shows_what_s"></small></div><button id="share-media" class="switch" role="switch" aria-checked="true" aria-labelledby="share-media-label" disabled></button></div>
+      <div class="control-row"><div><span id="pause-on-call-label" data-i18n="main.pause-on-call-label"></span><small data-i18n="main.while_the_phone_rings_or"></small></div><button id="pause-on-call" class="switch" role="switch" aria-checked="true" aria-labelledby="pause-on-call-label" disabled></button></div>
+      <div class="control-row"><div><span id="volume-remote-label" data-i18n="main.volume-remote-label"></span><small data-i18n="main.the_phone_shows_and_changes"></small></div><button id="volume-remote" class="switch" role="switch" aria-checked="true" aria-labelledby="volume-remote-label" disabled></button></div>
+      <div class="control-row"><div><span id="call-toasts-label" data-i18n="main.call-toasts-label"></span><small data-i18n="main.a_notification_for_an_incoming"></small></div><button id="call-toasts" class="switch" role="switch" aria-checked="true" aria-labelledby="call-toasts-label" disabled></button></div>
     </section>
     <section id="relay-settings" class="surface settings" hidden aria-labelledby="relay-settings-title">
       <h2 id="relay-settings-title" data-i18n="main.relay-settings-title"></h2>
-      <div class="control-row"><div><span id="relay-enabled-label" data-i18n="main.relay-enabled-label"></span><small data-i18n="main.polaczenie_jest_szyfrowane_od"></small></div><button id="relay-enabled" class="switch" role="switch" aria-checked="false" aria-labelledby="relay-enabled-label" disabled></button></div>
-      <label class="field" data-i18n="main.adres_przekaznika" data-i18n-pos="start"><input id="relay-url" type="url" spellcheck="false" autocomplete="off" data-i18n-placeholder="main.relay-url_placeholder" aria-describedby="relay-error"><span id="relay-error" class="field-hint field-error" role="alert"></span></label>
+      <div class="control-row"><div><span id="relay-enabled-label" data-i18n="main.relay-enabled-label"></span><small data-i18n="main.the_connection_is_end_to"></small></div><button id="relay-enabled" class="switch" role="switch" aria-checked="false" aria-labelledby="relay-enabled-label" disabled></button></div>
+      <label class="field" data-i18n="main.relay_address" data-i18n-pos="start"><input id="relay-url" type="url" spellcheck="false" autocomplete="off" data-i18n-placeholder="main.relay-url_placeholder" aria-describedby="relay-error"><span id="relay-error" class="field-hint field-error" role="alert"></span></label>
     </section>
     <section id="notify-settings" class="surface settings" hidden aria-labelledby="notify-settings-title">
       <h2 id="notify-settings-title" data-i18n="main.notify-settings-title"></h2>
-      <div class="control-row"><div><span id="phone-notifications-label" data-i18n="main.phone-notifications-label"></span><small data-i18n="main.nowe_powiadomienia_z_telefonu"></small></div><button id="phone-notifications" class="switch" role="switch" aria-checked="true" aria-labelledby="phone-notifications-label" disabled></button></div>
-      <div class="control-row"><div><span id="quiet-hours-label" data-i18n="main.quiet-hours-label"></span><small data-i18n="main.w_tych_godzinach_a"></small></div><button id="quiet-hours" class="switch" role="switch" aria-checked="false" aria-labelledby="quiet-hours-label" disabled></button></div>
-      <div class="control-row quiet-times" id="quiet-times" hidden><span id="quiet-from-label" data-i18n="main.quiet-from-label"></span><div class="time-stepper" data-quiet="from"><button class="button quiet small" data-step="-15" data-i18n-aria-label="main.wczesniej_o_15_minut">−</button><span role="spinbutton" tabindex="0" aria-labelledby="quiet-from-label" aria-valuemin="0" aria-valuemax="1425"></span><button class="button quiet small" data-step="15" data-i18n-aria-label="main.pozniej_o_15_minut">+</button></div><span id="quiet-to-label" data-i18n="main.quiet-to-label"></span><div class="time-stepper" data-quiet="to"><button class="button quiet small" data-step="-15" data-i18n-aria-label="main.wczesniej_o_15_minut_2">−</button><span role="spinbutton" tabindex="0" aria-labelledby="quiet-to-label" aria-valuemin="0" aria-valuemax="1425"></span><button class="button quiet small" data-step="15" data-i18n-aria-label="main.pozniej_o_15_minut_2">+</button></div></div>
+      <div class="control-row"><div><span id="phone-notifications-label" data-i18n="main.phone-notifications-label"></span><small data-i18n="main.new_notifications_from_the_phone"></small></div><button id="phone-notifications" class="switch" role="switch" aria-checked="true" aria-labelledby="phone-notifications-label" disabled></button></div>
+      <div class="control-row"><div><span id="quiet-hours-label" data-i18n="main.quiet-hours-label"></span><small data-i18n="main.during_these_hours_and_in"></small></div><button id="quiet-hours" class="switch" role="switch" aria-checked="false" aria-labelledby="quiet-hours-label" disabled></button></div>
+      <div class="control-row quiet-times" id="quiet-times" hidden><span id="quiet-from-label" data-i18n="main.quiet-from-label"></span><div class="time-stepper" data-quiet="from"><button class="button quiet small" data-step="-15" data-i18n-aria-label="main.15_minutes_earlier_from">−</button><span role="spinbutton" tabindex="0" aria-labelledby="quiet-from-label" aria-valuemin="0" aria-valuemax="1425"></span><button class="button quiet small" data-step="15" data-i18n-aria-label="main.15_minutes_later_from">+</button></div><span id="quiet-to-label" data-i18n="main.quiet-to-label"></span><div class="time-stepper" data-quiet="to"><button class="button quiet small" data-step="-15" data-i18n-aria-label="main.15_minutes_earlier_to">−</button><span role="spinbutton" tabindex="0" aria-labelledby="quiet-to-label" aria-valuemin="0" aria-valuemax="1425"></span><button class="button quiet small" data-step="15" data-i18n-aria-label="main.15_minutes_later_to">+</button></div></div>
     </section>
     <section id="gallery" aria-labelledby="gallery-title" hidden></section>
     <footer class="app-footer"><span id="status" role="status" data-i18n="main.status"></span><button id="gallery-toggle" class="button quiet small" aria-pressed="false" hidden data-i18n="main.gallery-toggle"></button><button id="tray-options" class="button quiet small" data-i18n="main.tray-options"></button><button id="quit-app" class="button quiet small" data-i18n="main.quit-app"></button><span class="subtle" data-i18n="main.zamkniecie_okna_pozostawia_windconnect"></span></footer>
@@ -95,7 +95,7 @@
   <div id="overlay" class="overlay" hidden>
     <section class="dialog surface" role="dialog" aria-modal="true" aria-labelledby="dialog-title" aria-describedby="dialog-description" tabindex="-1">
       <h2 id="dialog-title" data-i18n="main.dialog-title"></h2><p id="dialog-description" data-i18n="main.dialog-description"></p>
-      <div class="button-row"><button class="button" data-dismiss data-i18n="main.anuluj"></button><button class="button primary" data-confirm data-i18n="main.potwierdz"></button></div>
+      <div class="button-row"><button class="button" data-dismiss data-i18n="main.cancel"></button><button class="button primary" data-confirm data-i18n="main.confirm"></button></div>
     </section>
   </div>
 </body>

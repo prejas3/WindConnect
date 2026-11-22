@@ -157,7 +157,7 @@ let app, browser, socket, timer, redirected = false, granted = false, invoke = n
     await delay(2500);
     assert(phoneHas(T('Do usuniecia z komputera')), 'Messages shows it');
     const t2 = Date.now();
-    await (await rowOf(third.tag)).getByRole('button', { name: /^Odrzuć powiadomienie: / }).click();
+    await (await rowOf(third.tag)).getByRole('button', { name: /^Dismiss the notification: / }).click();
     await until('the row is gone on the PC', async () => !(await state()).notifications.some(n => n.tag === third.tag));
     await until('gone on the phone', () => !phoneHas(T('Do usuniecia z komputera')), 10000);
     report.panelDismiss = { latencyMs: Date.now() - t2 };

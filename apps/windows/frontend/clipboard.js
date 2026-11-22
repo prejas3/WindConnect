@@ -1,7 +1,7 @@
 import { t, locale } from './i18n.js';
 // CCS/1 SEC:only settings/status cross IPC; clipboard payload stays in the native adapter. WN-37: the history list carries a one-line preview or a thumbnail, never the full content; copy goes by id.
 const invoke = window.__TAURI__?.core.invoke;
-const EMPTY_ON = t('main.tu_pojawia_sie_ostatnio');
+const EMPTY_ON = t('main.recently_shared_clipboards_show_up');
 const EMPTY_OFF = t('clipboard.history_off');
 function render(state) {
   document.querySelectorAll('[data-clipboard-controls]').forEach(element => { element.hidden = false; });

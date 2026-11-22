@@ -25,7 +25,7 @@ class PhoneMediaTest {
 
     @Test fun textsAreCutToTheProtocolsBytes() {
         assertEquals("abc", PhoneMedia.bounded("abc", 256))
-        val polish = "ż".repeat(200) // 2 bytes each
+        val polish = "ż".repeat(200) // 2 bytes each // i18n: data
         val cut = PhoneMedia.bounded(polish, 256)
         assertTrue(cut.toByteArray().size <= 256)
         assertEquals(128, cut.length)

@@ -60,7 +60,7 @@ object ClipboardProof {
             repeat(100) { index ->
                 val before = core.clipboardUi.value.delivered
                 val start = SystemClock.elapsedRealtimeNanos()
-                copy("WN35-ANDROID-BENCH-$runId-$index 👩‍💻 https://example.com/ż")
+                copy("WN35-ANDROID-BENCH-$runId-$index 👩‍💻 https://example.com/ż") // i18n: data
                 awaitDelivered(before)
                 samples += (SystemClock.elapsedRealtimeNanos() - start) / 1_000
             }
@@ -140,7 +140,7 @@ object ClipboardProof {
                 val beforePhoneImage = core.clipboardUi.value.delivered
                 instrumentation.runOnMainSync { manager.setPrimaryClip(ClipData.newUri(activity.contentResolver, "WN36 image", stored)) }
                 awaitDelivered(beforePhoneImage)
-                assertEquals("Obraz wysłany na komputer", core.clipboardUi.value.status)
+                assertEquals("Image sent to the computer", core.clipboardUi.value.status)
             } finally { activity.contentResolver.delete(stored, null, null) }
 
             compose.activityRule.scenario.moveToState(Lifecycle.State.CREATED)
@@ -161,7 +161,7 @@ object ClipboardProof {
                 compose.onNodeWithTag("previewToggle").performClick()
                 if (android.os.Build.VERSION.SDK_INT >= 31) {
                     val source = compose.onNodeWithTag("paletteSource").fetchSemanticsNode().config[androidx.compose.ui.semantics.SemanticsProperties.Text].first().text
-                    if (source.contains("systemowy")) compose.onNodeWithTag("dynamicColor").performClick()
+                    if (source.contains("system color")) compose.onNodeWithTag("dynamicColor").performClick()
                 }
                 compose.onNodeWithTag("theme-$theme").performScrollTo().performClick()
                 compose.onNodeWithTag("previewToggle").performClick()
@@ -197,8 +197,8 @@ object ClipboardProof {
             root()?.let { pending.add(it) }
             while (pending.isNotEmpty()) {
                 val node = pending.removeFirst()
-                if (node.text?.toString()?.contains("Wyślij schowek", ignoreCase = true) == true ||
-                    node.contentDescription?.toString()?.contains("Wyślij schowek", ignoreCase = true) == true) return node
+                if (node.text?.toString()?.contains("Send clipboard", ignoreCase = true) == true ||
+                    node.contentDescription?.toString()?.contains("Send clipboard", ignoreCase = true) == true) return node
                 repeat(node.childCount) { node.getChild(it)?.let { child -> pending.add(child) } }
             }
             return null
@@ -221,7 +221,8 @@ object ClipboardProof {
                 while (pending.isNotEmpty()) {
                     val node = pending.removeFirst()
                     val description = node.contentDescription?.toString().orEmpty()
-                    if (description.startsWith("Expand") || description.startsWith("Rozwiń")) { click(node); expanded = true; break }
+                    // The shade is in the device's language, not the app's.
+                    if (description.startsWith("Expand") || description.startsWith("Rozwiń")) { click(node); expanded = true; break } // i18n: pl
                     repeat(node.childCount) { node.getChild(it)?.let { child -> pending.add(child) } }
                 }
             }

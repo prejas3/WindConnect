@@ -7,10 +7,14 @@ New code and project documentation are released under the MIT license.
 
 Everything developers read is in English: documentation (`*.md`), code comments
 and doc comments, test names and test/CI messages, commit messages, pull requests
-and release notes. The app's user interface is translated (Polish and English,
-WN-63): its texts live in the localization resources (`apps/android/**/values*/strings.xml`,
-`apps/windows/frontend/locales/`, `apps/windows/src-tauri/locales/`), and UI tests
-may check the Polish texts the app shows.
+and release notes. The app's user interface is written in English and translated
+to Polish (WN-63, WN-174): its texts live only in the localization resources, English
+first (`apps/android/**/values/strings.xml`, `apps/windows/frontend/locales/en.js`,
+`apps/windows/src-tauri/locales/en.json`) and Polish beside them (`values-pl/`, `pl.js`,
+`pl.json`). Tests run in English. `node scripts/check-language.cjs` checks that both
+languages have the same keys and that no Polish is left outside the Polish tables; a
+line keeping Polish letters on purpose says so with `i18n: data` (Unicode test data)
+or `i18n: pl` (a check of the Polish texts).
 
 ## Rust
 

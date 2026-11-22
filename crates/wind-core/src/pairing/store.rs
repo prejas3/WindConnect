@@ -386,14 +386,14 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let store = PairedDevicesFile::in_dir(dir.path().join("WindConnect"));
         assert_eq!(store.load().unwrap(), PairedList::default());
-        let a = PairedDevice::now(key(), Some("Pixel 9 % ż\nx".into()));
+        let a = PairedDevice::now(key(), Some("Pixel 9 % ż\nx".into())); // i18n: data
         let b = PairedDevice::now(key(), None);
         store.add(&a).unwrap();
         store.add(&b).unwrap();
         let list = store.load().unwrap();
         assert_eq!(list.skipped, vec![]);
         assert_eq!(list.devices.len(), 2);
-        assert_eq!(list.devices[0].name.as_deref(), Some("Pixel 9 % żx"));
+        assert_eq!(list.devices[0].name.as_deref(), Some("Pixel 9 % żx")); // i18n: data
         assert_eq!(list.devices[1], b);
     }
 

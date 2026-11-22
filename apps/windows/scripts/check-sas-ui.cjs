@@ -21,7 +21,7 @@ const stub = () => {
   window.__TAURI__ = {
     core: { invoke: async (cmd, args) => {
       window.__calls.push([cmd, args]);
-      if (cmd === 'pairing_snapshot') return { phase: 'waiting', phone: null, qr: structuredClone(qr), message: 'Zeskanuj kod w WindConnect na telefonie', skipped_records: 0, code: null };
+      if (cmd === 'pairing_snapshot') return { phase: 'waiting', phone: null, qr: structuredClone(qr), message: 'Scan the code in WindConnect on the phone', skipped_records: 0, code: null };
       if (cmd === 'files_snapshot') return { phone: null, rows: [], active: 0, activeSize: 0, activeDone: 0 };
       if (cmd === 'panel_snapshot') return { shortcut_error: null };
       return null;
@@ -35,21 +35,21 @@ const state = (phase, extra = {}) => ({ phase, phone: null, qr: null, message: '
   await new Promise(r => server.listen(0, '127.0.0.1', r));
   const browser = await chromium.launch({ headless: true });
   try {
-    const page = await browser.newPage({ locale: 'pl-PL', viewport: { width: 380, height: 540 } });
+    const page = await browser.newPage({ locale: 'en-US', viewport: { width: 380, height: 540 } });
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
     await page.addInitScript(stub);
     await page.goto(`http://127.0.0.1:${server.address().port}/panel.html`);
     await page.locator('#pairing-sas:not([hidden])').waitFor();
     await page.evaluate(() => document.fonts.ready);
-    await page.getByRole('button', { name: 'Paruj bez aparatu' }).click();
+    await page.getByRole('button', { name: 'Pair without the camera' }).click();
     const emit = s => page.evaluate(v => window.__listeners['pairing-state']({ payload: v }), s);
-    await emit(state('sas-waiting', { message: 'Na telefonie wybierz „Paruj bez aparatu”, a potem SZYMON-PC z listy.' }));
+    await emit(state('sas-waiting', { message: 'On the phone choose “Pair without the camera”, then SZYMON-PC from the list.' }));
     assert.equal(await page.locator('#pairing-qr').isVisible(), false);
     assert.equal(await page.locator('#pairing-code').isVisible(), false);
-    assert.equal(await page.locator('#pairing-refresh').textContent(), 'Wróć do kodu QR');
+    assert.equal(await page.locator('#pairing-refresh').textContent(), 'Back to the QR code');
     assert.equal(await page.locator('#pairing-cancel').isVisible(), true);
-    await emit(state('sas-code', { phone: 'Galaxy S25 Ultra', code: '042 917', message: 'Czy Galaxy S25 Ultra pokazuje ten sam kod?' }));
+    await emit(state('sas-code', { phone: 'Galaxy S25 Ultra', code: '042 917', message: 'Does Galaxy S25 Ultra show the same code?' }));
     assert.equal(await page.locator('#pairing-code').textContent(), '042 917');
     assert.equal(await page.locator('#pairing-refresh').isVisible(), false);
     for (const theme of ['light', 'dark']) {
@@ -60,8 +60,8 @@ const state = (phase, extra = {}) => ({ phase, phone: null, qr: null, message: '
     }
     await page.locator('#pairing-accept').focus();
     await page.keyboard.press('Enter');
-    await page.getByRole('button', { name: 'Kody się różnią' }).click();
-    await emit(state('sas-confirming', { phone: 'Galaxy S25 Ultra', message: 'Czekam na potwierdzenie na telefonie…' }));
+    await page.getByRole('button', { name: 'The codes differ' }).click();
+    await emit(state('sas-confirming', { phone: 'Galaxy S25 Ultra', message: 'Waiting for confirmation on the phone…' }));
     assert.equal(await page.locator('#pairing-code').isVisible(), false);
     assert.equal(await page.locator('#pairing-accept').isVisible(), false);
     const calls = await page.evaluate(() => window.__calls.filter(c => c[0] === 'pairing_action').map(c => c[1].action));

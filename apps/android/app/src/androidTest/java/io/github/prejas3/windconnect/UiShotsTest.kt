@@ -70,12 +70,12 @@ class UiShotsTest {
         ClipboardHistoryView(4, false, "https://www.example.com/artykul/bardzo-dlugi-adres-ktory-sie-nie-miesci", null, fromPc = false, pinned = true),
         ClipboardHistoryView(3, true, "Obraz 221×160", image(0xFFB5531E.toInt(), 64, 46), fromPc = true, pinned = false),
         ClipboardHistoryView(2, false, "C:\\Users\\Ola\\Documents\\Projekty\\Raport kwartalny\\wyniki-2026-Q3.xlsx", null, fromPc = true, pinned = false),
-        ClipboardHistoryView(1, false, "Spotkanie o 15:00 w sali B, przynieś laptopa i ładowarkę", null, fromPc = false, pinned = false),
+        ClipboardHistoryView(1, false, "Meeting at 3 pm in room B, bring the laptop and the charger", null, fromPc = false, pinned = false),
     )
 
     private fun paired(connected: Boolean) = PairingUi(ready = true, initialized = true, hasPairedDevice = true, computerName = "SZYMON",
         connection = if (connected) ConnectionState.Connected("SZYMON", "key", 2400) else ConnectionState.Disconnected("test"),
-        clipboard = ClipboardUi(enabled = true, status = "Schowek odebrany z komputera"), clipboardHistory = history, filesAccepted = true)
+        clipboard = ClipboardUi(enabled = true, status = "Clipboard received from the computer"), clipboardHistory = history, filesAccepted = true)
 
     private fun theme(mode: String, dynamic: Boolean) {
         context.getSharedPreferences("appearance", 0).edit().putString("theme", mode).putBoolean("dynamic", dynamic).commit()
@@ -128,7 +128,7 @@ class UiShotsTest {
     private fun SettingsSample() {
         WindBackHeader(str(R.string.settings), {}, "closeSettings")
         WindSection(str(R.string.group_computer)) {
-            WindSettingRow("pc", str(R.string.devices_paired), "SZYMON (połączony)", switchTag = "openDevices", onClick = {})
+            WindSettingRow("pc", str(R.string.devices_paired), "SZYMON (connected)", switchTag = "openDevices", onClick = {})
             WindDivider()
             WindSettingRow("plus", str(R.string.pair_another), str(R.string.sum_pair), switchTag = "scanQr", onClick = {})
         }

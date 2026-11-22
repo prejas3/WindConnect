@@ -32,8 +32,8 @@ class StoreVariantTest {
         compose.onNodeWithTag("openSettings").performClick()
         compose.onNodeWithTag("backgroundStatus").assertExists()
         fun shown(tag: String) = compose.onAllNodesWithTag(tag, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
-        assertEquals("SMS na komputerze", sms, shown("smsAllowed"))
-        assertEquals("Połączenia na komputerze", calls, shown("callsAllowed"))
+        assertEquals("SMS on the computer", sms, shown("smsAllowed"))
+        assertEquals("Calls on the computer", calls, shown("callsAllowed"))
         InstrumentationRegistry.getInstrumentation().sendStatus(0, android.os.Bundle().apply {
             putString("storeVariant", if (sms) "full" else "play")
         })

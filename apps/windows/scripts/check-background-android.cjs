@@ -129,13 +129,13 @@ let peer, instrument, socket, timer, redirected = false, output = '', wasExempt 
       const bounds=node.match(/bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/).slice(1).map(Number);
       device('shell','input','tap',String(Math.round((bounds[0]+bounds[2])/2)),String(Math.round((bounds[1]+bounds[3])/2)));
     }
-    let items=nodes(),stop=items.find(node=>/text="Zatrzymaj"/i.test(node));
+    let items=nodes(),stop=items.find(node=>/text="Stop"/i.test(node));
     if(!stop) {
       const title=items.findIndex(node=>node.includes('text="Test PC"'));assert(title>=0,'paired device visible in notification');
       let first=title;while(first>0 && !items[first].includes('id/expandableNotificationRow'))first--;
       let last=first+1;while(last<items.length && !items[last].includes('id/expandableNotificationRow'))last++;
-      const expand=items.slice(first,last).find(node=>/content-desc="(?:Expand|Rozwiń)/.test(node));assert(expand,'notification expand action');tap(expand);await delay(500);
-      items=nodes();stop=items.find(node=>/text="Zatrzymaj"/i.test(node));
+      const expand=items.slice(first,last).find(node=>/content-desc="Expand/.test(node));assert(expand,'notification expand action');tap(expand);await delay(500);
+      items=nodes();stop=items.find(node=>/text="Stop"/i.test(node));
     }
     await fs.writeFile(path.join(root,'notification.xml'),items.join('\n'));
     assert(stop,'real notification contains Stop');

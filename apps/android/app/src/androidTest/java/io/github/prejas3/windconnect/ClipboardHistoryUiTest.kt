@@ -33,7 +33,7 @@ class ClipboardHistoryUiTest {
 
     @Test fun historyCardInBothThemes() {
         val entries = listOf(
-            ClipboardHistoryView(3, false, "Przypięty adres <b>nie HTML</b>", null, fromPc = true, pinned = true),
+            ClipboardHistoryView(3, false, "Pinned address <b>not HTML</b>", null, fromPc = true, pinned = true),
             ClipboardHistoryView(2, true, "Obraz 32×20", thumbnail(), fromPc = false, pinned = false),
             ClipboardHistoryView(1, false, "https://example.com/a", null, fromPc = false, pinned = false),
         )
@@ -50,8 +50,8 @@ class ClipboardHistoryUiTest {
         }
         for (mode in listOf(ThemeMode.Light, ThemeMode.Dark)) {
             compose.runOnIdle { theme.value = mode }
-            compose.onNodeWithText("Przypięty adres <b>nie HTML</b>").assertIsDisplayed()
-            compose.onNodeWithText("Przypięte · z komputera").assertIsDisplayed()
+            compose.onNodeWithText("Pinned address <b>not HTML</b>").assertIsDisplayed()
+            compose.onNodeWithText("Pinned · from the computer").assertIsDisplayed()
             compose.onNodeWithText("Obraz 32×20").assertIsDisplayed()
             val shot = compose.onNodeWithTag("historyShot").captureToImage().asAndroidBitmap()
             File(InstrumentationRegistry.getInstrumentation().targetContext.cacheDir, "wn117-history-${mode.name}.png").outputStream().use {
@@ -63,16 +63,16 @@ class ClipboardHistoryUiTest {
         assertEquals(listOf("historyCopy3", "historyCopy2", "historyCopy1"), order)
         compose.onNodeWithTag("historyCopy2").performClick()
         // WN-160: pin and remove are icons on the entry's row, named for TalkBack.
-        compose.onNodeWithTag("historyPin3").assertContentDescriptionEquals("Odepnij").performClick()
-        compose.onNodeWithTag("historyPin1").assertContentDescriptionEquals("Przypnij").performClick()
-        compose.onNodeWithTag("historyRemove1").assertContentDescriptionEquals("Usuń")
+        compose.onNodeWithTag("historyPin3").assertContentDescriptionEquals("Unpin").performClick()
+        compose.onNodeWithTag("historyPin1").assertContentDescriptionEquals("Pin").performClick()
+        compose.onNodeWithTag("historyRemove1").assertContentDescriptionEquals("Remove")
         compose.onNodeWithTag("historyRemove1").performClick()
         compose.onNodeWithTag("historyClear").performClick()
         compose.runOnIdle { assertEquals(listOf("copy 2", "pin 3 false", "pin 1 true", "remove 1", "clear"), calls) }
 
         // WN-160: an entry with nothing visible says so instead of an empty line; text has no monitor icon, same column as images.
         compose.runOnIdle { list.value = listOf(ClipboardHistoryView(9, false, "", null, fromPc = true, pinned = false)) + entries }
-        compose.onNodeWithText("Pusty tekst (same spacje)").assertIsDisplayed()
+        compose.onNodeWithText("Empty text (spaces only)").assertIsDisplayed()
         val textLeft = compose.onNodeWithText("https://example.com/a", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot.left
         val imageLeft = compose.onNodeWithText("Obraz 32×20", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot.left
         assertEquals("text and image previews start in one column", imageLeft, textLeft, 0.5f)

@@ -17,7 +17,7 @@ const server = http.createServer(async (req, res) => {
   catch { res.writeHead(404).end(); }
 });
 const phone = { key: 'a'.repeat(64), name: 'Pixel 9', fingerprint: 'K4TQ-9WZM-2HXP', paired_at: 1794300000, connected: true, owed: false };
-const state = on => ({ phase: 'connected', phone: 'Pixel 9', qr: null, message: 'Połączono · Wi-Fi', skipped_records: 0, code: null, connected: true, devices: [phone], paired: true, battery: null, find: { available: false, state: 'idle', last: null, ring_ms: null }, media: null, share_media: true, phone_notifications: true, quiet_hours: on });
+const state = on => ({ phase: 'connected', phone: 'Pixel 9', qr: null, message: 'Connected · Wi-Fi', skipped_records: 0, code: null, connected: true, devices: [phone], paired: true, battery: null, find: { available: false, state: 'idle', last: null, ring_ms: null }, media: null, share_media: true, phone_notifications: true, quiet_hours: on });
 const stub = first => {
   window.__calls = [];
   window.__listeners = {};
@@ -39,23 +39,23 @@ const stub = first => {
   await new Promise(r => server.listen(0, '127.0.0.1', r));
   const browser = await chromium.launch({ headless: true });
   try {
-    const page = await browser.newPage({ locale: 'pl-PL', viewport: { width: 920, height: 900 } });
+    const page = await browser.newPage({ locale: 'en-US', viewport: { width: 920, height: 900 } });
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
     await page.addInitScript(stub, state({ on: false, from: 1320, to: 420 }));
     await page.goto(`http://127.0.0.1:${server.address().port}/index.html`);
-    const toggle = page.getByRole('switch', { name: 'Ciche godziny' });
+    const toggle = page.getByRole('switch', { name: 'Quiet hours' });
     await page.locator('#notify-settings:not([hidden])').waitFor();
     assert.equal(await toggle.getAttribute('aria-checked'), 'false');
     assert.equal(await page.locator('#quiet-times').isHidden(), true);
     const sent = () => page.evaluate(() => window.__calls.filter(([c]) => c === 'notify_quiet_hours').map(([, a]) => a));
     await toggle.click();
     assert.deepEqual((await sent()).at(-1), { on: true, from: 1320, to: 420 });
-    const from = page.getByRole('spinbutton', { name: 'Od' });
-    const to = page.getByRole('spinbutton', { name: 'Do' });
+    const from = page.getByRole('spinbutton', { name: 'From' });
+    const to = page.getByRole('spinbutton', { name: 'To' });
     assert.equal(await from.textContent(), '22:00');
     assert.equal(await to.textContent(), '07:00');
-    await page.getByRole('button', { name: 'Później o 15 minut (od)' }).click();
+    await page.getByRole('button', { name: '15 minutes later (from)' }).click();
     assert.deepEqual((await sent()).at(-1), { on: true, from: 1335, to: 420 });
     await to.focus();
     await page.keyboard.press('PageUp');

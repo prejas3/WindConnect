@@ -971,7 +971,7 @@ mod tests {
     fn wire_bounds_and_shape() {
         for text in [
             "".to_string(),
-            "Zażółć 👩‍💻\nhttps://example.com/ż".into(),
+            "Zażółć 👩‍💻\nhttps://example.com/ż".into(), // i18n: data
             "a".repeat(MAX_TEXT),
         ] {
             let m = Message::Set {

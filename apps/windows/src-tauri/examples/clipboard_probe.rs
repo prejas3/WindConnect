@@ -383,12 +383,12 @@ fn main() -> Result<()> {
     let native = std::sync::Arc::new(native);
     native.set_monitoring(true);
     native
-        .write_test("Zażółć 👩‍💻\nhttps://example.com/ż", false)
+        .write_test("Zażółć 👩‍💻\nhttps://example.com/ż", false) // i18n: data
         .map_err(|e| format!("write public: {e}"))?;
     let captured = clipboard_native::read()
         .map_err(|e| format!("read public: {e}"))?
         .unwrap();
-    assert_eq!(captured.text, "Zażółć 👩‍💻\nhttps://example.com/ż");
+    assert_eq!(captured.text, "Zażółć 👩‍💻\nhttps://example.com/ż"); // i18n: data
     assert!(!captured.sensitive);
     assert_ne!(captured.sequence, 0);
     let until = std::time::Instant::now() + std::time::Duration::from_secs(2);

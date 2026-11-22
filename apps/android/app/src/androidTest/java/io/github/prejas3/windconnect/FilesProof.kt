@@ -49,7 +49,8 @@ object FilesProof {
             val deadline = SystemClock.elapsedRealtime() + 15_000
             while (compose.onAllNodesWithTag("shareFiles").fetchSemanticsNodes(atLeastOneRootRequired = false).isEmpty()) {
                 assertTrue("share target must open", SystemClock.elapsedRealtime() < deadline)
-                if (chooser && !clickSystemText("Wyślij na komputer")) clickSystemText("WindConnect")
+                // The chooser names the target in the device's language.
+                if (chooser && !clickSystemText("Send to computer") && !clickSystemText("Wyślij na komputer")) clickSystemText("WindConnect") // i18n: pl
                 Thread.sleep(100)
             }
         }
@@ -63,7 +64,7 @@ object FilesProof {
                 }
             } }
             assertEquals(count, FileSending.status.value.completed)
-            assertTrue(FileSending.status.value.message.startsWith("Wysłano"))
+            assertTrue(FileSending.status.value.message.startsWith("Sent"))
             assertTrue("copies removed after confirmed transfer", core.outbox.listFiles().orEmpty().none { it.name.startsWith("batch-") })
         }
         try {
@@ -77,7 +78,7 @@ object FilesProof {
                 source(case)
                 waitShare(true)
                 compose.waitUntil(10_000) { compose.onNodeWithTag("confirmSendFiles").fetchSemanticsNode().config.contains(androidx.compose.ui.semantics.SemanticsProperties.Disabled).not() }
-                compose.onNodeWithTag("selectedFileCount").assertTextEquals("Wybrane pliki: $count")
+                compose.onNodeWithTag("selectedFileCount").assertTextEquals("Chosen files: $count")
                 assertEquals("no transfer before explicit consent", beforeShare, core.files.value.map { it.id }.toSet())
                 assertTrue("no payload staged before consent", core.outbox.listFiles().orEmpty().none { it.name.startsWith("batch-") })
                 compose.onNodeWithTag("confirmSendFiles").performScrollTo()
@@ -114,7 +115,7 @@ object FilesProof {
             compose.onNodeWithTag("cancelFiles").assertIsDisplayed().performClick()
             try { compose.waitUntil(10_000) { !FileSending.status.value.busy } }
             catch (failure: Throwable) { throw AssertionError("cancel phase=${FileSending.debugPhase} status=${FileSending.status.value}", failure) }
-            assertTrue(FileSending.status.value.message.contains("Anulowano"))
+            assertTrue(FileSending.status.value.message.contains("Cancelled"))
             compose.waitUntil(5_000) {
                 @Suppress("DEPRECATION")
                 val services = app.getSystemService(android.app.ActivityManager::class.java).getRunningServices(100)

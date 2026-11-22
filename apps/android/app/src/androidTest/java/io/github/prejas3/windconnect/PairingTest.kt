@@ -31,7 +31,7 @@ class PairingTest {
     private fun trust(): String = File(compose.activity.noBackupFilesDir, "paired.txt").let { if (it.exists()) it.readText() else "" }
     private fun openScanner() {
         compose.waitUntil(15_000) { compose.onAllNodesWithTag("pairingStatus").fetchSemanticsNodes().any { node ->
-            node.config[androidx.compose.ui.semantics.SemanticsProperties.Text].none { it.text == "Przygotowywanie połączenia…" }
+            node.config[androidx.compose.ui.semantics.SemanticsProperties.Text].none { it.text == "Preparing the connection…" }
         } }
         if (compose.onAllNodesWithTag("scanQr").fetchSemanticsNodes().isEmpty()) compose.onNodeWithTag("openSettings").performClick()
         compose.waitUntil(15_000) { !compose.onNodeWithTag("scanQr").fetchSemanticsNode().config.contains(androidx.compose.ui.semantics.SemanticsProperties.Disabled) }
@@ -90,7 +90,7 @@ class PairingTest {
 
     @Test fun scannerEntryAndCancelRemainAvailable() {
         openScanner()
-        compose.onNodeWithText("Zeskanuj kod QR").assertExists() // the scanner screen's heading, not the Welcome button
+        compose.onNodeWithText("Scan the QR code").assertExists() // the scanner screen's heading, not the Welcome button
         compose.onNodeWithTag("cancelPairing").performClick() // WN-170: in the pinned top bar
         compose.onNodeWithTag("computerCard").assertExists()
     }
@@ -134,7 +134,7 @@ class PairingTest {
         waitFor("confirmPairing")
         compose.waitUntil(5000) { !compose.onNodeWithTag("confirmPairing").fetchSemanticsNode().config.contains(androidx.compose.ui.semantics.SemanticsProperties.Disabled) }
         compose.onNodeWithTag("confirmPairing").performScrollTo().performClick()
-        compose.waitUntil(9000) { compose.onAllNodesWithTag("pairedConnectionStatus").fetchSemanticsNodes().any { it.config[androidx.compose.ui.semantics.SemanticsProperties.Text].any { text -> text.text == "Połączono z komputerem" } } }
+        compose.waitUntil(9000) { compose.onAllNodesWithTag("pairedConnectionStatus").fetchSemanticsNodes().any { it.config[androidx.compose.ui.semantics.SemanticsProperties.Text].any { text -> text.text == "Connected to the computer" } } }
         val elapsed = android.os.SystemClock.elapsedRealtime() - start
         assertTrue("decoded QR to connected session must stay below 10s: $elapsed", elapsed < 10000)
         InstrumentationRegistry.getInstrumentation().sendStatus(0, android.os.Bundle().apply { putString("qrToConnectedMs", elapsed.toString()) })
@@ -217,7 +217,7 @@ class PairingTest {
         if (InstrumentationRegistry.getArguments().getString("clipboardProof") == "true") {
             // Since WC-34 pairing leaves the background connection to the person; the proof's notification action needs it.
             compose.onNodeWithTag("keepBackground").performScrollTo().performClick()
-            compose.onNodeWithTag("backgroundOutcome").assertTextContains("Włączone", substring = true)
+            compose.onNodeWithTag("backgroundOutcome").assertTextContains("On. You'll see", substring = true)
             compose.onNodeWithTag("pairingDone").performScrollTo().performClick()
             ClipboardProof.run(compose)
             return
@@ -234,7 +234,7 @@ class PairingTest {
                 compose.onNodeWithTag("previewToggle").performClick()
                 if (android.os.Build.VERSION.SDK_INT >= 31) {
                     val source = compose.onNodeWithTag("paletteSource").fetchSemanticsNode().config[androidx.compose.ui.semantics.SemanticsProperties.Text].first().text
-                    if (source.contains("systemowy")) compose.onNodeWithTag("dynamicColor").performClick()
+                    if (source.contains("system color")) compose.onNodeWithTag("dynamicColor").performClick()
                 }
                 compose.onNodeWithTag("theme-$theme").performScrollTo().performClick()
                 compose.onNodeWithTag("previewToggle").performClick()
@@ -254,12 +254,12 @@ class PairingTest {
         if (background) {
             // WC-34: the background connection is chosen on the Gotowe screen (notifications already granted above).
             compose.onNodeWithTag("keepBackground").performScrollTo().performClick()
-            compose.onNodeWithTag("backgroundOutcome").assertTextContains("Włączone", substring = true)
+            compose.onNodeWithTag("backgroundOutcome").assertTextContains("On. You'll see", substring = true)
             val manager = context.getSystemService(android.app.NotificationManager::class.java)
             val deadline = android.os.SystemClock.elapsedRealtime() + 5000
-            while (manager.activeNotifications.none { it.id == ConnectionService.ID && it.notification.extras.getString(android.app.Notification.EXTRA_TEXT).orEmpty().startsWith("Połączono") } && android.os.SystemClock.elapsedRealtime() < deadline) Thread.sleep(50)
+            while (manager.activeNotifications.none { it.id == ConnectionService.ID && it.notification.extras.getString(android.app.Notification.EXTRA_TEXT).orEmpty().startsWith("Connected") } && android.os.SystemClock.elapsedRealtime() < deadline) Thread.sleep(50)
             fun notification() = manager.activeNotifications.first { it.id == ConnectionService.ID }.notification
-            assertTrue(notification().extras.getString(android.app.Notification.EXTRA_TEXT).orEmpty().startsWith("Połączono"))
+            assertTrue(notification().extras.getString(android.app.Notification.EXTRA_TEXT).orEmpty().startsWith("Connected"))
             assertEquals(2, notification().actions.size)
             compose.activityRule.scenario.close()
             // WN-126: `-e doze false` stops here: paired, background on and connected, for the host's update checks.
@@ -289,7 +289,7 @@ class PairingTest {
                 assertTrue(result, result.contains("idle", ignoreCase = true))
                 repeat(seconds / 5) { index ->
                     Thread.sleep(5000)
-                    val connected = notification().extras.getString(android.app.Notification.EXTRA_TEXT).orEmpty().startsWith("Połączono")
+                    val connected = notification().extras.getString(android.app.Notification.EXTRA_TEXT).orEmpty().startsWith("Connected")
                     if (connected) connectedChecks++
                     if (exempt) assertTrue("session remains connected without Activity in Doze", connected)
                     if ((index + 1) % 12 == 0) {
@@ -305,9 +305,9 @@ class PairingTest {
                 shell("input keyevent 224")
                 // CCS/1 RULE:without exemption Doze can block networking; waking must recover without a permanent CPU lock.
                 val recovered = android.os.SystemClock.elapsedRealtime() + 75000
-                while (!notification().extras.getString(android.app.Notification.EXTRA_TEXT).orEmpty().startsWith("Połączono") && android.os.SystemClock.elapsedRealtime() < recovered) Thread.sleep(200)
-                assertTrue("connection recovers on wake", notification().extras.getString(android.app.Notification.EXTRA_TEXT).orEmpty().startsWith("Połączono"))
-                val stop = notification().actions.first { it.title.toString() == "Zatrzymaj" }
+                while (!notification().extras.getString(android.app.Notification.EXTRA_TEXT).orEmpty().startsWith("Connected") && android.os.SystemClock.elapsedRealtime() < recovered) Thread.sleep(200)
+                assertTrue("connection recovers on wake", notification().extras.getString(android.app.Notification.EXTRA_TEXT).orEmpty().startsWith("Connected"))
+                val stop = notification().actions.first { it.title.toString() == "Stop" }
                 stop.actionIntent.send()
                 val stopped = android.os.SystemClock.elapsedRealtime() + 5000
                 while (manager.activeNotifications.any { it.id == ConnectionService.ID } && android.os.SystemClock.elapsedRealtime() < stopped) Thread.sleep(50)
@@ -321,8 +321,8 @@ class PairingTest {
                 if (InstrumentationRegistry.getArguments().getString("backgroundBoot") == "true") {
                     assertTrue(ConnectionService.start(context, enable = true))
                     val restored = android.os.SystemClock.elapsedRealtime() + 15000
-                    while (manager.activeNotifications.none { it.id == ConnectionService.ID && it.notification.extras.getString(android.app.Notification.EXTRA_TEXT).orEmpty().startsWith("Połączono") } && android.os.SystemClock.elapsedRealtime() < restored) Thread.sleep(100)
-                    assertTrue(notification().extras.getString(android.app.Notification.EXTRA_TEXT).orEmpty().startsWith("Połączono"))
+                    while (manager.activeNotifications.none { it.id == ConnectionService.ID && it.notification.extras.getString(android.app.Notification.EXTRA_TEXT).orEmpty().startsWith("Connected") } && android.os.SystemClock.elapsedRealtime() < restored) Thread.sleep(100)
+                    assertTrue(notification().extras.getString(android.app.Notification.EXTRA_TEXT).orEmpty().startsWith("Connected"))
                 }
             } finally {
                 shell("dumpsys deviceidle unforce")

@@ -62,7 +62,7 @@ async function stop(app) {
     await m.locator('#relay-enabled').click();
     await m.waitForFunction(() => document.querySelector('#relay-error').textContent.length > 0);
     const error = await m.locator('#relay-error').textContent();
-    assert.match(error, /^Nieprawidłowy adres: /);
+    assert.match(error, /^Invalid address: /);
     assert.equal(await m.locator('#relay-enabled').getAttribute('aria-checked'), 'false', 'a refused URL leaves it off');
     assert.equal(await exists(file), false);
     await m.screenshot({ path: path.join(artifacts, 'relay-refused.png') });

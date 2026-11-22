@@ -10,7 +10,7 @@ class ReceiveNoticeTest {
 
     @Test fun oneNewFile() = assertEquals(listOf("c"), fresh(listOf("c", "b", "a"), setOf("a", "b")))
     @Test fun severalNewFiles() = assertEquals(listOf("d", "c"), fresh(listOf("d", "c", "b", "a"), setOf("a", "b")))
-    @Test fun failedBatchIsNotAboutAFile() = assertEquals(emptyList<String>(), fresh(listOf("c", "b"), setOf("b"), lastResult = "Nie udało się odebrać pliku"))
+    @Test fun failedBatchIsNotAboutAFile() = assertEquals(emptyList<String>(), fresh(listOf("c", "b"), setOf("b"), lastResult = "Couldn't receive the file"))
     @Test fun runningBatchIsNotAboutAFile() = assertEquals(emptyList<String>(), fresh(listOf("c", "b"), setOf("b"), busy = true))
     @Test fun withoutBatchBaseOnlyTheNewest() = assertEquals(listOf("c"), fresh(listOf("c", "b", "a"), null))
     @Test fun withoutBatchBaseAndNoReceipts() = assertEquals(emptyList<String>(), fresh(emptyList(), null))

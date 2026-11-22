@@ -16,7 +16,7 @@ const server = http.createServer(async (req, res) => {
   catch { res.writeHead(404).end(); }
 });
 const phone = { key: 'a'.repeat(64), name: 'Pixel 9', fingerprint: 'K4TQ-9WZM-2HXP', paired_at: 1794300000, connected: true, owed: false };
-const state = on => ({ phase: 'connected', phone: 'Pixel 9', qr: null, message: 'Połączono · Wi-Fi', skipped_records: 0, code: null, connected: true, devices: [phone], paired: true, battery: null, find: { available: false, state: 'idle', last: null, ring_ms: null }, media: null, share_media: true, phone_notifications: on });
+const state = on => ({ phase: 'connected', phone: 'Pixel 9', qr: null, message: 'Connected · Wi-Fi', skipped_records: 0, code: null, connected: true, devices: [phone], paired: true, battery: null, find: { available: false, state: 'idle', last: null, ring_ms: null }, media: null, share_media: true, phone_notifications: on });
 const stub = first => {
   window.__calls = [];
   window.__listeners = {};
@@ -38,12 +38,12 @@ const stub = first => {
   await new Promise(r => server.listen(0, '127.0.0.1', r));
   const browser = await chromium.launch({ headless: true });
   try {
-    const page = await browser.newPage({ locale: 'pl-PL', viewport: { width: 920, height: 900 } });
+    const page = await browser.newPage({ locale: 'en-US', viewport: { width: 920, height: 900 } });
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
     await page.addInitScript(stub, state(true));
     await page.goto(`http://127.0.0.1:${server.address().port}/index.html`);
-    const toggle = page.getByRole('switch', { name: 'Powiadomienia z telefonu' });
+    const toggle = page.getByRole('switch', { name: 'Notifications from the phone' });
     await page.locator('#notify-settings:not([hidden])').waitFor();
     assert.equal(await toggle.getAttribute('aria-checked'), 'true');
     assert.equal(await toggle.isDisabled(), false);
