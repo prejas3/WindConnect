@@ -91,6 +91,7 @@ fun HomeScreen(state: PairingUi, onScan: () -> Unit, onDiagnostics: () -> Unit, 
             WindAction(stringResource(R.string.action_lock_pc), stringResource(R.string.home_lock_sub), "lock", pcActions.lock.takeIf { connected != null }, Modifier.weight(1f).fillMaxHeight().testTag("homeLock"))
             WindAction(stringResource(R.string.action_open_on_pc), stringResource(R.string.home_link_sub), "external", pcActions.openLink.takeIf { connected != null }, Modifier.weight(1f).fillMaxHeight().testTag("homeLink"))
         }
+        if (connected != null) PcActionStatus(pcActions) // WN-173: the outcome right under the tile tapped.
     }
     // WN-130/WN-156: "History" in the clipboard card's header shows the history card (also when empty) and scrolls to it;
     // an empty history otherwise takes no card.

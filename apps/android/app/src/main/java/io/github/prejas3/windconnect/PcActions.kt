@@ -30,10 +30,17 @@ import io.github.prejas3.windconnect.ui.WindCard
 import io.github.prejas3.windconnect.ui.WindField
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 /** WN-100: what the person reads for each status of a PC action (PROTOCOL.md §9.2). */
 object PcActionText {
-    fun of(status: String, label: String): String = when (status) {
+    fun of(status: String, label: String, id: String? = null): String = when {
+        // WN-173: a link the PC took but its browser didn't open says so (not a bare "failed").
+        status == "failed" && id == "open-url" -> str(R.string.pc_link_failed)
+        else -> of(status, label)
+    }
+
+    private fun of(status: String, label: String): String = when (status) {
         "done" -> str(R.string.pc_action_done, label)
         "refused" -> str(R.string.pc_action_refused, label)
         "bad-argument" -> str(R.string.pc_action_bad_url, label)
@@ -55,6 +62,33 @@ object PcActionText {
 
     /** The first http(s) link in shared or copied text, or null. */
     fun link(text: String?): String? = text?.let { Regex("""https?://[^\s<>"]+""", RegexOption.IGNORE_CASE).find(it)?.value?.trimEnd('.', ',', ')', ';') }
+
+    /**
+     * WN-173: [link] as the PC takes it (wind-core `check_url`: printable ASCII only, no `"<>\^`{|}`, an ASCII host).
+     * CCS/1 M:WN-173 cause (one of two): a link copied as text keeps its letters (https://pl.wikipedia.org/wiki/Łódź,
+     * an IDN host, a `|` in a query), the PC answered bad-argument and nothing opened. Here the host goes to punycode and
+     * every other byte the PC refuses is percent-encoded as UTF-8; an existing %XX stays as it is.
+     */
+    fun forPc(link: String): String {
+        val schemeEnd = link.indexOf("://").takeIf { it > 0 } ?: return link
+        val afterScheme = schemeEnd + 3
+        val authorityEnd = link.indexOfAny(charArrayOf('/', '?', '#'), afterScheme).let { if (it < 0) link.length else it }
+        val authority = link.substring(afterScheme, authorityEnd)
+        val (host, port) = if (authority.startsWith("[")) authority to "" else authority.substringBeforeLast(':', authority).let { h ->
+            h to authority.removePrefix(h)
+        }
+        val asciiHost = if (host.all { it.code in 0x21..0x7e }) host else try {
+            java.net.IDN.toASCII(host, java.net.IDN.ALLOW_UNASSIGNED)
+        } catch (_: IllegalArgumentException) { host }
+        return link.substring(0, afterScheme).lowercase() + encode(asciiHost) + encode(port) + encode(link.substring(authorityEnd))
+    }
+
+    private fun encode(part: String): String = buildString {
+        for (byte in part.toByteArray(Charsets.UTF_8)) {
+            val b = byte.toInt() and 0xff
+            if (b in 0x21..0x7e && b.toChar() !in "\"<>\\^`{|}") append(b.toChar()) else append('%').append("%02X".format(b))
+        }
+    }
 }
 
 class PcActionsState(private val context: Context, private val scope: CoroutineScope) {
@@ -64,8 +98,17 @@ class PcActionsState(private val context: Context, private val scope: CoroutineS
     val custom: MutableState<List<RemoteAction>> = mutableStateOf(emptyList())
     private val connections get() = (context.applicationContext as WindApplication).connections
 
+    /**
+     * WN-173: the status shows at once ("sending…") and under the home tiles (pcActionStatus), so a tap is never silent;
+     * a PC that doesn't answer in 8 s counts as failed, as in the share sheet.
+     */
     fun run(id: String, label: String, url: String? = null) {
-        scope.launch { status.value = PcActionText.of(connections.runPcAction(id, url), label) }
+        status.value = str(R.string.pc_action_sending, label)
+        scope.launch {
+            val sent = url?.let(PcActionText::forPc)
+            val answer = withTimeoutOrNull(8_000) { connections.runPcAction(id, sent) } ?: "failed"
+            status.value = PcActionText.of(answer, label, id)
+        }
     }
 
     val lock: () -> Unit = { run("lock", str(R.string.action_lock_pc)) }
@@ -104,12 +147,11 @@ fun rememberPcActions(): PcActionsState {
 
 @Composable
 fun PcActionsCard(state: PcActionsState, connected: Boolean) {
-    val status by state.status
     val asking by state.asking
     var typed by state.typed
     val custom by state.custom
     androidx.compose.runtime.LaunchedEffect(connected) { if (connected) state.refresh() else state.custom.value = emptyList() }
-    if (!connected || (status == null && !asking && custom.isEmpty())) return
+    if (!connected || (!asking && custom.isEmpty())) return
     WindCard {
         Text(str(R.string.pc_actions_title), style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
         if (asking) {
@@ -125,9 +167,15 @@ fun PcActionsCard(state: PcActionsState, connected: Boolean) {
             }
         }
         PcActionButtons(custom) { id, label -> state.run(id, label) }
-        status?.let {
-            Text(it, style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("pcActionStatus").semantics { liveRegion = LiveRegionMode.Polite })
-        }
+    }
+}
+
+/** WN-173: the last PC action's outcome, shown under the home tiles that started it (not in a card further down). */
+@Composable
+fun PcActionStatus(state: PcActionsState) {
+    val status by state.status
+    status?.let {
+        Text(it, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.testTag("pcActionStatus").semantics { liveRegion = LiveRegionMode.Polite })
     }
 }
 

@@ -313,6 +313,8 @@
     <string name="pc_action_busy">%1$s: too many requests, try again in a moment</string>
     <string name="pc_action_unavailable">The computer isn\'t connected or doesn\'t take actions</string>
     <string name="pc_action_failed">%1$s: failed</string>
+    <string name="pc_action_sending">%1$s: sending…</string>
+    <string name="pc_link_failed">The computer couldn\'t open the link in its browser</string>
     <string name="touchpad_controlling">Controlling: %1$s</string>
     <string name="touchpad_preparing">Preparing the touchpad…</string>
     <string name="touchpad_open_failed">Couldn\'t open the connection</string>

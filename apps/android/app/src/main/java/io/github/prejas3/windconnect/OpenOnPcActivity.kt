@@ -59,8 +59,8 @@ class OpenOnPcActivity : ComponentActivity() {
                     WindButton(str(R.string.action_open_on_pc), enabled = !sending, onClick = {
                         sending = true
                         scope.launch {
-                            val status = withTimeoutOrNull(8_000) { send(link!!) } ?: "failed"
-                            outcome = (status == "done") to PcActionText.of(status, str(R.string.action_open_on_pc))
+                            val status = withTimeoutOrNull(8_000) { send(PcActionText.forPc(link!!)) } ?: "failed"
+                            outcome = (status == "done") to PcActionText.of(status, str(R.string.action_open_on_pc), "open-url")
                             sending = false
                         }
                     }, modifier = Modifier.testTag("openOnPcConfirm"))

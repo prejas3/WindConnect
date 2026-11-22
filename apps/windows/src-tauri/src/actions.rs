@@ -145,7 +145,6 @@ impl Executor for WindowsExecutor {
     }
     #[cfg(windows)]
     fn run(&self, action: &Action) -> Result<(), String> {
-        use std::os::windows::ffi::OsStrExt;
         match action {
             Action::Lock => {
                 // SAFETY: no arguments; locks the interactive session.
@@ -165,29 +164,8 @@ impl Executor for WindowsExecutor {
                 });
                 Ok(())
             }
-            Action::OpenUrl(url) => {
-                // Checked by wind-core: an absolute http(s) URL, so the shell hands it to the browser.
-                let wide: Vec<u16> = std::ffi::OsStr::new(url)
-                    .encode_wide()
-                    .chain(Some(0))
-                    .collect();
-                let verb: Vec<u16> = "open\0".encode_utf16().collect();
-                // SAFETY: NUL-terminated buffers live across the call.
-                let result = unsafe {
-                    windows_sys::Win32::UI::Shell::ShellExecuteW(
-                        std::ptr::null_mut(),
-                        verb.as_ptr(),
-                        wide.as_ptr(),
-                        std::ptr::null(),
-                        std::ptr::null(),
-                        windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL,
-                    )
-                };
-                if (result as isize) <= 32 {
-                    return Err(format!("ShellExecuteW: {}", result as isize));
-                }
-                Ok(())
-            }
+            // Checked by wind-core: an absolute http(s) URL, so the shell hands it to the browser.
+            Action::OpenUrl(url) => open_in_browser(url),
             Action::Custom(custom) => {
                 // CCS/1 SEC:no shell: the .exe itself with the arguments set here; never cmd.exe or a script.
                 let program = &custom.program;
@@ -212,6 +190,67 @@ impl Executor for WindowsExecutor {
     fn run(&self, _: &Action) -> Result<(), String> {
         Err("unsupported".into())
     }
+}
+
+/// CCS/1 M:WN-173 cause (one of two): the link reached the PC but `ShellExecuteW` ran on a tokio blocking-pool thread with
+/// no COM apartment and returned at once. Microsoft requires COM initialised (STA) before ShellExecute, because the
+/// http(s) association (the default browser chosen in Settings) is resolved through shell COM handlers; without it the
+/// call could report success with no browser started, or fail, and the phone only saw its clipboard carried over.
+/// Now: an STA on this thread for the call (`with_sta`), `ShellExecuteExW` with SEE_MASK_NOASYNC (it returns only once
+/// the browser was handed the link, so the apartment isn't torn down under it) and SEE_MASK_FLAG_NO_UI (no error box on
+/// a tray process); any failure is the action's status, "failed", which the phone shows as "couldn't open the link".
+#[cfg(windows)]
+fn open_in_browser(url: &str) -> Result<(), String> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::UI::Shell::{
+        ShellExecuteExW, SEE_MASK_FLAG_NO_UI, SEE_MASK_NOASYNC, SHELLEXECUTEINFOW,
+    };
+    let file: Vec<u16> = std::ffi::OsStr::new(url)
+        .encode_wide()
+        .chain(Some(0))
+        .collect();
+    let verb: Vec<u16> = "open\0".encode_utf16().collect();
+    with_sta(|| {
+        // SAFETY: a zeroed SHELLEXECUTEINFOW is valid (all null/0); the NUL-terminated buffers outlive the call.
+        let mut info: SHELLEXECUTEINFOW = unsafe { std::mem::zeroed() };
+        info.cbSize = std::mem::size_of::<SHELLEXECUTEINFOW>() as u32;
+        info.fMask = SEE_MASK_NOASYNC | SEE_MASK_FLAG_NO_UI;
+        info.lpVerb = verb.as_ptr();
+        info.lpFile = file.as_ptr();
+        info.nShow = windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+        // SAFETY: `info` is filled as above and lives across the call.
+        if unsafe { ShellExecuteExW(&mut info) } == 0 {
+            return Err(format!(
+                "ShellExecuteExW: {}",
+                std::io::Error::last_os_error()
+            ));
+        }
+        Ok(())
+    })?
+}
+
+/// Runs `f` on this thread inside a single-threaded COM apartment (WN-173), released after; `Err` when COM can't start.
+#[cfg(windows)]
+fn with_sta<T: Send>(f: impl FnOnce() -> T + Send) -> Result<T, String> {
+    use windows_sys::Win32::System::Com::{
+        CoInitializeEx, CoUninitialize, COINIT_APARTMENTTHREADED, COINIT_DISABLE_OLE1DDE,
+    };
+    // SAFETY: plain flags, no reserved pointer; paired with CoUninitialize below when it succeeded (S_OK or S_FALSE).
+    let hr = unsafe {
+        CoInitializeEx(
+            std::ptr::null(),
+            (COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE) as u32,
+        )
+    };
+    if hr < 0 {
+        // RPC_E_CHANGED_MODE: this thread is already MTA; ShellExecute needs an STA, so it runs on a fresh thread.
+        return std::thread::scope(|s| s.spawn(|| with_sta(f)).join())
+            .unwrap_or_else(|_| Err(format!("CoInitializeEx: {hr:#x}, COM thread panicked")));
+    }
+    let out = f();
+    // SAFETY: balances the successful CoInitializeEx above on the same thread.
+    unsafe { CoUninitialize() };
+    Ok(out)
 }
 
 #[derive(Clone, serde::Serialize)]
@@ -445,6 +484,44 @@ pub fn edit_custom_actions(window: tauri::WebviewWindow) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// WN-173: the browser is opened from inside an STA (Microsoft's rule for ShellExecute); before, it ran on a tokio
+    /// blocking thread with no apartment at all. Also from a thread already in the MTA (it moves to a fresh thread).
+    #[cfg(windows)]
+    #[test]
+    fn opening_a_link_runs_in_a_single_threaded_apartment() {
+        use windows_sys::Win32::System::Com::{
+            CoGetApartmentType, CoInitializeEx, CoUninitialize, APTTYPE, APTTYPEQUALIFIER,
+            APTTYPE_MAINSTA, APTTYPE_STA, COINIT_MULTITHREADED,
+        };
+        let sta = |kind: Result<APTTYPE, String>| matches!(kind, Ok(APTTYPE_STA | APTTYPE_MAINSTA));
+        fn apartment() -> APTTYPE {
+            let (mut kind, mut qualifier): (APTTYPE, APTTYPEQUALIFIER) = (-1, 0);
+            // SAFETY: two out-pointers to locals.
+            let hr = unsafe { CoGetApartmentType(&mut kind, &mut qualifier) };
+            if hr < 0 {
+                -1
+            } else {
+                kind
+            }
+        }
+        let plain = std::thread::spawn(|| (apartment(), with_sta(apartment)))
+            .join()
+            .unwrap();
+        assert!(!sta(Ok(plain.0)), "a plain thread is in no STA");
+        assert!(sta(plain.1.clone()), "{:?}", plain.1);
+        let mta = std::thread::spawn(|| {
+            // SAFETY: plain flags; balanced below.
+            unsafe { CoInitializeEx(std::ptr::null(), COINIT_MULTITHREADED as u32) };
+            let inside = with_sta(apartment);
+            // SAFETY: balances the call above.
+            unsafe { CoUninitialize() };
+            inside
+        })
+        .join()
+        .unwrap();
+        assert!(sta(mta.clone()), "{mta:?}");
+    }
 
     fn doc(json: &str) -> Doc {
         serde_json::from_str(json).unwrap()

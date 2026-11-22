@@ -315,6 +315,8 @@
     <string name="pc_action_busy">%1$s: za dużo próśb, spróbuj za chwilę</string>
     <string name="pc_action_unavailable">Komputer nie jest połączony albo nie przyjmuje akcji</string>
     <string name="pc_action_failed">%1$s: nie udało się</string>
+    <string name="pc_action_sending">%1$s: wysyłanie…</string>
+    <string name="pc_link_failed">Komputer nie otworzył linku w przeglądarce</string>
     <string name="touchpad_controlling">Sterujesz: %1$s</string>
     <string name="touchpad_preparing">Przygotowywanie touchpada…</string>
     <string name="touchpad_open_failed">Nie udało się otworzyć połączenia</string>
