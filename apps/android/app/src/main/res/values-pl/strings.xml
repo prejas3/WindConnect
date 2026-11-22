@@ -359,6 +359,7 @@
     <string name="sms_send_title">Wysyłanie z komputera</string>
     <string name="sms_send_about">Komputer może wysyłać SMS i MMS z tego telefonu (opłaty jak za zwykłe wiadomości). Najwyżej 10 na minutę.</string>
     <string name="sms_send_denied">Brak zgody na wysyłanie SMS. Możesz ją przyznać w ustawieniach aplikacji.</string>
+    <string name="sms_send_blocked">Android na tym telefonie zamknął prośbę bez pytania, więc WindConnect nie może tu wysyłać SMS. Jeśli ustawienia aplikacji (menu ⋮) mają „Zezwól na ustawienia z ograniczeniami”, włącz to i spróbuj ponownie.</string>
     <string name="sms_send_permissions">Po włączeniu Android zapyta o wysyłanie SMS i (opcjonalnie) o stan telefonu, by pokazać wybór karty SIM.</string>
     <string name="open_app_settings">Otwórz ustawienia aplikacji</string>
     <string name="pc_actions_title">Akcje na komputerze</string>

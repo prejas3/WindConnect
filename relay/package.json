@@ -1,6 +1,6 @@
 {
   "name": "windconnect-relay",
-  "version": "0.87.0",
+  "version": "0.87.1",
   "private": true,
   "license": "MIT",
   "description": "WindConnect E2E relay: forwards only encrypted QUIC packets between two paired devices (PROTOCOL.md \u00a713).",
