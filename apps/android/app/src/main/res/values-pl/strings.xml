@@ -528,6 +528,10 @@
     <string name="widget_open_app">Otwórz aplikację</string>
     <string name="widget_short_clipboard">Schowek</string>
     <string name="widget_short_app">Aplikacja</string>
+    <string name="widget_short_file">Plik</string>
+    <string name="widget_short_touchpad">Touchpad</string>
+    <string name="widget_line">%1$s · %2$s</string>
+    <string name="widget_level_charging">%1$s, ładuje się</string>
     <string name="more_options">Więcej opcji: %1$s</string>
     <string name="scan_aim">Skieruj aparat na kod QR na komputerze</string>
 </resources>

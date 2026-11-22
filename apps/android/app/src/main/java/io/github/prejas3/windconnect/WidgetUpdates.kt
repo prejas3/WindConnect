@@ -30,6 +30,9 @@ internal object WidgetUpdates {
     val debugPublishes = AtomicInteger()
     @Volatile var debugError: String? = null
         private set
+    /** WN-175, tests only (ignored in release builds): the connection state the widget draws instead of the real one. */
+    @Volatile var debugState: io.github.prejas3.windconnect.core.ConnectionState? = null
+        set(value) { field = value; signal?.trySend(Unit) }
 
     fun installed(context: Context) = AppWidgetManager.getInstance(context)
         .getAppWidgetIds(ComponentName(context, WindWidgetReceiver::class.java)).isNotEmpty()
@@ -95,7 +98,8 @@ internal object WidgetUpdates {
         // an unknown level is no reading at all (no percent, not charging). The sticky intent: no new receiver or timer.
         val (percent, charging) = widgetBattery(BatteryReading.from(application.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))))
         val appearance = application.getSharedPreferences("appearance", Context.MODE_PRIVATE)
-        return widgetData(application.connections.state.value, ConnectionService.enabled(application), percent, charging,
+        val state = (if (BuildConfig.DEBUG) debugState else null) ?: application.connections.state.value
+        return widgetData(state, ConnectionService.enabled(application), percent, charging,
             appearance.getString("theme", "System") ?: "System", appearance.getBoolean("dynamic", true),
             application.getSharedPreferences("widget_presentation", Context.MODE_PRIVATE).getString("peer_name", null))
     }

@@ -52,9 +52,22 @@ class UiWidgetShotsTest {
         val appearance = context.getSharedPreferences("appearance", Context.MODE_PRIVATE)
         val wasEnabled = preferences.getBoolean("enabled", false)
         preferences.edit().putBoolean("enabled", true).commit()
-        appearance.edit().putString("theme", "Dark").putBoolean("dynamic", true).commit()
+        appearance.edit().putString("theme", "Dark").putBoolean("dynamic", false).commit()
+        context.getSharedPreferences("widget_presentation", Context.MODE_PRIVATE).edit().putString("peer_name", "SZYMON-PC").commit()
         shell("appwidget grantbind --package ${context.packageName} --user 0")
         shell("dumpsys battery set level 68")
+        shell("dumpsys battery set ac 1")
+        shell("dumpsys battery set status 2")
+        // WN-175: every state of the chosen design (C's row + B's round actions), light and dark, and the sizes.
+        val connected = io.github.prejas3.windconnect.core.ConnectionState.Connected("SZYMON-PC", "shots", 1)
+        val connecting = io.github.prejas3.windconnect.core.ConnectionState.Connecting
+        val away = io.github.prejas3.windconnect.core.ConnectionState.Stopped
+        data class Shot(val label: String, val w: Int, val h: Int, val theme: String, val state: io.github.prejas3.windconnect.core.ConnectionState, val font: Float = 1f)
+        val shots = listOf(Shot("warmup", 320, 190, "Light", connected)) + listOf("Light", "Dark").flatMap { theme ->
+            listOf(Shot("medium-connected-$theme", 320, 190, theme, connected), Shot("medium-connecting-$theme", 320, 190, theme, connecting),
+                Shot("medium-away-$theme", 320, 190, theme, away), Shot("small-connected-$theme", 320, 110, theme, connected),
+                Shot("large-connected-$theme", 360, 330, theme, connected))
+        } + listOf(Shot("narrow-connected-Light", 200, 190, "Light", connected), Shot("medium-font150-Light", 250, 190, "Light", connected, 1.5f))
         var fontScale = 1f
         val host = object : AppWidgetHost(context, 330160) {
             override fun onCreateView(context: Context, appWidgetId: Int, appWidget: AppWidgetProviderInfo) = AppWidgetHostView(
@@ -66,9 +79,11 @@ class UiWidgetShotsTest {
         try {
             host.startListening()
             // The first widget of a fresh process stays on its loading layout in this host: a warm-up one first, not saved.
-            for ((label, size) in listOf("warmup" to (320 to 190), "small" to (250 to 110), "medium" to (320 to 190), "large" to (360 to 330), "medium-font150" to (250 to 190))) {
-                val (w, h) = size
-                fontScale = if (label.endsWith("font150")) 1.5f else 1f
+            for (shot in shots) {
+                val (label, w, h) = Triple(shot.label, shot.w, shot.h)
+                fontScale = shot.font
+                appearance.edit().putString("theme", shot.theme).commit()
+                WidgetUpdates.debugState = shot.state
                 // As on a phone: the system font scale reaches the launcher and the app (the widget reads it).
                 shell("settings put system font_scale $fontScale")
                 SystemClock.sleep(1000)
@@ -105,6 +120,7 @@ class UiWidgetShotsTest {
             }
         } finally {
             shell("settings put system font_scale 1.0")
+            WidgetUpdates.debugState = null
             ids.forEach { host.deleteAppWidgetId(it) }
             host.stopListening()
             scenario.close()

@@ -69,4 +69,30 @@ class WidgetModelTest {
         assertEquals(61, a.first)
         assertEquals(widgetData(ConnectionState.Ready, true, a.first, a.second), widgetData(ConnectionState.Ready, true, b.first, b.second))
     }
+
+    /** WN-175: the device row's second line; the battery only while the computer is there (a stale percent would mislead). */
+    @Test fun deviceLineShowsStateAndBatteryOnlyWhenLive() {
+        assertEquals("Connected · 80% charging", widgetData(ConnectionState.Connected("PC", "k", 1), true, 80, true).line)
+        assertEquals("Connected · 64%", widgetData(ConnectionState.Connected("PC", "k", 1), true, 64, false).line)
+        assertEquals("Connecting… · 64%", widgetData(ConnectionState.Connecting, true, 64, false, pairedName = "PC").line)
+        assertEquals("Computer out of reach", widgetData(ConnectionState.Stopped, true, 64, false, pairedName = "PC").line)
+        assertEquals("Connected", widgetData(ConnectionState.Connected("PC", "k", 1), true, null, false).line)
+        StringsForTests.usePolish()
+        try { assertTrue(widgetData(ConnectionState.Connected("PC", "k", 1), true, 80, true).line.endsWith("80%, ładuje się")) } // i18n: pl
+        finally { StringsForTests.useEnglish() }
+    }
+
+    /** WN-175: C's row with B's round actions at every size; narrow widths drop the touchpad to keep 48 dp buttons. */
+    @Test fun sizesPickTheLayoutAndTheRoundActions() {
+        assertEquals(WidgetPlan(WidgetLayout.Small, listOf(LauncherAction.Clipboard)), widgetPlan(320f, 110f))
+        assertEquals(WidgetLayout.Medium, widgetPlan(320f, 180f).layout)
+        assertEquals(listOf(LauncherAction.Clipboard, LauncherAction.File, LauncherAction.Touchpad, null), widgetPlan(320f, 180f).actions)
+        assertEquals(listOf(LauncherAction.Clipboard, LauncherAction.File, null), widgetPlan(200f, 180f).actions)
+        assertEquals(WidgetLayout.Large, widgetPlan(320f, 330f).layout)
+        // Every round button (48 dp) and its gaps fit the narrowest allowed width (180 dp minus 28 dp padding).
+        for (width in listOf(180f, 239f, 240f, 360f)) {
+            val n = widgetPlan(width, 180f).actions.size
+            assertTrue("$n buttons at $width dp", n * 48 + (n - 1) * 4 <= width - 28)
+        }
+    }
 }

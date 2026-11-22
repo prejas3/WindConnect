@@ -37,6 +37,8 @@ class WidgetHostTest {
     private fun nodes(view: View): List<View> = listOf(view) +
         if (view is ViewGroup) (0 until view.childCount).flatMap { nodes(view.getChildAt(it)) } else emptyList()
     private fun texts(view: View) = nodes(view).filterIsInstance<TextView>()
+    /** WN-175: the round actions carry their name as the description (no label at the default size). */
+    private fun described(view: View, label: String): View? = nodes(view).firstOrNull { it.contentDescription?.toString() == label }
     private fun textExists(view: View, text: String): Boolean {
         var exists = false
         instrumentation.runOnMainSync { exists = texts(view).any { it.text.toString().contains(text) } }
@@ -97,7 +99,8 @@ class WidgetHostTest {
                     addView(view, FrameLayout.LayoutParams((320*density).toInt(), (220*density).toInt(), android.view.Gravity.CENTER))
                 })
             }
-            waitFor("phone battery visible") { textExists(view, "77%") }
+            // WN-175: out of reach the widget shows no battery (a stale percent would mislead); the model still carries it.
+            waitFor("phone battery in the widget's model") { WidgetUpdates.snapshot.value.data.battery == 77 }
             waitFor("background-off label visible") { textExists(view, "Background connection off") }
             for (mode in listOf("Light", "Dark")) {
                 appearance.edit().putString("theme", mode).commit()
@@ -112,20 +115,22 @@ class WidgetHostTest {
                     }
                     ready
                 }
-                waitFor("all widget actions laid out") {
+                val roundActions = listOf("Send clipboard", "Send a file", "Touchpad", "Open the app")
+                waitFor("all round widget actions laid out") {
                     var ready = false
-                    // WN-160: laid out means a layout and a width, not only present (the labels now sit in a responsive layout).
-                    instrumentation.runOnMainSync { ready = !view.isLayoutRequested && texts(view).filter { it.text.toString() in listOf("Send clipboard", "Open the app") }
-                        .let { labels -> labels.size == 2 && labels.all { it.layout != null && it.width > 0 } } }
+                    // WN-175: four round actions at 320 dp, each laid out with a size.
+                    instrumentation.runOnMainSync { ready = !view.isLayoutRequested && roundActions.all { label -> described(view, label)?.let { it.width > 0 } == true } }
                     ready
                 }
                 var bounds = android.graphics.Rect()
                 instrumentation.runOnMainSync {
-                    texts(view).filter { it.text.toString() in listOf("Send clipboard", "Open the app") }.forEach {
-                        assertNotNull(it.layout)
-                        for (line in 0 until it.layout.lineCount) assertEquals("action clipped at150%: ${it.text}", 0, it.layout.getEllipsisCount(line))
-                        assertTrue("text taller than its view", it.layout.height <= it.height)
+                    val density = view.resources.displayMetrics.density
+                    roundActions.forEach { label ->
+                        val action = checkNotNull(described(view, label))
+                        // A round button keeps a 48 dp touch target at a 150% font too.
+                        assertTrue("$label smaller than 48 dp", action.width >= (47 * density).toInt() && action.height >= (47 * density).toInt())
                     }
+
                     val location = IntArray(2)
                     view.getLocationOnScreen(location)
                     bounds = android.graphics.Rect(location[0], location[1], location[0] + view.width, location[1] + view.height)
@@ -148,7 +153,7 @@ class WidgetHostTest {
             }
             waitFor("resized widget laid out") {
                 var ready = false
-                instrumentation.runOnMainSync { ready = !view.isLayoutRequested && texts(view).any { it.text.toString() == "Open the app" && it.width > 0 } }
+                instrumentation.runOnMainSync { ready = !view.isLayoutRequested && described(view, "Open the app")?.let { it.width > 0 } == true }
                 ready
             }
             instrumentation.runOnMainSync {
@@ -165,7 +170,7 @@ class WidgetHostTest {
             view.events.clear()
             val batteryBefore = view.count.get()
             shell("dumpsys battery set level 78")
-            waitFor("battery percentage event redraws") { textExists(view, "78%") }
+            waitFor("battery percentage event redraws") { WidgetUpdates.snapshot.value.data.battery == 78 }
             assertNotNull("one RemoteViews for the changed percentage", view.events.poll(30, TimeUnit.SECONDS))
             assertEquals("one change on AC must produce one RemoteViews", batteryBefore + 1, view.count.get())
             // CCS/1 CHECK:observe absence of RemoteViews events for125s, as required by review; not an arbitrary startup sleep.
@@ -196,8 +201,7 @@ class WidgetHostTest {
             val sender = instrumentation.addMonitor(SendClipboardActivity::class.java.name, null, false)
             try {
                 instrumentation.runOnMainSync {
-                    val label = texts(view).first { it.text.toString() == "Send clipboard" }
-                    var clickable: View = label
+                    var clickable: View = checkNotNull(described(view, "Send clipboard"))
                     while (!clickable.isClickable && clickable.parent is View) clickable = clickable.parent as View
                     assertTrue(clickable.performClick())
                 }
@@ -209,7 +213,7 @@ class WidgetHostTest {
             try {
                 opened.close()
                 instrumentation.runOnMainSync {
-                    var clickable: View = texts(view).first { it.text.toString() == "Open the app" }
+                    var clickable: View = checkNotNull(described(view, "Open the app"))
                     while (!clickable.isClickable && clickable.parent is View) clickable = clickable.parent as View
                     assertTrue(clickable.performClick())
                 }

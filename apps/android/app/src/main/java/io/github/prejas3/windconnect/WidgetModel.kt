@@ -15,6 +15,36 @@ internal data class WidgetData(
     val dynamic: Boolean = true,
 ) {
     val batteryText: String get() = str(if (charging) R.string.widget_battery_charging else R.string.widget_battery, battery?.let { "$it%" } ?: "—")
+
+    /**
+     * WN-175: the device row's second line, "Connected · 80% charging". The battery only while the computer is connected
+     * or connecting: out of reach, a percent read earlier would look current.
+     */
+    val line: String get() {
+        val level = battery?.takeIf { connected || connecting }?.let { if (charging) str(R.string.widget_level_charging, "$it%") else "$it%" }
+        return if (level == null) status else str(R.string.widget_line, status, level)
+    }
+}
+
+/** WN-175: what the widget draws at a size: the device row alone with one round action, or a row of round actions. */
+internal enum class WidgetLayout { Small, Medium, Large }
+
+internal data class WidgetPlan(val layout: WidgetLayout, val actions: List<LauncherAction?>)
+
+/**
+ * WN-175 (Szymon's choice: C's compact device row with B's round icon buttons). Heights pick the layout (as the
+ * responsive sizes do); a narrow widget leaves out the touchpad so every round button keeps 48 dp and its spacing.
+ * `null` in [WidgetPlan.actions] is "open the app".
+ */
+internal fun widgetPlan(widthDp: Float, heightDp: Float): WidgetPlan {
+    val layout = when { heightDp < 150f -> WidgetLayout.Small; heightDp < 250f -> WidgetLayout.Medium; else -> WidgetLayout.Large }
+    val all = listOf(LauncherAction.Clipboard, LauncherAction.File, LauncherAction.Touchpad, null)
+    val actions = when {
+        layout == WidgetLayout.Small -> listOf(LauncherAction.Clipboard)
+        widthDp < 240f -> all - LauncherAction.Touchpad
+        else -> all
+    }
+    return WidgetPlan(layout, actions)
 }
 
 /** WN-119: the widget's percent and charging from the shared reading; none -> unknown (no percent, not charging). */

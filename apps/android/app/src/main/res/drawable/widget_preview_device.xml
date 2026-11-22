@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- WN-175: the preview's device tile behind the computer icon (surfaceVariant). -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="@color/brand_card" />
+    <corners android:radius="12dp" />
+</shape>
