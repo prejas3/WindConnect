@@ -1,18 +1,22 @@
 //! CCS/1 FLOW:OS callback -> coalesced generation -> immediate discovery/retry
-//! SEC:network events do not change peer trust.
+//! SEC:network events do not change peer trust. WN-176: our fingerprint goes out only where [`Announce`] allows.
 use crate::{
     broadcast::{BroadcastConfig, BroadcastDiscovery},
-    discovery::{DiscoveredPeer, Discovery, DiscoveryEvent},
+    discovery::{DiscoveredPeer, Discovery, DiscoveryEvent, RecordChange},
     identity::PublicKey,
     transport::{Endpoint, PinnedKeys},
 };
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
+    fmt,
     net::{IpAddr, Ipv4Addr, SocketAddr},
     sync::Arc,
     time::{Duration, Instant},
 };
-use tokio::{sync::watch, task::JoinHandle};
+use tokio::{
+    sync::{mpsc, watch},
+    task::JoinHandle,
+};
 
 #[derive(Clone)]
 pub struct NetworkChanges {
@@ -47,13 +51,43 @@ pub struct DiscoverySnapshot {
     pub error: Option<String>,
 }
 
+/// The local addresses of the networks the platform vouches for (WN-176): ones the OS marks private, or where a
+/// paired device was met before. Asked again on every network change.
+pub type TrustedNetworks = Arc<dyn Fn() -> Vec<IpAddr> + Send + Sync>;
+
+/// CCS/1 SEC:WN-176 where this device says who it is (PROTOCOL.md §2.0.2). Saying it is our mDNS record (its TXT
+/// fingerprint and `wc-…` names) and our broadcast queries and answers; browsing and listening say nothing and go on
+/// everywhere, so a paired device that does announce is still found.
+#[derive(Clone, Default)]
+pub enum Announce {
+    /// On every network (`windctl`, tests).
+    #[default]
+    Everywhere,
+    /// On a network of [`TrustedNetworks`], on one where a paired device is seen now (its announcement, or a
+    /// connection the app reports with [`NetworkDiscovery::paired_seen`]), and everywhere while a SAS pairing window
+    /// is open (TXT `pair`, §12.4). Nowhere else.
+    Trusted(TrustedNetworks),
+}
+
+impl fmt::Debug for Announce {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Announce::Everywhere => "Everywhere",
+            Announce::Trusted(_) => "Trusted",
+        })
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct DiscoveryOptions {
     pub mdns: bool,
     pub broadcast: Option<BroadcastConfig>,
     /// Paired devices: the broadcast cache always makes room for them
-    /// (PROTOCOL.md §2.0.1). Only a priority; it grants no trust.
+    /// (PROTOCOL.md §2.0.1), and seeing one opens its network to [`Announce::Trusted`].
+    /// Only a priority and a scope; it grants no trust.
     pub paired: Option<Arc<PinnedKeys>>,
+    /// Where we may announce ourselves (WN-176).
+    pub announce: Announce,
 }
 
 impl Default for DiscoveryOptions {
@@ -62,7 +96,132 @@ impl Default for DiscoveryOptions {
             mdns: true,
             broadcast: Some(BroadcastConfig::default()),
             paired: None,
+            announce: Announce::Everywhere,
         }
+    }
+}
+
+/// One local interface address and its netmask.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LocalNet {
+    pub addr: IpAddr,
+    pub netmask: IpAddr,
+}
+
+impl LocalNet {
+    /// Whether `ip` is on this network (the subnet broadcast address included).
+    pub fn contains(&self, ip: IpAddr) -> bool {
+        fn masked(ip: IpAddr, mask: IpAddr) -> Option<Vec<u8>> {
+            let (ip, mask) = match (ip, mask) {
+                (IpAddr::V4(i), IpAddr::V4(m)) => (i.octets().to_vec(), m.octets().to_vec()),
+                (IpAddr::V6(i), IpAddr::V6(m)) => (i.octets().to_vec(), m.octets().to_vec()),
+                _ => return None,
+            };
+            Some(ip.iter().zip(mask).map(|(i, m)| i & m).collect())
+        }
+        masked(self.addr, self.netmask).is_some_and(|ours| masked(ip, self.netmask) == Some(ours))
+    }
+}
+
+/// The local interfaces now (loopback included); empty when they can't be read.
+pub fn local_nets() -> Vec<LocalNet> {
+    if_addrs::get_if_addrs()
+        .map(|interfaces| {
+            interfaces
+                .into_iter()
+                .map(|interface| match interface.addr {
+                    if_addrs::IfAddr::V4(a) => LocalNet {
+                        addr: IpAddr::V4(a.ip),
+                        netmask: IpAddr::V4(a.netmask),
+                    },
+                    if_addrs::IfAddr::V6(a) => LocalNet {
+                        addr: IpAddr::V6(a.ip),
+                        netmask: IpAddr::V6(a.netmask),
+                    },
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// CCS/1 SEC:WN-176 the announce decision for one network generation (§2.0.2): which local networks are open.
+struct Gate {
+    /// `None`: [`Announce::Everywhere`].
+    trusted: Option<TrustedNetworks>,
+    nets: Vec<LocalNet>,
+    /// Local addresses whose network is open.
+    open: BTreeSet<IpAddr>,
+    /// A SAS pairing window is open: everywhere until it closes.
+    pairing: bool,
+}
+
+impl Gate {
+    fn new(announce: &Announce) -> Self {
+        Gate {
+            trusted: match announce {
+                Announce::Everywhere => None,
+                Announce::Trusted(trusted) => Some(trusted.clone()),
+            },
+            nets: Vec::new(),
+            open: BTreeSet::new(),
+            pairing: false,
+        }
+    }
+
+    /// A new network generation: the trusted networks among `nets`; whatever was seen before is forgotten.
+    fn refresh(&mut self, nets: Vec<LocalNet>) {
+        let trusted: BTreeSet<IpAddr> = self
+            .trusted
+            .as_ref()
+            .map(|t| t().into_iter().collect())
+            .unwrap_or_default();
+        self.open = nets
+            .iter()
+            .map(|n| n.addr)
+            .filter(|a| trusted.contains(a))
+            .collect();
+        self.nets = nets;
+    }
+
+    fn everywhere(&self) -> bool {
+        self.trusted.is_none() || self.pairing
+    }
+
+    /// Whether a packet carrying our fingerprint may go to (or answer) `ip`.
+    fn allows(&self, ip: IpAddr) -> bool {
+        self.everywhere()
+            || self
+                .nets
+                .iter()
+                .any(|n| self.open.contains(&n.addr) && n.contains(ip))
+    }
+
+    /// The trusted networks asked again (more may be trusted now); what was seen stays open. True if one opened.
+    fn retrust(&mut self) -> bool {
+        let trusted: BTreeSet<IpAddr> = self
+            .trusted
+            .as_ref()
+            .map(|t| t().into_iter().collect())
+            .unwrap_or_default();
+        let mut opened = false;
+        for net in self.nets.iter().filter(|n| trusted.contains(&n.addr)) {
+            opened |= self.open.insert(net.addr);
+        }
+        opened
+    }
+
+    /// A paired device at `remote`: its networks open. True if one wasn't open before.
+    fn seen(&mut self, remote: IpAddr) -> bool {
+        let mut opened = false;
+        for net in self.nets.iter().filter(|n| n.contains(remote)) {
+            opened |= self.open.insert(net.addr);
+        }
+        opened
+    }
+
+    /// The mDNS record's scope: `None` everywhere, else the open local addresses (maybe none).
+    fn scope(&self) -> Option<Vec<IpAddr>> {
+        (!self.everywhere()).then(|| self.open.iter().copied().collect())
     }
 }
 
@@ -77,6 +236,10 @@ const GOODBYE_HOLD: Duration = Duration::from_secs(1);
 /// and so never sends that TXT there (`probing_handler`): a SAS window closed
 /// ~1 s after a restart stayed advertised as open (WN-104).
 const PROBE_SETTLE: Duration = Duration::from_secs(2);
+
+/// CCS/1 RULE:WN-176 after a network change the platform is asked again on every discovery tick this long: Windows
+/// names a network's category and id only once it has identified it, a few seconds after the change is signalled.
+const RETRUST_FOR: Duration = Duration::from_secs(30);
 
 /// Most fingerprints the broadcast cache holds (§2.0.1).
 pub const BROADCAST_CACHE_LIMIT: usize = 128;
@@ -191,6 +354,7 @@ fn merged_peers(
 pub struct NetworkDiscovery {
     _changes: Arc<NetworkChanges>,
     pairing: Arc<watch::Sender<Option<u16>>>,
+    seen: mpsc::UnboundedSender<Report>,
     state: watch::Receiver<DiscoverySnapshot>,
     task: Option<JoinHandle<()>>,
     #[cfg(windows)]
@@ -228,7 +392,17 @@ impl NetworkDiscovery {
         #[cfg(windows)]
         let windows = WindowsNetworkMonitor::start_with(changes.clone(), false)?;
         let port = endpoint.local_addr()?.port();
-        let discovery = options.mdns.then(|| Discovery::start(&key, port));
+        let mut gate = Gate::new(&options.announce);
+        gate.refresh(local_nets());
+        let (seen, mut seen_reports) = mpsc::unbounded_channel::<Report>();
+        // Browses at once; the record goes out only as far as the gate allows (WN-176).
+        let discovery = options.mdns.then(|| {
+            Discovery::start_unadvertised(&key, port, None).and_then(|d| {
+                d.set_scope(gate.scope())?;
+                d.advertise()?;
+                Ok(d)
+            })
+        });
         let broadcast = options
             .broadcast
             .as_ref()
@@ -262,15 +436,46 @@ impl NetworkDiscovery {
             // CCS/1 FLOW:network change -> new daemon browses now; advertises at last goodbye + GOODBYE_HOLD.
             let mut last_goodbye: Option<Instant> = None;
             let mut advertise_at: Option<Instant> = None;
-            let mut registered_at: Option<Instant> = discovery.as_ref().map(|_| Instant::now());
-            let mut pairing_due: Option<Instant> = None;
+            let mut registered_at: Option<Instant> = discovery
+                .as_ref()
+                .filter(|d| d.is_advertised())
+                .map(|_| Instant::now());
+            let mut record_due: Option<Instant> = None;
+            let mut retrust_until = Some(Instant::now() + RETRUST_FOR);
+            let paired = |fingerprint: &[u8; 32]| {
+                options
+                    .paired
+                    .as_ref()
+                    .is_some_and(|pins| pins.contains_fingerprint(fingerprint))
+            };
             let mut tick = tokio::time::interval(period.max(Duration::from_millis(10)));
             tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            // Applies the current TXT `pair` and scope to our record (WN-176): now, after PROBE_SETTLE, or, when the
+            // scope narrowed, as a goodbye now and a fresh announcement after GOODBYE_HOLD.
+            macro_rules! record {
+                () => {
+                    if let Some(error) = update_record(
+                        discovery.as_ref(),
+                        *pairing_changes.borrow(),
+                        gate.scope(),
+                        &mut Times {
+                            registered_at: &mut registered_at,
+                            due: &mut record_due,
+                            last_goodbye: &mut last_goodbye,
+                            advertise_at: &mut advertise_at,
+                        },
+                    ) {
+                        sender.send_modify(|state| state.error = Some(error));
+                    }
+                };
+            }
             loop {
                 tokio::select! {
                     changed = network.changed() => {
                         if changed.is_err() { break; }
                         let generation = *network.borrow_and_update();
+                        gate.refresh(local_nets());
+                        retrust_until = Some(Instant::now() + RETRUST_FOR);
                         peers.clear();
                         broadcast_peers.clear();
                         replied.clear();
@@ -281,11 +486,13 @@ impl NetworkDiscovery {
                         if let Some(config) = &options.broadcast {
                             if broadcast.is_none() { broadcast = BroadcastDiscovery::bind(*key.fingerprint().as_bytes(), config.clone()).ok(); }
                             if let Some(backend) = &broadcast {
-                                if let Ok(address) = endpoint.local_addr() { let _ = backend.query(address.port()).await; }
+                                if let Ok(address) = endpoint.local_addr() { let _ = backend.query_within(address.port(), |ip| gate.allows(ip.into())).await; }
                             }
                         }
                         match result {
                             Ok(new) => {
+                                // Not registered yet: advertise() below registers it as far as this allows.
+                                let _ = new.set_scope(gate.scope());
                                 // CCS/1 RULE:new browse is sent before waiting for old goodbye cleanup.
                                 let old = discovery.replace(new);
                                 // A daemon replaced before it advertised retracts nothing: a burst of changes sends one goodbye.
@@ -295,7 +502,7 @@ impl NetworkDiscovery {
                                 advertise_at = Some(last_goodbye.map_or_else(Instant::now, |at| at + GOODBYE_HOLD));
                                 // The new daemon starts with the current pairing port; advertise() registers it.
                                 registered_at = None;
-                                pairing_due = None;
+                                record_due = None;
                             }
                             Err(error) if options.mdns => { sender.send_modify(|state| state.error = Some(error.to_string())); }
                             _ => {},
@@ -308,7 +515,8 @@ impl NetworkDiscovery {
                         advertise_at = None;
                         if let Some(discovery) = &discovery {
                             match discovery.advertise() {
-                                Ok(()) => registered_at = Some(Instant::now()),
+                                Ok(()) if discovery.is_advertised() => registered_at = Some(Instant::now()),
+                                Ok(()) => {}
                                 Err(error) => sender.send_modify(|state| state.error = Some(error.to_string())),
                             }
                         }
@@ -316,25 +524,29 @@ impl NetworkDiscovery {
                     changed = pairing_changes.changed() => {
                         if changed.is_err() { break; }
                         let port = *pairing_changes.borrow_and_update();
-                        if let Some(discovery) = &discovery {
-                            match registered_at {
-                                Some(at) if discovery.is_advertised() && at.elapsed() < PROBE_SETTLE => pairing_due = Some(at + PROBE_SETTLE),
-                                _ => {
-                                    if let Err(error) = discovery.set_pairing_port(port) { sender.send_modify(|state| state.error = Some(error.to_string())); }
-                                    if discovery.is_advertised() { registered_at = Some(Instant::now()); }
-                                }
-                            }
-                        }
+                        // An open SAS window announces everywhere (WN-176): the person asked to be found.
+                        gate.pairing = port.is_some();
+                        record!();
                     }
-                    _ = async { match pairing_due {
+                    _ = async { match record_due {
                         Some(at) => tokio::time::sleep_until(at.into()).await,
                         None => std::future::pending().await,
                     }} => {
-                        pairing_due = None;
-                        if let Some(discovery) = &discovery {
-                            // The latest value: several changes inside the window become one registration.
-                            if let Err(error) = discovery.set_pairing_port(*pairing_changes.borrow()) { sender.send_modify(|state| state.error = Some(error.to_string())); }
-                            registered_at = Some(Instant::now());
+                        record_due = None;
+                        // The latest values: several changes inside the window become one registration.
+                        record!();
+                    }
+                    report = seen_reports.recv() => {
+                        let opened = match report {
+                            // The app met a paired device at `remote` (a connection, not a hint): its network opens.
+                            Some(Report::Seen(remote)) => gate.seen(remote),
+                            // The platform trusts more networks now (a pairing completed): asked again.
+                            Some(Report::Trust) => gate.retrust(),
+                            None => false,
+                        };
+                        if opened {
+                            record!();
+                            if let (Some(backend), Ok(address)) = (&broadcast, endpoint.local_addr()) { let _ = backend.query_within(address.port(), |ip| gate.allows(ip.into())).await; }
                         }
                     }
                     event = async { match &discovery {
@@ -342,6 +554,15 @@ impl NetworkDiscovery {
                         None => std::future::pending().await,
                     }} => match event {
                         Ok(DiscoveryEvent::Resolved(peer)) => {
+                            // A paired device announcing itself here opens this network for us too (WN-176).
+                            if paired(&peer.fingerprint) {
+                                let mut opened = false;
+                                for address in &peer.addresses { opened |= gate.seen(address.ip()); }
+                                if opened {
+                                    record!();
+                                    if let (Some(backend), Ok(address)) = (&broadcast, endpoint.local_addr()) { let _ = backend.query_within(address.port(), |ip| gate.allows(ip.into())).await; }
+                                }
+                            }
                             peers.insert(peer.service_name.clone(), peer);
                             sender.send_modify(|state| state.peers = merged_peers(&peers, &broadcast_peers));
                         }
@@ -352,10 +573,14 @@ impl NetworkDiscovery {
                         Err(error) => { sender.send_modify(|state| state.error = Some(error.to_string())); discovery = None; }
                     },
                     _ = tick.tick(), if options.broadcast.is_some() => {
+                        // A network the platform has only now identified opens without waiting for another change.
+                        if retrust_until.is_some_and(|until| Instant::now() < until) && gate.retrust() {
+                            record!();
+                        }
                         if let Some(backend) = &broadcast {
                             if broadcast_peers.expire(backend.config().expiry) { sender.send_modify(|state| state.peers = merged_peers(&peers, &broadcast_peers)); }
                             if let Ok(address) = endpoint.local_addr() {
-                                if let Err(error) = backend.query(address.port()).await { sender.send_modify(|state| state.error = Some(error.to_string())); }
+                                if let Err(error) = backend.query_within(address.port(), |ip| gate.allows(ip.into())).await { sender.send_modify(|state| state.error = Some(error.to_string())); }
                             }
                         }
                     },
@@ -367,12 +592,17 @@ impl NetworkDiscovery {
                             let peer = DiscoveredPeer { service_name: format!("broadcast-{}", packet.fingerprint.iter().map(|b| format!("{b:02x}")).collect::<String>()),
                                 fingerprint: packet.fingerprint, addresses: vec![SocketAddr::new(IpAddr::V4(*source.ip()), packet.port)], pairing_port: None };
                             // CCS/1 SEC:bound untrusted cache and same-size unicast replies, at most one/IP/second.
-                            let paired = |fingerprint: &[u8; 32]| options.paired.as_ref().is_some_and(|pins| pins.contains_fingerprint(fingerprint));
+                            let from_paired = paired(&packet.fingerprint);
                             if broadcast_peers.offer(peer, *source.ip(), Instant::now(), paired) {
                                 sender.send_modify(|state| state.peers = merged_peers(&peers, &broadcast_peers));
                             }
+                            // A paired device's packet opens its network (WN-176); its query is then answered below.
+                            if from_paired && gate.seen(IpAddr::V4(*source.ip())) {
+                                record!();
+                            }
                             replied.retain(|_, time| time.elapsed() < Duration::from_secs(1));
-                            if packet.query && replied.len() < 128 && !replied.contains_key(source.ip()) {
+                            // CCS/1 SEC:WN-176 an answer carries our fingerprint: only to a network we may announce on.
+                            if packet.query && gate.allows(IpAddr::V4(*source.ip())) && replied.len() < 128 && !replied.contains_key(source.ip()) {
                                 replied.insert(*source.ip(), Instant::now());
                                 if let (Some(backend), Ok(address)) = (&broadcast, endpoint.local_addr()) { let _ = backend.answer(address.port(), source).await; }
                             }
@@ -394,6 +624,7 @@ impl NetworkDiscovery {
         Ok(Self {
             _changes: changes,
             pairing,
+            seen,
             state,
             task: Some(task),
             #[cfg(windows)]
@@ -403,6 +634,17 @@ impl NetworkDiscovery {
 
     pub fn subscribe(&self) -> watch::Receiver<DiscoverySnapshot> {
         self.state.clone()
+    }
+
+    /// CCS/1 SEC:WN-176 the app has a direct connection with a paired device at `remote` (never a relay stand-in,
+    /// never a hint): with [`Announce::Trusted`], that network opens until the next network change.
+    pub fn paired_seen(&self, remote: IpAddr) {
+        self.seen_reporter().paired_seen(remote);
+    }
+
+    /// [`paired_seen`](Self::paired_seen) for other tasks (an accept loop).
+    pub fn seen_reporter(&self) -> SeenReporter {
+        SeenReporter(self.seen.clone())
     }
 
     /// Advertises (`Some`) or withdraws (`None`) TXT `pair` (§12.4); kept
@@ -427,6 +669,71 @@ impl NetworkDiscovery {
             task.abort();
             let _ = task.await;
         }
+    }
+}
+
+enum Report {
+    Seen(IpAddr),
+    Trust,
+}
+
+/// Reports paired devices met directly to a [`NetworkDiscovery`] (WN-176); does nothing once it is gone.
+#[derive(Clone)]
+pub struct SeenReporter(mpsc::UnboundedSender<Report>);
+
+impl SeenReporter {
+    /// See [`NetworkDiscovery::paired_seen`]; loopback (a relay stand-in) and unspecified addresses are ignored.
+    pub fn paired_seen(&self, remote: IpAddr) {
+        if !remote.is_loopback() && !remote.is_unspecified() {
+            let _ = self.0.send(Report::Seen(remote));
+        }
+    }
+
+    /// The platform's [`TrustedNetworks`] may answer more now (e.g. it remembered this network after a pairing):
+    /// asked again at once instead of at the next network change.
+    pub fn trust_changed(&self) {
+        let _ = self.0.send(Report::Trust);
+    }
+}
+
+/// The record's timers in the discovery task.
+struct Times<'a> {
+    registered_at: &'a mut Option<Instant>,
+    due: &'a mut Option<Instant>,
+    last_goodbye: &'a mut Option<Instant>,
+    advertise_at: &'a mut Option<Instant>,
+}
+
+/// Applies TXT `pair` and the scope to the record now, or once [`PROBE_SETTLE`] has passed since it was registered
+/// (the latest values then). A narrower scope withdraws the record and schedules its announcement after
+/// [`GOODBYE_HOLD`] (WN-104). The error, if any, for the snapshot.
+fn update_record(
+    discovery: Option<&Discovery>,
+    pairing: Option<u16>,
+    scope: Option<Vec<IpAddr>>,
+    times: &mut Times<'_>,
+) -> Option<String> {
+    let discovery = discovery?;
+    match *times.registered_at {
+        Some(at) if discovery.is_advertised() && at.elapsed() < PROBE_SETTLE => {
+            *times.due = Some(at + PROBE_SETTLE);
+            None
+        }
+        _ => match discovery.set_record(pairing, scope) {
+            Ok(RecordChange::Registered) => {
+                *times.registered_at = Some(Instant::now());
+                None
+            }
+            Ok(RecordChange::Withdrawn) => {
+                let now = Instant::now();
+                *times.registered_at = None;
+                *times.last_goodbye = Some(now);
+                *times.advertise_at = Some(now + GOODBYE_HOLD);
+                None
+            }
+            Ok(RecordChange::Stored) => None,
+            Err(error) => Some(error.to_string()),
+        },
     }
 }
 
@@ -606,5 +913,73 @@ mod tests {
             "oldest paired made room"
         );
         assert_eq!(cache.entries.len(), BROADCAST_CACHE_LIMIT);
+    }
+
+    fn net(addr: &str, mask: &str) -> LocalNet {
+        LocalNet {
+            addr: addr.parse().unwrap(),
+            netmask: mask.parse().unwrap(),
+        }
+    }
+
+    #[test]
+    fn local_net_holds_its_subnet_and_broadcast_only() {
+        let home = net("192.168.1.20", "255.255.255.0");
+        assert!(home.contains("192.168.1.7".parse().unwrap()));
+        assert!(home.contains("192.168.1.255".parse().unwrap()));
+        assert!(!home.contains("192.168.2.7".parse().unwrap()));
+        assert!(!home.contains("255.255.255.255".parse().unwrap()));
+        assert!(!home.contains("fe80::1".parse().unwrap()), "another family");
+        let link = net("fe80::aa", "ffff:ffff:ffff:ffff::");
+        assert!(link.contains("fe80::1".parse().unwrap()));
+        assert!(!link.contains("fe81::1".parse().unwrap()));
+    }
+
+    #[test]
+    fn gate_opens_trusted_and_seen_networks_and_forgets_on_change() {
+        // WN-176: a laptop on a private home network and a public café-like one at once.
+        let nets = || {
+            vec![
+                net("192.168.1.20", "255.255.255.0"),
+                net("10.0.0.5", "255.255.0.0"),
+            ]
+        };
+        let trusted: TrustedNetworks = Arc::new(|| vec!["192.168.1.20".parse().unwrap()]);
+        let mut gate = Gate::new(&Announce::Trusted(trusted));
+        gate.refresh(nets());
+        assert!(gate.allows("192.168.1.255".parse().unwrap()));
+        assert!(
+            !gate.allows("10.0.255.255".parse().unwrap()),
+            "untrusted network: silent"
+        );
+        assert!(
+            !gate.allows("255.255.255.255".parse().unwrap()),
+            "no limited broadcast out of every interface"
+        );
+        assert_eq!(gate.scope(), Some(vec!["192.168.1.20".parse().unwrap()]));
+        // A paired device met on the other network opens it; seeing it again changes nothing.
+        assert!(gate.seen("10.0.3.9".parse().unwrap()));
+        assert!(!gate.seen("10.0.3.9".parse().unwrap()));
+        assert!(gate.allows("10.0.255.255".parse().unwrap()));
+        assert!(
+            !gate.seen("172.16.0.1".parse().unwrap()),
+            "not on any of our networks"
+        );
+        // A new network generation forgets what was seen.
+        gate.refresh(nets());
+        assert!(!gate.allows("10.0.255.255".parse().unwrap()));
+        // An open SAS window announces everywhere, the record unscoped.
+        gate.pairing = true;
+        assert!(gate.allows("10.0.255.255".parse().unwrap()));
+        assert_eq!(gate.scope(), None);
+        gate.pairing = false;
+        // Nothing trusted, nothing seen: an empty scope, not "everywhere".
+        let mut quiet = Gate::new(&Announce::Trusted(Arc::new(Vec::new)));
+        quiet.refresh(nets());
+        assert_eq!(quiet.scope(), Some(vec![]));
+        let mut everywhere = Gate::new(&Announce::Everywhere);
+        everywhere.refresh(nets());
+        assert!(everywhere.allows("172.16.0.1".parse().unwrap()));
+        assert_eq!(everywhere.scope(), None);
     }
 }

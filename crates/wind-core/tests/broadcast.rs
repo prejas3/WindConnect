@@ -39,6 +39,7 @@ async fn two_nodes_discover_without_any_multicast_and_expire_stopped_peers() {
         mdns: false,
         broadcast: Some(config(port)),
         paired: None,
+        announce: Default::default(),
     };
     let changes = Arc::new(NetworkChanges::default());
     let mut one = NetworkDiscovery::start_with_options(
@@ -155,6 +156,7 @@ async fn network_change_sends_fresh_port_without_waiting_for_broadcast_interval(
             mdns: false,
             broadcast: Some(cfg_a),
             paired: None,
+            announce: Default::default(),
         },
     )
     .unwrap();
@@ -166,6 +168,7 @@ async fn network_change_sends_fresh_port_without_waiting_for_broadcast_interval(
             mdns: false,
             broadcast: Some(cfg_b),
             paired: None,
+            announce: Default::default(),
         },
     )
     .unwrap();
@@ -304,6 +307,7 @@ async fn flood_of_fake_fingerprints_from_one_ip_does_not_hide_paired_device() {
             mdns: false,
             broadcast: Some(cfg(at(1), at(2))),
             paired: Some(pins_a.clone()),
+            announce: Default::default(),
         },
     )
     .unwrap();
@@ -335,6 +339,7 @@ async fn flood_of_fake_fingerprints_from_one_ip_does_not_hide_paired_device() {
             mdns: false,
             broadcast: Some(cfg(at(2), at(1))),
             paired: None,
+            announce: Default::default(),
         },
     )
     .unwrap();
@@ -388,6 +393,7 @@ async fn query_is_answered_by_unicast_so_the_asker_needs_no_broadcast() {
         mdns: false,
         broadcast: Some(config),
         paired: None,
+        announce: Default::default(),
     };
     let (phone, pc) = (
         DeviceIdentity::generate().unwrap(),
@@ -465,4 +471,147 @@ async fn query_is_answered_by_unicast_so_the_asker_needs_no_broadcast() {
     pc_discovery.shutdown().await;
     phone_endpoint.close();
     pc_endpoint.close();
+}
+
+/// WN-176 (PROTOCOL.md §2.0.2): a node told to announce only on trusted networks says nothing on one it doesn't
+/// trust: other nodes never learn its fingerprint, though it still hears them. Once a paired device is seen there,
+/// that network opens and it answers.
+#[tokio::test(flavor = "multi_thread")]
+async fn silent_on_an_untrusted_network_until_a_paired_device_is_seen() {
+    use wind_core::network::Announce;
+    let quiet = DeviceIdentity::generate().unwrap();
+    let loud = DeviceIdentity::generate().unwrap();
+    let quiet_pins = Arc::new(PinnedKeys::new());
+    let quiet_endpoint =
+        Endpoint::bind("127.0.0.1:0".parse().unwrap(), &quiet, quiet_pins.clone()).unwrap();
+    let loud_endpoint = Endpoint::bind(
+        "127.0.0.1:0".parse().unwrap(),
+        &loud,
+        Arc::new(PinnedKeys::new()),
+    )
+    .unwrap();
+    let port = free_port();
+    let changes = Arc::new(NetworkChanges::default());
+    let mut quiet_node = NetworkDiscovery::start_with_options(
+        quiet.public_key(),
+        quiet_endpoint.clone(),
+        changes.clone(),
+        DiscoveryOptions {
+            mdns: false,
+            broadcast: Some(config(port)),
+            paired: Some(quiet_pins.clone()),
+            // The platform vouches for no network here.
+            announce: Announce::Trusted(Arc::new(Vec::new)),
+        },
+    )
+    .unwrap();
+    let mut loud_node = NetworkDiscovery::start_with_options(
+        loud.public_key(),
+        loud_endpoint.clone(),
+        changes,
+        DiscoveryOptions {
+            mdns: false,
+            broadcast: Some(config(port)),
+            paired: None,
+            announce: Announce::Everywhere,
+        },
+    )
+    .unwrap();
+    let mut heard = quiet_node.subscribe();
+    let loud_state = loud_node.subscribe();
+    let sees = |state: &tokio::sync::watch::Receiver<wind_core::network::DiscoverySnapshot>,
+                id: &DeviceIdentity| {
+        state
+            .borrow()
+            .peers
+            .iter()
+            .any(|p| p.fingerprint == *id.fingerprint().as_bytes())
+    };
+    // The quiet node listens: it learns the loud one from its queries.
+    tokio::time::timeout(Duration::from_secs(3), async {
+        while !sees(&heard, &loud) {
+            heard.changed().await.unwrap();
+        }
+    })
+    .await
+    .expect("listening goes on everywhere");
+    // Many query rounds (50 ms each) later, the loud node still doesn't know the quiet one.
+    tokio::time::sleep(Duration::from_millis(600)).await;
+    assert!(
+        !sees(&loud_state, &quiet),
+        "no query or answer with our fingerprint on an untrusted network"
+    );
+    // The loud node turns out to be paired: its next query opens the network, and the quiet node answers.
+    quiet_pins.pin(loud.public_key());
+    let mut loud_watch = loud_state.clone();
+    tokio::time::timeout(Duration::from_secs(3), async {
+        while !sees(&loud_watch, &quiet) {
+            loud_watch.changed().await.unwrap();
+        }
+    })
+    .await
+    .expect("a paired device seen here opens the network");
+    quiet_node.shutdown().await;
+    loud_node.shutdown().await;
+}
+
+/// WN-176: a network the platform vouches for (here loopback) is announced on from the start.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_trusted_network_is_announced_on_at_once() {
+    use wind_core::network::Announce;
+    let trusted = DeviceIdentity::generate().unwrap();
+    let other = DeviceIdentity::generate().unwrap();
+    let trusted_endpoint = Endpoint::bind(
+        "127.0.0.1:0".parse().unwrap(),
+        &trusted,
+        Arc::new(PinnedKeys::new()),
+    )
+    .unwrap();
+    let other_endpoint = Endpoint::bind(
+        "127.0.0.1:0".parse().unwrap(),
+        &other,
+        Arc::new(PinnedKeys::new()),
+    )
+    .unwrap();
+    let port = free_port();
+    let changes = Arc::new(NetworkChanges::default());
+    let mut announcing = NetworkDiscovery::start_with_options(
+        trusted.public_key(),
+        trusted_endpoint,
+        changes.clone(),
+        DiscoveryOptions {
+            mdns: false,
+            broadcast: Some(config(port)),
+            paired: None,
+            announce: Announce::Trusted(Arc::new(|| vec!["127.0.0.1".parse().unwrap()])),
+        },
+    )
+    .unwrap();
+    let mut listening = NetworkDiscovery::start_with_options(
+        other.public_key(),
+        other_endpoint,
+        changes,
+        DiscoveryOptions {
+            mdns: false,
+            broadcast: Some(config(port)),
+            paired: None,
+            announce: Announce::Trusted(Arc::new(Vec::new)),
+        },
+    )
+    .unwrap();
+    let mut state = listening.subscribe();
+    tokio::time::timeout(Duration::from_secs(3), async {
+        while !state
+            .borrow()
+            .peers
+            .iter()
+            .any(|p| p.fingerprint == *trusted.fingerprint().as_bytes())
+        {
+            state.changed().await.unwrap();
+        }
+    })
+    .await
+    .expect("a trusted network hears our queries");
+    announcing.shutdown().await;
+    listening.shutdown().await;
 }

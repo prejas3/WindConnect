@@ -100,7 +100,17 @@ impl BroadcastDiscovery {
     }
 
     pub async fn query(&self, port: u16) -> io::Result<()> {
-        let destinations = if self.config.destinations.is_empty() {
+        self.query_within(port, |_| true).await
+    }
+
+    /// CCS/1 SEC:WN-176 [`query`](Self::query) to the destinations `allowed` passes only (§2.0.2): the query carries our
+    /// fingerprint, so it goes only to networks where we may say who we are. None allowed: nothing sent, not an error.
+    pub async fn query_within(
+        &self,
+        port: u16,
+        allowed: impl Fn(Ipv4Addr) -> bool,
+    ) -> io::Result<()> {
+        let destinations: Vec<SocketAddrV4> = if self.config.destinations.is_empty() {
             let mut targets = BTreeSet::new();
             for interface in if_addrs::get_if_addrs()? {
                 if let if_addrs::IfAddr::V4(address) = interface.addr {
@@ -121,6 +131,13 @@ impl BroadcastDiscovery {
         } else {
             self.config.destinations.clone()
         };
+        let destinations: Vec<SocketAddrV4> = destinations
+            .into_iter()
+            .filter(|d| allowed(*d.ip()))
+            .collect();
+        if destinations.is_empty() {
+            return Ok(());
+        }
         let bytes = Packet {
             query: true,
             port,

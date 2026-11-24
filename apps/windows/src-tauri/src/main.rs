@@ -20,6 +20,7 @@ pub mod indicator;
 mod instance;
 mod laser;
 mod media;
+mod networks;
 mod notify;
 mod pairing;
 mod panel;

@@ -277,6 +277,21 @@ the rule together with the MSI component. An error registering the rule stops th
 and runs a rollback, instead of silently leaving an incomplete configuration.
 An administrator can further restrict traffic with an organization's policy.
 
+### Where the PC announces itself (WN-176)
+
+The PC's mDNS record and broadcast packets carry its permanent fingerprint, so
+it sends them only on networks it can vouch for (PROTOCOL.md §2.0.2): a network
+Windows marks **Private** or **Domain**, or one remembered in
+`known-networks.json` (next to `paired.txt`) because a paired phone connected
+over it or a pairing completed on it. On any other network (a café's Public
+Wi-Fi) it only listens, and the phone stays silent too; the relay connects them
+there. The first start of this version on a PC that already has paired devices
+remembers the networks it is on, so a home network marked Public keeps working.
+To make a new Public network announce, pair on it once or mark it Private in
+Windows settings. `src/networks.rs` reads the categories from the Network List
+Manager; `cargo test -p windconnect-windows networks -- --nocapture` prints what
+it sees on this PC.
+
 Building the MSI compiles and links the fragment with the standard WiX tools;
 it doesn't install it and doesn't change the building computer's firewall. Test installation
 and uninstallation on a Windows VM meant for it: after installing,

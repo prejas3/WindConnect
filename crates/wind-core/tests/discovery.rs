@@ -71,6 +71,7 @@ async fn sas_window_advertises_the_pairing_port() {
             mdns: true,
             broadcast: None,
             paired: None,
+            announce: Default::default(),
         },
     )
     .unwrap();
@@ -166,6 +167,7 @@ async fn browser_started_right_after_network_discovery_sees_the_device() {
                 mdns: true,
                 broadcast: None,
                 paired: None,
+                announce: Default::default(),
             },
         )
         .unwrap();
@@ -238,6 +240,7 @@ async fn browser_started_right_after_a_network_change_sees_the_device() {
                 mdns: true,
                 broadcast: None,
                 paired: None,
+                announce: Default::default(),
             },
         )
         .unwrap();
@@ -280,4 +283,136 @@ async fn browser_started_right_after_a_network_change_sees_the_device() {
         endpoint.wait_idle().await;
     }
     assert!(failures.is_empty(), "runs without the device: {failures:?}");
+}
+
+/// WN-176 (§2.0.2): a device that vouches for no network isn't found by mDNS; a SAS window announces it everywhere
+/// for as long as it is open, and closing it takes the record off the network again (a goodbye). A device that
+/// trusts its LAN address is found at once.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "requires LAN multicast (UDP 5353) and firewall permission"]
+async fn quiet_on_untrusted_networks_announced_on_trusted_ones() {
+    use std::sync::Arc;
+    use wind_core::network::{
+        local_nets, Announce, DiscoveryOptions, NetworkChanges, NetworkDiscovery,
+    };
+    use wind_core::pairing::{PairedDevicesFile, PairingConfig, PairingListener};
+    use wind_core::transport::{Endpoint, PinnedKeys};
+
+    let start = |id: &DeviceIdentity, announce: Announce| {
+        let endpoint = Endpoint::bind(
+            "0.0.0.0:0".parse().unwrap(),
+            id,
+            Arc::new(PinnedKeys::new()),
+        )
+        .unwrap();
+        let discovery = NetworkDiscovery::start_with_options(
+            id.public_key(),
+            endpoint.clone(),
+            Arc::new(NetworkChanges::default()),
+            DiscoveryOptions {
+                mdns: true,
+                broadcast: None,
+                paired: None,
+                announce,
+            },
+        )
+        .unwrap();
+        (endpoint, discovery)
+    };
+    /// The first event about `who` within `limit`: `Some(pair port)` when resolved, `None` when removed.
+    async fn next_about(
+        browser: &Discovery,
+        who: [u8; 32],
+        name: &str,
+        limit: Duration,
+    ) -> Option<Option<Option<u16>>> {
+        tokio::time::timeout(limit, async {
+            loop {
+                match browser.next().await.unwrap() {
+                    DiscoveryEvent::Resolved(peer) if peer.fingerprint == who => {
+                        return Some(peer.pairing_port)
+                    }
+                    DiscoveryEvent::Removed(gone) if gone.starts_with(name) => return None,
+                    _ => {}
+                }
+            }
+        })
+        .await
+        .ok()
+    }
+
+    let phone = DeviceIdentity::generate().unwrap();
+    let browser = Discovery::start(&phone.public_key(), 47821).unwrap();
+
+    let quiet = DeviceIdentity::generate().unwrap();
+    let quiet_name = format!("wc-{}", &quiet.fingerprint().to_hex()[..40]);
+    let (quiet_endpoint, mut quiet_discovery) =
+        start(&quiet, Announce::Trusted(Arc::new(Vec::new)));
+    let who = *quiet.fingerprint().as_bytes();
+    assert_eq!(
+        next_about(&browser, who, &quiet_name, Duration::from_secs(4)).await,
+        None,
+        "an untrusted network hears nothing from us"
+    );
+
+    let dir = tempfile::tempdir().unwrap();
+    let listener = PairingListener::bind(
+        "0.0.0.0:0".parse().unwrap(),
+        &quiet,
+        Some("PC"),
+        Arc::new(PairedDevicesFile::in_dir(dir.path())),
+        Arc::new(PinnedKeys::new()),
+        PairingConfig::default(),
+    )
+    .unwrap();
+    listener.advertise_with(quiet_discovery.pairing_advertiser());
+    let port = listener.local_addr().unwrap().port();
+    listener.open_sas();
+    assert_eq!(
+        next_about(&browser, who, &quiet_name, Duration::from_secs(5)).await,
+        Some(Some(Some(port))),
+        "a SAS window announces us"
+    );
+    listener.close_window();
+    // Repeats of the open window's record may still arrive; the next state must be "gone", never a record without
+    // `pair` (that would be our fingerprint still announced on an untrusted network).
+    let gone = tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            match next_about(&browser, who, &quiet_name, Duration::from_secs(5)).await {
+                Some(Some(Some(p))) if p == port => continue,
+                other => return other,
+            }
+        }
+    })
+    .await
+    .expect("closing the window says goodbye within 5 s");
+    assert_eq!(gone, Some(None), "closing it says goodbye");
+
+    let trusted = DeviceIdentity::generate().unwrap();
+    let lan: Vec<std::net::IpAddr> = local_nets()
+        .into_iter()
+        .map(|n| n.addr)
+        .filter(|a| !a.is_loopback())
+        .collect();
+    let (trusted_endpoint, mut trusted_discovery) =
+        start(&trusted, Announce::Trusted(Arc::new(move || lan.clone())));
+    let trusted_name = format!("wc-{}", &trusted.fingerprint().to_hex()[..40]);
+    assert_eq!(
+        next_about(
+            &browser,
+            *trusted.fingerprint().as_bytes(),
+            &trusted_name,
+            Duration::from_secs(5)
+        )
+        .await,
+        Some(Some(None)),
+        "a trusted network finds us"
+    );
+
+    drop(listener);
+    drop(browser);
+    quiet_discovery.shutdown().await;
+    trusted_discovery.shutdown().await;
+    quiet_endpoint.close();
+    trusted_endpoint.close();
 }

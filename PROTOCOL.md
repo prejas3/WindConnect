@@ -91,6 +91,7 @@ QUIC v1 (RFC 9000) + TLS 1.3, ALPN "windconnect/1"
   (the host with `.local.`); mDNS may rename on a conflict.
 - An announcement is an untrusted address hint. The TXT fingerprint MUST NOT
   pin a key or bypass the TLS authentication from §2.
+- A device announces only on the networks §2.0.2 allows; it browses everywhere.
 - TXT `pair` (WN-82, §12.4): the pairing endpoint's port, only while a SAS window
   is open; it disappears when the window closes (paired, expired, closed, locked
   after attempts, replaced by a QR window). Value: 1–5 decimal digits, 1–65535;
@@ -134,6 +135,43 @@ QUIC v1 (RFC 9000) + TLS 1.3, ALPN "windconnect/1"
 - Broadcast works in parallel with mDNS, also when multicast is unavailable.
   Results are merged by fingerprint, with repeated addresses removed.
   These are untrusted hints; they MUST NOT pin keys or bypass TLS.
+- Queries and responses carry the sender's fingerprint, so they go only to
+  networks where the sender may announce itself (§2.0.2).
+
+### 2.0.2 Where a device announces itself (WN-176)
+
+The fingerprint is permanent: announced on any network, it would let anyone there
+recognise the device on other networks and days. So a device **says who it is**
+only on some networks. Saying it means our mDNS record (TXT `fingerprint`, the
+`wc-…` instance and host names, §2.0) and our broadcast queries and responses
+(§2.0.1). **Browsing and listening** say nothing (an mDNS query names only the
+service type) and go on everywhere, so a device that does announce is still found.
+
+A device announces on a local network (an interface address and its subnet) when:
+
+1. its platform vouches for that network. Windows: the network is Private or
+   Domain, or it is remembered because a paired phone connected over it or a
+   pairing completed on it (by the Network List Manager's network id). On the
+   first start of a version with this rule, a PC with paired devices remembers
+   the networks it is on, so a home network marked Public keeps working.
+   Android has no such notion: it vouches for none;
+2. a paired device is seen on it now: its mDNS record or broadcast packet
+   arrives from that subnet, or the app has a direct connection with it over
+   that subnet (never through the relay). This lasts until the next network change;
+3. a SAS pairing window is open (TXT `pair`, §12.4): then everywhere, because the
+   person asked to be found; it ends with the window.
+
+Elsewhere the device sends no record, query or response with its fingerprint.
+mDNS: the record names only the addresses of allowed interfaces (none: it isn't
+registered), and the responder announces and answers only on those interfaces.
+Broadcast: queries go only to the broadcast address of an allowed network (never
+`255.255.255.255` unless everywhere is allowed), and a query is answered only when
+it came from an allowed network. A device that sees a paired device on a network
+answers its next query there and sends a query of its own at once.
+
+In practice the PC announces at home and the phone stays silent until it hears
+the PC; on a café's network both stay silent and the relay (§13) connects them.
+Like the rest of discovery, none of this grants trust.
 
 ### 2.1 Key, certificate and fingerprint
 

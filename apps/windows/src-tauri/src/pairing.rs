@@ -7,7 +7,7 @@ use tauri::{Emitter, Manager};
 use tokio::sync::{mpsc, watch};
 use wind_core::{
     identity::{DeviceIdentity, DpapiKeyStore, PublicKey},
-    network::{NetworkChanges, NetworkDiscovery},
+    network::{Announce, DiscoveryOptions, NetworkChanges, NetworkDiscovery},
     pairing::{
         clean_name, PairedDevicesFile, PairingConfig, PairingEvent, PairingListener, Unpairing,
         WindowEnd,
@@ -608,8 +608,24 @@ async fn run(
         crate::relay::start(&app, dir, identity.clone(), endpoint.clone(), store.clone());
     }
     let unpairing = Unpairing::new((*store).clone(), trust.clone(), endpoint.clone());
-    let mut discovery =
-        NetworkDiscovery::start(identity.public_key(), endpoint.clone(), changes.clone())?;
+    // CCS/1 SEC:WN-176 this PC says who it is only on Private/Domain networks and ones where a paired phone was met
+    // (PROTOCOL.md §2.0.2); elsewhere it listens. Devices paired before this version: the current network is kept.
+    let known = crate::networks::Known::load(
+        key_store.path().parent().map(Into::into),
+        !loaded.devices.is_empty(),
+    );
+    let trusted = known.clone();
+    let mut discovery = NetworkDiscovery::start_with_options(
+        identity.public_key(),
+        endpoint.clone(),
+        changes.clone(),
+        DiscoveryOptions {
+            paired: Some(trust.clone()),
+            announce: Announce::Trusted(std::sync::Arc::new(move || trusted.trusted_addresses())),
+            ..Default::default()
+        },
+    )?;
+    let seen = discovery.seen_reporter();
     // WN-165: without a usable COMPUTERNAME, "Computer" in this PC's language (the phone shows it as given).
     let name = std::env::var("COMPUTERNAME")
         .ok()
@@ -642,9 +658,13 @@ async fn run(
     ));
     let accept_touchpad = touchpad_allowed.clone();
     let accept_unpairing = unpairing.clone();
+    let (accept_known, accept_seen) = (known.clone(), seen.clone());
     let _accept_task = AcceptTask(tokio::spawn(async move {
         while let Some(incoming) = accepting.accept().await {
             if let Ok(connection) = incoming {
+                // WN-176: a paired phone reached us directly (not a notice, not the relay's loopback stand-in).
+                let met = Some(connection.quinn().remote_address().ip())
+                    .filter(|ip| !connection.is_notice() && !ip.is_loopback());
                 // CCS/1 SEC:actions/1 accepted from pinned phones only; each request re-checks the pin (WN-54).
                 let mut router = Router::new();
                 let touchpad_input = router.route_input_version(4, 128);
@@ -688,6 +708,10 @@ async fn run(
                 .await
                 {
                     Ok(Ok((session, events))) => {
+                        if let Some(remote) = met {
+                            accept_known.remember_for(remote);
+                            accept_seen.paired_seen(remote);
+                        }
                         if session_sender
                             .send((
                                 session,
@@ -1044,6 +1068,9 @@ async fn run(
                     snapshot.message = crate::i18n::trf("pairing.same_code", &[("name", &shown.peer_name().unwrap_or(crate::i18n::tr("common.phone")))]);
                 }
                 Some(PairingEvent::Paired(device)) => {
+                    // WN-176: the phone paired over this network: announce here from now on, so it finds this PC.
+                    known.remember_current();
+                    seen.trust_changed();
                     prompt = None; snapshot.code = None;
                     preferred = Some((device.key, Instant::now()));
                     paired_at = Some(Instant::now()); snapshot.qr = None;

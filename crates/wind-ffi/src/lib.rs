@@ -4,7 +4,7 @@
 use std::{fmt, io, sync::Arc, time::Duration};
 use wind_core::{
     identity::{DeviceIdentity, KeyStore, PublicKey},
-    network::{DiscoveryOptions, DiscoverySnapshot, NetworkChanges, NetworkDiscovery},
+    network::{Announce, DiscoveryOptions, DiscoverySnapshot, NetworkChanges, NetworkDiscovery},
     protocol::{DeviceKind, ErrorCode},
     relay::RelayLink,
     session::{LocalInfo, Router, Session},
@@ -933,8 +933,11 @@ impl CoreClient {
         if discovery.is_none() {
             let key = public_key(&self.identity.public_key)?;
             // Paired devices always get a place in the broadcast cache (WN-87).
+            // CCS/1 SEC:WN-176 a phone has no "private network" from the OS: it says who it is only where a paired PC
+            // is seen (its announcement, or a direct connection); elsewhere it browses and listens only (§2.0.2).
             let options = DiscoveryOptions {
                 paired: Some(self.trust.clone()),
+                announce: Announce::Trusted(Arc::new(Vec::new)),
                 ..Default::default()
             };
             let watcher = NetworkDiscovery::start_with_options(
@@ -1350,6 +1353,10 @@ impl CoreClient {
             reason: "connection timed out".into(),
         })?
         .map_err(session_error)?;
+        // WN-176: a paired PC answered on this network directly: the phone may say who it is here now.
+        if let Some(discovery) = self.discovery.lock().await.as_ref() {
+            discovery.paired_seen(address.ip());
+        }
         self.serve_pc_media(pc_media);
         self.serve_find(find);
         self.serve_sms(sms);

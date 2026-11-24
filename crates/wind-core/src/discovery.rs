@@ -1,7 +1,7 @@
 //! CCS/1 M:discovery | IO:mDNS -> untrusted QUIC address hints
 //! SEC:TXT fingerprints never grant trust; transport still verifies pinned keys.
 
-use std::net::{SocketAddr, SocketAddrV6};
+use std::net::{IpAddr, SocketAddr, SocketAddrV6};
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Mutex,
@@ -13,6 +13,17 @@ use mdns_sd::{Receiver, ResolvedService, ScopedIp, ServiceDaemon, ServiceEvent, 
 use crate::identity::PublicKey;
 
 pub const SERVICE_TYPE: &str = "_windconnect._udp.local.";
+
+/// What [`Discovery::set_record`] did with the record.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RecordChange {
+    /// Kept for later: not advertising yet, or nothing to announce on.
+    Stored,
+    /// Registered (again) with the new TXT and scope.
+    Registered,
+    /// Withdrawn because the scope narrowed; advertise again after the goodbye hold.
+    Withdrawn,
+}
 
 /// A resolved advertisement, not an authenticated device.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -44,6 +55,11 @@ pub struct Discovery {
     hex: String,
     port: u16,
     pairing: Mutex<Option<u16>>,
+    /// WN-176: the local addresses the record names, and so the only interfaces mdns-sd announces it on and answers
+    /// for it on; `None` is every interface. An empty list registers nothing.
+    scope: Mutex<Option<Vec<IpAddr>>>,
+    /// [`advertise`](Self::advertise) was asked for; registered once the scope names an interface.
+    wanted: AtomicBool,
     advertised: AtomicBool,
 }
 
@@ -90,7 +106,7 @@ impl Discovery {
         }
         let hex = key.fingerprint().to_hex();
         let instance = format!("wc-{}", &hex[..40]);
-        let service = service_info(&instance, &hex, port, pairing)?;
+        let service = service_info(&instance, &hex, port, pairing, None)?;
         let fullname = service.get_fullname().to_owned();
         let daemon = ServiceDaemon::new()?;
         let result = (|| {
@@ -112,6 +128,8 @@ impl Discovery {
                 hex,
                 port,
                 pairing: Mutex::new(pairing),
+                scope: Mutex::new(None),
+                wanted: AtomicBool::new(advertise),
                 advertised: AtomicBool::new(advertise),
             }),
             Err(error) => {
@@ -127,32 +145,99 @@ impl Discovery {
         if pairing == Some(0) {
             return Err(mdns_sd::Error::Msg("pairing port must be nonzero".into()));
         }
-        let mut current = self.pairing.lock().unwrap();
-        *current = pairing;
+        *self.pairing.lock().unwrap() = pairing;
         if !self.advertised.load(Ordering::SeqCst) {
             return Ok(()); // advertise() uses it
         }
         // Registering the same name again replaces its records (TXT is a
         // unique record set, so peers drop the old value).
-        self.daemon
-            .register(service_info(&self.instance, &self.hex, self.port, pairing)?)
+        self.register().map(drop)
     }
 
-    /// Starts advertising (see [`start_unadvertised`](Self::start_unadvertised)); later calls do nothing.
+    /// CCS/1 SEC:WN-176 the interfaces the record may be announced on (§2.0.2): `Some(addresses)` limits it to the
+    /// interfaces holding them, `None` is every interface. Registers when advertising was asked for and the scope now
+    /// names an interface; a registered record is registered again with the new addresses.
+    pub fn set_scope(&self, scope: Option<Vec<IpAddr>>) -> mdns_sd::Result<RecordChange> {
+        let pairing = *self.pairing.lock().unwrap();
+        self.set_record(pairing, scope)
+    }
+
+    /// TXT `pair` and the scope at once (see [`set_pairing_port`](Self::set_pairing_port) and
+    /// [`set_scope`](Self::set_scope)): one registration for both. A scope that leaves out an interface the record
+    /// is announced on withdraws it (a goodbye on every interface): the caller advertises again once receivers have
+    /// let that goodbye go (WN-104), and the record then goes out only where the new scope allows.
+    pub fn set_record(
+        &self,
+        pairing: Option<u16>,
+        scope: Option<Vec<IpAddr>>,
+    ) -> mdns_sd::Result<RecordChange> {
+        if pairing == Some(0) {
+            return Err(mdns_sd::Error::Msg("pairing port must be nonzero".into()));
+        }
+        let narrows = {
+            let old = self.scope.lock().unwrap();
+            match (&*old, &scope) {
+                (_, None) => false,
+                (None, Some(_)) => true,
+                (Some(old), Some(new)) => old.iter().any(|a| !new.contains(a)),
+            }
+        };
+        *self.pairing.lock().unwrap() = pairing;
+        *self.scope.lock().unwrap() = scope;
+        if !self.wanted.load(Ordering::SeqCst) {
+            return Ok(RecordChange::Stored);
+        }
+        if narrows && self.advertised.load(Ordering::SeqCst) {
+            self.withdraw();
+            return Ok(RecordChange::Withdrawn);
+        }
+        Ok(match self.register()? {
+            true => RecordChange::Registered,
+            false => RecordChange::Stored,
+        })
+    }
+
+    /// Starts advertising (see [`start_unadvertised`](Self::start_unadvertised)) as far as the scope allows; once
+    /// advertised, later calls do nothing. After a withdrawal it registers the record again.
     pub fn advertise(&self) -> mdns_sd::Result<()> {
-        let pairing = self.pairing.lock().unwrap();
-        if self.advertised.swap(true, Ordering::SeqCst) {
+        let before = self.wanted.swap(true, Ordering::SeqCst);
+        if self.advertised.load(Ordering::SeqCst) {
             return Ok(());
         }
-        let result = service_info(&self.instance, &self.hex, self.port, *pairing)
-            .and_then(|service| self.daemon.register(service));
+        let result = self.register();
         if result.is_err() {
-            self.advertised.store(false, Ordering::SeqCst);
+            self.wanted.store(before, Ordering::SeqCst);
         }
-        result
+        result.map(drop)
     }
 
-    /// Whether this daemon advertises, and so sends a goodbye when dropped.
+    /// Takes the record off the network (a goodbye); advertising stays wanted.
+    fn withdraw(&self) {
+        if self.advertised.swap(false, Ordering::SeqCst) {
+            let _ = self.daemon.unregister(&self.fullname);
+        }
+    }
+
+    /// Registers the record with the current TXT and scope; with an empty scope nothing is registered.
+    fn register(&self) -> mdns_sd::Result<bool> {
+        let pairing = *self.pairing.lock().unwrap();
+        let scope = self.scope.lock().unwrap().clone();
+        if scope.as_ref().is_some_and(Vec::is_empty) {
+            return Ok(false);
+        }
+        let service = service_info(
+            &self.instance,
+            &self.hex,
+            self.port,
+            pairing,
+            scope.as_deref(),
+        )?;
+        self.daemon.register(service)?;
+        self.advertised.store(true, Ordering::SeqCst);
+        Ok(true)
+    }
+
+    /// Whether the record is registered now, and so sends a goodbye when dropped.
     pub fn is_advertised(&self) -> bool {
         self.advertised.load(Ordering::SeqCst)
     }
@@ -202,6 +287,7 @@ fn service_info(
     hex: &str,
     port: u16,
     pairing: Option<u16>,
+    scope: Option<&[IpAddr]>,
 ) -> mdns_sd::Result<ServiceInfo> {
     let pairing = pairing
         .filter(|port| *port != 0)
@@ -210,15 +296,16 @@ fn service_info(
     if let Some(pairing) = &pairing {
         txt.push(("pair", pairing.as_str()));
     }
-    Ok(ServiceInfo::new(
-        SERVICE_TYPE,
-        instance,
-        &format!("{instance}.local."),
-        "",
-        port,
-        &txt[..],
-    )?
-    .enable_addr_auto())
+    let host = format!("{instance}.local.");
+    Ok(match scope {
+        // mdns-sd announces and answers only on interfaces holding one of these addresses.
+        Some(addresses) => {
+            ServiceInfo::new(SERVICE_TYPE, instance, &host, addresses, port, &txt[..])?
+        }
+        None => {
+            ServiceInfo::new(SERVICE_TYPE, instance, &host, "", port, &txt[..])?.enable_addr_auto()
+        }
+    })
 }
 
 /// TXT `pair`: 1–5 decimal digits, 1–65535; anything else is no port.
@@ -274,7 +361,7 @@ fn decode(info: &ResolvedService) -> Option<DiscoveredPeer> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::net::IpAddr;
+    use crate::identity::DeviceIdentity;
 
     fn record(value: &str) -> ResolvedService {
         record_with(&[("fingerprint", value)])
@@ -325,12 +412,71 @@ mod tests {
     #[test]
     fn advertisement_carries_pair_only_while_set() {
         let hex = "ab".repeat(32);
-        let without = service_info("wc-test", &hex, 47820, None).unwrap();
+        let without = service_info("wc-test", &hex, 47820, None, None).unwrap();
         assert!(without.get_property("pair").is_none());
-        let with = service_info("wc-test", &hex, 47820, Some(47830)).unwrap();
+        let with = service_info("wc-test", &hex, 47820, Some(47830), None).unwrap();
         assert_eq!(with.get_property_val_str("pair"), Some("47830"));
-        let zero = service_info("wc-test", &hex, 47820, Some(0)).unwrap();
+        let zero = service_info("wc-test", &hex, 47820, Some(0), None).unwrap();
         assert!(zero.get_property("pair").is_none());
+    }
+
+    #[test]
+    fn a_scoped_record_names_only_its_addresses() {
+        // WN-176: without addr_auto, mdns-sd announces the record only on interfaces holding these addresses.
+        let hex = "ab".repeat(32);
+        let home: IpAddr = "192.168.1.20".parse().unwrap();
+        let scoped = service_info("wc-test", &hex, 47820, None, Some(&[home])).unwrap();
+        assert!(!scoped.is_addr_auto());
+        assert_eq!(
+            scoped.get_addresses_v4().into_iter().collect::<Vec<_>>(),
+            [&"192.168.1.20".parse::<std::net::Ipv4Addr>().unwrap()]
+        );
+        assert!(service_info("wc-test", &hex, 47820, None, None)
+            .unwrap()
+            .is_addr_auto());
+    }
+
+    #[test]
+    fn an_empty_scope_registers_nothing() {
+        let key = DeviceIdentity::generate().unwrap().public_key();
+        let discovery = Discovery::start_unadvertised(&key, 47820, None).unwrap();
+        discovery.set_scope(Some(vec![])).unwrap();
+        discovery.advertise().unwrap();
+        assert!(
+            !discovery.is_advertised(),
+            "nothing to say on any interface"
+        );
+        let home: IpAddr = "127.0.0.1".parse().unwrap();
+        assert_eq!(
+            discovery.set_scope(Some(vec![home])).unwrap(),
+            RecordChange::Registered
+        );
+        assert!(
+            discovery.is_advertised(),
+            "registered once an interface is allowed"
+        );
+        // Unchanged scope: registered again in place, no goodbye.
+        assert_eq!(
+            discovery.set_scope(Some(vec![home])).unwrap(),
+            RecordChange::Registered
+        );
+        // A SAS window: everywhere, then back to the narrower scope, which withdraws the record.
+        assert_eq!(
+            discovery.set_record(Some(47830), None).unwrap(),
+            RecordChange::Registered
+        );
+        assert_eq!(
+            discovery.set_record(None, Some(vec![home])).unwrap(),
+            RecordChange::Withdrawn
+        );
+        assert!(!discovery.is_advertised());
+        // After the goodbye hold the caller advertises again, scoped.
+        discovery.advertise().unwrap();
+        assert!(discovery.is_advertised());
+        assert_eq!(
+            discovery.set_scope(Some(vec![])).unwrap(),
+            RecordChange::Withdrawn
+        );
     }
 
     #[test]
