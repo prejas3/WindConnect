@@ -2086,7 +2086,11 @@ Rules:
    screenshots together; without pending ones and ones deleted to the trash), newest first,
    then `End` 0. More items than `limit` is an error in the answer.
 3. `Thumb` returns one `Thumb`: a JPEG with the longer side at most `size`, up to
-   64 KiB. A photo that no longer exists: `End` 2.
+   64 KiB. A photo that no longer exists: `End` 2. `Thumb` and `Original` serve
+   only a photo among the phone's newest 60 (what `Recent` with `limit` 60 would
+   list now); any other `id` gets `End` 2 as if it didn't exist, so the computer
+   can't reach the rest of the library by guessing identifiers (WN-62). The phone
+   may reuse that list for up to 2 s, and drops it when its photos change.
 4. `Original` returns `File`, then `Chunk`s with the original's bytes in order,
    exactly `size` in total, then `End` 0. A name that the computer couldn't
    create is replaced by the phone before sending (`IMG_<id>.<extension>`).

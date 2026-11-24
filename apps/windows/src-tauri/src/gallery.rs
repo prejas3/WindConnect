@@ -569,8 +569,9 @@ mod tests {
 
         struct Untrusted;
         impl Source for Untrusted {
+            // The phone serves only listed photos (WN-62): the four below are its newest.
             fn recent(&self, _: u32) -> Result<Vec<Item>, Status> {
-                Ok(vec![])
+                Ok((1..=4).map(item).collect())
             }
             fn thumb(&self, _: u64, _: u32) -> Result<Vec<u8>, Status> {
                 Err(Status::NotFound)

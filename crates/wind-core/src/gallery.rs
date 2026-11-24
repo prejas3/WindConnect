@@ -4,9 +4,10 @@
 //! then `Chunk` [3,{0:bytes}].., `Changed` [4,{}] for a watch, then one `End` [5,{0:status}] and FIN.
 //! RULE:the phone announces `gallery/1` only with its photo access granted and the person's setting on; the PC keeps
 //! thumbnails in memory and an original only as the file a drag hands to Windows. Nothing here logs names.
+use std::collections::HashSet;
 use std::io::Read;
-use std::sync::Arc;
-use std::time::Duration;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use tokio::sync::{mpsc, watch, Semaphore};
 
@@ -40,6 +41,9 @@ pub const CONCURRENT: usize = 4;
 pub const WATCHES: usize = 2;
 /// Changes within this window make one `Changed` (a camera writes a photo in a few steps).
 pub const CHANGE_DEBOUNCE: Duration = Duration::from_millis(250);
+/// How long the phone reuses its list of the newest [`MAX_RECENT`] ids when checking a `Thumb` or `Original`
+/// (a panel asks for many thumbnails at once); a change on the phone drops it sooner.
+pub const SCOPE_TTL: Duration = Duration::from_secs(2);
 
 /// A photo or screenshot on the phone.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -370,10 +374,18 @@ fn fit_item(mut i: Item) -> Item {
     i
 }
 
+/// The newest ids as read at `at`, while the change counter was `generation`.
+struct Scope {
+    at: Instant,
+    generation: u64,
+    ids: Arc<HashSet<u64>>,
+}
+
 /// Serves `gallery` streams on the phone.
 pub struct Server {
     source: Arc<dyn Source>,
     changes: watch::Sender<u64>,
+    scope: Mutex<Option<Scope>>,
 }
 
 impl Server {
@@ -381,12 +393,49 @@ impl Server {
         Arc::new(Self {
             source,
             changes: watch::channel(0).0,
+            scope: Mutex::new(None),
         })
     }
 
     /// The phone's photos changed (a content observer): every watch sends `Changed` after [`CHANGE_DEBOUNCE`].
     pub fn changed(&self) {
         self.changes.send_modify(|n| *n = n.wrapping_add(1));
+    }
+
+    /// CCS/1 SEC:WN-62 `Thumb` and `Original` serve only a photo among the newest [`MAX_RECENT`] (§9.13 rule 3), what
+    /// "Photos on the computer" shows; any other id answers `NotFound`, as a photo that doesn't exist, so the PC can't
+    /// walk the phone's whole library by id. Blocking (reads the source); the list is reused for [`SCOPE_TTL`].
+    fn in_scope(&self, id: u64) -> Result<(), Status> {
+        let generation = *self.changes.borrow();
+        let fresh = |s: &Scope| s.generation == generation && s.at.elapsed() < SCOPE_TTL;
+        let cached = {
+            let scope = self.scope.lock().unwrap_or_else(|e| e.into_inner());
+            scope.as_ref().filter(|s| fresh(s)).map(|s| s.ids.clone())
+        };
+        let ids = match cached {
+            Some(ids) => ids,
+            None => {
+                let ids: Arc<HashSet<u64>> = Arc::new(
+                    self.source
+                        .recent(MAX_RECENT)?
+                        .into_iter()
+                        .take(MAX_RECENT as usize)
+                        .map(|i| i.id)
+                        .collect(),
+                );
+                *self.scope.lock().unwrap_or_else(|e| e.into_inner()) = Some(Scope {
+                    at: Instant::now(),
+                    generation,
+                    ids: ids.clone(),
+                });
+                ids
+            }
+        };
+        if ids.contains(&id) {
+            Ok(())
+        } else {
+            Err(Status::NotFound)
+        }
     }
 
     /// Serves the streams of one session until it ends.
@@ -461,16 +510,20 @@ impl Server {
                 }
             }
             Request::Thumb { id, size } => {
-                let answer = tokio::task::spawn_blocking(move || source.thumb(id, size))
-                    .await
-                    .unwrap_or(Err(Status::Failed))
-                    .and_then(|jpeg| {
-                        if jpeg.is_empty() || jpeg.len() > MAX_THUMB || !is_jpeg(&jpeg) {
-                            Err(Status::Failed)
-                        } else {
-                            Ok(jpeg)
-                        }
-                    });
+                let me = self.clone();
+                let answer = tokio::task::spawn_blocking(move || {
+                    me.in_scope(id)?;
+                    source.thumb(id, size)
+                })
+                .await
+                .unwrap_or(Err(Status::Failed))
+                .and_then(|jpeg| {
+                    if jpeg.is_empty() || jpeg.len() > MAX_THUMB || !is_jpeg(&jpeg) {
+                        Err(Status::Failed)
+                    } else {
+                        Ok(jpeg)
+                    }
+                });
                 match answer {
                     Ok(jpeg) => {
                         if write_raw(
@@ -498,18 +551,21 @@ impl Server {
     }
 
     /// Streams an original; `None` when the stream is gone or was reset (the PC sees no `End`).
-    async fn original(&self, stream: &mut GalleryStream, id: u64) -> Option<Status> {
-        let source = self.source.clone();
-        let opened = tokio::task::spawn_blocking(move || source.original(id))
-            .await
-            .unwrap_or(Err(Status::Failed))
-            .and_then(|o| {
-                if o.info.size == 0 || o.info.size > MAX_ORIGINAL {
-                    Err(Status::Failed)
-                } else {
-                    Ok(o)
-                }
-            });
+    async fn original(self: &Arc<Self>, stream: &mut GalleryStream, id: u64) -> Option<Status> {
+        let me = self.clone();
+        let opened = tokio::task::spawn_blocking(move || {
+            me.in_scope(id)?;
+            me.source.original(id)
+        })
+        .await
+        .unwrap_or(Err(Status::Failed))
+        .and_then(|o| {
+            if o.info.size == 0 || o.info.size > MAX_ORIGINAL {
+                Err(Status::Failed)
+            } else {
+                Ok(o)
+            }
+        });
         let Opened { mut info, bytes } = match opened {
             Ok(o) => o,
             Err(s) => return Some(s),

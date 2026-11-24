@@ -64,3 +64,10 @@ path = "fuzz_targets/actions.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "features"
+path = "fuzz_targets/features.rs"
+test = false
+doc = false
+bench = false

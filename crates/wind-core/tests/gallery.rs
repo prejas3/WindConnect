@@ -1,6 +1,6 @@
 //! The phone's photos in the PC's panel over real sessions (WN-58, PROTOCOL.md §9.13): recent items, thumbnails,
-//! an original in several chunks, a file that shrinks while read, statuses, a watch and its latency, and a phone
-//! that doesn't offer `gallery/1`.
+//! an original in several chunks, a file that shrinks while read, statuses, a watch and its latency, a phone
+//! that doesn't offer `gallery/1`, and a photo outside the newest ones that is never served (WN-62).
 
 use std::io::Cursor;
 use std::net::{Ipv4Addr, SocketAddr};
@@ -45,9 +45,12 @@ fn big() -> Vec<u8> {
     (0..BIG).map(|i| (i % 251) as u8).collect()
 }
 
-/// Photos 3, 2, 1 (newest first); 3 has an original, 4 claims more bytes than it has, 5 has a name Windows refuses.
+/// Photos 3, 2, 1, 4, 5, 9 (newest first); 3 has an original, 4 claims more bytes than it has, 5 has a name Windows
+/// refuses, 9's thumbnail isn't a JPEG. Photo 7 has a thumbnail and an original but is listed only once `seven` is set
+/// (an older photo the PC must not reach by its id).
 struct Photos {
     denied: AtomicBool,
+    seven: AtomicBool,
 }
 
 impl Source for Photos {
@@ -55,15 +58,17 @@ impl Source for Photos {
         if self.denied.load(Ordering::SeqCst) {
             return Err(Status::Denied);
         }
-        Ok([3, 2, 1]
+        let seven = self.seven.load(Ordering::SeqCst).then_some(7);
+        Ok(seven
             .into_iter()
+            .chain([3, 2, 1, 4, 5, 9])
             .map(item)
             .take(limit as usize)
             .collect())
     }
     fn thumb(&self, id: u64, size: u32) -> Result<Vec<u8>, Status> {
         match id {
-            1..=3 if size <= 512 => Ok(JPEG.to_vec()),
+            1..=3 | 7 if size <= 512 => Ok(JPEG.to_vec()),
             9 => Ok(b"\x89PNG not a jpeg".to_vec()),
             _ => Err(Status::NotFound),
         }
@@ -71,6 +76,7 @@ impl Source for Photos {
     fn original(&self, id: u64) -> Result<Opened, Status> {
         let (name, size, bytes) = match id {
             3 => ("PXL_3.jpg", BIG as u64, big()),
+            7 => ("PXL_7.jpg", 3, vec![1, 2, 3]),
             4 => ("PXL_4.jpg", 10, vec![1, 2, 3]),
             5 => ("CON.jpg", 3, vec![1, 2, 3]),
             _ => return Err(Status::NotFound),
@@ -119,6 +125,7 @@ async fn pair(offers: bool) -> Pair {
     let (pc, _) = server_task.await.unwrap().unwrap();
     let photos = Arc::new(Photos {
         denied: AtomicBool::new(false),
+        seven: AtomicBool::new(false),
     });
     let server = Server::new(photos.clone());
     tokio::spawn(server.clone().serve(streams));
@@ -147,7 +154,10 @@ async fn recent_thumbs_and_originals() {
         .await
         .unwrap()
         .unwrap();
-    assert_eq!(items.iter().map(|i| i.id).collect::<Vec<_>>(), [3, 2, 1]);
+    assert_eq!(
+        items.iter().map(|i| i.id).collect::<Vec<_>>(),
+        [3, 2, 1, 4, 5, 9]
+    );
     assert!(items[1].screenshot);
     assert_eq!(gallery::recent(&p.pc, 2).await.unwrap().len(), 2);
     assert_eq!(gallery::thumb(&p.pc, 3, 256).await.unwrap(), JPEG);
@@ -184,7 +194,33 @@ async fn recent_thumbs_and_originals() {
     ));
     // Requests keep working after the failures.
     p.photos.denied.store(false, Ordering::SeqCst);
-    assert_eq!(gallery::recent(&p.pc, 20).await.unwrap().len(), 3);
+    assert_eq!(gallery::recent(&p.pc, 20).await.unwrap().len(), 6);
+}
+
+#[tokio::test]
+async fn only_the_newest_photos_are_served() {
+    let p = pair(true).await;
+    // Photo 7 exists on the phone but isn't among the newest: answered as if it didn't exist.
+    assert!(matches!(
+        gallery::thumb(&p.pc, 7, 256).await,
+        Err(AskError::Status(Status::NotFound))
+    ));
+    assert!(matches!(
+        fetch(&p.pc, 7).await,
+        Err(AskError::Status(Status::NotFound))
+    ));
+    // It becomes one of the newest: a change on the phone drops the remembered list at once.
+    p.photos.seven.store(true, Ordering::SeqCst);
+    p.server.changed();
+    assert_eq!(gallery::thumb(&p.pc, 7, 256).await.unwrap(), JPEG);
+    assert_eq!(fetch(&p.pc, 7).await.unwrap().1, [1, 2, 3]);
+    // Without photo access, the check itself answers `Denied`.
+    p.photos.denied.store(true, Ordering::SeqCst);
+    p.server.changed();
+    assert!(matches!(
+        gallery::thumb(&p.pc, 3, 256).await,
+        Err(AskError::Status(Status::Denied))
+    ));
 }
 
 #[tokio::test]
