@@ -64,4 +64,8 @@
     <string name="clip_image_file_name">image.png</string>
     <string name="peer_unnamed">Computer</string>
     <string name="notify_reply_default">Reply</string>
+    <!-- WN-180: the entries in Android's notification-access list (the manifest's listener services). The app's
+         notify_access_about names the notifications one, so both must stay the same in each language. -->
+    <string name="listener_media_label">WindConnect: player on the computer</string>
+    <string name="listener_notify_label">WindConnect: notifications on the computer</string>
 </resources>

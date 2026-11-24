@@ -6,6 +6,8 @@
 // 2. No Polish letters in tracked sources outside the Polish tables. A line may keep them on purpose with a marker:
 //    `i18n: data` (Unicode test data, names, typed text) or `i18n: pl` (a check of the Polish texts, or system UI
 //    shown in the device's language). Whole files that exist to check Polish are listed in ALLOWED with the reason.
+// 3. Android manifests name what the system shows (android:label, android:description) only through resources, so
+//    it follows the device's language (WN-180: the notification-access entries were Polish words without Polish letters).
 'use strict';
 const { execFileSync } = require('node:child_process');
 const fs = require('node:fs');
@@ -80,9 +82,22 @@ for (const file of files) {
   });
 }
 
+// 3. System-shown manifest texts come from the tables.
+let manifests = 0;
+for (const file of files.filter(f => f.startsWith('apps/android/') && f.endsWith('/AndroidManifest.xml'))) {
+  const full = path.join(repo, file);
+  if (!fs.existsSync(full)) continue;
+  manifests++;
+  fs.readFileSync(full, 'utf8').split('\n').forEach((line, i) => {
+    for (const m of line.matchAll(/android:(label|description)="([^"]*)"/g)) {
+      if (!m[2].startsWith('@')) errors.push(`${file}:${i + 1}: android:${m[1]} is literal text ("${m[2]}"); use @string/… from values/ and values-pl/`);
+    }
+  });
+}
+
 if (errors.length) {
   for (const e of errors) console.error(e);
   console.error(`\n${errors.length} problem(s). Move UI text to the tables (English in values/, en.json, en.js), or mark deliberate Polish with "i18n: data" / "i18n: pl".`);
   process.exit(1);
 }
-console.log(`Language check ok: 4 Polish tables match their English ones; ${scanned} sources have no Polish outside them.`);
+console.log(`Language check ok: 4 Polish tables match their English ones; ${scanned} sources have no Polish outside them; ${manifests} Android manifests take their labels from resources.`);

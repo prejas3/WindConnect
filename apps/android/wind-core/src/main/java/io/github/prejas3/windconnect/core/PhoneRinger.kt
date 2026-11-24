@@ -150,7 +150,7 @@ internal class PhoneRinger(context: Context, preferences: SharedPreferences, pri
     }
 }
 
-/** The ring notification's "Zatrzymaj" (not exported; only our PendingIntent reaches it). */
+/** The ring notification's "Stop" (`find_stop_action`; not exported; only our PendingIntent reaches it). */
 class FindStopReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) = PhoneRinger.stopFromSystem()
 }

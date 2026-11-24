@@ -20,7 +20,7 @@
              Bound only by the system (BIND_NOTIFICATION_LISTENER_SERVICE), after the person grants access in system settings. -->
         <service
             android:name="io.github.prejas3.windconnect.core.MediaListenerService"
-            android:label="WindConnect: odtwarzacz na komputerze"
+            android:label="@string/listener_media_label"
             android:exported="true"
             android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
             <intent-filter>
@@ -31,7 +31,7 @@
              notification access, and the in-app setting (off by default); off, it unbinds itself. Bound only by the system. -->
         <service
             android:name="io.github.prejas3.windconnect.core.NotifyListenerService"
-            android:label="WindConnect: powiadomienia na komputerze"
+            android:label="@string/listener_notify_label"
             android:exported="true"
             android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
             <intent-filter>
@@ -42,7 +42,7 @@
         <receiver
             android:name="io.github.prejas3.windconnect.core.PcMediaActionReceiver"
             android:exported="false" />
-        <!-- WN-50: the ring notification's "Zatrzymaj"; not exported, reached only through our PendingIntent. -->
+        <!-- WN-50: the ring notification's "Stop" (find_stop_action); not exported, reached only through our PendingIntent. -->
         <receiver
             android:name="io.github.prejas3.windconnect.core.FindStopReceiver"
             android:exported="false" />

@@ -64,4 +64,6 @@
     <string name="clip_image_file_name">obraz.png</string>
     <string name="peer_unnamed">Komputer</string>
     <string name="notify_reply_default">Odpowiedz</string>
+    <string name="listener_media_label">WindConnect: odtwarzacz na komputerze</string>
+    <string name="listener_notify_label">WindConnect: powiadomienia na komputerze</string>
 </resources>

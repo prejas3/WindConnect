@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "io.github.prejas3.windconnect"
-version = "0.89.0"
+version = "0.89.1"
 
 val repositoryRoot = rootProject.projectDir.resolve("../..").canonicalFile
 // WN-95: Rust builds share the repository's Cargo target folder, so the
