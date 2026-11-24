@@ -465,8 +465,11 @@ class WindCore private constructor(
     }
 
     // WN-58: the newest photos and screenshots in the PC's panel. Own consent (setting off by default) and photo access,
-    // asked only when the person turns it on.
-    private val phoneGallery = PhoneGallery(appContext).also { client.setGallerySource(it) }
+    // asked only when the person turns it on. WN-177: the Play build declares no photo permission, so no source is set
+    // and gallery/1 is never routed or announced (as SMS in WN-124).
+    private val phoneGallery = PhoneGallery(appContext).also {
+        if (appContext.declaresPermission(PhoneGallery.PERMISSION)) client.setGallerySource(it)
+    }
     private val mutableGalleryAllowed = MutableStateFlow(settings.getBoolean(GALLERY_ALLOWED, false))
     /** "Photos on the computer" (default off). */
     val galleryAllowed: StateFlow<Boolean> = mutableGalleryAllowed.asStateFlow()

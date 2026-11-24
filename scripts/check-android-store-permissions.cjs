@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // WN-124 (decision D2): the permissions of a built APK match its store.
-//   play:   none of the SMS, Call Log and contacts permissions Google Play restricts;
-//   github: SMS, Call Log and contacts are there (the full build).
+//   play:   none of the SMS, Call Log, contacts and photo permissions Google Play restricts;
+//   github: SMS, Call Log, contacts and photos are there (the full build).
 // Usage: node scripts/check-android-store-permissions.cjs <apk> <github|play>
 // Reads the APK with aapt from ANDROID_HOME/build-tools (the newest installed).
 'use strict';
@@ -16,11 +16,14 @@ const PLAY_FORBIDDEN = [
   'android.permission.READ_CONTACTS', 'android.permission.ANSWER_PHONE_CALLS',
   // WN-146: dangerous ("Phone" on Play) and asked only by the SMS sending and calls settings, absent in Play.
   'android.permission.READ_PHONE_STATE',
+  // WN-177 (option a): Play's Photo and Video Permissions policy; "Photos on the computer" is GitHub-only.
+  'android.permission.READ_MEDIA_IMAGES', 'android.permission.READ_EXTERNAL_STORAGE',
 ];
 const GITHUB_REQUIRED = [
   'android.permission.READ_SMS', 'android.permission.SEND_SMS',
   'android.permission.READ_CALL_LOG', 'android.permission.READ_CONTACTS',
   'android.permission.READ_PHONE_STATE',
+  'android.permission.READ_MEDIA_IMAGES', 'android.permission.READ_EXTERNAL_STORAGE',
 ];
 // What both builds keep (the rest of the app).
 const BOTH_REQUIRED = ['android.permission.INTERNET', 'android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE'];

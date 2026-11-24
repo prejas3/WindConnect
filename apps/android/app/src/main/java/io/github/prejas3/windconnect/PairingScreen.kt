@@ -10,6 +10,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.provider.Settings
+import io.github.prejas3.windconnect.core.PhoneGallery
 import io.github.prejas3.windconnect.core.declaresPermission
 import androidx.activity.BackEventCompat
 import androidx.activity.compose.PredictiveBackHandler
@@ -122,8 +123,8 @@ fun PairingScreen(model: PairingViewModel, diagnostic: @Composable () -> Unit) {
                     // WN-124: the Play build declares no SMS / Call Log permissions, so these settings aren't there.
                     if (context.declaresPermission(Manifest.permission.READ_SMS)) { SmsControls(); WindDivider() }
                     if (context.declaresPermission(Manifest.permission.READ_CALL_LOG)) { CallControls(); WindDivider() }
-                    GalleryControls()
-                    WindDivider()
+                    // WN-177: nor any photo permission, so no "Photos on the computer".
+                    if (context.declaresPermission(PhoneGallery.PERMISSION)) { GalleryControls(); WindDivider() }
                     MediaControls()
                 },
                 stringResource(R.string.group_pc_on_phone) to {

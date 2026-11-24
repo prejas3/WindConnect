@@ -917,6 +917,8 @@ The setting "Photos on the computer" (off by default) asks for access to
 photos only when it is turned on (Android 13+: `READ_MEDIA_IMAGES`, 10–12:
 `READ_EXTERNAL_STORAGE`). A refusal leaves the switch off; access is
 checked on every request. Names don't go into logs.
+The Google Play build declares neither permission and has no such setting (WN-177, see
+"The GitHub/F-Droid version and the Google Play version" below).
 LIMIT:Android 14's partial access ("selected photos") isn't handled
 separately: without full access the feature is off.
 Tests: `GalleryRulesTest`, `apps/windows/scripts/check-gallery-android.cjs`
@@ -1014,19 +1016,81 @@ One code base, two builds chosen by the Gradle property `windStore`:
   libraries) READ_SMS, SEND_SMS, RECEIVE_SMS/MMS/WAP_PUSH, READ_CALL_LOG,
   WRITE_CALL_LOG, READ_CONTACTS, ANSWER_PHONE_CALLS and READ_PHONE_STATE (only
   SMS sending and calls ask for them; the call state of other features comes from the
-  audio mode without permissions, WN-146). Built in
+  audio mode without permissions, WN-146). It also removes READ_MEDIA_IMAGES and
+  READ_EXTERNAL_STORAGE (WN-177, option (a)): Play's Photo and Video Permissions
+  policy allows broad photo access only for an app's core function, and "Photos on
+  the computer" is a side feature, so it stays in the GitHub/F-Droid build. Built in
   `app/build-play`, the APK `app-play-<type>.apk`, so it doesn't overwrite the full one.
 
 RULE:features follow from what the APK declares (`declaresPermission`, wind-core),
 not from a flag: without READ_SMS WindCore doesn't set the SMS source, so `sms/1` is
 neither routed nor announced, and Settings have no "SMS on the computer"; without
-READ_CALL_LOG there is no "Calls on the computer". The "Messages" window on the PC then says
+READ_CALL_LOG there is no "Calls on the computer"; without the photo permission
+(`PhoneGallery.PERMISSION`) no gallery source is set, `gallery/1` is never announced and
+Settings have no "Photos on the computer". The "Messages" window on the PC then says
 that the phone doesn't share SMS (with a hint about the Google Play version).
 CHECK:`node scripts/check-android-store-permissions.cjs <apk> github|play`
 (aapt; CI checks both builds), `StoreVariantTest` (`-e windStore github|play`)
 on each build, `apps/windows/scripts/check-sms-play-android.cjs`
 (a real PC + an emulator with the play APK: no `sms/1`, `sms_status`
 `{connected:true, available:false}`, the window's text).
+
+The Play build then declares: INTERNET, ACCESS_NETWORK_STATE, CHANGE_WIFI_MULTICAST_STATE,
+CAMERA (QR pairing), POST_NOTIFICATIONS, FOREGROUND_SERVICE, FOREGROUND_SERVICE_CONNECTED_DEVICE,
+RECEIVE_BOOT_COMPLETED, MODIFY_AUDIO_SETTINGS, VIBRATE and WAKE_LOCK (WorkManager, from Glance).
+None of them is on Play's restricted or sensitive list.
+
+### Play Console: declarations and disclosures (WN-177)
+
+What has to be filed or shown before the Play build is submitted. Nothing here
+applies to the GitHub/F-Droid build.
+
+**1. Notification access (`NotifyListenerService`, `MediaListenerService`).** Both are
+`NotificationListenerService`s, bound only after the person grants access in system
+settings. `NotifyListenerService` sends a notification's app, title, text and icon to
+the paired computer. `MediaListenerService` reads only media sessions (title, artist,
+playback state) for the PC's player. Play's User Data policy asks for:
+- **A prominent in-app disclosure** before the person is sent to the system's access
+  screen. It must be shown in normal use (not only in a policy or a settings sub-page),
+  say what data is used and how, and ask for an affirmative action.
+  The current text (`notify_about`, `notify_access_about`) says the right things.
+  But it sits under the (i) details of the setting's row, and "Grant access" opens
+  the system screen directly, so it **does not count yet**. The planned change is a
+  dialog before the system screen (WN-179), with this text:
+  > *WindConnect sends your phone's notifications to the computer you paired: the app's
+  > name and icon, the title and the text. They go straight to that computer over an
+  > encrypted connection, are not stored, and do not pass through any server of ours.
+  > You choose which apps are sent, and you can turn it off at any time.*
+  > Buttons: "Continue" (opens the system's notification access) and "Not now".
+  The player's access (`MediaListenerService`) needs its own short version: it sends
+  what is playing (title, artist, app) and its playback state.
+- **Data safety form**: notification content and media info are transmitted off the
+  device, to the person's own paired computer, encrypted in transit (TLS 1.3 / QUIC).
+  They are not stored and not sent to the developer. With the optional relay (off by
+  default, WN-60), only encrypted traffic passes through it. File the matching types
+  ("Messages: other in-app messages" for notification content, "App activity" for
+  media info) as needed for the app's functionality, and decide whether the
+  user's-own-device transfer counts as collection, with the current Play guidance.
+
+**2. Foreground services, type `connectedDevice`** (targetSdk 35, Android 14+).
+Play Console → App content → Foreground service permissions: for
+FOREGROUND_SERVICE_CONNECTED_DEVICE, a description of each use and a short video
+of it. The prerequisite permission the type needs is CHANGE_WIFI_MULTICAST_STATE (declared).
+- `ConnectionService`: keeps the encrypted session with the paired computer while
+  the app is closed (background connection, WN-29), so the clipboard, notifications
+  and the remote actions keep working. It runs only when the person has turned on
+  the background connection, and it shows a persistent notification with "Stop".
+  Video: turn the background connection on, close the app, copy text on the PC, and
+  show it arriving on the phone.
+- `SendFilesService`: sends the files the person chose to the paired computer (WN-40),
+  with a progress notification and "Cancel". It ends with the transfer.
+  Video: Share → "Send to computer", then the progress notification.
+- `ReceiveFilesService`: receives files the computer sends after an accepted offer
+  (WN-120, WN-127), into Download/WindConnect, with a progress notification. It ends
+  after the last transfer.
+  Video: send a file from the PC and show it in Downloads.
+
+**3. Photos.** Nothing to file: the Play build doesn't declare photo access (above).
 
 ## A quick return to the computer after it restarts (WN-142)
 
