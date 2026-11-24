@@ -533,4 +533,12 @@
     <string name="widget_level_charging">%1$s charging</string>
     <string name="more_options">More options: %1$s</string>
     <string name="scan_aim">Point the camera at the QR code on the computer</string>
+    <!-- WN-179: Google Play's prominent disclosure, shown before Android's notification access screen. -->
+    <string name="notify_disclosure_title">Send notifications to your computer?</string>
+    <string name="notify_disclosure_text">WindConnect sends your phone\'s notifications to the computer you paired: the app\'s name and icon, the title and the text. They go straight to that computer over an encrypted connection, are not stored, and don\'t pass through any server of ours. You choose which apps are sent, and you can turn it off at any time.</string>
+    <string name="notify_disclosure_next">Next, Android asks you to allow notification access: choose “WindConnect: notifications on the computer”.</string>
+    <string name="media_disclosure_title">Show what\'s playing on your computer?</string>
+    <string name="media_disclosure_text">WindConnect sends what is playing on your phone to the computer you paired: the title, the artist, the cover, the app and whether it is playing. It goes straight to that computer over an encrypted connection and is not stored. It doesn\'t read your notifications\' content. You can turn it off at any time.</string>
+    <string name="media_disclosure_next">Android calls this notification access. Next, it asks you to allow it: choose “WindConnect: player on the computer”.</string>
+    <string name="disclosure_continue">Continue</string>
 </resources>

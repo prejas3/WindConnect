@@ -71,15 +71,24 @@ fun NotifyControls() {
         } else Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
         context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
-    WindSettingRow("bell", str(R.string.notify_title), str(R.string.sum_notify), checked = allowed, onCheckedChange = connections::setNotifyAllowed,
+    // WN-179: the system screen is reached only through the disclosure. pendingOn: the switch was turned on without access,
+    // so "Continue" also turns the setting on; "Not now" leaves it off.
+    var disclose by rememberSaveable { mutableStateOf(false) }
+    var pendingOn by rememberSaveable { mutableStateOf(false) }
+    if (disclose) ListenerDisclosure("bell", str(R.string.notify_disclosure_title), str(R.string.notify_disclosure_text), str(R.string.notify_disclosure_next),
+        onContinue = { disclose = false; if (pendingOn) connections.setNotifyAllowed(true); pendingOn = false; openAccess() },
+        onDismiss = { disclose = false; pendingOn = false })
+    val askAccess = { disclose = true }
+    val turn = { on: Boolean -> if (on && !access) { pendingOn = true; disclose = true } else connections.setNotifyAllowed(on) }
+    WindSettingRow("bell", str(R.string.notify_title), str(R.string.sum_notify), checked = allowed, onCheckedChange = turn,
         switchTag = "notifyAllowed", status = if (access) null else str(R.string.needs_access), statusTag = "notifyAccess", warning = allowed && !access,
         actions = {
-            if (!access) WindButton(str(R.string.access_grant_short), openAccess, Modifier.testTag("notifyAccessSettings"), kind = ButtonKind.Secondary)
+            if (!access) WindButton(str(R.string.access_grant_short), askAccess, Modifier.testTag("notifyAccessSettings"), kind = ButtonKind.Secondary)
             if (allowed) NotifyApps(connections)
         },
         more = {
             Text(str(R.string.notify_about)); Text(str(R.string.notify_access_about))
-            if (access) WindButton(str(R.string.access_change), openAccess, kind = ButtonKind.Quiet)
+            if (access) WindButton(str(R.string.access_change), askAccess, kind = ButtonKind.Quiet)
         })
 }
 

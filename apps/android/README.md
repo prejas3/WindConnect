@@ -1053,17 +1053,31 @@ playback state) for the PC's player. Play's User Data policy asks for:
 - **A prominent in-app disclosure** before the person is sent to the system's access
   screen. It must be shown in normal use (not only in a policy or a settings sub-page),
   say what data is used and how, and ask for an affirmative action.
-  The current text (`notify_about`, `notify_access_about`) says the right things.
-  But it sits under the (i) details of the setting's row, and "Grant access" opens
-  the system screen directly, so it **does not count yet**. The planned change is a
-  dialog before the system screen (WN-179), with this text:
-  > *WindConnect sends your phone's notifications to the computer you paired: the app's
-  > name and icon, the title and the text. They go straight to that computer over an
-  > encrypted connection, are not stored, and do not pass through any server of ours.
-  > You choose which apps are sent, and you can turn it off at any time.*
-  > Buttons: "Continue" (opens the system's notification access) and "Not now".
-  The player's access (`MediaListenerService`) needs its own short version: it sends
-  what is playing (title, artist, app) and its playback state.
+  **Done (WN-179), in both builds:** `ListenerDisclosure` is a dialog the app shows
+  before Android's notification access screen. The rows "Notifications on the computer"
+  and "Media on the computer" reach that screen only through it: "Grant access",
+  "Change access", and turning the switch on without access. "Continue" opens the
+  system screen (and turns the switch on, when that is how the person got there).
+  "Not now" or back opens nothing and leaves the switch off.
+  Text (`notify_disclosure_*`, `media_disclosure_*`, EN and PL):
+  > *Send notifications to your computer? WindConnect sends your phone's notifications to
+  > the computer you paired: the app's name and icon, the title and the text. They go
+  > straight to that computer over an encrypted connection, are not stored, and don't
+  > pass through any server of ours. You choose which apps are sent, and you can turn it
+  > off at any time. Next, Android asks you to allow notification access: choose
+  > "WindConnect: notifications on the computer".*
+
+  > *Show what's playing on your computer? WindConnect sends what is playing on your phone
+  > to the computer you paired: the title, the artist, the cover, the app and whether it is
+  > playing. It goes straight to that computer over an encrypted connection and is not
+  > stored. It doesn't read your notifications' content. You can turn it off at any time.*
+  > (Then where to find "WindConnect: player on the computer".)
+
+  CHECK: `ListenerDisclosureTest` (6 tests; needs notification access not granted, so
+  a fresh install). It checks that the dialog comes first, that "Not now" opens nothing,
+  and that "Continue" sends the system intent once (caught by an ActivityMonitor), both
+  from "Grant access" and from the switch. It also saves screenshots of both dialogs in
+  light and dark to `/data/local/tmp/wn179`.
 - **Data safety form**: notification content and media info are transmitted off the
   device, to the person's own paired computer, encrypted in transit (TLS 1.3 / QUIC).
   They are not stored and not sent to the developer. With the optional relay (off by

@@ -534,4 +534,12 @@
     <string name="widget_level_charging">%1$s, ładuje się</string>
     <string name="more_options">Więcej opcji: %1$s</string>
     <string name="scan_aim">Skieruj aparat na kod QR na komputerze</string>
+    <!-- WN-179: Google Play's prominent disclosure, shown before Android's notification access screen. -->
+    <string name="notify_disclosure_title">Wysyłać powiadomienia na komputer?</string>
+    <string name="notify_disclosure_text">WindConnect wysyła powiadomienia z telefonu na sparowany komputer: nazwę i ikonę aplikacji, tytuł i treść. Trafiają prosto do tego komputera szyfrowanym połączeniem, nie są przechowywane i nie przechodzą przez żaden nasz serwer. Ty wybierasz, z których aplikacji są wysyłane, i możesz to wyłączyć w każdej chwili.</string>
+    <string name="notify_disclosure_next">Za chwilę Android poprosi o dostęp do powiadomień: wybierz „WindConnect: powiadomienia na komputerze”.</string>
+    <string name="media_disclosure_title">Pokazywać na komputerze, co gra?</string>
+    <string name="media_disclosure_text">WindConnect wysyła na sparowany komputer to, co gra na telefonie: tytuł, wykonawcę, okładkę, aplikację i to, czy gra. Trafia to prosto do tego komputera szyfrowanym połączeniem i nie jest przechowywane. WindConnect nie czyta przy tym treści powiadomień. Możesz to wyłączyć w każdej chwili.</string>
+    <string name="media_disclosure_next">Android nazywa to dostępem do powiadomień. Za chwilę poprosi o zgodę: wybierz „WindConnect: odtwarzacz na komputerze”.</string>
+    <string name="disclosure_continue">Dalej</string>
 </resources>

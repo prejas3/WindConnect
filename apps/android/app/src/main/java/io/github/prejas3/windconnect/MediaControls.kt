@@ -11,6 +11,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -42,12 +45,20 @@ fun MediaControls() {
     }
     // WN-130: access missing is the one thing shown in red with its action; the rest is under "More".
     val openAccess = { context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
-    WindSettingRow("music", str(R.string.media_title), str(R.string.sum_media), checked = allowed, onCheckedChange = connections::setMediaAllowed,
+    // WN-179: the system screen is reached only through the disclosure (as NotifyControls).
+    var disclose by rememberSaveable { mutableStateOf(false) }
+    var pendingOn by rememberSaveable { mutableStateOf(false) }
+    if (disclose) ListenerDisclosure("music", str(R.string.media_disclosure_title), str(R.string.media_disclosure_text), str(R.string.media_disclosure_next),
+        onContinue = { disclose = false; if (pendingOn) connections.setMediaAllowed(true); pendingOn = false; openAccess() },
+        onDismiss = { disclose = false; pendingOn = false })
+    val askAccess = { disclose = true }
+    val turn = { on: Boolean -> if (on && !access) { pendingOn = true; disclose = true } else connections.setMediaAllowed(on) }
+    WindSettingRow("music", str(R.string.media_title), str(R.string.sum_media), checked = allowed, onCheckedChange = turn,
         switchTag = "mediaAllowed", status = if (access) null else str(R.string.needs_access), statusTag = "mediaAccess", warning = allowed && !access,
-        actions = if (access) null else { { WindButton(str(R.string.access_grant_short), openAccess, Modifier.testTag("mediaAccessSettings"), kind = ButtonKind.Secondary) } },
+        actions = if (access) null else { { WindButton(str(R.string.access_grant_short), askAccess, Modifier.testTag("mediaAccessSettings"), kind = ButtonKind.Secondary) } },
         more = {
             Text(str(R.string.media_about)); Text(str(R.string.media_access_about))
-            if (access) WindButton(str(R.string.access_change), openAccess, kind = ButtonKind.Quiet)
+            if (access) WindButton(str(R.string.access_change), askAccess, kind = ButtonKind.Quiet)
         })
 }
 
